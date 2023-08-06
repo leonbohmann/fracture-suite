@@ -1,5 +1,5 @@
 import argparse
-from fracture_suite.analyzer import Analyzer
+from fracsuite.analyzer import Analyzer
 
 
 # implement parse to make this script callable from outside
