@@ -7,7 +7,7 @@ import cv2
 from tqdm import tqdm
 from skimage.morphology import skeletonize
 
-from fracture_suite.splinter import Splinter
+from fracsuite.splinter import Splinter
 from matplotlib import pyplot as plt
 
 def crop_perspective(img, size = 4000, dbg = False):
