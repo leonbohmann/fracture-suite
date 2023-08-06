@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "matplotlib", "opencv-python", "numpy", "tqdm", "scikit-image"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fracture-suite"
+version = "0.0.1"
+authors = [
+  { name="Leon Bohmann", email="mail@leonbohmann.de" },
+]
+description = "Package to help analyze fracture patterns on broken glass plys."
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/leonbohmann/fracture-suite"
+"Bug Tracker" = "https://github.com/leonbohmann/fracture-suite/issues"
