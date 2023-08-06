@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 dependencies = ["matplotlib", "opencv-python", "numpy", "tqdm", "scikit-image"]
 name = "fracture-suite"
-version = "0.0.2"
+version = "0.0.5"
 authors = [
   { name="Leon Bohmann", email="mail@leonbohmann.de" },
 ]
