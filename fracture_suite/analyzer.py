@@ -256,11 +256,11 @@ class Analyzer(object):
     
     axs: list[plt.axes]
     
-    def __init__(self, file_path: str, crop = False):
+    def __init__(self, file_path: str, crop = False, img_size = 4000):
         # image operations
         self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         if crop:
-            self.original_image = crop_perspective(self.original_image, dbg=False)
+            self.original_image = crop_perspective(self.original_image, size=img_size, dbg=False)
         
         
         self.preprocessed_image = preprocess_image(self.original_image)
