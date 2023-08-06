@@ -10,6 +10,124 @@ from skimage.morphology import skeletonize
 from fracture_suite.splinter import Splinter
 from matplotlib import pyplot as plt
 
+def crop_perspective(img, size = 4000, dbg = False):
+    """
+    Crops a given image to its containing pane bounds. Finds smallest pane countour with
+    4 corner points and aligns, rotates and scales the pane to fit a resulting image.
+
+    Args:
+        img (Image): Input image with a clearly visible glass pane.
+
+    Returns:
+        img: A cropped image which only contains the glass pane. Size: 1000x1000.
+            If no 4 point contour is found, the whole image is returned.
+    """
+    
+    def fourCornersSort(pts):
+        """ Sort corners: top-left, bot-left, bot-right, top-right """
+        # Difference and sum of x and y value
+        # Inspired by http://www.pyimagesearch.com
+        diff = np.diff(pts, axis=1)
+        summ = pts.sum(axis=1)
+        
+        # Top-left point has smallest sum...
+        # np.argmin() returns INDEX of min
+        return np.array([pts[np.argmin(summ)],
+                        pts[np.argmax(diff)],
+                        pts[np.argmax(summ)],
+                        pts[np.argmin(diff)]])
+    
+    def isgray(img):
+        if len(img.shape) < 3: 
+            return True
+        if img.shape[2] == 1: 
+            return True
+        # b,g,r = img[:,:,0], img[:,:,1], img[:,:,2]
+        return False
+    
+    img_original = img.copy()
+    
+    im = img.copy()
+    im0 = img.copy()
+    
+    if not isgray(im):
+        im = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    
+    # # apply gaussian blur to image to we can get rid of some noise
+    im = cv2.GaussianBlur(im, (5,5), 5)
+    # # restore original image by thresholding
+    _,im = cv2.threshold(im,127,255,0)
+
+    if dbg:
+        plt.imshow(255-im)
+        plt.show()
+    
+    # fetch contour information
+    contour_info = []
+    contours, _ = cv2.findContours(255-im, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # loop through contours and find their properties
+    for cnt in contours:
+        contour_info.append((
+            cnt,
+            cv2.isContourConvex(cnt),
+            cv2.contourArea(cnt)
+        ))
+
+    # sort contours after their area
+    contour_info = sorted(contour_info, key=lambda c: c[2], reverse=True)
+    # take the second largest contour (this has to be the outer bounds of pane)    
+    if len(contour_info) > 0:
+        max_contour = contour_info[0][0]
+    else:
+        return img_original
+    
+    cv2.drawContours(im0, contours, -1, (0,0,255), 10)
+    if dbg:
+        plt.imshow(im0)    
+        plt.show()
+    
+    # Simplify contour
+    perimeter = cv2.arcLength(max_contour, True)
+    approx = cv2.approxPolyDP(max_contour, 0.03 * perimeter, True)
+
+    # Page has 4 corners and it is convex
+    # Page area must be bigger than maxAreaFound 
+    if (len(approx) == 4 and
+            cv2.isContourConvex(approx)):
+
+        pageContour = fourCornersSort(approx[:, 0])
+    else:
+        rect = cv2.boundingRect(approx)
+        x, y, w, h = rect
+
+        # Compute the four corners of the rectangle using cv2.boxPoints
+        corners = cv2.boxPoints(((x, y), (w, h), 0))
+
+        # Convert the corners to integer values and print the result
+        corners = corners.astype(int)
+        #raise CropException("Pane boundary could not be found.")
+        pageContour = corners        
+
+    # Create target points
+    width=height=size
+    tPoints = np.array([[0, 0],
+                    [0, height],
+                    [width, height],
+                    [width, 0]], np.float32)
+    # source points are contour corners
+    sPoints = pageContour
+
+    # getPerspectiveTransform() needs float32
+    if sPoints.dtype != np.float32:
+        sPoints = sPoints.astype(np.float32)
+    # Warping perspective
+    M = cv2.getPerspectiveTransform(sPoints, tPoints)     
+
+    img_original = cv2.warpPerspective(img_original, M, (int(width), int(height)))
+    
+    # and return the transformed image
+    return img_original
+
 def preprocess_image(image, gauss_sz = (3,3), gauss_sig = 5, \
     block_size=11, C=6, rsz=1) -> nptyp.ArrayLike:
     """Preprocess a raw image.
@@ -52,9 +170,9 @@ def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
 
     contours = list(contours)
     contours_areas = [cv2.contourArea(x) for x in contours]
-    contour_area_avg = np.average(contours_areas)
-    contour_area_med = np.average(contours_areas)
-    contour_area_std = np.std(contours_areas)
+    # contour_area_avg = np.average(contours_areas)
+    # contour_area_med = np.average(contours_areas)
+    # contour_area_std = np.std(contours_areas)
     
     # Create a list to store the indices of the contours to be deleted
     to_delete = []
@@ -74,7 +192,7 @@ def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
             contour_area = 0.00001
             
         # small size
-        if contour_perim < 30:
+        if contour_perim < 20:
             to_delete.append(i)
         
     # def reject_outliers(data, m = 2.):
@@ -138,9 +256,13 @@ class Analyzer(object):
     
     axs: list[plt.axes]
     
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str, crop = False):
         # image operations
         self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
+        if crop:
+            self.original_image = crop_perspective(self.original_image, dbg=False)
+        
+        
         self.preprocessed_image = preprocess_image(self.original_image)
         
         # contour operations
@@ -266,10 +388,45 @@ class Analyzer(object):
         data_x, data_y = zip(*data)
         
         fig = plt.figure()
-        plt.plot(data_x, data_y)    
+        plt.plot(data_x, data_y, 'g-')    
+        plt.plot(data_x, data_y, 'rx', markersize=2)    
         plt.title('Splinter Size Accumulation')
         plt.xlabel("$\sum Area_i [mm²]$")
         plt.ylabel(r"$\frac{\sum (Area_i)}{Area_t} [-]$")
+        # plt.axvline(np.average(areas),c='b', label = "Area avg")
+        # plt.axvline(np.sum(areas), c='g', label='Found Area')
+        # plt.axvline(5000**2, c='r', label='Image Area')
+        plt.show()
+        return fig
+    
+    def plot_area_2(self) -> Figure:
+        """Plots a graph of Splinter Size Distribution.
+
+        Returns:
+            Figure: The figure, that is displayed.
+        """
+        areas = [x.area for x in self.splinters]
+        total_area = np.sum(areas)
+        
+        # ascending sort, smallest to largest
+        areas.sort()
+            
+        data = []
+        
+        area_i = 0
+        for area in range(100,int(np.max(areas)),200):
+            index = next((i for i, value in enumerate(areas) if value > area), None)
+            p = index
+            data.append((area, p))
+
+        data_x, data_y = zip(*data)
+        
+        fig = plt.figure()
+        plt.plot(data_x, data_y, 'g-')    
+        plt.plot(data_x, data_y, 'ro', markersize=3)    
+        plt.title('Splinter Size Distribution')
+        plt.xlabel("Splinter Area [mm²]")
+        plt.ylabel(r"Amount of Splinters [-]")
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
         # plt.axvline(5000**2, c='r', label='Image Area')
