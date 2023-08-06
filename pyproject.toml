@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fracture-suite"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Leon Bohmann", email="mail@leonbohmann.de" },
 ]
