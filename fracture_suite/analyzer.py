@@ -19,6 +19,7 @@ def preprocess_image(image, gauss_sz = (3,3), gauss_sig = 5, \
         gauss_sz (size-tuple, optional): The size of the gaussian filter. 
                                         Defaults to (5,5).
         gauss_sig (int, optional): The sigma for gaussian filter. Defaults to 3.
+        block_size (int, optional): Block size of adaptive threshold. Defaults to 11.
         C (int, optional): Sensitivity of adaptive threshold. Defaults to 6.
         rsz (int, optional): Resize factor for the image. Defaults to 1.
 
@@ -123,6 +124,10 @@ def closeImg(image, sz = 3, it=1):
 
 
 class Analyzer(object):
+    """
+    Analyzer class that can handle an input image.        
+    """
+    
     file_path: str
     
     original_image: nptyp.ArrayLike
@@ -161,6 +166,7 @@ class Analyzer(object):
         self.splinters = [Splinter(x,i) for i,x in enumerate(self.contours)]
     
     def __onselect(self,eclick, erelease):
+        """ Private function, internal use only. """
         x1, y1 = eclick.xdata, eclick.ydata
         x2, y2 = erelease.xdata, erelease.ydata
         selected_region = (x1, y1, x2, y2)
@@ -180,7 +186,12 @@ class Analyzer(object):
         # print(selected_region)
         return selected_region
     
-    def plot(self, region = None):        
+    def plot(self, region = None) -> None:
+        """
+        Plots the analyzer backend.
+        Displays the original img, preprocessed img, and an overlay of the found cracks
+        side by side in a synchronized plot.
+        """        
         fig, (self.ax3, self.ax1, self.ax2) = plt.subplots(1, 3, figsize=(12, 6))
 
         # Display the result from Canny edge detection
@@ -229,7 +240,14 @@ class Analyzer(object):
         plt.tight_layout()
         plt.show()
         
+        return fig
+        
     def plot_area(self) -> Figure:
+        """Plots a graph of accumulated share of area for splinter sizes.
+
+        Returns:
+            Figure: The figure, that is displayed.
+        """
         areas = [x.area for x in self.splinters]
         total_area = np.sum(areas)
         
