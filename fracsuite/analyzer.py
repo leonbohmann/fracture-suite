@@ -1,3 +1,4 @@
+import random
 from matplotlib.figure import Figure
 from matplotlib.widgets import RectangleSelector
 import numpy as np
@@ -242,6 +243,13 @@ def closeImg(image, sz = 3, it=1):
     kernel_closing = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (sz, sz))
     return cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel_closing, iterations=it)
 
+def rand_col():
+    """Generate a random color.
+
+    Returns:
+        (r,g,b): A random color.
+    """
+    return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
 class Analyzer(object):
     """
@@ -253,13 +261,16 @@ class Analyzer(object):
     original_image: nptyp.ArrayLike
     preprocessed_image: nptyp.ArrayLike
         
+    image_contours: nptyp.ArrayLike
+    image_filled: nptyp.ArrayLike
+    
     contours: list[nptyp.ArrayLike]
     splinters: list[Splinter]
     
     axs: list[plt.Axes]
     
     def __init__(self, file_path: str, crop = False, img_size = 4000,\
-        img_real_size=None):
+        img_real_size: tuple[int,int] | None=None):
         """Create a new analyzer object.
 
         Args:
@@ -319,6 +330,27 @@ class Analyzer(object):
         # detect fragments on the closed skeleton
         self.contours = detect_fragments(skeleton)        
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
+        
+        # check percentage of detected splinters
+        total_area = np.sum([x.area for x in self.splinters])
+        
+        if img_real_size is not None:
+            total_img_size = img_real_size[0] * img_real_size[1]        
+        else:
+            total_img_size = self.preprocessed_image.shape[0] * self.preprocessed_image.shape[1]
+            
+        p = total_area / total_img_size * 100
+        print(f'Detection Ratio: {p:.2f}%')
+        
+        # create images
+        self.image_contours = \
+            cv2.cvtColor(self.preprocessed_image.copy(), cv2.COLOR_GRAY2BGR)
+        self.image_filled = \
+            cv2.cvtColor(self.preprocessed_image.copy(), cv2.COLOR_GRAY2BGR)
+        cv2.drawContours(self.image_contours, self.contours, -1, (0,0,255), 1)
+        for c in self.contours:
+            cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
+            
     
     def __onselect(self,eclick, erelease):
         """ Private function, internal use only. """

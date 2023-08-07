@@ -1,4 +1,7 @@
 import argparse
+import os
+
+import cv2
 from fracsuite.analyzer import Analyzer
 
 if __name__ == '__main__':
@@ -14,6 +17,10 @@ if __name__ == '__main__':
     args.image = r"d:\Forschung\Glasbruch\Versuche.Reihe\Proben\4.70.22.A\fracture\LS\2923 2023-06-15 17h11 pre (0,308-4323,4963) [Transmission].bmp"
     args.crop = True
     
+    outdir = os.path.join(os.path.dirname(args.image), "suite-output")
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+        
     print(args)
     
     if args.realsize is not None:
@@ -26,4 +33,5 @@ if __name__ == '__main__':
     analyzer.plot_area_2()
     
 
-    
+    cv2.imwrite(os.path.join(outdir, "filled.png"), analyzer.image_filled)
+    cv2.imwrite(os.path.join(outdir, "contours.png"), analyzer.image_contours)
