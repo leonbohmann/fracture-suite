@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 dependencies = ["matplotlib", "opencv-python", "numpy", "tqdm", "scikit-image"]
 name = "fracsuite"
-version = "0.1.3"
+version = "0.1.4"
 authors = [
   { name="Leon Bohmann", email="mail@leonbohmann.de" },
 ]

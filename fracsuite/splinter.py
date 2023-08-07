@@ -3,12 +3,19 @@ import cv2
 
 
 class Splinter:    
-    def __init__(self, contour, index):
+    def __init__(self, contour, index, mm_px: float):
+        """Create a splinter from a contour.
+
+        Args:
+            contour (np.array): Input contour.
+            index (int): Index of the splinter.
+            mm_px (float): Scale factor for area. px/mm.
+        """
         self.ID = index
         self.contour = contour
         
-        self.area = cv2.contourArea(self.contour)
-        self.circumfence = cv2.arcLength(self.contour, True)
+        self.area = cv2.contourArea(self.contour) * mm_px ** 2
+        self.circumfence = cv2.arcLength(self.contour, True) * mm_px
         
         # roundness
         self.roundness = 4 * np.pi * self.area / self.circumfence ** 2
@@ -21,7 +28,7 @@ class Splinter:
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
             
-            self.centroid =  (cX, cY)
+            self.centroid =  (cX * mm_px, cY * mm_px)
         except:
             self.centroid = (np.nan, np.nan)
             
