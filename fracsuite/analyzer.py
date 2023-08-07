@@ -17,7 +17,9 @@ def crop_perspective(img, size = 4000, dbg = False):
 
     Args:
         img (Image): Input image with a clearly visible glass pane.
-
+        size (int): Size of the resulting image after perspective transformation.
+        dbg (bool): Displays debug image outputs during processing.
+        
     Returns:
         img: A cropped image which only contains the glass pane. Size: 1000x1000.
             If no 4 point contour is found, the whole image is returned.
