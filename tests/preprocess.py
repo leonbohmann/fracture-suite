@@ -16,7 +16,10 @@ if __name__ == '__main__':
     
     print(args)
     
-    analyzer = Analyzer(args.image, args.crop, img_real_size=tuple(args.realsize))
+    if args.realsize is not None:
+        args.realsize = tuple(args.realsize)
+    
+    analyzer = Analyzer(args.image, args.crop, img_real_size=args.realsize)
 
     analyzer.plot()
     analyzer.plot_area()
