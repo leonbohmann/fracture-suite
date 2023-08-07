@@ -245,7 +245,7 @@ def closeImg(image, sz = 3, it=1):
 
 class Analyzer(object):
     """
-    Analyzer class that can handle an input image.        
+    Analyzer class that can handle an input image.
     """
     
     file_path: str
@@ -256,9 +256,22 @@ class Analyzer(object):
     contours: list[nptyp.ArrayLike]
     splinters: list[Splinter]
     
-    axs: list[plt.axes]
+    axs: list[plt.Axes]
     
-    def __init__(self, file_path: str, crop = False, img_size = 4000):
+    def __init__(self, file_path: str, crop = False, img_size = 4000,\
+        img_real_size=None):
+        """Create a new analyzer object.
+
+        Args:
+            file_path (str): Path to image.
+            crop (bool, optional): Specify, if the input has to be cropped first. 
+                Defaults to False.
+            img_size (int, optional): Size of the cropped image. 
+                Defaults to 4000, only needed if crop=True.
+            img_real_size (tuple[int,int], optional):
+                Actual size in mm of the input rectangular ply.
+        """
+        
         # image operations
         self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         if crop:
@@ -267,6 +280,24 @@ class Analyzer(object):
         
         self.preprocessed_image = preprocess_image(self.original_image)
         
+        
+        f = 1
+        # calculate scale factors
+        if img_real_size is not None:
+            # fx: mm/px
+            fx = img_real_size[0] / self.preprocessed_image.shape[1]
+            fy = img_real_size[1] / self.preprocessed_image.shape[0] 
+            
+            # the factors must match because pixels are always squared
+            # for landscape image, the img_real_size's aspect ratio must match
+            if fx != fy:
+                raise Exception("The scale factors for x and y must match!" + \
+                    "Check the input image and also the img_real_size parameter.")
+            
+            # f: mm/px
+            f = fx
+            
+            
         # contour operations
         all_contours = detect_fragments(self.preprocessed_image)
         stencil = np.zeros((self.preprocessed_image.shape[1], \
@@ -287,7 +318,7 @@ class Analyzer(object):
         
         # detect fragments on the closed skeleton
         self.contours = detect_fragments(skeleton)        
-        self.splinters = [Splinter(x,i) for i,x in enumerate(self.contours)]
+        self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
     
     def __onselect(self,eclick, erelease):
         """ Private function, internal use only. """
@@ -416,7 +447,7 @@ class Analyzer(object):
         data = []
         
         area_i = 0
-        for area in range(100,int(np.max(areas)),200):
+        for area in np.linspace(np.min(areas),np.max(areas),50):
             index = next((i for i, value in enumerate(areas) if value > area), None)
             p = index
             data.append((area, p))
