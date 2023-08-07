@@ -183,7 +183,7 @@ def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
     As = []
     ks = []
     # Iterate over all contours
-    for i in tqdm(range(len(contours)), desc = 'Eliminate small contours'):
+    for i in tqdm(range(len(contours)), desc = 'Eliminate small contours', leave=False):
         contour_area = contours_areas[i]
         contour_perim = cv2.arcLength(contours[i], False)
         
@@ -226,7 +226,7 @@ def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
    
     len_1 = len(contours)
     
-    print(f'Contours before: {len_0}, vs after: {len_1}')
+    # print(f'Contours before: {len_0}, vs after: {len_1}')
     return contours
 
 def detect_fragments(binary_image) -> list[nptyp.ArrayLike]:
@@ -298,6 +298,7 @@ class Analyzer(object):
             
         #############
         # image operations
+        print('> Step 1: Preprocessing image...')
         self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         if crop:
             self.original_image = crop_perspective(self.original_image, size=img_size, dbg=False)
@@ -326,29 +327,34 @@ class Analyzer(object):
             
         #############
         # initial contour operations
+        print('> Step 2: Analyzing contours...')
         all_contours = detect_fragments(self.preprocessed_image)
         stencil = np.zeros((self.preprocessed_image.shape[0], \
             self.preprocessed_image.shape[1]), dtype=np.uint8)
-        for c in tqdm(all_contours):
+        for c in all_contours:
             cv2.drawContours(stencil, [c], -1, 255, thickness = -1) 
         
         #############
         # advanced image operations
-        # first step is to skeletonize the stencil
-        print('Skeletonize 1|2')
+        # first step is to skeletonize the stencil        
+        print('> Step 2.1: Skeletonize 1|2')
         skeleton = skeletonize(255-stencil)
         skeleton = skeleton.astype(np.uint8)
         skeleton = closeImg(skeleton, 3, 5)
         # second step is to skeletonize the closed skeleton from #1
-        print('Skeletonize 2|2')
+        print('> Step 2.2: Skeletonize 2|2')
         skeleton = skeletonize(skeleton)
         skeleton = skeleton.astype(np.uint8)
         
         #############
         # detect fragments on the closed skeleton
+        print('> Step 3: Final contour analysis...')
         self.contours = detect_fragments(skeleton)        
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
         
+        print('\n\n')
+        
+        print(f'Reduced contour count: {len(all_contours)} -> {len(self.contours)}')
         #############
         # check percentage of detected splinters
         total_area = np.sum([x.area for x in self.splinters])
@@ -364,9 +370,9 @@ class Analyzer(object):
         #############
         # create images
         self.image_contours = \
-            cv2.cvtColor(self.preprocessed_image.copy(), cv2.COLOR_GRAY2BGR)
+            cv2.cvtColor(self.original_image.copy(), cv2.COLOR_GRAY2BGR)
         self.image_filled = \
-            cv2.cvtColor(self.preprocessed_image.copy(), cv2.COLOR_GRAY2BGR)
+            cv2.cvtColor(self.original_image.copy(), cv2.COLOR_GRAY2BGR)
         for c in self.contours:
             cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)        
         for c in self.contours:
