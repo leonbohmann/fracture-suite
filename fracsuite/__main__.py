@@ -12,8 +12,10 @@ args = parser.parse_args()
 
 print(args)
 
-analyzer = Analyzer(args.image, args.crop, img_real_size=tuple(args.realsize))
-
+if args.realsize is not None:
+        args.realsize = tuple(args.realsize)
+    
+analyzer = Analyzer(args.image, args.crop, img_real_size=args.realsize)
 analyzer.plot()
 analyzer.plot_area()
 analyzer.plot_area_2()
