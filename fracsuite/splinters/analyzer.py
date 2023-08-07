@@ -1,3 +1,4 @@
+import os
 import random
 from matplotlib.figure import Figure
 from matplotlib.widgets import RectangleSelector
@@ -8,7 +9,7 @@ import cv2
 from tqdm import tqdm
 from skimage.morphology import skeletonize
 
-from fracsuite.splinter import Splinter
+from fracsuite.splinters.splinter import Splinter
 from matplotlib import pyplot as plt
 
 def crop_perspective(img, size = 4000, dbg = False):
@@ -178,7 +179,7 @@ def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
     # contour_area_std = np.std(contours_areas)
     
     # Create a list to store the indices of the contours to be deleted
-    to_delete = []
+    to_delete: list[int] = []
     As = []
     ks = []
     # Iterate over all contours
@@ -257,6 +258,8 @@ class Analyzer(object):
     """
     
     file_path: str
+    file_dir: str
+    out_dir: str
     
     original_image: nptyp.ArrayLike
     preprocessed_image: nptyp.ArrayLike
@@ -268,6 +271,9 @@ class Analyzer(object):
     splinters: list[Splinter]
     
     axs: list[plt.Axes]
+    fig_comparison: Figure
+    fig_area_distr: Figure
+    fig_area_sum: Figure
     
     def __init__(self, file_path: str, crop = False, img_size = 4000,\
         img_real_size: tuple[int,int] | None=None):
@@ -283,6 +289,14 @@ class Analyzer(object):
                 Actual size in mm of the input rectangular ply.
         """
         
+        #############
+        # folder operations
+        self.file_dir = os.path.dirname(file_path)
+        self.out_dir = os.path.join(self.file_dir, "fracsuite-output")
+        if not os.path.exists(self.out_dir):
+            os.makedirs(self.out_dir)
+            
+        #############
         # image operations
         self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         if crop:
@@ -292,8 +306,9 @@ class Analyzer(object):
         self.preprocessed_image = preprocess_image(self.original_image)
         
         
-        f = 1
+        #############
         # calculate scale factors
+        f = 1
         if img_real_size is not None:
             # fx: mm/px
             fx = img_real_size[0] / self.preprocessed_image.shape[1]
@@ -309,13 +324,15 @@ class Analyzer(object):
             f = fx
             
             
-        # contour operations
+        #############
+        # initial contour operations
         all_contours = detect_fragments(self.preprocessed_image)
-        stencil = np.zeros((self.preprocessed_image.shape[1], \
-            self.preprocessed_image.shape[0]), dtype=np.uint8)
+        stencil = np.zeros((self.preprocessed_image.shape[0], \
+            self.preprocessed_image.shape[1]), dtype=np.uint8)
         for c in tqdm(all_contours):
             cv2.drawContours(stencil, [c], -1, 255, thickness = -1) 
         
+        #############
         # advanced image operations
         # first step is to skeletonize the stencil
         print('Skeletonize 1|2')
@@ -327,10 +344,12 @@ class Analyzer(object):
         skeleton = skeletonize(skeleton)
         skeleton = skeleton.astype(np.uint8)
         
+        #############
         # detect fragments on the closed skeleton
         self.contours = detect_fragments(skeleton)        
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
         
+        #############
         # check percentage of detected splinters
         total_area = np.sum([x.area for x in self.splinters])
         
@@ -342,15 +361,25 @@ class Analyzer(object):
         p = total_area / total_img_size * 100
         print(f'Detection Ratio: {p:.2f}%')
         
+        #############
         # create images
         self.image_contours = \
             cv2.cvtColor(self.preprocessed_image.copy(), cv2.COLOR_GRAY2BGR)
         self.image_filled = \
             cv2.cvtColor(self.preprocessed_image.copy(), cv2.COLOR_GRAY2BGR)
-        cv2.drawContours(self.image_contours, self.contours, -1, (0,0,255), 1)
+        for c in self.contours:
+            cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)        
         for c in self.contours:
             cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
             
+    
+    def __get_out_file(self, file_name: str) -> str:
+        """Returns an absolute file path to the output directory.
+
+        Args:
+            file_name (str): The filename inside of the output directory.
+        """
+        return os.path.join(self.out_dir, file_name)
     
     def __onselect(self,eclick, erelease):
         """ Private function, internal use only. """
@@ -373,13 +402,25 @@ class Analyzer(object):
         # print(selected_region)
         return selected_region
     
-    def plot(self, region = None) -> None:
+    def save_images(self, extension = 'png') -> None:
+        print(f'Saving images to {self.out_dir}.')
+        cv2.imwrite(self.__get_out_file(f"filled.{extension}"), self.image_filled)
+        cv2.imwrite(self.__get_out_file(f"contours.{extension}"), self.image_contours)
+    
+    def save_plots(self, extension = 'png') -> None:
+        print(f'Saving plots to {self.out_dir}.')
+        self.fig_area_distr.savefig(self.__get_out_file(f"fig_distribution.{extension}"))
+        self.fig_area_sum.savefig(self.__get_out_file(f"fig_sumofarea.{extension}"))
+        self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{extension}"))
+        
+    
+    def plot(self, region = None, display = False) -> None:
         """
         Plots the analyzer backend.
         Displays the original img, preprocessed img, and an overlay of the found cracks
         side by side in a synchronized plot.
         """        
-        fig, (self.ax3, self.ax1, self.ax2) = plt.subplots(1, 3, figsize=(12, 6))
+        self.fig_comparison, (self.ax3, self.ax1, self.ax2) = plt.subplots(1, 3, figsize=(12, 6))
 
         # Display the result from Canny edge detection
         self.ax3.imshow(self.original_image)
@@ -425,11 +466,13 @@ class Analyzer(object):
         rs1.add_state('square')
         rs2.add_state('square')
         plt.tight_layout()
-        plt.show()
         
-        return fig
+        if display:
+            plt.show()
         
-    def plot_area(self) -> Figure:
+        return self.fig_comparison
+        
+    def plot_area(self, display = False) -> Figure:
         """Plots a graph of accumulated share of area for splinter sizes.
 
         Returns:
@@ -452,7 +495,8 @@ class Analyzer(object):
 
         data_x, data_y = zip(*data)
         
-        fig = plt.figure()
+        self.fig_area_sum = plt.figure()
+        
         plt.plot(data_x, data_y, 'g-')    
         plt.plot(data_x, data_y, 'rx', markersize=2)    
         plt.title('Splinter Size Accumulation')
@@ -461,10 +505,11 @@ class Analyzer(object):
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
         # plt.axvline(5000**2, c='r', label='Image Area')
-        plt.show()
-        return fig
+        if display:
+            plt.show()
+        return self.fig_area_sum
     
-    def plot_area_2(self) -> Figure:
+    def plot_area_2(self, display = False) -> Figure:
         """Plots a graph of Splinter Size Distribution.
 
         Returns:
@@ -486,7 +531,7 @@ class Analyzer(object):
 
         data_x, data_y = zip(*data)
         
-        fig = plt.figure()
+        self.fig_area_distr = plt.figure()
         plt.plot(data_x, data_y, 'g-')    
         plt.plot(data_x, data_y, 'ro', markersize=3)    
         plt.title('Splinter Size Distribution')
@@ -495,5 +540,6 @@ class Analyzer(object):
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
         # plt.axvline(5000**2, c='r', label='Image Area')
-        plt.show()
-        return fig
+        if display:
+            plt.show()
+        return self.fig_area_distr
