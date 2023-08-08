@@ -41,7 +41,7 @@ gnrl_group.add_argument('--displayplots', action='store_true', \
     help='Instruct the analyzer to display output plots.', default=False)
 gnrl_group.add_argument('--debug', action='store_true', \
     help='Sets a debug flag to display verbose output.', default=False)
-gnrl_group.add_argument('-display_region', nargs=4, help='Region to display in debug outputs.',\
+gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs.',\
     type=int, default=[500,500,1000,1000])
 
 imgroup = parser.add_argument_group("Image operations")
