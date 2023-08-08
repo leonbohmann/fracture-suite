@@ -17,14 +17,23 @@ Leon Bohmann            Technical University Darmstadt - ISMD - GCC             
 
 # implement parse to make this script callable from outside
 parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
+
+gnrl_group = parser.add_argument_group("General")
+gnrl_group.add_argument('--displayplots', action='store_true', \
+    help='Instruct the analyzer to display output plots.', default=False)
+gnrl_group.add_argument('--debug', action='store_true', \
+    help='Sets a debug flag to display verbose output.', default=False)
+gnrl_group.add_argument('-display_region', nargs=4, help='Region to display in debug outputs.',\
+    type=int, default=[500,500,1000,1000])
+
 imgroup = parser.add_argument_group("Image operations")
 imgroup.add_argument('image', nargs="?", help='The image to be processed.')
 imgroup.add_argument('-realsize', nargs=2, help='Real size of the input image.',\
     type=int, default=[500,500])
-imgroup.add_argument('-imsize', nargs=2, help='Resized original image size in pixels.',\
-    type=int, default=None)
 imgroup.add_argument('--crop', action='store_true', \
-    help='Instruct the analyzer to crop the input image.', default=False)
+    help='Instruct the analyzer to crop the input image. If supplied, cropsize must be set.', default=False)
+imgroup.add_argument('-cropsize', nargs=2, help='Cropped image size in pixels.',\
+    type=int, default=None)
 
 prep = parser.add_argument_group("Preprocessor")
 # image preprocessing arguments
@@ -50,12 +59,11 @@ output_group.add_argument('-plot-ext', nargs="?", help='Plot file extension. Def
     default="png", choices=['png', 'pdf', 'jpg', 'bmp'])
 output_group.add_argument('-image-ext', nargs="?", help='Image file extension. Default: png.',\
     default="png", choices=['png', 'jpg', 'bmp'])
-output_group.add_argument('--displayplots', action='store_true', \
-    help='Instruct the analyzer to display output plots.', default=False)
 
 args = parser.parse_args()    
 
-
+if args.debug is True:
+    args.displayplots = True
 
 if args.realsize is not None:
     args.realsize = tuple(args.realsize)
@@ -63,12 +71,13 @@ if args.realsize is not None:
 config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
     fragment_min_area_px=args.min_area, fragment_max_area_px=args.max_area, \
         real_img_size=args.realsize, crop=args.crop, thresh_block_size=args.thresh_block,\
-            thresh_sensitivity=args.thresh_sens, rsz_fac=args.resize_fac, img_size=args.imsize)
+            thresh_sensitivity=args.thresh_sens, rsz_fac=args.resize_fac, cropped_img_size=args.cropsize,\
+            debug=args.debug, display_region=args.display_region)
 config.print()
 
 analyzer = Analyzer(args.image, config)
 
-analyzer.plot(display=args.displayplots)
+analyzer.plot(display=args.displayplots, region=config.display_region)
 analyzer.plot_area(display=args.displayplots)
 analyzer.plot_area_2(display=args.displayplots)
 
