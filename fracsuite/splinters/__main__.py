@@ -1,7 +1,7 @@
+
 import argparse
 from argparse import RawDescriptionHelpFormatter
 from fracsuite.splinters.analyzer import Analyzer, AnalyzerConfig
-
 descr=\
 """
 ███████╗██████╗  █████╗  ██████╗████████╗██╗   ██╗██████╗ ███████╗      ███████╗██╗   ██╗██╗████████╗███████╗
@@ -31,7 +31,7 @@ Usage:
 -------------------------                       
 Command line usage is shown below. For further information visit:
 https://github.com/leonbohmann/fracture-suite
-"""
+"""  
 
 # implement parse to make this script callable from outside
 parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
@@ -65,7 +65,7 @@ prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
     type=float, default=6)
 prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
     type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
-prep.add_argument('-resize-fac', help='Image resize factor between gauss and adaptive th.',\
+prep.add_argument('-resize-fac', help='Image resize factor before adaptive th.',\
     type=float, default=1.0)
 
 post = parser.add_argument_group("Postprocessor")
