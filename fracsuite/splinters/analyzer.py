@@ -469,7 +469,7 @@ class Analyzer(object):
         
         print('\n\n')
         
-        print(f'Reduced contour count: {len(all_contours)} -> {len(self.contours)}')
+        print(f'Splinter count: {len(self.contours)}')
         #############
         # check percentage of detected splinters
         total_area = np.sum([x.area for x in self.splinters])
@@ -493,6 +493,8 @@ class Analyzer(object):
             cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)        
         for c in self.contours:
             cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
+            
+        print('\n\n')
             
     
     def __get_out_file(self, file_name: str) -> str:
