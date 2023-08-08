@@ -45,7 +45,7 @@ For details see: [API Docs](fracsuite.md)
 ### Use the module directly
 
 ```bat
-py -m fracsuite -image "path/to/image" [--crop]
+py -m fracsuite.splinters -image "path/to/image" [--crop]
 ```
 
 #### `-image`
@@ -59,7 +59,7 @@ If the image contains unfiltered area around the ply, use this to crop the image
 ### Create a script
 
 ```python
-from fracsuite.analyzer import Analyzer
+from fracsuite.splinters.analyzer import Analyzer
 
 image = r"Path/to/some/image.bmp"
 crop = True
