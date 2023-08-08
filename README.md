@@ -40,7 +40,6 @@ pip install fracsuite
 
 ## Usage
 
-For details see: [API Docs](fracsuite.md)
 
 ### Use the module directly
 
@@ -69,4 +68,52 @@ analyzer = Analyzer(image, crop)
 analyzer.plot()
 analyzer.plot_area()
 analyzer.plot_area_2()
+```
+
+
+### CLI
+
+```bat
+options:
+  -h, --help            show this help message and exit
+
+General:
+  --displayplots        Instruct the analyzer to display output plots.
+  --debug               Sets a debug flag to display verbose output.
+  -display-region DISPLAY_REGION DISPLAY_REGION DISPLAY_REGION DISPLAY_REGION
+                        Region to display in debug outputs.
+
+Image operations:
+  image                 The image to be processed.
+  -realsize REALSIZE REALSIZE
+                        Real size of the input image.
+  -cropsize CROPSIZE CROPSIZE
+                        Crop image size in pixels.
+
+Preprocessor:
+  -gauss-size GAUSS_SIZE
+                        Gaussian filter size
+  -gauss-sigma GAUSS_SIGMA
+                        Gaussian filter sigma
+  -min-area MIN_AREA    Minimum fragment area threshold [px²]
+  -max-area MAX_AREA    Maximum fragment area threshold [px²]
+  -thresh-sens THRESH_SENS
+                        Adaptive threshold sensitivity
+  -thresh-block {1,3,5,7,9,11,13,15,17,19,21}
+                        Adaptive threshold block size
+  -resize-fac RESIZE_FAC
+                        Image resize factor between gauss and adaptive th.
+
+Postprocessor:
+  -skelclose-sz SKELCLOSE_SZ
+                        Size for final skeleton close kernel.
+  -skelclose-amnt SKELCLOSE_AMNT
+                        Iterations for final skeleton close kernel.
+
+Output:
+  -out [OUT]            Output directory path.
+  -plot-ext [{png,pdf,jpg,bmp}]
+                        Plot file extension. Default: png.
+  -image-ext [{png,jpg,bmp}]
+                        Image file extension. Default: png.
 ```
