@@ -8,11 +8,71 @@ import numpy.typing as nptyp
 import cv2
 from tqdm import tqdm
 from skimage.morphology import skeletonize
+import yaml
 
 from fracsuite.splinters.splinter import Splinter
 from matplotlib import pyplot as plt
 
-def crop_perspective(img, size = 4000, dbg = False):
+
+
+class AnalyzerConfig:
+    gauss_size: tuple[int,int]  # gaussian filter size before adaptive thold
+    gauss_sigma: float          # gaussian sigma before adaptive thold
+    
+    thresh_block_size: int      # adaptive threshold block size
+    thresh_sensitivity: float   # adaptive threshold sensitivity
+    
+    fragment_min_area_px: int   # minimum fragment area
+    fragment_max_area_px: int   # maximum fragment area
+    
+    real_image_size: tuple[int,int] # real image size in mm
+    image_size: tuple[int,int]      # real image size in mm
+    crop: bool                      # crop input image
+
+    dbg: bool                   # enable debug output
+    resize_factor: float        # factor to resize input image in preprocess
+    
+    out_name: str               # name of the output directory
+    
+    def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
+        fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
+            real_img_size: tuple[int,int] = (500,500), img_size: tuple[int,int] = None, crop: bool = False,\
+                thresh_block_size: int = 11, thresh_sensitivity: float = 5.0,\
+                    debug: bool = False, rsz_fac: float = 1.0, out_dirname: str = "fracsuite-output"\
+                        ):
+        self.gauss_size = (gauss_sz, gauss_sz)
+        self.gauss_sigma = gauss_sig
+        
+        self.thresh_block_size = thresh_block_size
+        self.thresh_sensitivity = thresh_sensitivity
+        
+        self.fragment_min_area_px = fragment_min_area_px
+        self.fragment_max_area_px = fragment_max_area_px
+        self.real_image_size = real_img_size
+        self.image_size = img_size
+        self.crop = crop
+        
+        self.dbg = debug
+        self.resize_factor = rsz_fac
+        
+        self.out_name = out_dirname
+        
+        if crop and img_size is None:
+            raise Exception("When cropping an input image, the img_size argument must be passed!")
+        
+    def print(self):
+        self.pretty(self.__dict__)
+        
+    def pretty(self, d, indent=0):
+        for key, value in d.items():
+            print(f' {key:25}: ', end="")
+            if isinstance(value, dict):
+                self.pretty(value, indent+1)  # noqa: F821
+            else:
+                print(' ' * (indent+1) + str(value))    
+    
+
+def crop_perspective(img, config: AnalyzerConfig):
     """
     Crops a given image to its containing pane bounds. Finds smallest pane countour with
     4 corner points and aligns, rotates and scales the pane to fit a resulting image.
@@ -62,7 +122,7 @@ def crop_perspective(img, size = 4000, dbg = False):
     # # restore original image by thresholding
     _,im = cv2.threshold(im,127,255,0)
 
-    if dbg:
+    if config.dbg:
         plt.imshow(255-im)
         plt.show()
     
@@ -86,7 +146,7 @@ def crop_perspective(img, size = 4000, dbg = False):
         return img_original
     
     cv2.drawContours(im0, contours, -1, (0,0,255), 10)
-    if dbg:
+    if config.dbg:
         plt.imshow(im0)    
         plt.show()
     
@@ -113,7 +173,11 @@ def crop_perspective(img, size = 4000, dbg = False):
         pageContour = corners        
 
     # Create target points
-    width=height=size
+    if config.image_size is not None:
+        width, height=config.image_size
+    else:
+        height,width=im.shape[0],im.shape[1]
+        
     tPoints = np.array([[0, 0],
                     [0, height],
                     [width, height],
@@ -128,12 +192,12 @@ def crop_perspective(img, size = 4000, dbg = False):
     M = cv2.getPerspectiveTransform(sPoints, tPoints)     
 
     img_original = cv2.warpPerspective(img_original, M, (int(width), int(height)))
-    
+    plt.imshow(img_original)
+    plt.show()
     # and return the transformed image
     return img_original
 
-def preprocess_image(image, gauss_sz = (3,3), gauss_sig = 5, \
-    block_size=11, C=6, rsz=1) -> nptyp.ArrayLike:
+def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
     """Preprocess a raw image.
 
     Args:
@@ -149,25 +213,26 @@ def preprocess_image(image, gauss_sz = (3,3), gauss_sig = 5, \
         np.array: Preprocessed image.
     """
     
-    rsz_fac = rsz # x times smaller
-    
+    rsz_fac = config.resize_factor # x times smaller
+    print(rsz_fac)
     # Apply Gaussian blur to reduce noise and enhance edge detection
-    image = cv2.GaussianBlur(image, gauss_sz, gauss_sig)
-    image = cv2.resize(image, (image.shape[1]//rsz_fac, image.shape[0]//rsz_fac))
+    image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
+    image = cv2.resize(image, (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
 
     # Use adaptive thresholding
     image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, \
-        cv2.THRESH_BINARY, block_size, C)
+        cv2.THRESH_BINARY, config.thresh_block_size, config.thresh_sensitivity)
     
     return image
 
 
 
-def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
+def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
+    -> list[nptyp.ArrayLike]:
     """
     This function filters a list of contours.
     """
-    len_0 = len(contours)
+    # len_0 = len(contours)
     # Sort the contours by area (desc)
     contours, hierarchy = zip(*sorted(zip(contours, hierarchy[0]), \
         key=lambda x: cv2.contourArea(x[0]), reverse=True))
@@ -196,14 +261,14 @@ def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
             contour_area = 0.00001
             
         # small size
-        if contour_perim < 20:
+        if contour_perim < config.fragment_min_area_px:
             to_delete.append(i)
         
     # def reject_outliers(data, m = 2.):
     #     return data[abs(data - np.mean(data)) < m * np.std(data)]
     
         # filter outliers
-        elif contour_area > 25000:
+        elif contour_area > config.fragment_max_area_px:
             to_delete.append(i)
             
         # # more line shaped contour
@@ -224,18 +289,18 @@ def filter_contours(contours, hierarchy) -> list[nptyp.ArrayLike]:
     for index in sorted(to_delete, reverse=True):
         del contours[index]
    
-    len_1 = len(contours)
+    # len_1 = len(contours)
     
     # print(f'Contours before: {len_0}, vs after: {len_1}')
     return contours
 
-def detect_fragments(binary_image) -> list[nptyp.ArrayLike]:
+def detect_fragments(binary_image, config: AnalyzerConfig) -> list[nptyp.ArrayLike]:
     try:
         # Find contours of objects in the binary image
         contours, hierar = \
             cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         contours = list(contours)
-        contours = filter_contours(contours, hierar)        
+        contours = filter_contours(contours, hierar, config)        
         return contours
     except Exception as e:
         raise ValueError(f"Error in fragment detection: {e}")
@@ -251,6 +316,9 @@ def rand_col():
         (r,g,b): A random color.
     """
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+
+
+    
 
 class Analyzer(object):
     """
@@ -275,8 +343,9 @@ class Analyzer(object):
     fig_area_distr: Figure
     fig_area_sum: Figure
     
-    def __init__(self, file_path: str, crop = False, img_size = 4000,\
-        img_real_size: tuple[int,int] | None=None):
+    config: AnalyzerConfig
+    
+    def __init__(self, file_path: str, config: AnalyzerConfig = None):
         """Create a new analyzer object.
 
         Args:
@@ -288,11 +357,15 @@ class Analyzer(object):
             img_real_size (tuple[int,int], optional):
                 Actual size in mm of the input rectangular ply.
         """
+        if config is None:
+            config = AnalyzerConfig()
+        
+        self.config = config
         
         #############
         # folder operations
         self.file_dir = os.path.dirname(file_path)
-        self.out_dir = os.path.join(self.file_dir, "fracsuite-output")
+        self.out_dir = os.path.join(self.file_dir, config.out_name)
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
             
@@ -300,20 +373,20 @@ class Analyzer(object):
         # image operations
         print('> Step 1: Preprocessing image...')
         self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
-        if crop:
-            self.original_image = crop_perspective(self.original_image, size=img_size, dbg=False)
+        if config.crop:
+            self.original_image = crop_perspective(self.original_image, config)
         
         
-        self.preprocessed_image = preprocess_image(self.original_image)
+        self.preprocessed_image = preprocess_image(self.original_image, config)
         
         
         #############
         # calculate scale factors
         f = 1
-        if img_real_size is not None:
+        if config.real_image_size is not None:
             # fx: mm/px
-            fx = img_real_size[0] / self.preprocessed_image.shape[1]
-            fy = img_real_size[1] / self.preprocessed_image.shape[0] 
+            fx = config.real_image_size[0] / self.preprocessed_image.shape[1]
+            fy = config.real_image_size[1] / self.preprocessed_image.shape[0] 
             
             # the factors must match because pixels are always squared
             # for landscape image, the img_real_size's aspect ratio must match
@@ -328,7 +401,7 @@ class Analyzer(object):
         #############
         # initial contour operations
         print('> Step 2: Analyzing contours...')
-        all_contours = detect_fragments(self.preprocessed_image)
+        all_contours = detect_fragments(self.preprocessed_image, config)
         stencil = np.zeros((self.preprocessed_image.shape[0], \
             self.preprocessed_image.shape[1]), dtype=np.uint8)
         for c in all_contours:
@@ -349,7 +422,7 @@ class Analyzer(object):
         #############
         # detect fragments on the closed skeleton
         print('> Step 3: Final contour analysis...')
-        self.contours = detect_fragments(skeleton)        
+        self.contours = detect_fragments(skeleton, config)        
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
         
         print('\n\n')
@@ -359,10 +432,11 @@ class Analyzer(object):
         # check percentage of detected splinters
         total_area = np.sum([x.area for x in self.splinters])
         
-        if img_real_size is not None:
-            total_img_size = img_real_size[0] * img_real_size[1]        
+        if config.real_image_size is not None:
+            total_img_size = config.real_image_size[0] * config.real_image_size[1]
         else:
-            total_img_size = self.preprocessed_image.shape[0] * self.preprocessed_image.shape[1]
+            total_img_size = self.preprocessed_image.shape[0] * \
+                self.preprocessed_image.shape[1]
             
         p = total_area / total_img_size * 100
         print(f'Detection Ratio: {p:.2f}%')
