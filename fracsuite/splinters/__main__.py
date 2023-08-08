@@ -48,9 +48,7 @@ imgroup = parser.add_argument_group("Image operations")
 imgroup.add_argument('image', nargs="?", help='The image to be processed.')
 imgroup.add_argument('-realsize', nargs=2, help='Real size of the input image.',\
     type=int, default=[500,500])
-imgroup.add_argument('--crop', action='store_true', \
-    help='Instruct the analyzer to crop the input image. If supplied, cropsize must be set.', default=False)
-imgroup.add_argument('-cropsize', nargs=2, help='Cropped image size in pixels.',\
+imgroup.add_argument('-cropsize', nargs=2, help='Crop image size in pixels.',\
     type=int, default=None)
 
 prep = parser.add_argument_group("Preprocessor")
@@ -89,12 +87,14 @@ args = parser.parse_args()
 if args.debug is True:
     args.displayplots = True
 
+do_crop = args.cropsize is not None
+
 if args.realsize is not None:
     args.realsize = tuple(args.realsize)
     
 config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
     fragment_min_area_px=args.min_area, fragment_max_area_px=args.max_area, \
-        real_img_size=args.realsize, crop=args.crop, thresh_block_size=args.thresh_block,\
+        real_img_size=args.realsize, crop=do_crop, thresh_block_size=args.thresh_block,\
             thresh_sensitivity=args.thresh_sens, rsz_fac=args.resize_fac, cropped_img_size=args.cropsize,\
             debug=args.debug, display_region=args.display_region, skel_close_sz=args.skelclose_sz,\
                 skel_close_amnt=args.skelclose_amnt)
