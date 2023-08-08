@@ -8,7 +8,6 @@ import numpy.typing as nptyp
 import cv2
 from tqdm import tqdm
 from skimage.morphology import skeletonize
-import yaml
 
 from fracsuite.splinters.splinter import Splinter
 from matplotlib import pyplot as plt
@@ -26,20 +25,21 @@ class AnalyzerConfig:
     fragment_max_area_px: int   # maximum fragment area
     
     real_image_size: tuple[int,int] # real image size in mm
-    image_size: tuple[int,int]      # real image size in mm
+    cropped_image_size: tuple[int,int]      # real image size in mm
     crop: bool                      # crop input image
 
-    dbg: bool                   # enable debug output
+    debug: bool                   # enable debug output    
+    display_region: tuple[int,int,int,int]    # region to display in output plots
     resize_factor: float        # factor to resize input image in preprocess
     
     out_name: str               # name of the output directory
     
     def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
         fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
-            real_img_size: tuple[int,int] = (500,500), img_size: tuple[int,int] = None, crop: bool = False,\
+            real_img_size: tuple[int,int] = (500,500), cropped_img_size: tuple[int,int] = None, crop: bool = False,\
                 thresh_block_size: int = 11, thresh_sensitivity: float = 5.0,\
-                    debug: bool = False, rsz_fac: float = 1.0, out_dirname: str = "fracsuite-output"\
-                        ):
+                    debug: bool = False, rsz_fac: float = 1.0, out_dirname: str = "fracsuite-output", \
+                       display_region: tuple[int,int,int,int] = None ):
         self.gauss_size = (gauss_sz, gauss_sz)
         self.gauss_sigma = gauss_sig
         
@@ -49,15 +49,16 @@ class AnalyzerConfig:
         self.fragment_min_area_px = fragment_min_area_px
         self.fragment_max_area_px = fragment_max_area_px
         self.real_image_size = real_img_size
-        self.image_size = img_size
+        self.cropped_image_size = cropped_img_size
         self.crop = crop
         
-        self.dbg = debug
+        self.debug = debug
+        self.display_region = display_region
         self.resize_factor = rsz_fac
         
         self.out_name = out_dirname
         
-        if crop and img_size is None:
+        if crop and cropped_img_size is None:
             raise Exception("When cropping an input image, the img_size argument must be passed!")
         
     def print(self):
@@ -70,7 +71,28 @@ class AnalyzerConfig:
                 self.pretty(value, indent+1)  # noqa: F821
             else:
                 print(' ' * (indent+1) + str(value))    
+ 
+def isgray(img):
+        if len(img.shape) < 3: 
+            return True
+        if img.shape[2] == 1: 
+            return True
+        # b,g,r = img[:,:,0], img[:,:,1], img[:,:,2]
+        return False  
+   
+def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] = None):
+    if isgray(img) and color:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     
+    plt.imshow(img)
+    plt.title(title)
+    
+    if region is not None:
+        (x1, y1, x2, y2) = region
+        plt.xlim((x1,x2))
+        plt.ylim((y1,y2))
+        
+    plt.show() 
 
 def crop_perspective(img, config: AnalyzerConfig):
     """
@@ -101,13 +123,7 @@ def crop_perspective(img, config: AnalyzerConfig):
                         pts[np.argmax(summ)],
                         pts[np.argmin(diff)]])
     
-    def isgray(img):
-        if len(img.shape) < 3: 
-            return True
-        if img.shape[2] == 1: 
-            return True
-        # b,g,r = img[:,:,0], img[:,:,1], img[:,:,2]
-        return False
+    
     
     img_original = img.copy()
     
@@ -117,14 +133,17 @@ def crop_perspective(img, config: AnalyzerConfig):
     if not isgray(im):
         im = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     
+    if isgray(im0):
+        im0 = cv2.cvtColor(im0,cv2.COLOR_GRAY2BGR)
+        
+    
     # # apply gaussian blur to image to we can get rid of some noise
     im = cv2.GaussianBlur(im, (5,5), 5)
     # # restore original image by thresholding
     _,im = cv2.threshold(im,127,255,0)
 
-    if config.dbg:
-        plt.imshow(255-im)
-        plt.show()
+    if config.debug:
+        plotImage(im, 'CROP: Image for rectangle detection')
     
     # fetch contour information
     contour_info = []
@@ -146,9 +165,8 @@ def crop_perspective(img, config: AnalyzerConfig):
         return img_original
     
     cv2.drawContours(im0, contours, -1, (0,0,255), 10)
-    if config.dbg:
-        plt.imshow(im0)    
-        plt.show()
+    if config.debug:
+        plotImage(im0, 'CROP: Detected contours')
     
     # Simplify contour
     perimeter = cv2.arcLength(max_contour, True)
@@ -158,8 +176,8 @@ def crop_perspective(img, config: AnalyzerConfig):
     # Page area must be bigger than maxAreaFound 
     if (len(approx) == 4 and
             cv2.isContourConvex(approx)):
-
         pageContour = fourCornersSort(approx[:, 0])
+        
     else:
         rect = cv2.boundingRect(approx)
         x, y, w, h = rect
@@ -172,9 +190,13 @@ def crop_perspective(img, config: AnalyzerConfig):
         #raise CropException("Pane boundary could not be found.")
         pageContour = corners        
 
+    if config.debug:
+        cv2.drawContours(im0, [pageContour],-1, (0,0,255), thickness=im.shape[0]//50)
+        plotImage(im0, 'CROP: Found rectangle contour')
+        
     # Create target points
-    if config.image_size is not None:
-        width, height=config.image_size
+    if config.cropped_image_size is not None:
+        width, height=config.cropped_image_size
     else:
         height,width=im.shape[0],im.shape[1]
         
@@ -192,8 +214,7 @@ def crop_perspective(img, config: AnalyzerConfig):
     M = cv2.getPerspectiveTransform(sPoints, tPoints)     
 
     img_original = cv2.warpPerspective(img_original, M, (int(width), int(height)))
-    plt.imshow(img_original)
-    plt.show()
+
     # and return the transformed image
     return img_original
 
@@ -214,14 +235,20 @@ def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
     """
     
     rsz_fac = config.resize_factor # x times smaller
-    print(rsz_fac)
+
     # Apply Gaussian blur to reduce noise and enhance edge detection
     image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
     image = cv2.resize(image, (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
 
+    if config.debug:
+        plotImage(image, 'PREP: GaussianBlur -> Resize', region=config.display_region)
+    
     # Use adaptive thresholding
     image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, \
         cv2.THRESH_BINARY, config.thresh_block_size, config.thresh_sensitivity)
+    
+    if config.debug:
+        plotImage(image, 'PREP: ... -> Adaptive Thresh', region=config.display_region)
     
     return image
 
@@ -232,7 +259,8 @@ def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
     """
     This function filters a list of contours.
     """
-    # len_0 = len(contours)
+    if config.debug: 
+        len_0 = len(contours)
     # Sort the contours by area (desc)
     contours, hierarchy = zip(*sorted(zip(contours, hierarchy[0]), \
         key=lambda x: cv2.contourArea(x[0]), reverse=True))
@@ -288,10 +316,11 @@ def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
     # Delete the marked contours
     for index in sorted(to_delete, reverse=True):
         del contours[index]
-   
-    # len_1 = len(contours)
     
-    # print(f'Contours before: {len_0}, vs after: {len_1}')
+    if config.debug:    
+        len_1 = len(contours)
+        print(f'FILT: Contours before: {len_0}, vs after: {len_1}')
+        
     return contours
 
 def detect_fragments(binary_image, config: AnalyzerConfig) -> list[nptyp.ArrayLike]:
@@ -413,12 +442,18 @@ class Analyzer(object):
         print('> Step 2.1: Skeletonize 1|2')
         skeleton = skeletonize(255-stencil)
         skeleton = skeleton.astype(np.uint8)
+        if config.debug:
+            plotImage(skeleton, 'SKEL1', False, region=config.display_region)
         skeleton = closeImg(skeleton, 3, 5)
+        if config.debug:
+            plotImage(skeleton, 'SKEL1 - Closed', False, region=config.display_region)
         # second step is to skeletonize the closed skeleton from #1
         print('> Step 2.2: Skeletonize 2|2')
         skeleton = skeletonize(skeleton)
         skeleton = skeleton.astype(np.uint8)
-        
+        if config.debug:
+            plotImage(skeleton, 'SKEL2', False, region=config.display_region)
+            
         #############
         # detect fragments on the closed skeleton
         print('> Step 3: Final contour analysis...')
