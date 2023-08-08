@@ -21,6 +21,9 @@ class AnalyzerConfig:
     thresh_block_size: int      # adaptive threshold block size
     thresh_sensitivity: float   # adaptive threshold sensitivity
     
+    skelclose_size: int         # size of final closing kernel for skeleton
+    skelclose_amnt: int         # iteration count of final closing kernel for skel
+    
     fragment_min_area_px: int   # minimum fragment area
     fragment_max_area_px: int   # maximum fragment area
     
@@ -39,12 +42,16 @@ class AnalyzerConfig:
             real_img_size: tuple[int,int] = (500,500), cropped_img_size: tuple[int,int] = None, crop: bool = False,\
                 thresh_block_size: int = 11, thresh_sensitivity: float = 5.0,\
                     debug: bool = False, rsz_fac: float = 1.0, out_dirname: str = "fracsuite-output", \
-                       display_region: tuple[int,int,int,int] = None ):
+                       display_region: tuple[int,int,int,int] = None, skel_close_sz:int = 3, \
+                           skel_close_amnt: int = 5):
         self.gauss_size = (gauss_sz, gauss_sz)
         self.gauss_sigma = gauss_sig
         
         self.thresh_block_size = thresh_block_size
         self.thresh_sensitivity = thresh_sensitivity
+        
+        self.skelclose_size = skel_close_sz
+        self.skelclose_amnt = skel_close_amnt
         
         self.fragment_min_area_px = fragment_min_area_px
         self.fragment_max_area_px = fragment_max_area_px
@@ -444,7 +451,7 @@ class Analyzer(object):
         skeleton = skeleton.astype(np.uint8)
         if config.debug:
             plotImage(skeleton, 'SKEL1', False, region=config.display_region)
-        skeleton = closeImg(skeleton, 3, 5)
+        skeleton = closeImg(skeleton, config.skelclose_size, config.skelclose_amnt)
         if config.debug:
             plotImage(skeleton, 'SKEL1 - Closed', False, region=config.display_region)
         # second step is to skeletonize the closed skeleton from #1

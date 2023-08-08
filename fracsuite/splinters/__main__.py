@@ -42,7 +42,7 @@ gnrl_group.add_argument('--displayplots', action='store_true', \
 gnrl_group.add_argument('--debug', action='store_true', \
     help='Sets a debug flag to display verbose output.', default=False)
 gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs.',\
-    type=int, default=[500,500,1000,1000])
+    type=int, default=None)
 
 imgroup = parser.add_argument_group("Image operations")
 imgroup.add_argument('image', nargs="?", help='The image to be processed.')
@@ -70,6 +70,12 @@ prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
 prep.add_argument('-resize-fac', help='Image resize factor between gauss and adaptive th.',\
     type=float, default=1.0)
 
+post = parser.add_argument_group("Postprocessor")
+post.add_argument('-skelclose-sz', help='Size for final skeleton close kernel.',\
+    type=int, default=3)
+post.add_argument('-skelclose-amnt', help='Iterations for final skeleton close kernel.',\
+    type=int, default=5)
+
 output_group = parser.add_argument_group("Output")
 output_group.add_argument('-out', nargs="?", help='Output directory path.', \
     default="fracsuite-output")
@@ -90,7 +96,8 @@ config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
     fragment_min_area_px=args.min_area, fragment_max_area_px=args.max_area, \
         real_img_size=args.realsize, crop=args.crop, thresh_block_size=args.thresh_block,\
             thresh_sensitivity=args.thresh_sens, rsz_fac=args.resize_fac, cropped_img_size=args.cropsize,\
-            debug=args.debug, display_region=args.display_region)
+            debug=args.debug, display_region=args.display_region, skel_close_sz=args.skelclose_sz,\
+                skel_close_amnt=args.skelclose_amnt)
 config.print()
 
 analyzer = Analyzer(args.image, config)
