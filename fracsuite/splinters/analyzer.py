@@ -39,11 +39,13 @@ class AnalyzerConfig:
     
     def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
         fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
-            real_img_size: tuple[int,int] = (500,500), cropped_img_size: tuple[int,int] = None, crop: bool = False,\
-                thresh_block_size: int = 11, thresh_sensitivity: float = 5.0,\
-                    debug: bool = False, rsz_fac: float = 1.0, out_dirname: str = "fracsuite-output", \
-                       display_region: tuple[int,int,int,int] = None, skel_close_sz:int = 3, \
-                           skel_close_amnt: int = 5):
+        real_img_size: tuple[int,int] = (500,500), \
+        cropped_img_size: tuple[int,int] = None, crop: bool = False,\
+        thresh_block_size: int = 11, thresh_sensitivity: float = 5.0,\
+        debug: bool = False, rsz_fac: float = 1.0, \
+        out_dirname: str = "fracsuite-output", \
+        display_region: tuple[int,int,int,int] = None, skel_close_sz:int = 3, \
+        skel_close_amnt: int = 5):
         self.gauss_size = (gauss_sz, gauss_sz)
         self.gauss_sigma = gauss_sig
         
@@ -66,7 +68,8 @@ class AnalyzerConfig:
         self.out_name = out_dirname
         
         if crop and cropped_img_size is None:
-            raise Exception("When cropping an input image, the img_size argument must be passed!")
+            raise Exception("When cropping an input image, "+\
+                            "the img_size argument must be passed!")
         
     def print(self):
         self.pretty(self.__dict__)
@@ -245,7 +248,7 @@ def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
 
     # Apply Gaussian blur to reduce noise and enhance edge detection
     image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
-    image = cv2.resize(image, (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
+    image = cv2.resize(image,(int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
 
     if config.debug:
         plotImage(image, 'PREP: GaussianBlur -> Resize', region=config.display_region)
@@ -544,7 +547,8 @@ class Analyzer(object):
         Displays the original img, preprocessed img, and an overlay of the found cracks
         side by side in a synchronized plot.
         """        
-        self.fig_comparison, (self.ax3, self.ax1, self.ax2) = plt.subplots(1, 3, figsize=(12, 6))
+        self.fig_comparison, (self.ax3, self.ax1, self.ax2) = \
+            plt.subplots(1, 3, figsize=(12, 6))
 
         # Display the result from Canny edge detection
         self.ax3.imshow(self.original_image)
@@ -640,14 +644,11 @@ class Analyzer(object):
             Figure: The figure, that is displayed.
         """
         areas = [x.area for x in self.splinters]
-        total_area = np.sum(areas)
         
         # ascending sort, smallest to largest
         areas.sort()
             
         data = []
-        
-        area_i = 0
         for area in np.linspace(np.min(areas),np.max(areas),50):
             index = next((i for i, value in enumerate(areas) if value > area), None)
             p = index
