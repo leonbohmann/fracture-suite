@@ -12,7 +12,25 @@ descr=\
 ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝      ╚══════╝ ╚═════╝ ╚═╝   ╚═╝   ╚══════╝
 Leon Bohmann            Technical University Darmstadt - ISMD - GCC              www.tu-darmstadt.de/glass-cc
 
-                                  
+Description:
+-------------------------
+This module helps with the automated detection of fragments on fractured glass plys. It
+performs some preprocessing actions to improve the quality of the input image and then
+uses that to search for contours on the image. After filtering and further improvement
+the found contours are converted into `Splinter` objects, which allow further investigation
+of the fragments (size, roughness, roundness, ...).
+
+Used packages:
+-------------------------
+- opencv-python
+- matplotlib
+- numpy
+- tqdm    
+
+Usage:
+-------------------------                       
+Command line usage is shown below. For further information visit:
+https://github.com/leonbohmann/fracture-suite
 """
 
 # implement parse to make this script callable from outside
