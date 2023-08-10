@@ -28,9 +28,11 @@ class Splinter:
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
             
-            self.centroid =  (cX * mm_px, cY * mm_px)
+            self.centroid_mm =  (cX * mm_px, cY * mm_px)
+            self.centroid_px =  (cX, cY)
         except:
-            self.centroid = (np.nan, np.nan)
+            self.centroid_mm = (np.nan, np.nan)
+            self.centroid_px = (np.nan, np.nan)
             
     def calculate_roughness(self) -> float:
         """Calculate the roughness of the contour by comparing the circumfence
