@@ -476,7 +476,7 @@ class Analyzer(object):
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
         
         print('> Step 4: Filter spots...')
-        self.__filter_splinters()
+        self.__filter_dark_spots()
         
         #############
         # detect fragments on the closed skeleton
@@ -513,7 +513,7 @@ class Analyzer(object):
             
         print('\n\n')
             
-    def __filter_splinters(self):
+    def __filter_dark_spots(self):
         # create normal threshold of original image to get dark spots
         img = preprocess_spot_detect(self.original_image)
         cimg = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
