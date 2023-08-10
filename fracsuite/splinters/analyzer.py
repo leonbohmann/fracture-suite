@@ -32,6 +32,7 @@ class AnalyzerConfig:
     crop: bool                      # crop input image
 
     debug: bool                   # enable debug output    
+    debug2: bool                   # enable debug output    
     display_region: tuple[int,int,int,int]    # region to display in output plots
     resize_factor: float        # factor to resize input image in preprocess
     
@@ -45,7 +46,9 @@ class AnalyzerConfig:
         debug: bool = False, rsz_fac: float = 1.0, \
         out_dirname: str = "fracsuite-output", \
         display_region: tuple[int,int,int,int] = None, skel_close_sz:int = 3, \
-        skel_close_amnt: int = 5):
+        skel_close_amnt: int = 5, debug2: bool = False):
+        
+        
         self.gauss_size = (gauss_sz, gauss_sz)
         self.gauss_sigma = gauss_sig
         
@@ -62,6 +65,7 @@ class AnalyzerConfig:
         self.crop = crop
         
         self.debug = debug
+        self.debug2 = debug2
         self.display_region = display_region
         self.resize_factor = rsz_fac
         
@@ -476,7 +480,7 @@ class Analyzer(object):
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
         
         print('> Step 4: Filter spots...')
-        self.__filter_dark_spots()
+        self.__filter_dark_spots(config)
         
         #############
         # detect fragments on the closed skeleton
@@ -513,10 +517,11 @@ class Analyzer(object):
             
         print('\n\n')
             
-    def __filter_dark_spots(self):
+    def __filter_dark_spots(self, config: AnalyzerConfig):
         # create normal threshold of original image to get dark spots
         img = preprocess_spot_detect(self.original_image)
-        cimg = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        if config.debug2:
+            cimg = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
         i_del = []
         removed_splinters: list[Splinter] = []
         for i,s in enumerate(bar := tqdm(self.splinters, leave=False)):
@@ -534,6 +539,8 @@ class Analyzer(object):
             if np.all(result == 0):                
                 bar.set_description(f'Removed {len(i_del)} Splinters')
                 i_del.append(i)
+            elif config.debug2:
+                cv2.drawContours(cimg, [s.contour], -1, rand_col(), 1)
                 
         # remove splinters starting from the back                
         for i in sorted(i_del, reverse=True):
@@ -546,16 +553,20 @@ class Analyzer(object):
         for s in tqdm(removed_splinters):
             c = s.centroid_px
             
+            # Remove the original contour from the mask
             cv2.drawContours(skel_mask, [s.contour], -1, 0, 1)
-            cv2.drawContours(cimg, [s.contour], -1, (255,0,0), 1)
+            cv2.drawContours(skel_mask, [s.contour], -1, 0, -1)
+            
             # cv2.drawContours(skel_mask, [s.contour], -1, 0, -1)
             connections = []  
                       
-            # print(s.contour)
+            # Search for adjacent lines that were previously attached
+            #   to the removed contour
             for p in s.contour:
                 p = p[0]
+                # Search the perimeter of the original pixel
                 for i,j in [(-1,-1), (-1,0), (-1,1),\
-                            (0,-1), (0,0), (0,1),\
+                            (0,-1), (0,1),\
                             (1,-1), (1,0), (1,1) ]:
                     x = p[0] + j
                     y = p[1] + i
@@ -568,17 +579,33 @@ class Analyzer(object):
                     if skel_mask[y][x] != 0:
                         # Draw a line from the point to the centroid
                         connections.append((x,y))
-                        cv2.drawMarker(cimg, (x,y), (0,255,0))
                         
+                        if config.debug2:
+                            cv2.drawMarker(cimg, (x,y), (0,255,0))
             
-            if len(connections) > 0:
+            # 2 connections -> connect them
+            if len(connections) == 2:
+                cv2.drawContours(self.image_skeleton, [s.contour], -1, (0), -1)
+                x,y = connections[0]
+                a,b = connections[1]
+                
+                cv2.line(self.image_skeleton, (int(x), int(y)), (int(a), int(b)), 255)
+                
+            # more than 2 -> connect each of them to centroid
+            elif len(connections) > 2:
                 cv2.drawContours(self.image_skeleton, [s.contour], -1, (0), -1)
                 # cv2.drawContours(self.image_skeleton, [s.contour], -1, (0), 1)
                 for x,y in connections:
                     cv2.line(self.image_skeleton, (int(x), int(y)), (int(c[0]), int(c[1])), 255)
+                    
+                    if config.debug2:
+                        cv2.line(cimg, (int(x), int(y)), (int(c[0]), int(c[1])), (255,0,0))
+                        
         
-        plt.imshow(cimg)
-        plt.show()
+        if config.debug2:
+            cv2.imwrite(self.__get_out_file("spots_filled.png"), cimg)
+            plt.imshow(cimg)
+            plt.show()
         
         
     def __get_out_file(self, file_name: str) -> str:
