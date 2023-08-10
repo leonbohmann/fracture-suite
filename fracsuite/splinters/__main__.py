@@ -41,6 +41,8 @@ gnrl_group.add_argument('--displayplots', action='store_true', \
     help='Instruct the analyzer to display output plots.', default=False)
 gnrl_group.add_argument('--debug', action='store_true', \
     help='Sets a debug flag to display verbose output.', default=False)
+gnrl_group.add_argument('--exp-debug', action='store_true', \
+    help='Sets an experimental debug flag to display verbose output.', default=False)
 gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs.',\
     type=int, default=None)
 
@@ -97,7 +99,7 @@ config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
         real_img_size=args.realsize, crop=do_crop, thresh_block_size=args.thresh_block,\
             thresh_sensitivity=args.thresh_sens, rsz_fac=args.resize_fac, cropped_img_size=args.cropsize,\
             debug=args.debug, display_region=args.display_region, skel_close_sz=args.skelclose_sz,\
-                skel_close_amnt=args.skelclose_amnt)
+                skel_close_amnt=args.skelclose_amnt, debug2=args.exp_debug)
 config.print()
 
 analyzer = Analyzer(args.image, config)
