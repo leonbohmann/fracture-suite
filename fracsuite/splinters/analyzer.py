@@ -39,7 +39,7 @@ class AnalyzerConfig:
     
     def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
         fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
-        real_img_size: tuple[int,int] = (500,500), \
+        real_img_size: tuple[int,int] = None, \
         cropped_img_size: tuple[int,int] = None, crop: bool = False,\
         thresh_block_size: int = 11, thresh_sensitivity: float = 5.0,\
         debug: bool = False, rsz_fac: float = 1.0, \
@@ -356,7 +356,10 @@ def rand_col():
     """
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
-
+def preprocess_spot_detect(img):
+    img = cv2.GaussianBlur(img, (5,5), 3)
+    img = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+    return img
     
 
 class Analyzer(object):
@@ -422,10 +425,10 @@ class Analyzer(object):
         #############
         # calculate scale factors
         f = 1
-        if config.real_image_size is not None:
+        if config.real_image_size is not None and config.cropped_image_size is not None:
             # fx: mm/px
-            fx = config.real_image_size[0] / self.preprocessed_image.shape[1]
-            fy = config.real_image_size[1] / self.preprocessed_image.shape[0] 
+            fx = config.real_image_size[0] / config.cropped_image_size[0]
+            fy = config.real_image_size[1] / config.cropped_image_size[1]
             
             # the factors must match because pixels are always squared
             # for landscape image, the img_real_size's aspect ratio must match
@@ -463,11 +466,22 @@ class Analyzer(object):
         skeleton = skeleton.astype(np.uint8)
         if config.debug:
             plotImage(skeleton, 'SKEL2', False, region=config.display_region)
-            
+         
+        self.image_skeleton = skeleton.copy()
+           
         #############
         # detect fragments on the closed skeleton
-        print('> Step 3: Final contour analysis...')
+        print('> Step 3: Contour analysis...')
         self.contours = detect_fragments(skeleton, config)        
+        self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
+        
+        print('> Step 4: Filter spots...')
+        self.__filter_splinters()
+        
+        #############
+        # detect fragments on the closed skeleton
+        print('> Step 5: Final contour analysis...')
+        self.contours = detect_fragments(self.image_skeleton, config)        
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
         
         print('\n\n')
@@ -499,7 +513,74 @@ class Analyzer(object):
             
         print('\n\n')
             
-    
+    def __filter_splinters(self):
+        # create normal threshold of original image to get dark spots
+        img = preprocess_spot_detect(self.original_image)
+        cimg = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        i_del = []
+        removed_splinters: list[Splinter] = []
+        for i,s in enumerate(bar := tqdm(self.splinters, leave=False)):
+            x, y, w, h = cv2.boundingRect(s.contour)
+            roi_orig = img[y:y+h, x:x+w]
+            
+            mask = np.zeros_like(self.original_image)
+            cv2.drawContours(mask, [s.contour], -1, 255, thickness=cv2.FILLED)
+            
+            roi = mask[y:y+h, x:x+w]
+            # Apply the mask to the original image
+            result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
+            
+            # Check if all pixels in the contour area are black
+            if np.all(result == 0):                
+                bar.set_description(f'Removed {len(i_del)} Splinters')
+                i_del.append(i)
+                
+        # remove splinters starting from the back                
+        for i in sorted(i_del, reverse=True):
+            removed_splinters.append(self.splinters[i])
+            del self.splinters[i]
+            
+        print(f"Removed {len(removed_splinters)} Splinters")
+        skel_mask = self.image_skeleton.copy()
+        
+        for s in tqdm(removed_splinters):
+            c = s.centroid_px
+            
+            cv2.drawContours(skel_mask, [s.contour], -1, 0, 1)
+            cv2.drawContours(cimg, [s.contour], -1, (255,0,0), 1)
+            # cv2.drawContours(skel_mask, [s.contour], -1, 0, -1)
+            connections = []  
+                      
+            # print(s.contour)
+            for p in s.contour:
+                p = p[0]
+                for i,j in [(-1,-1), (-1,0), (-1,1),\
+                            (0,-1), (0,0), (0,1),\
+                            (1,-1), (1,0), (1,1) ]:
+                    x = p[0] + j
+                    y = p[1] + i
+                    if x >= self.image_skeleton.shape[1] or x < 0:
+                        continue
+                    if y >= self.image_skeleton.shape[0] or y < 0:
+                        continue
+                                                                    
+                    # Check if the pixel in the skeleton image is white
+                    if skel_mask[y][x] != 0:
+                        # Draw a line from the point to the centroid
+                        connections.append((x,y))
+                        cv2.drawMarker(cimg, (x,y), (0,255,0))
+                        
+            
+            if len(connections) > 0:
+                cv2.drawContours(self.image_skeleton, [s.contour], -1, (0), -1)
+                # cv2.drawContours(self.image_skeleton, [s.contour], -1, (0), 1)
+                for x,y in connections:
+                    cv2.line(self.image_skeleton, (int(x), int(y)), (int(c[0]), int(c[1])), 255)
+        
+        plt.imshow(cimg)
+        plt.show()
+        
+        
     def __get_out_file(self, file_name: str) -> str:
         """Returns an absolute file path to the output directory.
 
@@ -628,7 +709,7 @@ class Analyzer(object):
         plt.plot(data_x, data_y, 'g-')    
         plt.plot(data_x, data_y, 'rx', markersize=2)    
         plt.title('Splinter Size Accumulation')
-        plt.xlabel("$\sum Area_i [mm²]$")
+        plt.xlabel(f"$\sum Area_i [{'mm' if self.config.cropped_image_size is not None else 'px'}²]$")
         plt.ylabel(r"$\frac{\sum (Area_i)}{Area_t} [-]$")
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
@@ -660,7 +741,7 @@ class Analyzer(object):
         plt.plot(data_x, data_y, 'g-')    
         plt.plot(data_x, data_y, 'ro', markersize=3)    
         plt.title('Splinter Size Distribution')
-        plt.xlabel("Splinter Area [mm²]")
+        plt.xlabel(f"Splinter Area [{'mm' if self.config.cropped_image_size is not None else 'px'}²]")
         plt.ylabel(r"Amount of Splinters [-]")
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')

@@ -47,7 +47,7 @@ gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in d
 imgroup = parser.add_argument_group("Image operations")
 imgroup.add_argument('image', nargs="?", help='The image to be processed.')
 imgroup.add_argument('-realsize', nargs=2, help='Real size of the input image.',\
-    type=int, default=[500,500])
+    type=int, default=None)
 imgroup.add_argument('-cropsize', nargs=2, help='Crop image size in pixels.',\
     type=int, default=None)
 
