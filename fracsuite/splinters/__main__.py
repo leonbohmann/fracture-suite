@@ -100,6 +100,10 @@ config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
             thresh_sensitivity=args.thresh_sens, rsz_fac=args.resize_fac, cropped_img_size=args.cropsize,\
             debug=args.debug, display_region=args.display_region, skel_close_sz=args.skelclose_sz,\
                 skel_close_amnt=args.skelclose_amnt, debug2=args.exp_debug)
+
+config.ext_plots = args.plot_ext
+config.ext_imgs = args.image_ext
+
 config.print()
 
 analyzer = Analyzer(args.image, config)

@@ -12,6 +12,7 @@ from skimage.morphology import skeletonize
 from fracsuite.splinters.splinter import Splinter
 from matplotlib import pyplot as plt
 
+from scipy.spatial import Voronoi, voronoi_plot_2d
 
 
 class AnalyzerConfig:
@@ -37,6 +38,8 @@ class AnalyzerConfig:
     resize_factor: float        # factor to resize input image in preprocess
     
     out_name: str               # name of the output directory
+    ext_plots: str              # output extension for plots
+    ext_imgs: str              # output extension for images
     
     def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
         fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
@@ -515,7 +518,25 @@ class Analyzer(object):
         for c in self.contours:
             cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
             
+        print("Creating voronoi plot...")    
+        self.__create_voronoi(config)
+        
         print('\n\n')
+           
+    def __create_voronoi(self, config: AnalyzerConfig):
+        centroids = [x.centroid_px for x in self.splinters if x.has_centroid]
+        voronoi = Voronoi(centroids)
+        fig = voronoi_plot_2d(voronoi, show_points=True, point_size=5, show_vertices=False, line_colors='red')
+        
+        plt.imshow(self.original_image)
+        plt.axis('off')  # Turn off axis labels and ticks
+        plt.title('Voronoi Plot Overlay on Image')
+        if config.debug2:
+            plt.show()
+        fig.savefig(self.__get_out_file(f"voronoi.{config.ext_plots}"))
+        
+        #TODO: compare voronoi splinter size distribution to actual distribution
+
             
     def __filter_dark_spots(self, config: AnalyzerConfig):
         # create normal threshold of original image to get dark spots

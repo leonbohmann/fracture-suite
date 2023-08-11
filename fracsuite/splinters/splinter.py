@@ -34,6 +34,10 @@ class Splinter:
             self.centroid_mm = (np.nan, np.nan)
             self.centroid_px = (np.nan, np.nan)
             
+        
+        self.has_centroid = not any(np.isnan(self.centroid_mm)) and not any(np.isnan(self.centroid_px))
+
+            
     def calculate_roughness(self) -> float:
         """Calculate the roughness of the contour by comparing the circumfence
         of the contour to the circumfence of its convex hull.
