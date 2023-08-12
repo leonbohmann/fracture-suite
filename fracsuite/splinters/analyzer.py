@@ -484,6 +484,8 @@ class Analyzer(object):
         # folder operations
         self.file_dir = os.path.dirname(file_path)
         self.out_dir = os.path.join(self.file_dir, config.out_name)
+        
+        self.out_dir = os.path.join(self.out_dir, os.path.splitext(os.path.basename(file_path))[0])
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
             
@@ -615,10 +617,10 @@ class Analyzer(object):
         
         #TODO: compare voronoi splinter size distribution to actual distribution
         # X,Y,Z = csintkern(events, region, 500)        
-        X, Y, Z = csintkern_optimized(events, region)
+        X, Y, Z = csintkern_optimized(events, region, 250)
         fig = plt.figure()
-        plt.imshow(self.preprocessed_image)
-        plt.contourf(X, Y, Z, cmap='jet', alpha=0.3)
+        plt.imshow(self.image_contours)
+        plt.contourf(X, Y, Z, cmap='jet', alpha=0.5)
         plt.colorbar(label='Intensity')
         # plt.scatter([x[0] for x in centroids], [x[1] for x in centroids], color='red', alpha=0.5, label='Data Points')
         # plt.legend()
