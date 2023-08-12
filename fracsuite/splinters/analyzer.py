@@ -13,7 +13,11 @@ from fracsuite.splinters.splinter import Splinter
 from matplotlib import pyplot as plt
 
 from scipy.spatial import Voronoi, voronoi_plot_2d
+from scipy.spatial.distance import pdist
+from scipy.stats import gaussian_kde
 
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
 
 class AnalyzerConfig:
     gauss_size: tuple[int,int]  # gaussian filter size before adaptive thold
@@ -340,6 +344,69 @@ def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
         
     return contours
 
+def csintkern(events, region, h):
+    n, d = events.shape
+    
+    # Get the ranges for x and y
+    minx = np.min(region[:][0])
+    maxx = np.max(region[:][0])
+    miny = np.min(region[:][1])
+    maxy = np.max(region[:][1])
+    
+    # Get 50 linearly spaced points
+    xd = np.linspace(minx, maxx, 50)
+    yd = np.linspace(miny, maxy, 50)
+    X, Y = np.meshgrid(xd, yd)
+    st = np.column_stack((X.ravel(), Y.ravel()))
+    ns = len(st)
+    xt = np.vstack(([0, 0], events))
+    z = np.zeros(X.ravel().shape)
+    
+    for i in tqdm(range(ns), leave=False):
+        # for each point location, s, find the distances
+        # that are less than h.
+        xt[0] = st[i]
+        # find the distances. First n points in dist
+        # are the distances between the point s and the
+        # n event locations.
+        dist = pdist(xt)
+        ind = np.where(dist[:n] <= h)[0]
+        t = (1 - dist[ind]**2 / h**2)**2
+        z[i] = np.sum(t)
+    
+    z = z * 3 / (np.pi * h)
+    Z = z.reshape(X.shape)
+    
+    return X, Y, Z
+
+def csintkern_optimized(events, region, h=500):
+    n, d = events.shape
+    
+    # Get the ranges for x and y
+    minx = np.min(region[:][0])
+    maxx = np.max(region[:][0])
+    miny = np.min(region[:][1])
+    maxy = np.max(region[:][1])
+    
+    # Get 50 linearly spaced points
+    xd = np.linspace(minx, maxx, 50)
+    yd = np.linspace(miny, maxy, 50)
+    X, Y = np.meshgrid(xd, yd)
+    st = np.column_stack((X.ravel(), Y.ravel()))
+    ns = len(st)
+    
+    # Precompute distances
+    dist_matrix = np.linalg.norm(events[:, np.newaxis, :] - st[np.newaxis, :, :], axis=-1)
+    t = np.maximum(0, 1 - (dist_matrix / h) ** 2) ** 2
+
+    # Calculate intensities
+    z = np.sum(t, axis=0)
+    z *= 3 / (np.pi * h)
+
+    Z = z.reshape(X.shape)
+    
+    return X, Y, Z
+
 def detect_fragments(binary_image, config: AnalyzerConfig) -> list[nptyp.ArrayLike]:
     try:
         # Find contours of objects in the binary image
@@ -535,8 +602,29 @@ class Analyzer(object):
             plt.show()
         fig.savefig(self.__get_out_file(f"voronoi.{config.ext_plots}"))
         
+        events = np.array(centroids)
+        region = np.array([[0,self.original_image.shape[1]], [0, self.original_image.shape[0]]])
+        
+        # optimal_h = estimate_optimal_h(events, region)
+        # print(f'Optimal h: {optimal_h}')
+        
         #TODO: compare voronoi splinter size distribution to actual distribution
-
+        # X,Y,Z = csintkern(events, region, 500)        
+        X, Y, Z = csintkern_optimized(events, region)
+        fig = plt.figure()
+        plt.imshow(self.preprocessed_image)
+        plt.contourf(X, Y, Z, cmap='jet', alpha=0.3)
+        plt.colorbar(label='Intensity')
+        # plt.scatter([x[0] for x in centroids], [x[1] for x in centroids], color='red', alpha=0.5, label='Data Points')
+        # plt.legend()
+        plt.xlabel('X Coordinate')
+        plt.ylabel('Y Coordinate')
+        plt.title('Kernel Density Estimation of Point Intensity')
+        
+        if config.debug2:
+            plt.show()
+            
+        fig.savefig(self.__get_out_file(f"intensity.{config.ext_plots}"))
             
     def __filter_dark_spots(self, config: AnalyzerConfig):
         # create normal threshold of original image to get dark spots
@@ -571,7 +659,7 @@ class Analyzer(object):
         print(f"Removed {len(removed_splinters)} Splinters")
         skel_mask = self.image_skeleton.copy()
         
-        for s in tqdm(removed_splinters):
+        for s in tqdm(removed_splinters, leave=False):
             c = s.centroid_px
             
             # Remove the original contour from the mask
