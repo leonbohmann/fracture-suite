@@ -28,9 +28,10 @@ Several steps are necessary to analyze a fracture scan:
    2. Use Erode/Dilate (closing kernel) to connect gaps in contours (this will widen the 1px wide lines)
 6. Skeletonization #2
    1. Skeletonize the image again to retrieve the crack middle lines
-7. Contour detection #2
+7. (_enabled by default_) Remove splinters, whose are is all black in the original image and fill those spaces
+8. Contour detection #2
    1. Now with minimal fuzziness, run the splinter detection again
-8. Create splinters from resulting contour list
+9. Create splinters from resulting contour list
 
 A couple of outputs are saved to a directory next to the input image. These are:
 
