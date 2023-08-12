@@ -54,22 +54,21 @@ pip install fracsuite
 ### Use the module directly
 
 ```bat
-py -m fracsuite.splinters "path/to/image" [--crop]
+py -m fracsuite.splinters "path/to/image"
 ```
-
-#### `--crop`
-
-If the image contains unfiltered area around the ply, use this to crop the image to the ply.
 
 ### Create a script
 
 ```python
-from fracsuite.splinters.analyzer import Analyzer
+from fracsuite.splinters.analyzer import Analyzer, AnalyzerConfig
 
 image = r"Path/to/some/image.bmp"
-crop = True
 
-analyzer = Analyzer(image, crop)
+config = AnalyzerConfig()
+# size of cropped image (if cropping is needed)
+config.cropsize = (4000,4000)
+
+analyzer = Analyzer(image, config)
 
 analyzer.plot()
 analyzer.plot_area()
