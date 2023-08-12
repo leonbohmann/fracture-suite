@@ -75,6 +75,8 @@ post.add_argument('-skelclose-sz', help='Size for final skeleton close kernel.',
     type=int, default=3)
 post.add_argument('-skelclose-amnt', help='Iterations for final skeleton close kernel.',\
     type=int, default=5)
+post.add_argument('--skip-spot-elim', help='Instruct the postprocessor to skip "dark-spot" removal.',\
+    action="store_true", default=False)
 
 output_group = parser.add_argument_group("Output")
 output_group.add_argument('-out', nargs="?", help='Output directory path.', \
@@ -103,6 +105,8 @@ config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
 
 config.ext_plots = args.plot_ext
 config.ext_imgs = args.image_ext
+config.skip_darkspot_removal = args.skip_spot_elim
+
 
 config.print()
 

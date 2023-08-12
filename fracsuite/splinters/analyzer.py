@@ -45,6 +45,8 @@ class AnalyzerConfig:
     ext_plots: str              # output extension for plots
     ext_imgs: str              # output extension for images
     
+    skip_darkspot_removal: bool     # skip dark spot removal
+    
     def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
         fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
         real_img_size: tuple[int,int] = None, \
@@ -549,8 +551,11 @@ class Analyzer(object):
         self.contours = detect_fragments(skeleton, config)        
         self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
         
-        print('> Step 4: Filter spots...')
-        self.__filter_dark_spots(config)
+        if not config.skip_darkspot_removal:
+            print('> Step 4: Filter spots...')
+            self.__filter_dark_spots(config)
+        else:
+            print('> Step 4: Filter spots (SKIPPED)')
         
         #############
         # detect fragments on the closed skeleton
@@ -585,7 +590,7 @@ class Analyzer(object):
         for c in self.contours:
             cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
             
-        print("Creating voronoi plot...")    
+        print("Stochastic analysis...")    
         self.__create_voronoi(config)
         
         print('\n\n')
@@ -624,7 +629,7 @@ class Analyzer(object):
         if config.debug2:
             plt.show()
             
-        fig.savefig(self.__get_out_file(f"intensity.{config.ext_plots}"))
+        fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
             
     def __filter_dark_spots(self, config: AnalyzerConfig):
         # create normal threshold of original image to get dark spots
@@ -656,7 +661,9 @@ class Analyzer(object):
             removed_splinters.append(self.splinters[i])
             del self.splinters[i]
             
-        print(f"Removed {len(removed_splinters)} Splinters")
+        if config.debug:
+            print(f"Removed {len(removed_splinters)} Splinters")
+            
         skel_mask = self.image_skeleton.copy()
         
         for s in tqdm(removed_splinters, leave=False):
