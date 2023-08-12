@@ -32,6 +32,16 @@ Several steps are necessary to analyze a fracture scan:
    1. Now with minimal fuzziness, run the splinter detection again
 8. Create splinters from resulting contour list
 
+A couple of outputs are saved to a directory next to the input image. These are:
+
+- Contour plot of recognized splinters (you have to zoom in, contour thickness is 1px)
+- Filled plot of splinters
+- Figures
+  - Splinter size distribution
+  - Splinter relative share distribution
+  - Voronoi overview
+  - Fracture Intensity overlay
+
 ## Installation
 
 ```bat
@@ -44,12 +54,8 @@ pip install fracsuite
 ### Use the module directly
 
 ```bat
-py -m fracsuite.splinters -image "path/to/image" [--crop]
+py -m fracsuite.splinters "path/to/image" [--crop]
 ```
-
-#### `-image`
-
-The path to the image
 
 #### `--crop`
 
@@ -70,7 +76,6 @@ analyzer.plot_area()
 analyzer.plot_area_2()
 ```
 
-
 ### CLI
 
 ```bat
@@ -80,6 +85,7 @@ options:
 General:
   --displayplots        Instruct the analyzer to display output plots.
   --debug               Sets a debug flag to display verbose output.
+  --exp-debug           Sets an experimental debug flag to display verbose output.
   -display-region DISPLAY_REGION DISPLAY_REGION DISPLAY_REGION DISPLAY_REGION
                         Region to display in debug outputs.
 
@@ -102,13 +108,14 @@ Preprocessor:
   -thresh-block {1,3,5,7,9,11,13,15,17,19,21}
                         Adaptive threshold block size
   -resize-fac RESIZE_FAC
-                        Image resize factor between gauss and adaptive th.
+                        Image resize factor before adaptive th.
 
 Postprocessor:
   -skelclose-sz SKELCLOSE_SZ
                         Size for final skeleton close kernel.
   -skelclose-amnt SKELCLOSE_AMNT
                         Iterations for final skeleton close kernel.
+  --skip-spot-elim      Instruct the postprocessor to skip "dark-spot" removal.
 
 Output:
   -out [OUT]            Output directory path.
