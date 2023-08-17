@@ -77,6 +77,8 @@ post.add_argument('-skelclose-amnt', help='Iterations for final skeleton close k
     type=int, default=5)
 post.add_argument('--skip-spot-elim', help='Instruct the postprocessor to skip "dark-spot" removal.',\
     action="store_true", default=False)
+post.add_argument('-intensity-width', help='Pixel width for intensity calculation.',\
+    type=int, default=500)
 
 output_group = parser.add_argument_group("Output")
 output_group.add_argument('-out', nargs="?", help='Output directory path.', \
@@ -106,7 +108,7 @@ config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
 config.ext_plots = args.plot_ext
 config.ext_imgs = args.image_ext
 config.skip_darkspot_removal = args.skip_spot_elim
-
+config.intensity_h = args.intensity_width
 
 config.print()
 
