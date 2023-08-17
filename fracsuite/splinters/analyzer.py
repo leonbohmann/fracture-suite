@@ -46,6 +46,7 @@ class AnalyzerConfig:
     ext_imgs: str              # output extension for images
     
     skip_darkspot_removal: bool     # skip dark spot removal
+    intensity_h: int                # intensity kernel width in px
     
     def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
         fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
@@ -617,7 +618,7 @@ class Analyzer(object):
         
         #TODO: compare voronoi splinter size distribution to actual distribution
         # X,Y,Z = csintkern(events, region, 500)        
-        X, Y, Z = csintkern_optimized(events, region, 250)
+        X, Y, Z = csintkern_optimized(events, region, config.intensity_h)
         fig = plt.figure()
         plt.imshow(self.image_contours)
         plt.contourf(X, Y, Z, cmap='jet', alpha=0.5)
