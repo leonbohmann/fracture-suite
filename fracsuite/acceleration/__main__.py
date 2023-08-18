@@ -51,9 +51,9 @@ out_dir = os.path.dirname(file)
 
 # file = r"d:\Forschung\Glasbruch\Versuche.Reihe\Proben\4.70.30.B\fracture\acc\4.70.30.A_fracture.bin"
 # pfile = r"d:\Forschung\Glasbruch\Versuche.Reihe\Proben\8.140.Z.2\frac\8_140_Z_2.bin"
-reader = APReader(file)
+reader = APReader(file, verbose=True)
 
-
+reader.printSummary()
 
 # slow_group = reader.Groups[0]
 # fall_group = reader.collectDatasets(["Fall_g1", "Fall_g2"])
@@ -70,12 +70,12 @@ for max in channel_max:
 # channels: 0: Piezoelectric, 1: Piezoresistive
 channels = [x for x in reader.Channels if x.Name.startswith("Fall")]
 
-
 g = 9.81 # m/s²
 drop_acc = channels[1]    
 time = drop_acc.Time.data
 drop_avg = np.average(drop_acc.data[:1000])
-drop_data = drop_acc.data - 0
+drop_data = drop_acc.data - drop_avg
+print(f'Average at 0: {drop_avg}')
 
 
 # savgol
@@ -87,11 +87,9 @@ num_taps = 101  # Filter length, adjust as needed
 fir_filter = signal.firwin(num_taps, cutoff_frequency)
 drop_data_smooth = signal.lfilter(fir_filter, 1.0, drop_data)
 # np.savetxt("output.txt", np.column_stack([time, drop_data]), fmt = ['%.8f', '%.8f'])
-drop_data = drop_data_smooth
+# drop_data = drop_data_smooth
 
-
-print(f'Average ZMO: {drop_avg}')
-
+# initial is needed, so that the length of the result is the same as the input
 v = integrate.cumulative_trapezoid(drop_data, time, initial = 0)
 s = integrate.cumulative_trapezoid(v, time, initial = 0)
 
@@ -102,20 +100,4 @@ fig = plot_multiple_datasets([\
     (time, s, "g", "Distance [m]", "Distance")], 'Time integrals of Acceleration')
 
 fig.savefig(os.path.join(out_dir, "fall.png"))
-
-# fig, ax0 = plt.subplots()
-# ax1 = ax0.twinx()
-# ax2 = ax0.twinx()
-
-
-# ax0.plot(time, drop_data, label = "Acceleration", c = "g")
-# ax1.plot(time, s, label = "Distance", c = "b")
-# ax2.plot(time, v, 'orange', label = "Speed")
-# ax0.set_xlabel('Seconds [s]')
-# ax0.set_ylabel('Acc [g]')
-# ax1.set_ylabel('Distance [cm]')
-# ax2.set_ylabel('Acceleration [g]')
-# fig.tight_layout()
-# fig.legend()
-# plt.show()
     
