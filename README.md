@@ -6,6 +6,8 @@ It performs several operations on the input image to enhance the visibility of s
 
 ![Backend plot of analyzer, displaying original and preprocessed image and detected cracks](.content/backend.png)
 
+![Fracture Intensity](.content/intensity.png)
+
 ## How it works
 
 Several steps are necessary to analyze a fracture scan:
@@ -116,6 +118,8 @@ Postprocessor:
   -skelclose-amnt SKELCLOSE_AMNT
                         Iterations for final skeleton close kernel.
   --skip-spot-elim      Instruct the postprocessor to skip "dark-spot" removal.
+  -intensity-width INTENSITY_WIDTH
+                        Pixel width for intensity calculation.
 
 Output:
   -out [OUT]            Output directory path.
