@@ -855,7 +855,7 @@ class Analyzer(object):
         plt.plot(data_x, data_y, 'g-')    
         plt.plot(data_x, data_y, 'rx', markersize=2)    
         plt.title('Splinter Size Accumulation')
-        plt.xlabel(f"$\sum Area_i [{'mm' if self.config.cropped_image_size is not None else 'px'}²]$")
+        plt.xlabel(f"$Area_i [{'mm' if self.config.cropped_image_size is not None else 'px'}²]$")
         plt.ylabel(r"$\frac{\sum (Area_i)}{Area_t} [-]$")
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
