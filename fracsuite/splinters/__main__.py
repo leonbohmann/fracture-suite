@@ -1,16 +1,18 @@
 
 import argparse
 from argparse import RawDescriptionHelpFormatter
+import os
 from fracsuite.splinters.analyzer import Analyzer, AnalyzerConfig
 descr=\
 """
-███████╗██████╗  █████╗  ██████╗████████╗██╗   ██╗██████╗ ███████╗      ███████╗██╗   ██╗██╗████████╗███████╗
-██╔════╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██║   ██║██╔══██╗██╔════╝      ██╔════╝██║   ██║██║╚══██╔══╝██╔════╝
-█████╗  ██████╔╝███████║██║        ██║   ██║   ██║██████╔╝█████╗  █████╗███████╗██║   ██║██║   ██║   █████╗  
-██╔══╝  ██╔══██╗██╔══██║██║        ██║   ██║   ██║██╔══██╗██╔══╝  ╚════╝╚════██║██║   ██║██║   ██║   ██╔══╝  
-██║     ██║  ██║██║  ██║╚██████╗   ██║   ╚██████╔╝██║  ██║███████╗      ███████║╚██████╔╝██║   ██║   ███████╗
-╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝      ╚══════╝ ╚═════╝ ╚═╝   ╚═╝   ╚══════╝
-Leon Bohmann            Technical University Darmstadt - ISMD - GCC              www.tu-darmstadt.de/glass-cc
+███████╗██████╗ ██╗     ██╗███╗   ██╗████████╗███████╗██████╗ ███████╗
+██╔════╝██╔══██╗██║     ██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██╔════╝
+███████╗██████╔╝██║     ██║██╔██╗ ██║   ██║   █████╗  ██████╔╝███████╗
+╚════██║██╔═══╝ ██║     ██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗╚════██║
+███████║██║     ███████╗██║██║ ╚████║   ██║   ███████╗██║  ██║███████║
+╚══════╝╚═╝     ╚══════╝╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚══════╝
+                                                                      
+Leon Bohmann     TUD - ISMD - GCC        www.tu-darmstadt.de/glass-cc
 
 Description:
 -------------------------
@@ -47,11 +49,11 @@ gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in d
     type=int, default=None)
 
 imgroup = parser.add_argument_group("Image operations")
-imgroup.add_argument('image', nargs="?", help='The image to be processed.')
-imgroup.add_argument('-realsize', nargs=2, help='Real size of the input image.',\
-    type=int, default=None)
-imgroup.add_argument('-cropsize', nargs=2, help='Crop image size in pixels.',\
-    type=int, default=None)
+imgroup.add_argument('path', nargs="?", help='The path of the image to be processed or a folder that contains a file in subfolder "[path]/fracture/morph/...Transmission.bmp".')
+imgroup.add_argument('-realsize', nargs="*", help='Real size of the input image. If only one dim is provided, a square geometry is used.',\
+    type=int, default=None, metavar=('WIDTH', 'HEIGHT'))
+imgroup.add_argument('-cropsize', nargs="*", help='Crop image size in pixels. If only one dim is provided, a square geometry is used.',\
+    type=int, default=None, metavar=('WIDTH', 'HEIGHT'))
 
 prep = parser.add_argument_group("Preprocessor")
 # image preprocessing arguments
@@ -95,8 +97,16 @@ if args.debug is True:
 
 do_crop = args.cropsize is not None
 
-if args.realsize is not None:
+if args.realsize is not None and len(args.realsize) > 1:
     args.realsize = tuple(args.realsize)
+elif args.realsize is not None and len(args.realsize) == 1:
+    args.realsize = (args.realsize[0], args.realsize[0])
+
+if args.cropsize is not None and len(args.cropsize) > 1:
+    args.cropsize = tuple(args.cropsize)
+elif args.cropsize is not None and len(args.cropsize) == 1:
+    args.cropsize = (args.cropsize[0], args.cropsize[0])
+    
     
 config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
     fragment_min_area_px=args.min_area, fragment_max_area_px=args.max_area, \
@@ -109,6 +119,15 @@ config.ext_plots = args.plot_ext
 config.ext_imgs = args.image_ext
 config.skip_darkspot_removal = args.skip_spot_elim
 config.intensity_h = args.intensity_width
+
+if not args.image.endswith('.bmp'):
+    search_path = os.path.join(args.image, 'fracture', 'morph')
+    for file in os.listdir(search_path):
+        if 'Transmission' in file:
+            args.image = os.path.join(search_path, file)
+            break
+
+print(f'Analyzing image: {args.image}')
 
 config.print()
 
