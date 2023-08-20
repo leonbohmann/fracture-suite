@@ -6,13 +6,13 @@ app = typer.Typer()
 
 
 @app.command()
-def display(path: str):
+def summarize(path: str):
     """Display a table that summarizes the contents of a database folder.
 
     Args:
         path (str): Path of the DB.
     """
-    workbook = xlsxwriter.Workbook('summary.xlsx')
+    workbook = xlsxwriter.Workbook(os.path.join(path,'summary.xlsx'))
  
     # The workbook object is then used to add new
     # worksheet via the add_worksheet() method.
@@ -61,14 +61,5 @@ def display(path: str):
     # Finally, close the Excel file
     # via the close() method.
     workbook.close()
-
-
-@app.command()
-def goodbye(name: str, formal: bool = False):
-    if formal:
-        print(f"Goodbye Ms. {name}. Have a good day.")
-    else:
-        print(f"Bye {name}!")
-
 
 app()
