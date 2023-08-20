@@ -120,18 +120,18 @@ config.ext_imgs = args.image_ext
 config.skip_darkspot_removal = args.skip_spot_elim
 config.intensity_h = args.intensity_width
 
-if not args.image.endswith('.bmp'):
-    search_path = os.path.join(args.image, 'fracture', 'morph')
+if not args.path.endswith('.bmp'):
+    search_path = os.path.join(args.path, 'fracture', 'morph')
     for file in os.listdir(search_path):
         if 'Transmission' in file:
-            args.image = os.path.join(search_path, file)
+            args.path = os.path.join(search_path, file)
             break
 
-print(f'Analyzing image: {args.image}')
+print(f'Analyzing: {args.path}')
 
 config.print()
 
-analyzer = Analyzer(args.image, config)
+analyzer = Analyzer(args.path, config)
 
 analyzer.plot(display=args.displayplots, region=config.display_region)
 analyzer.plot_area(display=args.displayplots)
