@@ -3,9 +3,8 @@ from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzer import AnalyzerConfig
 
 
-config = AnalyzerConfig()
+args, config = AnalyzerConfig.parse(__doc__)
 
-print(config.yaml())
 
 
 
