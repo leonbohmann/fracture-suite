@@ -75,6 +75,19 @@ class AnalyzerConfig:
     "Path to data"
     
     def get_parser(descr) -> argparse.ArgumentParser:
+        """
+        Create and return an argumentParser, that can be used to initialize a new 
+        AnalyzerConfig with `AnalyzerConfig.from_args(args)` method.
+        
+        This can be used, if the argumentparser should be extended. I.e. if highspeed
+        module wants to add a specific argument group.
+        
+        Args:
+            descr (string): The description, the argparse object should display on `-h`.
+
+        Returns:
+            argparse.ArgumentParser: Can be used to create AnalyzerConfig.
+        """
         parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)    
 
         gnrl_group = parser.add_argument_group("General")
@@ -133,7 +146,16 @@ class AnalyzerConfig:
         
         return parser
     
-    def from_args(args):
+    def from_args(args) -> AnalyzerConfig:
+        """
+        Create AnalyzerConfig from command line arguments.
+
+        Args:
+            args (argparse.Namespace): The arguments parsed from argparse.
+
+        Returns:
+            AnalyzerConfig: The configuration.
+        """
         cfg = AnalyzerConfig()
         cfg.debug = args.debug
         cfg.debug_experimental = args.exp_debug   
@@ -181,6 +203,14 @@ class AnalyzerConfig:
         return cfg
     
     def parse(descr: str) -> tuple[argparse.Namespace, AnalyzerConfig]:
+        """Directly parse and return a Namespace and AnalyzerConfig.
+
+        Args:
+            descr (str): Display description on `-h`.
+
+        Returns:
+            tuple[argparse.Namespace, AnalyzerConfig]: Results.
+        """
         args = AnalyzerConfig.get_parser(descr).parse_args()
         return args, AnalyzerConfig.from_args(args)
     
