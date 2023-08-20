@@ -1,39 +1,53 @@
+import os
 import argparse
-from fracsuite.splinters.analyzer import Analyzer
+from fracsuite.splinters.analyzer import preprocess_image
 from fracsuite.splinters.analyzer import AnalyzerConfig
+import numpy as np
 
+from rich import print
+import cv2
 
-args, config = AnalyzerConfig.parse(__doc__)
+parser = AnalyzerConfig.get_parser(__doc__)
 
+hsp_group = parser.add_argument_group('High-Speed-Images Arguments')
+# hsp_group.add_argument("--dummy", action='store_true')
 
+args = parser.parse_args()
 
+config = AnalyzerConfig.from_args(args)
 
-# # implement parse to make this script callable from outside
-parser = argparse.ArgumentParser()    
-# parser.add_argument('-image', nargs="?", help='The image to be processed.')
-# parser.add_argument('-realsize', nargs=2, help='Real size of the input image. Use: -realsize W H',\
-#     type=int)
-# parser.add_argument('-plot-ext', nargs="?", help='Plot file extension. Default: png.', \
-#     default="png", choices=['png', 'pdf', 'jpg', 'bmp'])
-# parser.add_argument('-image-ext', nargs="?", help='Image file extension. Default: png.',\
-#     default="png", choices=['png', 'jpg', 'bmp'])
-# parser.add_argument('--crop', action='store_true', \
-#     help='Instruct the analyzer to crop the input image.', default=False)
-# parser.add_argument('--displayplots', action='store_true', \
-#     help='Instruct the analyzer to display output plots.', default=False)
+# get folder
+folder = config.path
 
-# args = parser.parse_args()    
+# get all tiff files from folder and save them
+img_files = [os.path.join(folder,x) for x in os.listdir(folder) if x.lower().endswith('tiff')]
+print(img_files)
 
-# print(args)
-
-# if args.realsize is not None:
-#     args.realsize = tuple(args.realsize)
+img0 = cv2.imread(img_files[0], cv2.IMREAD_GRAYSCALE)
+result_images = []
+for i, img in enumerate(img_files[2:]):
+    # get two images up to i
+    img1 = cv2.imread(img_files[i-1], cv2.IMREAD_GRAYSCALE)
+    img2 = cv2.imread(img_files[i], cv2.IMREAD_GRAYSCALE)
     
-# analyzer = Analyzer(args.image, args.crop, img_real_size=args.realsize)
+    img2_o = cv2.cvtColor(img2.copy(), cv2.COLOR_GRAY2BGR)
+    
+    # transform them first
+    # img1 = cv2.subtract(img1, img0)    
+    # img2 = cv2.subtract(img2, img0)
+    
+    # get difference from images
+    img_result = cv2.subtract(img1, img2)
+    img_result = 255-preprocess_image(img_result, config)
+    
+    zero = np.zeros_like(img_result)
+    img_result = cv2.merge([zero, zero, img_result])
+    img_r = cv2.addWeighted(img2_o, 1.0, img_result, 1, 0)
+    result_images.append(img_r)
+    
+    
+output_folder = os.path.join(folder, 'out')
+os.makedirs(output_folder, exist_ok=True)
 
-# analyzer.plot(display=args.displayplots)
-# analyzer.plot_area(display=args.displayplots)
-# analyzer.plot_area_2(display=args.displayplots)
-
-# analyzer.save_images(extension=args.image_ext)
-# analyzer.save_plots(extension=args.plot_ext)
+for i, im in enumerate(result_images):
+    cv2.imwrite(os.path.join(output_folder, f'out_{i:0000}.png'), im)
