@@ -1,75 +1,77 @@
+from __future__ import annotations
+
 import argparse
 import os
 import random
-from matplotlib.figure import Figure
-from matplotlib.widgets import RectangleSelector
-import numpy as np
-import numpy.typing as nptyp
 
 import cv2
-from tqdm import tqdm
-from skimage.morphology import skeletonize
-
-from fracsuite.splinters.splinter import Splinter
+import numpy as np
+import numpy.typing as nptyp
 from matplotlib import pyplot as plt
-
+from matplotlib.figure import Figure
+from matplotlib.widgets import RectangleSelector
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from scipy.spatial.distance import pdist
-from scipy.stats import gaussian_kde
+from skimage.morphology import skeletonize
+from tqdm import tqdm
+from rich import inspect, print
+from fracsuite.splinters.splinter import Splinter
 
-from sklearn.neighbors import KernelDensity
-from sklearn.model_selection import GridSearchCV
 
 class AnalyzerConfig:
-    gauss_size: tuple[int,int]
+    gauss_size: tuple[int,int] = (5,5)
     "gaussian filter size before adaptive thold"
-    gauss_sigma: float  
+    gauss_sigma: float = 5.0
     "gaussian sigma before adaptive thold"
     
-    thresh_block_size: int
+    thresh_block_size: int = 11
     "adaptive threshold block size"
-    thresh_sensitivity: float
+    thresh_sensitivity: float = 5.0
     "adaptive threshold sensitivity"
     
-    skelclose_size: int
+    skelclose_size: int = 3
     "size of final closing kernel for skeleton"
-    skelclose_amnt: int         
+    skelclose_amnt: int = 5        
     "iteration count of final closing kernel for skel"
     
-    fragment_min_area_px: int   
+    fragment_min_area_px: int = 20  
     "minimum fragment area"
-    fragment_max_area_px: int   
+    fragment_max_area_px: int = 25000
     "maximum fragment area"
     
-    real_image_size: tuple[int,int] 
+    real_image_size: tuple[int,int] = None
     "real image size in mm"
-    cropped_image_size: tuple[int,int]      
+    cropped_image_size: tuple[int,int] = None
     "real image size in mm"
-    crop: bool                      
+    crop: bool = False             
     "crop input image"
 
-    debug: bool                   
+    debug: bool = False                   
     "enable debug output"
-    debug_experimental: bool                   
+    debug_experimental: bool = False                   
     "enable debug output"
-    display_region: tuple[int,int,int,int]    
-    "region to display in output plots"
-    resize_factor: float        
+    display_region: tuple[int,int,int,int]  = None  
+    "region to display in output plots (x1,y1,x2,y2)"
+    resize_factor: float = 1.0    
     "factor to resize input image in preprocess"
+    displayplots: bool = False
+    "Display plots during creation"
+    printconfig: bool = False
+    "Print the configuration before starting the script"
     
-    out_name: str               
+    out_name: str = ""              
     "name of the output directory"
-    ext_plots: str              
+    ext_plots: str = "png"             
     "output extension for plots"
-    ext_imgs: str              
+    ext_imgs: str = "png"              
     "output extension for images"
     
-    skip_darkspot_removal: bool     
+    skip_darkspot_removal: bool  = False   
     "skip dark spot removal"
-    intensity_h: int                
+    intensity_h: int = 500               
     "intensity kernel width in px"
     
-    def get_parser(descr):
+    def get_parser(descr) -> argparse.Namespace:
         parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)    
 
         gnrl_group = parser.add_argument_group("General")
@@ -79,6 +81,8 @@ class AnalyzerConfig:
             help='Sets a debug flag to display verbose output.', default=False)
         gnrl_group.add_argument('--exp-debug', action='store_true', \
             help='Sets an experimental debug flag to display verbose output.', default=False)
+        gnrl_group.add_argument('--printconfig', action='store_true', \
+            help='Print the config before starting the script.', default=False)
         gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs. [Pixels]',\
             type=int, default=None, metavar=('X1', 'Y1', 'X2', 'Y2'))
 
@@ -126,76 +130,60 @@ class AnalyzerConfig:
         
         return parser.parse_args()
     
-    def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
-        fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
-        real_img_size: tuple[int,int] = None, \
-        cropped_img_size: tuple[int,int] = None, crop: bool = False,\
-        thresh_block_size: int = 11, thresh_sensitivity: float = 5.0,\
-        debug: bool = False, rsz_fac: float = 1.0, \
-        out_dirname: str = "fracsuite-output", \
-        display_region: tuple[int,int,int,int] = None, skel_close_sz:int = 3, \
-        skel_close_amnt: int = 5, debug2: bool = False, arguments = None):
+    def from_args(args):
+        cfg = AnalyzerConfig()
+        cfg.debug = args.debug
+        cfg.debug_experimental = args.exp_debug   
+        cfg.printconfig = args.printconfig
+        
+        cfg.gauss_size = (args.gauss_size,args.gauss_size)
+        cfg.gauss_sigma = args.gauss_sigma
+        cfg.fragment_min_area_px = args.min_area
+        cfg.fragment_max_area_px = args.max_area
+        
+        
+        cfg.thresh_block_size = args.thresh_block
+        cfg.thresh_sensitivity = args.thresh_sens
+        cfg.skelclose_size = args.skelclose_sz
+        cfg.skelclose_amnt = args.skelclose_amnt
+        cfg.crop = args.cropsize is not None
+        cfg.cropped_image_size = args.cropsize
+        cfg.real_image_size = args.realsize
+        cfg.resize_factor = args.resize_fac
 
+        cfg.display_region = args.display_region
+        cfg.intensity_h = args.intensity_width
+        cfg.ext_plots = args.plot_ext
+        cfg.ext_imgs = args.image_ext
+        cfg.skip_darkspot_removal = args.skip_spot_elim
         
-        if arguments is not None:
-            args = arguments
-            self.gauss_sz = args.gauss_size
-            self.gauss_sig = args.gauss_sigma
-            self.fragment_min_area_px = args.min_area
-            self.fragment_max_area_px = args.max_area
-            self.real_img_size = args.realsize
-            self.crop = args.cropsize is not None
-            self.thresh_block_size = args.thresh_block
-            self.thresh_sensitivity = args.thresh_sens
-            self.rsz_fac = args.resize_fac
-            self.cropped_img_size = args.cropsize
-            self.debug = args.debug
-            self.display_region = args.display_region
-            self.skel_close_sz = args.skelclose_sz
-            self.skel_close_amnt = args.skelclose_amnt
-            self.debug_experimental = args.exp_debug       
-            self.ext_plots = args.plot_ext
-            self.ext_imgs = args.image_ext
-            self.skip_darkspot_removal = args.skip_spot_elim
-            self.intensity_h = args.intensity_width     
-        else:
-            self.gauss_size = (gauss_sz, gauss_sz)
-            self.gauss_sigma = gauss_sig
-            
-            self.thresh_block_size = thresh_block_size
-            self.thresh_sensitivity = thresh_sensitivity
-            
-            self.skelclose_size = skel_close_sz
-            self.skelclose_amnt = skel_close_amnt
-            
-            self.fragment_min_area_px = fragment_min_area_px
-            self.fragment_max_area_px = fragment_max_area_px
-            self.real_image_size = real_img_size
-            self.cropped_image_size = cropped_img_size
-            self.crop = crop
-            
-            self.debug = debug
-            self.debug_experimental = debug2
-            self.display_region = display_region
-            self.resize_factor = rsz_fac
-            
-            self.out_name = out_dirname
         
-        if crop and cropped_img_size is None:
-            raise Exception("When cropping an input image, "+\
-                            "the img_size argument must be passed!")
+        if args.debug is True:
+            cfg.displayplots = True
+
+        if args.realsize is not None and len(args.realsize) > 1:
+            cfg.real_image_size = tuple(args.realsize)
+        elif args.realsize is not None and len(args.realsize) == 1:
+            cfg.real_image_size = (args.realsize[0], args.realsize[0])
+
+        if args.cropsize is not None and len(args.cropsize) > 1:
+            args.cropsize = tuple(args.cropsize)
+        elif args.cropsize is not None and len(args.cropsize) == 1:
+            args.cropsize = (args.cropsize[0], args.cropsize[0])
+        
+        return cfg
+    
+    def parse(descr: str) -> tuple[argparse.Namespace, AnalyzerConfig]:
+        args = AnalyzerConfig.get_parser(descr)
+        return args, AnalyzerConfig.from_args(args)
+    
+    def __init__(self):
+        pass
         
     def print(self):
-        self.pretty(self.__dict__)
-        
-    def pretty(self, d, indent=0):
-        for key, value in d.items():
-            print(f' {key:25}: ', end="")
-            if isinstance(value, dict):
-                self.pretty(value, indent+1)  # noqa: F821
-            else:
-                print(' ' * (indent+1) + str(value))    
- 
+        if self.printconfig:
+            print(self.__dict__)            
+            
 def isgray(img):
         if len(img.shape) < 3: 
             return True
@@ -580,6 +568,9 @@ class Analyzer(object):
             config = AnalyzerConfig()
         
         self.config = config
+        
+        # validate config
+        config.validate()
         
         #############
         # folder operations
