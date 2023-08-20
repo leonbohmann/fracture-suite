@@ -21,34 +21,53 @@ from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 
 class AnalyzerConfig:
-    gauss_size: tuple[int,int]  
-    # gaussian filter size before adaptive thold
-    gauss_sigma: float          # gaussian sigma before adaptive thold
+    gauss_size: tuple[int,int]
+    "gaussian filter size before adaptive thold"
+    gauss_sigma: float  
+    "gaussian sigma before adaptive thold"
     
-    thresh_block_size: int      # adaptive threshold block size
-    thresh_sensitivity: float   # adaptive threshold sensitivity
+    thresh_block_size: int
+    "adaptive threshold block size"
+    thresh_sensitivity: float
+    "adaptive threshold sensitivity"
     
-    skelclose_size: int         # size of final closing kernel for skeleton
-    skelclose_amnt: int         # iteration count of final closing kernel for skel
+    skelclose_size: int
+    "size of final closing kernel for skeleton"
+    skelclose_amnt: int         
+    "iteration count of final closing kernel for skel"
     
-    fragment_min_area_px: int   # minimum fragment area
-    fragment_max_area_px: int   # maximum fragment area
+    fragment_min_area_px: int   
+    "minimum fragment area"
+    fragment_max_area_px: int   
+    "maximum fragment area"
     
-    real_image_size: tuple[int,int] # real image size in mm
-    cropped_image_size: tuple[int,int]      # real image size in mm
-    crop: bool                      # crop input image
+    real_image_size: tuple[int,int] 
+    "real image size in mm"
+    cropped_image_size: tuple[int,int]      
+    "real image size in mm"
+    crop: bool                      
+    "crop input image"
 
-    debug: bool                   # enable debug output    
-    debug_experimental: bool                   # enable debug output    
-    display_region: tuple[int,int,int,int]    # region to display in output plots
-    resize_factor: float        # factor to resize input image in preprocess
+    debug: bool                   
+    "enable debug output"
+    debug_experimental: bool                   
+    "enable debug output"
+    display_region: tuple[int,int,int,int]    
+    "region to display in output plots"
+    resize_factor: float        
+    "factor to resize input image in preprocess"
     
-    out_name: str               # name of the output directory
-    ext_plots: str              # output extension for plots
-    ext_imgs: str              # output extension for images
+    out_name: str               
+    "name of the output directory"
+    ext_plots: str              
+    "output extension for plots"
+    ext_imgs: str              
+    "output extension for images"
     
-    skip_darkspot_removal: bool     # skip dark spot removal
-    intensity_h: int                # intensity kernel width in px
+    skip_darkspot_removal: bool     
+    "skip dark spot removal"
+    intensity_h: int                
+    "intensity kernel width in px"
     
     def get_parser(descr):
         parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)    
