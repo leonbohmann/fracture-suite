@@ -71,7 +71,10 @@ class AnalyzerConfig:
     intensity_h: int = 500               
     "intensity kernel width in px"
     
-    def get_parser(descr) -> argparse.Namespace:
+    path: str = ""
+    "Path to data"
+    
+    def get_parser(descr) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)    
 
         gnrl_group = parser.add_argument_group("General")
@@ -128,7 +131,7 @@ class AnalyzerConfig:
         output_group.add_argument('-image-ext', nargs="?", help='Image file extension. Default: png.',\
             default="png", choices=['png', 'jpg', 'bmp'])
         
-        return parser.parse_args()
+        return parser
     
     def from_args(args):
         cfg = AnalyzerConfig()
@@ -178,7 +181,7 @@ class AnalyzerConfig:
         return cfg
     
     def parse(descr: str) -> tuple[argparse.Namespace, AnalyzerConfig]:
-        args = AnalyzerConfig.get_parser(descr)
+        args = AnalyzerConfig.get_parser(descr).parse_args()
         return args, AnalyzerConfig.from_args(args)
     
     def __init__(self):
