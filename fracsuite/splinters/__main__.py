@@ -120,7 +120,7 @@ config.ext_imgs = args.image_ext
 config.skip_darkspot_removal = args.skip_spot_elim
 config.intensity_h = args.intensity_width
 
-if not args.path.endswith('.bmp'):
+if args.path.endswith('\\'):
     search_path = os.path.join(args.path, 'fracture', 'morph')
     for file in os.listdir(search_path):
         if 'Transmission' in file:
