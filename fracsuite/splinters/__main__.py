@@ -36,17 +36,18 @@ from rich import print
 
 args, config = AnalyzerConfig.parse(__doc__)
 
+
 if args.path.endswith('\\'):
-            search_path = os.path.join(args.path, 'fracture', 'morph')
-            for file in os.listdir(search_path):
-                if 'Transmission' in file and file.endswith('.bmp'):
-                    config.path = os.path.join(search_path, file)
-                    args.path = config.path
-                    break
+    search_path = os.path.join(args.path, 'fracture', 'morph')
+    for file in os.listdir(search_path):
+        if 'Transmission' in file and file.endswith('.bmp'):
+            print(f"[green]UPDATED analyzer path.[/green]")
+            config.path = os.path.join(search_path, file)
+            args.path = config.path
+            break
 
 print(f'Analyzing: {args.path}')
 
-config.print()
 
 analyzer = Analyzer(args.path, config)
 

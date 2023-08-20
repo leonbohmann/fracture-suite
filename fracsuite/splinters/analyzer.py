@@ -157,7 +157,6 @@ class AnalyzerConfig:
         cfg.ext_imgs = args.image_ext
         cfg.skip_darkspot_removal = args.skip_spot_elim
         
-        
         if args.debug is True:
             cfg.displayplots = True
 
@@ -171,6 +170,11 @@ class AnalyzerConfig:
         elif args.cropsize is not None and len(args.cropsize) == 1:
             args.cropsize = (args.cropsize[0], args.cropsize[0])
         
+        cfg.path = args.path
+        
+        if cfg.printconfig:
+            cfg.print()
+        
         return cfg
     
     def parse(descr: str) -> tuple[argparse.Namespace, AnalyzerConfig]:
@@ -181,8 +185,7 @@ class AnalyzerConfig:
         pass
         
     def print(self):
-        if self.printconfig:
-            print(self.__dict__)            
+        print(self.__dict__)            
             
 def isgray(img):
         if len(img.shape) < 3: 
@@ -568,9 +571,6 @@ class Analyzer(object):
             config = AnalyzerConfig()
         
         self.config = config
-        
-        # validate config
-        config.validate()
         
         #############
         # folder operations
