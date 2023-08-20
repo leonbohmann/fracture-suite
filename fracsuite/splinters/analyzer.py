@@ -1,3 +1,4 @@
+import argparse
 import os
 import random
 from matplotlib.figure import Figure
@@ -20,7 +21,8 @@ from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 
 class AnalyzerConfig:
-    gauss_size: tuple[int,int]  # gaussian filter size before adaptive thold
+    gauss_size: tuple[int,int]  
+    # gaussian filter size before adaptive thold
     gauss_sigma: float          # gaussian sigma before adaptive thold
     
     thresh_block_size: int      # adaptive threshold block size
@@ -37,7 +39,7 @@ class AnalyzerConfig:
     crop: bool                      # crop input image
 
     debug: bool                   # enable debug output    
-    debug2: bool                   # enable debug output    
+    debug_experimental: bool                   # enable debug output    
     display_region: tuple[int,int,int,int]    # region to display in output plots
     resize_factor: float        # factor to resize input image in preprocess
     
@@ -48,6 +50,63 @@ class AnalyzerConfig:
     skip_darkspot_removal: bool     # skip dark spot removal
     intensity_h: int                # intensity kernel width in px
     
+    def get_parser(descr):
+        parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)    
+
+        gnrl_group = parser.add_argument_group("General")
+        gnrl_group.add_argument('--displayplots', action='store_true', \
+            help='Instruct the analyzer to display output plots.', default=False)
+        gnrl_group.add_argument('--debug', action='store_true', \
+            help='Sets a debug flag to display verbose output.', default=False)
+        gnrl_group.add_argument('--exp-debug', action='store_true', \
+            help='Sets an experimental debug flag to display verbose output.', default=False)
+        gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs. [Pixels]',\
+            type=int, default=None, metavar=('X1', 'Y1', 'X2', 'Y2'))
+
+        imgroup = parser.add_argument_group("Image operations")
+        imgroup.add_argument('path', nargs="?", help='The path of the image to be processed or a folder that contains a file in subfolder "[path]/fracture/morph/...Transmission.bmp".')
+        imgroup.add_argument('-realsize', nargs="*", help='Real size of the input image. If only one dim is provided, a square geometry is used.',\
+            type=int, default=None, metavar=('WIDTH', 'HEIGHT'))
+        imgroup.add_argument('-cropsize', nargs="*", help='Crop image size in pixels. If only one dim is provided, a square geometry is used.',\
+            type=int, default=None, metavar=('WIDTH', 'HEIGHT'))
+
+        prep = parser.add_argument_group("Preprocessor")
+        # image preprocessing arguments
+        prep.add_argument('-gauss-size', help='Gaussian filter size',\
+            type=int, default=5)
+        prep.add_argument('-gauss-sigma', help='Gaussian filter sigma',\
+            type=float, default=5)
+        prep.add_argument('-min-area', help='Minimum fragment area threshold [px²]',\
+            type=float, default=20)
+        prep.add_argument('-max-area', help='Maximum fragment area threshold [px²]',\
+            type=float, default=25000)
+        prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
+            type=float, default=6)
+        prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
+            type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
+        prep.add_argument('-resize-fac', help='Image resize factor before adaptive th.',\
+            type=float, default=1.0)
+
+        post = parser.add_argument_group("Postprocessor")
+        post.add_argument('-skelclose-sz', help='Size for final skeleton close kernel.',\
+            type=int, default=3)
+        post.add_argument('-skelclose-amnt', help='Iterations for final skeleton close kernel.',\
+            type=int, default=5)
+        post.add_argument('--skip-spot-elim', help='Instruct the postprocessor to skip "dark-spot" removal.',\
+            action="store_true", default=False)
+        post.add_argument('-intensity-width', help='Pixel width for intensity calculation.',\
+            type=int, default=500)
+
+        output_group = parser.add_argument_group("Output")
+        output_group.add_argument('-out', nargs="?", help='Output directory path.', \
+            default="fracsuite-output")
+        output_group.add_argument('-plot-ext', nargs="?", help='Plot file extension. Default: png.', \
+            default="png", choices=['png', 'pdf', 'jpg', 'bmp'])
+        output_group.add_argument('-image-ext', nargs="?", help='Image file extension. Default: png.',\
+            default="png", choices=['png', 'jpg', 'bmp'])
+        
+        return parser.parse_args()
+    
     def __init__(self, gauss_sz: int = (5,5), gauss_sig: float = 5,\
         fragment_min_area_px: int = 20, fragment_max_area_px: int = 25000,\
         real_img_size: tuple[int,int] = None, \
@@ -56,30 +115,52 @@ class AnalyzerConfig:
         debug: bool = False, rsz_fac: float = 1.0, \
         out_dirname: str = "fracsuite-output", \
         display_region: tuple[int,int,int,int] = None, skel_close_sz:int = 3, \
-        skel_close_amnt: int = 5, debug2: bool = False):
+        skel_close_amnt: int = 5, debug2: bool = False, arguments = None):
+
         
-        
-        self.gauss_size = (gauss_sz, gauss_sz)
-        self.gauss_sigma = gauss_sig
-        
-        self.thresh_block_size = thresh_block_size
-        self.thresh_sensitivity = thresh_sensitivity
-        
-        self.skelclose_size = skel_close_sz
-        self.skelclose_amnt = skel_close_amnt
-        
-        self.fragment_min_area_px = fragment_min_area_px
-        self.fragment_max_area_px = fragment_max_area_px
-        self.real_image_size = real_img_size
-        self.cropped_image_size = cropped_img_size
-        self.crop = crop
-        
-        self.debug = debug
-        self.debug2 = debug2
-        self.display_region = display_region
-        self.resize_factor = rsz_fac
-        
-        self.out_name = out_dirname
+        if arguments is not None:
+            args = arguments
+            self.gauss_sz = args.gauss_size
+            self.gauss_sig = args.gauss_sigma
+            self.fragment_min_area_px = args.min_area
+            self.fragment_max_area_px = args.max_area
+            self.real_img_size = args.realsize
+            self.crop = args.cropsize is not None
+            self.thresh_block_size = args.thresh_block
+            self.thresh_sensitivity = args.thresh_sens
+            self.rsz_fac = args.resize_fac
+            self.cropped_img_size = args.cropsize
+            self.debug = args.debug
+            self.display_region = args.display_region
+            self.skel_close_sz = args.skelclose_sz
+            self.skel_close_amnt = args.skelclose_amnt
+            self.debug_experimental = args.exp_debug       
+            self.ext_plots = args.plot_ext
+            self.ext_imgs = args.image_ext
+            self.skip_darkspot_removal = args.skip_spot_elim
+            self.intensity_h = args.intensity_width     
+        else:
+            self.gauss_size = (gauss_sz, gauss_sz)
+            self.gauss_sigma = gauss_sig
+            
+            self.thresh_block_size = thresh_block_size
+            self.thresh_sensitivity = thresh_sensitivity
+            
+            self.skelclose_size = skel_close_sz
+            self.skelclose_amnt = skel_close_amnt
+            
+            self.fragment_min_area_px = fragment_min_area_px
+            self.fragment_max_area_px = fragment_max_area_px
+            self.real_image_size = real_img_size
+            self.cropped_image_size = cropped_img_size
+            self.crop = crop
+            
+            self.debug = debug
+            self.debug_experimental = debug2
+            self.display_region = display_region
+            self.resize_factor = rsz_fac
+            
+            self.out_name = out_dirname
         
         if crop and cropped_img_size is None:
             raise Exception("When cropping an input image, "+\
@@ -606,7 +687,7 @@ class Analyzer(object):
         plt.imshow(self.original_image)
         plt.axis('off')  # Turn off axis labels and ticks
         plt.title('Voronoi Plot Overlay on Image')
-        if config.debug2:
+        if config.debug_experimental:
             plt.show()
         fig.savefig(self.__get_out_file(f"voronoi.{config.ext_plots}"))
         
@@ -629,7 +710,7 @@ class Analyzer(object):
         plt.ylabel('Y Coordinate')
         plt.title('Kernel Density Estimation of Point Intensity')
         
-        if config.debug2:
+        if config.debug_experimental:
             plt.show()
             
         fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
@@ -637,7 +718,7 @@ class Analyzer(object):
     def __filter_dark_spots(self, config: AnalyzerConfig):
         # create normal threshold of original image to get dark spots
         img = preprocess_spot_detect(self.original_image)
-        if config.debug2:
+        if config.debug_experimental:
             cimg = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
         i_del = []
         removed_splinters: list[Splinter] = []
@@ -656,7 +737,7 @@ class Analyzer(object):
             if np.all(result == 0):                
                 bar.set_description(f'Removed {len(i_del)} Splinters')
                 i_del.append(i)
-            elif config.debug2:
+            elif config.debug_experimental:
                 cv2.drawContours(cimg, [s.contour], -1, rand_col(), 1)
                 
         # remove splinters starting from the back                
@@ -699,7 +780,7 @@ class Analyzer(object):
                         # Draw a line from the point to the centroid
                         connections.append((x,y))
                         
-                        if config.debug2:
+                        if config.debug_experimental:
                             cv2.drawMarker(cimg, (x,y), (0,255,0))
             
             # 2 connections -> connect them
@@ -717,11 +798,11 @@ class Analyzer(object):
                 for x,y in connections:
                     cv2.line(self.image_skeleton, (int(x), int(y)), (int(c[0]), int(c[1])), 255)
                     
-                    if config.debug2:
+                    if config.debug_experimental:
                         cv2.line(cimg, (int(x), int(y)), (int(c[0]), int(c[1])), (255,0,0))
                         
         
-        if config.debug2:
+        if config.debug_experimental:
             cv2.imwrite(self.__get_out_file("spots_filled.png"), cimg)
             plt.imshow(cimg)
             plt.show()

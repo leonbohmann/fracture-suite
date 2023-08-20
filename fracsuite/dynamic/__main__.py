@@ -1,7 +1,7 @@
 import argparse
 from fracsuite.splinters.analyzer import Analyzer
-import yaml
 from fracsuite.splinters.analyzer import AnalyzerConfig
+
 
 config = AnalyzerConfig()
 
@@ -10,7 +10,7 @@ print(config.yaml())
 
 
 # # implement parse to make this script callable from outside
-# parser = argparse.ArgumentParser()    
+parser = argparse.ArgumentParser()    
 # parser.add_argument('-image', nargs="?", help='The image to be processed.')
 # parser.add_argument('-realsize', nargs=2, help='Real size of the input image. Use: -realsize W H',\
 #     type=int)
