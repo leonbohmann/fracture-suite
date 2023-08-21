@@ -71,10 +71,12 @@ for max in channel_max:
 channels = [x for x in reader.Channels if x.Name.startswith("Fall")]
 
 g = 9.81 # m/s²
-drop_acc = channels[1]    
+drop_acc = channels[1] 
+drop_acc1 = channels[0].data
 time = drop_acc.Time.data
-drop_avg = np.average(drop_acc.data[:1000])
+drop_avg = np.average(drop_acc.data[-120000:])
 drop_data = drop_acc.data - drop_avg
+drop_data = drop_data * g
 print(f'Average at 0: {drop_avg}')
 
 
@@ -94,7 +96,7 @@ v = integrate.cumulative_trapezoid(drop_data, time, initial = 0)
 s = integrate.cumulative_trapezoid(v, time, initial = 0)
 
 fig = plot_multiple_datasets([\
-    (time, drop_data_smooth, "m--", "Smoothed [g]", "Smoothed"), \
+    (time, drop_acc1, "m--", "Smoothed [g]", "Smoothed"), \
     (time, drop_data, "gray", "Acc [g]", "Acceleration"), \
     (time, v, "b", "Speed [m/s]", "Speed"),\
     (time, s, "g", "Distance [m]", "Distance")], 'Time integrals of Acceleration')
