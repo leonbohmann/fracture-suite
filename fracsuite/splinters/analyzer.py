@@ -597,26 +597,37 @@ class Analyzer(object):
     """
     
     file_path: str
-    file_dir: str
+    "Path of the input image."
+    file_dir: str = None
+    "Directory of the input image."
     out_dir: str
+    "Directory of the output images."
     
     original_image: nptyp.ArrayLike
+    "Original image, after cropping (if applied)."
     preprocessed_image: nptyp.ArrayLike
+    "Preprocessed image, after cropping (if applied) and pre-processing."
         
     image_contours: nptyp.ArrayLike
+    "Image with all contours drawn."
     image_filled: nptyp.ArrayLike
+    "Image with all contours filled."
     
     contours: list[nptyp.ArrayLike]
+    "List of all contours."
     splinters: list[Splinter]
+    "List of all splinters."
     
     axs: list[plt.Axes]
+    "List of all axes."
     fig_comparison: Figure
     fig_area_distr: Figure
     fig_area_sum: Figure
     
     config: AnalyzerConfig
+    "Configuration of the analyzer."
     
-    def __init__(self, file_path: str, config: AnalyzerConfig = None):
+    def __init__(self, config: AnalyzerConfig = None):
         """Create a new analyzer object.
 
         Args:
@@ -635,19 +646,39 @@ class Analyzer(object):
         
         #############
         # folder operations
-        self.file_dir = os.path.dirname(file_path)
-        self.out_dir = os.path.join(self.file_dir, config.out_name)
+        if config.path.endswith('\\'):
+            search_path = os.path.join(config.path, 'fracture', 'morph')
+            for file in os.listdir(search_path):
+                if 'Transmission' in file and file.endswith('.bmp'):
+                    print(f"[green]Found image in specimen folder.[/green]")
+                    self.file_path = os.path.join(search_path, file)
+                    self.file_dir = os.path.dirname(self.file_path)
+                    break
+            self.out_dir = os.path.join(config.path, 'fracture', 'splinter')
+
+            if self.file_dir is None:
+                raise Exception("Could not find a morphology file in the specified folder.")
+        else:
+            self.file_path = config.path
+            self.file_dir = os.path.dirname(config.path)
+            self.out_dir = os.path.join(self.file_dir, config.out_name)
+            
+            self.out_dir = os.path.join(self.out_dir, os.path.splitext(os.path.basename(config.path))[0])
         
-        self.out_dir = os.path.join(self.out_dir, os.path.splitext(os.path.basename(file_path))[0])
+        
+        print(f"Input file: '[bold]{self.file_path}[/bold]'")
+        print(f"Output directory: '[bold]{self.out_dir}[/bold]'")
+        # create output directory if not exists
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
             
         #############
         # image operations
         print('> Step 1: Preprocessing image...')
-        self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
+        self.original_image = cv2.imread(self.file_path, cv2.IMREAD_GRAYSCALE)
         if config.crop:
             self.original_image = crop_perspective(self.original_image, config)
+            # this is the default for the input images from cullet scanner
             self.original_image = cv2.rotate(self.original_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         
         self.preprocessed_image = preprocess_image(self.original_image, config)
@@ -655,7 +686,7 @@ class Analyzer(object):
 
         
         #############
-        # calculate scale factors
+        # calculate scale factors to make measurements in real units
         size_f = 1
         "size factor for mm/px"
         if config.real_image_size is not None and config.cropped_image_size is not None:
@@ -708,6 +739,8 @@ class Analyzer(object):
         self.contours = detect_fragments(skeleton, config)        
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
 
+        #############
+        # filter dark spots and delete fragments
         if not config.skip_darkspot_removal:
             print('> Step 4: Filter spots...')
             self.__filter_dark_spots(config)
@@ -736,15 +769,14 @@ class Analyzer(object):
         print("> Step 6: Stochastic analysis...")    
         self.__create_voronoi(config)
 
-
+        #############
+        # Orientational analysis
         if config.impact_position is not None:
-            #############
-            # Orientational analysis
             print("> Step 7: Orientation analysis...") 
             self.__create_impact_influence(size_f, config)
         
-   
-        
+
+        ############
         ############
         # Summary
         print('\n\n')
@@ -826,14 +858,14 @@ class Analyzer(object):
         fig,axs = plt.subplots()
         axs.imshow(self.image_contours)
         axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
-        fig.colorbar(axim, label='Intensity')
+        fig.colorbar(axim, label='Intensity [Splinters / Area]')
         # plt.scatter([x[0] for x in centroids], [x[1] for x in centroids], color='red', alpha=0.5, label='Data Points')
         # plt.legend()
         axs.xaxis.tick_top()
         axs.xaxis.set_label_position('top')
         axs.set_xlabel('Pixels')
         axs.set_ylabel('Pixels')
-        axs.set_title('Fracture Intensity')
+        axs.set_title(f'Fracture Intensity (h={config.intensity_h:.2f})')
         
         if config.debug_experimental:
             plt.show()

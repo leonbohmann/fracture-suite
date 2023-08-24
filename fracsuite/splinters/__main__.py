@@ -36,20 +36,7 @@ from rich import print
 
 args, config = AnalyzerConfig.parse(__doc__)
 
-
-if args.path.endswith('\\'):
-    search_path = os.path.join(args.path, 'fracture', 'morph')
-    for file in os.listdir(search_path):
-        if 'Transmission' in file and file.endswith('.bmp'):
-            print(f"[green]UPDATED analyzer path.[/green]")
-            config.path = os.path.join(search_path, file)
-            args.path = config.path
-            break
-
-print(f'Analyzing: {args.path}')
-
-
-analyzer = Analyzer(args.path, config)
+analyzer = Analyzer(config)
 
 analyzer.plot(display=config.displayplots, region=config.display_region)
 analyzer.plot_area(display=config.displayplots)
