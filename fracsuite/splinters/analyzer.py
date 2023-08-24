@@ -10,6 +10,8 @@ import numpy.typing as nptyp
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.widgets import RectangleSelector
+import matplotlib.colors as colors
+import matplotlib.cm as cmx
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from scipy.spatial.distance import pdist
 from skimage.morphology import skeletonize
@@ -17,6 +19,7 @@ from tqdm import tqdm
 from rich import inspect, print
 from fracsuite.splinters.splinter import Splinter
 
+from scipy.spatial import Delaunay
 
 class AnalyzerConfig:
     gauss_size: tuple[int,int] = (5,5)
@@ -45,6 +48,9 @@ class AnalyzerConfig:
     "real image size in mm"
     crop: bool = False             
     "crop input image"
+    impact_position: tuple[float, float] = None
+    "impact position in mm [X Y]"
+
 
     debug: bool = False                   
     "enable debug output"
@@ -74,6 +80,8 @@ class AnalyzerConfig:
     path: str = ""
     "Path to data"
     
+
+
     def get_parser(descr) -> argparse.ArgumentParser:
         """
         Create and return an argumentParser, that can be used to initialize a new 
@@ -135,6 +143,8 @@ class AnalyzerConfig:
             action="store_true", default=False)
         post.add_argument('-intensity-width', help='Pixel width for intensity calculation.',\
             type=int, default=500)
+        post.add_argument('-impactposition', nargs=2, metavar=('X', 'Y'), type=float, help='Impact position in mm [X Y]')
+
 
         output_group = parser.add_argument_group("Output")
         output_group.add_argument('-out', nargs="?", help='Output directory path.', \
@@ -175,6 +185,7 @@ class AnalyzerConfig:
         cfg.cropped_image_size = args.cropsize
         cfg.real_image_size = args.realsize
         cfg.resize_factor = args.resize_fac
+        cfg.impact_position = args.impactposition
 
         cfg.display_region = args.display_region
         cfg.intensity_h = args.intensity_width
@@ -182,6 +193,8 @@ class AnalyzerConfig:
         cfg.ext_imgs = args.image_ext
         cfg.skip_darkspot_removal = args.skip_spot_elim
         
+
+
         if args.debug is True:
             cfg.displayplots = True
 
@@ -191,9 +204,9 @@ class AnalyzerConfig:
             cfg.real_image_size = (args.realsize[0], args.realsize[0])
 
         if args.cropsize is not None and len(args.cropsize) > 1:
-            args.cropsize = tuple(args.cropsize)
+            cfg.cropped_image_size = tuple(args.cropsize)
         elif args.cropsize is not None and len(args.cropsize) == 1:
-            args.cropsize = (args.cropsize[0], args.cropsize[0])
+            cfg.cropped_image_size = (args.cropsize[0], args.cropsize[0])
         
         cfg.path = args.path
         
@@ -557,6 +570,21 @@ def rand_col():
     """
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
+def get_color(value, min_value = 0, max_value = 1, colormap_name='viridis'):
+    # Normalize the value to be in the range [0, 1]
+    normalized_value = (value - min_value) / (max_value - min_value)
+
+    # Choose the colormap
+    colormap = plt.get_cmap(colormap_name)
+
+    # Map the normalized value to a color
+    color = colormap(normalized_value)
+
+    # Convert the RGBA color to RGB
+    rgb_color = colors.to_rgba(color)[:3]
+
+    return tuple(int(255 * channel) for channel in rgb_color)
+
 def preprocess_spot_detect(img):
     img = cv2.GaussianBlur(img, (5,5), 3)
     img = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
@@ -620,14 +648,16 @@ class Analyzer(object):
         self.original_image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         if config.crop:
             self.original_image = crop_perspective(self.original_image, config)
-        
+            self.original_image = cv2.rotate(self.original_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         
         self.preprocessed_image = preprocess_image(self.original_image, config)
         
+
         
         #############
         # calculate scale factors
-        f = 1
+        size_f = 1
+        "size factor for mm/px"
         if config.real_image_size is not None and config.cropped_image_size is not None:
             # fx: mm/px
             fx = config.real_image_size[0] / config.cropped_image_size[0]
@@ -640,7 +670,7 @@ class Analyzer(object):
                     "Check the input image and also the img_real_size parameter.")
             
             # f: mm/px
-            f = fx
+            size_f = fx
             
             
         #############
@@ -674,10 +704,10 @@ class Analyzer(object):
            
         #############
         # detect fragments on the closed skeleton
-        print('> Step 3: Contour analysis...')
+        print('> Step 3: Preliminary contour analysis...')
         self.contours = detect_fragments(skeleton, config)        
-        self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
-        
+        self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
+
         if not config.skip_darkspot_removal:
             print('> Step 4: Filter spots...')
             self.__filter_dark_spots(config)
@@ -688,23 +718,7 @@ class Analyzer(object):
         # detect fragments on the closed skeleton
         print('> Step 5: Final contour analysis...')
         self.contours = detect_fragments(self.image_skeleton, config)        
-        self.splinters = [Splinter(x,i,f) for i,x in enumerate(self.contours)]
-        
-        print('\n\n')
-        
-        print(f'Splinter count: {len(self.contours)}')
-        #############
-        # check percentage of detected splinters
-        total_area = np.sum([x.area for x in self.splinters])
-        
-        if config.real_image_size is not None:
-            total_img_size = config.real_image_size[0] * config.real_image_size[1]
-        else:
-            total_img_size = self.preprocessed_image.shape[0] * \
-                self.preprocessed_image.shape[1]
-            
-        p = total_area / total_img_size * 100
-        print(f'Detection Ratio: {p:.2f}%')
+        self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]        
         
         #############
         # create images
@@ -716,12 +730,78 @@ class Analyzer(object):
             cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)        
         for c in self.contours:
             cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
-            
-        print("Stochastic analysis...")    
+
+        #############
+        # Stochastic analysis
+        print("> Step 6: Stochastic analysis...")    
         self.__create_voronoi(config)
+
+
+        if config.impact_position is not None:
+            #############
+            # Orientational analysis
+            print("> Step 7: Orientation analysis...") 
+            self.__create_impact_influence(size_f, config)
         
+   
+        
+        ############
+        # Summary
         print('\n\n')
-           
+        print(f'Splinter count: {len(self.contours)}')
+        self.__check_detection_ratio(config, doprint=True)
+        print('\n')
+
+    def __check_detection_ratio(self, config: AnalyzerConfig, doprint = False) -> float:
+        #############
+        # check percentage of detected splinters
+        total_area = np.sum([x.area for x in self.splinters])
+        
+        if config.real_image_size is not None:
+            total_img_size = config.real_image_size[0] * config.real_image_size[1]
+        else:
+            total_img_size = self.preprocessed_image.shape[0] * \
+                self.preprocessed_image.shape[1]
+            
+        p = total_area / total_img_size * 100
+        if doprint:
+            print(f'Detection Ratio: {p:.2f}%')
+        
+        return p
+        
+    def __create_impact_influence(self, size_f: float, config: AnalyzerConfig):
+        # analyze splinter orientations
+        orientation_image = self.original_image.copy()
+        orientation_image = cv2.cvtColor(orientation_image, cv2.COLOR_GRAY2BGR)
+        orients = []
+        for s in tqdm(self.splinters, leave=False):
+            orientation = s.measure_orientation(config)
+            orients.append(orientation)
+            color = get_color(orientation, colormap_name='turbo')
+            cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
+            # p2 = (s.centroid_px + s.angle_vector * 15).astype(np.int32)
+            # cv2.line(orientation_image, s.centroid_px, p2, (255,255,255), 3)
+        cv2.circle(orientation_image, (np.array(config.impact_position) / size_f).astype(np.uint32),
+                   np.min(orientation_image.shape[:2]) // 50, (255,0,0), -1)
+
+        # save plot
+        fig, axs = plt.subplots()
+        axim = axs.imshow(orientation_image, cmap='turbo', vmin=0, vmax=1)
+        fig.colorbar(axim, label='Strength  [-]')
+        axs.xaxis.tick_top()
+        axs.xaxis.set_label_position('top')
+        axs.set_xlabel('Pixels')
+        axs.set_ylabel('Pixels')
+        axs.set_title('Splinter orientation towards impact point')
+        # create a contour plot of the orientations, that is overlayed onto the original image
+        if config.debug:
+            fig.show()
+            fig.waitforbuttonpress()
+        
+        fig.tight_layout()
+        fig.savefig(self.__get_out_file(f"fig_impact_influence.{config.ext_plots}"))
+
+
     def __create_voronoi(self, config: AnalyzerConfig):
         centroids = [x.centroid_px for x in self.splinters if x.has_centroid]
         voronoi = Voronoi(centroids)
@@ -743,19 +823,22 @@ class Analyzer(object):
         #TODO: compare voronoi splinter size distribution to actual distribution
         # X,Y,Z = csintkern(events, region, 500)        
         X, Y, Z = csintkern_optimized(events, region, config.intensity_h)
-        fig = plt.figure()
-        plt.imshow(self.image_contours)
-        plt.contourf(X, Y, Z, cmap='jet', alpha=0.5)
-        plt.colorbar(label='Intensity')
+        fig,axs = plt.subplots()
+        axs.imshow(self.image_contours)
+        axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
+        fig.colorbar(axim, label='Intensity')
         # plt.scatter([x[0] for x in centroids], [x[1] for x in centroids], color='red', alpha=0.5, label='Data Points')
         # plt.legend()
-        plt.xlabel('X Coordinate')
-        plt.ylabel('Y Coordinate')
-        plt.title('Kernel Density Estimation of Point Intensity')
+        axs.xaxis.tick_top()
+        axs.xaxis.set_label_position('top')
+        axs.set_xlabel('Pixels')
+        axs.set_ylabel('Pixels')
+        axs.set_title('Fracture Intensity')
         
         if config.debug_experimental:
             plt.show()
-            
+        
+        fig.tight_layout()
         fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
             
     def __filter_dark_spots(self, config: AnalyzerConfig):
