@@ -30,9 +30,11 @@ https://github.com/leonbohmann/fracture-suite
 """
 
 import os
-from fracsuite.splinters.analyzer import Analyzer, AnalyzerConfig
+from fracsuite.splinters.analyzer import Analyzer
 
 from rich import print
+
+from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 args, config = AnalyzerConfig.parse(__doc__)
 

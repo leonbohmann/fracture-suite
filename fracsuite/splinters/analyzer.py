@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import os
 import random
 
@@ -17,222 +16,11 @@ from scipy.spatial.distance import pdist
 from skimage.morphology import skeletonize
 from tqdm import tqdm
 from rich import inspect, print
+from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
 
 from scipy.spatial import Delaunay
 
-class AnalyzerConfig:
-    gauss_size: tuple[int,int] = (5,5)
-    "gaussian filter size before adaptive thold"
-    gauss_sigma: float = 5.0
-    "gaussian sigma before adaptive thold"
-    
-    thresh_block_size: int = 11
-    "adaptive threshold block size"
-    thresh_sensitivity: float = 5.0
-    "adaptive threshold sensitivity"
-    
-    skelclose_size: int = 3
-    "size of final closing kernel for skeleton"
-    skelclose_amnt: int = 5        
-    "iteration count of final closing kernel for skel"
-    
-    fragment_min_area_px: int = 20  
-    "minimum fragment area"
-    fragment_max_area_px: int = 25000
-    "maximum fragment area"
-    
-    real_image_size: tuple[int,int] = None
-    "real image size in mm"
-    cropped_image_size: tuple[int,int] = None
-    "real image size in mm"
-    crop: bool = False             
-    "crop input image"
-    impact_position: tuple[float, float] = None
-    "impact position in mm [X Y]"
-
-
-    debug: bool = False                   
-    "enable debug output"
-    debug_experimental: bool = False                   
-    "enable debug output"
-    display_region: tuple[int,int,int,int]  = None  
-    "region to display in output plots (x1,y1,x2,y2)"
-    resize_factor: float = 1.0    
-    "factor to resize input image in preprocess"
-    displayplots: bool = False
-    "Display plots during creation"
-    printconfig: bool = False
-    "Print the configuration before starting the script"
-    
-    out_name: str = ""              
-    "name of the output directory"
-    ext_plots: str = "png"             
-    "output extension for plots"
-    ext_imgs: str = "png"              
-    "output extension for images"
-    
-    skip_darkspot_removal: bool  = False   
-    "skip dark spot removal"
-    intensity_h: int = 500               
-    "intensity kernel width in px"
-    
-    path: str = ""
-    "Path to data"
-    
-
-
-    def get_parser(descr) -> argparse.ArgumentParser:
-        """
-        Create and return an argumentParser, that can be used to initialize a new 
-        AnalyzerConfig with `AnalyzerConfig.from_args(args)` method.
-        
-        This can be used, if the argumentparser should be extended. I.e. if highspeed
-        module wants to add a specific argument group.
-        
-        Args:
-            descr (string): The description, the argparse object should display on `-h`.
-
-        Returns:
-            argparse.ArgumentParser: Can be used to create AnalyzerConfig.
-        """
-        parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)    
-
-        gnrl_group = parser.add_argument_group("General")
-        gnrl_group.add_argument('--displayplots', action='store_true', \
-            help='Instruct the analyzer to display output plots.', default=False)
-        gnrl_group.add_argument('--debug', action='store_true', \
-            help='Sets a debug flag to display verbose output.', default=False)
-        gnrl_group.add_argument('--exp-debug', action='store_true', \
-            help='Sets an experimental debug flag to display verbose output.', default=False)
-        gnrl_group.add_argument('--printconfig', action='store_true', \
-            help='Print the config before starting the script.', default=False)
-        gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs. [Pixels]',\
-            type=int, default=None, metavar=('X1', 'Y1', 'X2', 'Y2'))
-
-        imgroup = parser.add_argument_group("Image operations")
-        imgroup.add_argument('path', nargs="?", help='The path of the image to be processed or a folder that contains a file in subfolder "[path]/fracture/morph/...Transmission.bmp".')
-        imgroup.add_argument('-realsize', nargs="*", help='Real size of the input image. If only one dim is provided, a square geometry is used.',\
-            type=int, default=None, metavar=('WIDTH', 'HEIGHT'))
-        imgroup.add_argument('-cropsize', nargs="*", help='Crop image size in pixels. If only one dim is provided, a square geometry is used.',\
-            type=int, default=None, metavar=('WIDTH', 'HEIGHT'))
-
-        prep = parser.add_argument_group("Preprocessor")
-        # image preprocessing arguments
-        prep.add_argument('-gauss-size', help='Gaussian filter size',\
-            type=int, default=5)
-        prep.add_argument('-gauss-sigma', help='Gaussian filter sigma',\
-            type=float, default=5)
-        prep.add_argument('-min-area', help='Minimum fragment area threshold [px²]',\
-            type=float, default=20)
-        prep.add_argument('-max-area', help='Maximum fragment area threshold [px²]',\
-            type=float, default=25000)
-        prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
-            type=float, default=6)
-        prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
-            type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
-        prep.add_argument('-resize-fac', help='Image resize factor before adaptive th.',\
-            type=float, default=1.0)
-
-        post = parser.add_argument_group("Postprocessor")
-        post.add_argument('-skelclose-sz', help='Size for final skeleton close kernel.',\
-            type=int, default=3)
-        post.add_argument('-skelclose-amnt', help='Iterations for final skeleton close kernel.',\
-            type=int, default=5)
-        post.add_argument('--skip-spot-elim', help='Instruct the postprocessor to skip "dark-spot" removal.',\
-            action="store_true", default=False)
-        post.add_argument('-intensity-width', help='Pixel width for intensity calculation.',\
-            type=int, default=500)
-        post.add_argument('-impactposition', nargs=2, metavar=('X', 'Y'), type=float, help='Impact position in mm [X Y]')
-
-
-        output_group = parser.add_argument_group("Output")
-        output_group.add_argument('-out', nargs="?", help='Output directory path.', \
-            default="fracsuite-output")
-        output_group.add_argument('-plot-ext', nargs="?", help='Plot file extension. Default: png.', \
-            default="png", choices=['png', 'pdf', 'jpg', 'bmp'])
-        output_group.add_argument('-image-ext', nargs="?", help='Image file extension. Default: png.',\
-            default="png", choices=['png', 'jpg', 'bmp'])
-        
-        return parser
-    
-    def from_args(args) -> AnalyzerConfig:
-        """
-        Create AnalyzerConfig from command line arguments.
-
-        Args:
-            args (argparse.Namespace): The arguments parsed from argparse.
-
-        Returns:
-            AnalyzerConfig: The configuration.
-        """
-        cfg = AnalyzerConfig()
-        cfg.debug = args.debug
-        cfg.debug_experimental = args.exp_debug   
-        cfg.printconfig = args.printconfig
-        
-        cfg.gauss_size = (args.gauss_size,args.gauss_size)
-        cfg.gauss_sigma = args.gauss_sigma
-        cfg.fragment_min_area_px = args.min_area
-        cfg.fragment_max_area_px = args.max_area
-        
-        
-        cfg.thresh_block_size = args.thresh_block
-        cfg.thresh_sensitivity = args.thresh_sens
-        cfg.skelclose_size = args.skelclose_sz
-        cfg.skelclose_amnt = args.skelclose_amnt
-        cfg.crop = args.cropsize is not None
-        cfg.cropped_image_size = args.cropsize
-        cfg.real_image_size = args.realsize
-        cfg.resize_factor = args.resize_fac
-        cfg.impact_position = args.impactposition
-
-        cfg.display_region = args.display_region
-        cfg.intensity_h = args.intensity_width
-        cfg.ext_plots = args.plot_ext
-        cfg.ext_imgs = args.image_ext
-        cfg.skip_darkspot_removal = args.skip_spot_elim
-        
-
-
-        if args.debug is True:
-            cfg.displayplots = True
-
-        if args.realsize is not None and len(args.realsize) > 1:
-            cfg.real_image_size = tuple(args.realsize)
-        elif args.realsize is not None and len(args.realsize) == 1:
-            cfg.real_image_size = (args.realsize[0], args.realsize[0])
-
-        if args.cropsize is not None and len(args.cropsize) > 1:
-            cfg.cropped_image_size = tuple(args.cropsize)
-        elif args.cropsize is not None and len(args.cropsize) == 1:
-            cfg.cropped_image_size = (args.cropsize[0], args.cropsize[0])
-        
-        cfg.path = args.path
-        
-        if cfg.printconfig:
-            cfg.print()
-        
-        return cfg
-    
-    def parse(descr: str) -> tuple[argparse.Namespace, AnalyzerConfig]:
-        """Directly parse and return a Namespace and AnalyzerConfig.
-
-        Args:
-            descr (str): Display description on `-h`.
-
-        Returns:
-            tuple[argparse.Namespace, AnalyzerConfig]: Results.
-        """
-        args = AnalyzerConfig.get_parser(descr).parse_args()
-        return args, AnalyzerConfig.from_args(args)
-    
-    def __init__(self):
-        pass
-        
-    def print(self):
-        print(self.__dict__)            
-            
 def isgray(img):
         if len(img.shape) < 3: 
             return True
@@ -245,15 +33,17 @@ def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] 
     if isgray(img) and color:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     
-    plt.imshow(img)
-    plt.title(title)
+    fig, axs = plt.subplots()
+    axs.imshow(img)
+    axs.set_title(title)
     
     if region is not None:
         (x1, y1, x2, y2) = region
-        plt.xlim((x1,x2))
-        plt.ylim((y1,y2))
+        axs.set_xlim((x1,x2))
+        axs.set_ylim((y1,y2))
         
-    plt.show() 
+    plt.show()
+     
 
 def crop_perspective(img, config: AnalyzerConfig):
     """
@@ -396,6 +186,9 @@ def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
     """
     
     rsz_fac = config.resize_factor # x times smaller
+
+    if not isgray(image):
+        image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)
 
     # Apply Gaussian blur to reduce noise and enhance edge detection
     image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
@@ -680,6 +473,7 @@ class Analyzer(object):
             self.original_image = crop_perspective(self.original_image, config)
             # this is the default for the input images from cullet scanner
             self.original_image = cv2.rotate(self.original_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            self.original_image = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
         
         self.preprocessed_image = preprocess_image(self.original_image, config)
         
@@ -702,7 +496,7 @@ class Analyzer(object):
             
             # f: mm/px
             size_f = fx
-            
+            config.size_factor = size_f
             
         #############
         # initial contour operations
@@ -755,10 +549,8 @@ class Analyzer(object):
         
         #############
         # create images
-        self.image_contours = \
-            cv2.cvtColor(self.original_image.copy(), cv2.COLOR_GRAY2BGR)
-        self.image_filled = \
-            cv2.cvtColor(self.original_image.copy(), cv2.COLOR_GRAY2BGR)
+        self.image_contours = self.original_image.copy()
+        self.image_filled = self.original_image.copy()
         for c in self.contours:
             cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)        
         for c in self.contours:
@@ -775,6 +567,11 @@ class Analyzer(object):
             print("> Step 7: Orientation analysis...") 
             self.__create_impact_influence(size_f, config)
         
+        #############
+        # count splinters in norm region
+        if config.norm_region_center is not None:
+            print("> Step 8: Count splinters in norm region...")
+            self.__count_splinters_in_norm_region(config)
 
         ############
         ############
@@ -783,6 +580,43 @@ class Analyzer(object):
         print(f'Splinter count: {len(self.contours)}')
         self.__check_detection_ratio(config, doprint=True)
         print('\n')
+
+    def __count_splinters_in_norm_region(self, config: AnalyzerConfig) -> float:
+        # create rectangle around args.normregioncenter with 5x5cm size
+        # and count splinters in it
+        x,y = config.norm_region_center
+        w,h = config.norm_region_size
+        x1 = x - w // 2
+        x2 = x + w // 2
+        y1 = y - h // 2
+        y2 = y + h // 2
+
+        s_count = 0
+        # count splinters in norm region
+        for s in self.splinters:
+            if s.in_region((x1,y1,x2,y2)):
+                s_count += 1
+
+        print(f'Splinters in norm region: {s_count}')
+
+        # transform to real image size
+        x1 = int(x1 // config.size_factor)
+        x2 = int(x2 // config.size_factor)
+        y1 = int(y1 // config.size_factor)
+        y2 = int(y2 // config.size_factor)
+
+        # get norm region from original image (has to be grayscale for masking)
+        norm_region_mask = np.zeros_like(cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY))
+        cv2.rectangle(norm_region_mask, (x1,y1), (x2,y2), 255, -1)
+        # create image parts        
+        normed_image = cv2.bitwise_and(self.image_filled, self.image_filled, mask=norm_region_mask)
+        normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
+        # add images together
+        normed_image = cv2.addWeighted(normed_image, 0.3, normed_image_surr, 1.0, 0)
+        cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)        
+        cv2.putText(normed_image, f'{s_count}', (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0,0,255), 20)
+        cv2.imwrite(self.__get_out_file(f"norm_count.{config.ext_imgs}"), cv2.resize(normed_image, (0,0), fx=0.5, fy=0.5))
+        return s_count
 
     def __check_detection_ratio(self, config: AnalyzerConfig, doprint = False) -> float:
         #############
@@ -804,7 +638,6 @@ class Analyzer(object):
     def __create_impact_influence(self, size_f: float, config: AnalyzerConfig):
         # analyze splinter orientations
         orientation_image = self.original_image.copy()
-        orientation_image = cv2.cvtColor(orientation_image, cv2.COLOR_GRAY2BGR)
         orients = []
         for s in tqdm(self.splinters, leave=False):
             orientation = s.measure_orientation(config)
@@ -1029,15 +862,7 @@ class Analyzer(object):
         # Overlay found contours on the original image
         self.ax2.set_title("Detected Cracks")
         self.ax2.axis('off')
-        image0 = cv2.cvtColor(self.original_image.copy(), cv2.COLOR_GRAY2RGB)
-        
-        # for c in contours:        
-        #     cv2.drawContours(image0, [c], -1, (120,0,120), thickness = -1)        
-        cv2.drawContours(image0, self.contours, -1, (255,0,0), thickness = 1)
-        
-        self.ax2.imshow(image0)
-        # for contour in tqdm(contours):
-        #     ax2.plot(contour[:, 0, 0], contour[:, 0, 1], 'r')
+        self.ax2.imshow(self.image_contours)
 
         if region is not None:
             (x1, y2, x2, y1) = region

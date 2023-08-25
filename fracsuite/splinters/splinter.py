@@ -81,6 +81,19 @@ class Splinter:
         self.angle_vector = np.array((x, y))
         return angle_degrees
 
+    def in_region(self, rect: tuple[float,float,float,float]) -> bool:
+        """Check if the splinter is in the given region.
+
+        Args:
+            rect (tuple[float,float,float,float]): Region to check. (x1,y1,x2,y2)
+
+        Returns:
+            bool: True if the splinter is in the region.
+        """
+        x1,y1,x2,y2 = rect
+        x,y = self.centroid_mm
+        return x1 <= x <= x2 and y1 <= y <= y2
+
     def __calculate_orientation_score(self, origin) -> float:
         """Calculate the alignment score of the splinter with the given vector.
         
