@@ -200,7 +200,7 @@ def test2(reader: APReader):
         (time, acc3.data, "r-", "Acc 3 [g]", "Acc 2"), \
         (time, acc2.data, "b-", "Acc 2 [g]", "Acc 2"), \
         (time, acc6.data, "y-", "Acc 6 [g]", "Acc 6")], 
-        'Time integrals of Acceleration')
+        'Comparison of different impact times')
     fig.savefig(os.path.join(out_dir, "fall2.png"))
 
 parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
