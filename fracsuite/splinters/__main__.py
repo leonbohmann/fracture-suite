@@ -31,9 +31,6 @@ https://github.com/leonbohmann/fracture-suite
 
 import os
 from fracsuite.splinters.analyzer import Analyzer
-
-from rich import print
-
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 parser = AnalyzerConfig.get_parser(__doc__)
