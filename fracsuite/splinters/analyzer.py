@@ -169,43 +169,6 @@ def crop_perspective(img, config: AnalyzerConfig):
     # and return the transformed image
     return img_original
 
-def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
-    """Preprocess a raw image.
-
-    Args:
-        image (nd.array): The input image.
-        gauss_sz (size-tuple, optional): The size of the gaussian filter. 
-                                        Defaults to (5,5).
-        gauss_sig (int, optional): The sigma for gaussian filter. Defaults to 3.
-        block_size (int, optional): Block size of adaptive threshold. Defaults to 11.
-        C (int, optional): Sensitivity of adaptive threshold. Defaults to 6.
-        rsz (int, optional): Resize factor for the image. Defaults to 1.
-
-    Returns:
-        np.array: Preprocessed image.
-    """
-    
-    rsz_fac = config.resize_factor # x times smaller
-
-    if not isgray(image):
-        image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)
-
-    # Apply Gaussian blur to reduce noise and enhance edge detection
-    image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
-    image = cv2.resize(image,(int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
-
-    if config.debug:
-        plotImage(image, 'PREP: GaussianBlur -> Resize', region=config.display_region)
-    
-    # Use adaptive thresholding
-    image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, \
-        cv2.THRESH_BINARY, config.thresh_block_size, config.thresh_sensitivity)
-    
-    if config.debug:
-        plotImage(image, 'PREP: ... -> Adaptive Thresh', region=config.display_region)
-    
-    return image
-
 
 
 def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
@@ -379,6 +342,9 @@ def get_color(value, min_value = 0, max_value = 1, colormap_name='viridis'):
     return tuple(int(255 * channel) for channel in rgb_color)
 
 def preprocess_spot_detect(img):
+    if not isgray(img):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
     img = cv2.GaussianBlur(img, (5,5), 3)
     img = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
     return img
@@ -440,7 +406,7 @@ class Analyzer(object):
         #############
         # folder operations
         if config.path.endswith('\\'):
-            search_path = os.path.join(config.path, 'fracture', 'morph')
+            search_path = os.path.join(config.path, 'fracture', 'morphology')
             for file in os.listdir(search_path):
                 if 'Transmission' in file and file.endswith('.bmp'):
                     print(f"[green]Found image in specimen folder.[/green]")
@@ -475,7 +441,7 @@ class Analyzer(object):
             self.original_image = cv2.rotate(self.original_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.original_image = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
         
-        self.preprocessed_image = preprocess_image(self.original_image, config)
+        self.preprocessed_image = self.preprocess_image(self.original_image, config)
         
 
         
@@ -512,21 +478,27 @@ class Analyzer(object):
         # first step is to skeletonize the stencil        
         print('> Step 2.1: Skeletonize 1|2')
         skeleton = skeletonize(255-stencil)
-        skeleton = skeleton.astype(np.uint8)
+        skeleton = skeleton.astype(np.uint8)  * 255
+        cv2.imwrite(self.__get_out_file('.debug/skeleton.png'), skeleton)
+        
         if config.debug:
             plotImage(skeleton, 'SKEL1', False, region=config.display_region)
         skeleton = closeImg(skeleton, config.skelclose_size, config.skelclose_amnt)
+        
+        cv2.imwrite(self.__get_out_file('.debug/closed.png'), skeleton)
+        
         if config.debug:
             plotImage(skeleton, 'SKEL1 - Closed', False, region=config.display_region)
         # second step is to skeletonize the closed skeleton from #1
         print('> Step 2.2: Skeletonize 2|2')
         skeleton = skeletonize(skeleton)
-        skeleton = skeleton.astype(np.uint8)
+        skeleton = skeleton.astype(np.uint8) * 255
+        cv2.imwrite(self.__get_out_file('.debug/closed_skeleton.png'), skeleton)
         if config.debug:
             plotImage(skeleton, 'SKEL2', False, region=config.display_region)
          
         self.image_skeleton = skeleton.copy()
-           
+        
         #############
         # detect fragments on the closed skeleton
         print('> Step 3: Preliminary contour analysis...')
@@ -547,6 +519,9 @@ class Analyzer(object):
         self.contours = detect_fragments(self.image_skeleton, config)        
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]        
         
+        self.image_skeleton_rgb = cv2.cvtColor(skeleton, cv2.COLOR_GRAY2BGR)
+        
+        
         #############
         # create images
         self.image_contours = self.original_image.copy()
@@ -555,6 +530,14 @@ class Analyzer(object):
             cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)        
         for c in self.contours:
             cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
+        cv2.imwrite(self.__get_out_file(f"img_filled.{self.config.ext_imgs}"), self.image_filled)
+        cv2.imwrite(self.__get_out_file(f"img_contours.{self.config.ext_imgs}"), self.image_contours)
+        cv2.imwrite(self.__get_out_file(f"debug_preprocessed.{self.config.ext_imgs}"), self.preprocessed_image)
+        cv2.imwrite(self.__get_out_file(f"debug_skeleton.{self.config.ext_imgs}"), self.image_skeleton_rgb)
+
+        combined = cv2.addWeighted(self.image_contours, 1.0, self.image_filled, 0.3, 0.0)
+        cv2.imwrite(self.__get_out_file(f"img_contourfills_combined.{self.config.ext_imgs}"), combined)
+        
 
         #############
         # Stochastic analysis
@@ -572,6 +555,17 @@ class Analyzer(object):
         if config.norm_region_center is not None:
             print("> Step 8: Count splinters in norm region...")
             self.__count_splinters_in_norm_region(config)
+        else:
+            print("> Step 8: (SKIPPED)")
+            
+
+        self.__create_splintersize_filled_image(config)
+
+        print("> Create output plots...")
+        self.__plot_backend(config.display_region, display=config.displayplots)
+        self.__plot_splintersize_accumulation(display=config.displayplots)
+        self.__plot_splintersize_distribution(display=config.displayplots)
+
 
         ############
         ############
@@ -580,6 +574,46 @@ class Analyzer(object):
         print(f'Splinter count: {len(self.contours)}')
         self.__check_detection_ratio(config, doprint=True)
         print('\n')
+        
+    def preprocess_image(self, image, config: AnalyzerConfig) -> nptyp.ArrayLike:
+        """Preprocess a raw image.
+
+        Args:
+            image (nd.array): The input image.
+            gauss_sz (size-tuple, optional): The size of the gaussian filter. 
+                                            Defaults to (5,5).
+            gauss_sig (int, optional): The sigma for gaussian filter. Defaults to 3.
+            block_size (int, optional): Block size of adaptive threshold. Defaults to 11.
+            C (int, optional): Sensitivity of adaptive threshold. Defaults to 6.
+            rsz (int, optional): Resize factor for the image. Defaults to 1.
+
+        Returns:
+            np.array: Preprocessed image.
+        """
+        
+        rsz_fac = config.resize_factor # x times smaller
+
+        if not isgray(image):
+            image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)
+
+        # Apply Gaussian blur to reduce noise and enhance edge detection
+        image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
+        image = cv2.resize(image,(int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
+
+        cv2.imwrite(self.__get_out_file('.debug/step1.png'), image)
+        if config.debug:
+            plotImage(image, 'PREP: GaussianBlur -> Resize', region=config.display_region)
+        
+        # Use adaptive thresholding
+        image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, \
+            cv2.THRESH_BINARY, config.thresh_block_size, config.thresh_sensitivity)
+        
+        cv2.imwrite(self.__get_out_file('.debug/step2.png'), image)
+        if config.debug:
+            plotImage(image, 'PREP: ... -> Adaptive Thresh', region=config.display_region)
+        
+        return image
+
 
     def __count_splinters_in_norm_region(self, config: AnalyzerConfig) -> float:
         # create rectangle around args.normregioncenter with 5x5cm size
@@ -717,7 +751,7 @@ class Analyzer(object):
             x, y, w, h = cv2.boundingRect(s.contour)
             roi_orig = img[y:y+h, x:x+w]
             
-            mask = np.zeros_like(self.original_image)
+            mask = np.zeros_like(img)
             cv2.drawContours(mask, [s.contour], -1, 255, thickness=cv2.FILLED)
             
             roi = mask[y:y+h, x:x+w]
@@ -725,7 +759,7 @@ class Analyzer(object):
             result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
             
             # Check if all pixels in the contour area are black
-            if np.all(result == 0):                
+            if np.mean(result) < 0.25:
                 bar.set_description(f'Removed {len(i_del)} Splinters')
                 i_del.append(i)
             elif config.debug_experimental:
@@ -799,13 +833,19 @@ class Analyzer(object):
             plt.show()
         
         
-    def __get_out_file(self, file_name: str) -> str:
+    def __get_out_file(self, file_name: str, file_ext: str = None) -> str:
         """Returns an absolute file path to the output directory.
 
         Args:
             file_name (str): The filename inside of the output directory.
+            file_ext (str): The file extension.
         """
-        return os.path.join(self.out_dir, file_name)
+        if file_ext is not None:
+            file_name = f'{file_name}.{file_ext}'
+        
+        path = os.path.join(self.out_dir, file_name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return path
     
     def __onselect(self,eclick, erelease):
         """ Private function, internal use only. """
@@ -828,19 +868,25 @@ class Analyzer(object):
         # print(selected_region)
         return selected_region
     
-    def save_images(self, extension = 'png') -> None:
-        print(f'Saving images to {self.out_dir}.')
-        cv2.imwrite(self.__get_out_file(f"filled.{extension}"), self.image_filled)
-        cv2.imwrite(self.__get_out_file(f"contours.{extension}"), self.image_contours)
-    
-    def save_plots(self, extension = 'png') -> None:
-        print(f'Saving plots to {self.out_dir}.')
-        self.fig_area_distr.savefig(self.__get_out_file(f"fig_distribution.{extension}"))
-        self.fig_area_sum.savefig(self.__get_out_file(f"fig_sumofarea.{extension}"))
-        self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{extension}"))
+    def __create_splintersize_filled_image(self, config: AnalyzerConfig):
+        img = self.original_image.copy()
+        areas = [x.area for x in self.splinters]
+        
+        min_area = np.min(areas)
+        max_area = np.max(areas)
+        
+        for s in self.splinters:            
+            clr = get_color(s.area, min_value=min_area, max_value=max_area, colormap_name='turbo')
+            cv2.drawContours(img, [s.contour], -1, clr, -1)
+            
+        cv2.imwrite(self.__get_out_file("img_splintersizes", config.ext_imgs), img)
+        combined = cv2.addWeighted(255-self.original_image, 1.0, img, 0.75, 0.0)
+        cv2.imwrite(self.__get_out_file(f"img_splintersizes_combined.{self.config.ext_imgs}"), combined)
+        combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, img, 0.6, 0.0)
+        cv2.imwrite(self.__get_out_file(f"debug_skeleton_combined.{self.config.ext_imgs}"), combined)
         
     
-    def plot(self, region = None, display = False) -> None:
+    def __plot_backend(self, region = None, display = False) -> None:
         """
         Plots the analyzer backend.
         Displays the original img, preprocessed img, and an overlay of the found cracks
@@ -888,10 +934,11 @@ class Analyzer(object):
         
         if display:
             plt.show()
-        
+            
+        self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{self.config.ext_plots}"))
         return self.fig_comparison
         
-    def plot_area(self, display = False) -> Figure:
+    def __plot_splintersize_accumulation(self, display = False) -> Figure:
         """Plots a graph of accumulated share of area for splinter sizes.
 
         Returns:
@@ -926,9 +973,12 @@ class Analyzer(object):
         # plt.axvline(5000**2, c='r', label='Image Area')
         if display:
             plt.show()
+
+        self.fig_area_sum.savefig(self.__get_out_file(f"fig_sumofarea.{self.config.ext_plots}"))
+
         return self.fig_area_sum
     
-    def plot_area_2(self, display = False) -> Figure:
+    def __plot_splintersize_distribution(self, display = False) -> Figure:
         """Plots a graph of Splinter Size Distribution.
 
         Returns:
@@ -958,4 +1008,6 @@ class Analyzer(object):
         # plt.axvline(5000**2, c='r', label='Image Area')
         if display:
             plt.show()
+            
+        self.fig_area_distr.savefig(self.__get_out_file(f"fig_distribution.{self.config.ext_plots}"))
         return self.fig_area_distr
