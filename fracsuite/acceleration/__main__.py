@@ -179,7 +179,7 @@ def test2(reader: APReader):
         # (time, s_shifted, "g--", "Distance [m]", "Distance"),
         (time, s, "g", "Distance [m]", "Distance")], 
         'Time integrals of Acceleration')
-    fig.savefig(os.path.join(out_dir, "fall.png"))
+    fig.savefig(os.path.join(out_dir, f"{reader.fileName}_fall.png"))
     
     time = time - time[impact_time_id-5]
     print([x.Name for x in reader.Channels])
@@ -201,7 +201,7 @@ def test2(reader: APReader):
         (time, acc2.data, "b-", "Acc 2 [g]", "Acc 2"), \
         (time, acc6.data, "y-", "Acc 6 [g]", "Acc 6")], 
         'Comparison of different impact times')
-    fig.savefig(os.path.join(out_dir, "fall2.png"))
+    fig.savefig(os.path.join(out_dir, f"{reader.fileName}_fall2.png"))
 
 parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
 
