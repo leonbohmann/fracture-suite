@@ -36,13 +36,27 @@ from rich import print
 
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
-args, config = AnalyzerConfig.parse(__doc__)
+parser = AnalyzerConfig.get_parser(__doc__)
 
-analyzer = Analyzer(config)
+parser.add_argument("--all", default=False, 
+                    help="Instruct the analyzer to run the analysis on every subfolder.",
+                    action='store_true')
 
-analyzer.plot(display=config.displayplots, region=config.display_region)
-analyzer.plot_area(display=config.displayplots)
-analyzer.plot_area_2(display=config.displayplots)
+args = parser.parse_args()
+config = AnalyzerConfig.from_args(args)
 
-analyzer.save_images(extension=config.ext_imgs)
-analyzer.save_plots(extension=config.ext_plots)
+if args.all:
+    project_dir = config.path
+    for file in os.listdir(project_dir):
+        project_path = os.path.join(project_dir, file, '\\')
+        
+        if os.path.exists(project_path):
+            config.path = project_path
+            analyzer = Analyzer(config)
+        
+        
+        
+else:
+    analyzer = Analyzer(config)
+    
+

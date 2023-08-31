@@ -45,7 +45,7 @@ args = parser.parse_args()
 if args.measurement.lower().endswith('.bin'):
     file = args.measurement
 else:
-    search_path = os.path.join(args.measurement, 'fracture', 'acc')
+    search_path = os.path.join(args.measurement, 'fracture', 'acceleration')
     for pfile in os.listdir(search_path):
         if pfile.lower().endswith('bin'):
             file = os.path.join(search_path, pfile)
@@ -59,6 +59,7 @@ out_dir = os.path.dirname(file)
 reader = APReader(file, verbose=True)
 
 reader.printSummary()
+reader.plot()
 
 # slow_group = reader.Groups[0]
 # fall_group = reader.collectDatasets(["Fall_g1", "Fall_g2"])
@@ -177,3 +178,25 @@ fig,axs = plot_multiple_datasets([ \
     (time, s, "g", "Distance [m]", "Distance")], 
     'Time integrals of Acceleration')
 fig.savefig(os.path.join(out_dir, "fall.png"))
+
+time = time - time[impact_time_id-5]
+print([x.Name for x in reader.Channels])
+# Auswertung auf Impact beziehen und Zeit ab dort messen
+acc1 = reader.Channels[1]
+acc2 = reader.Channels[2]
+acc3 = reader.Channels[3]
+acc4 = reader.Channels[4]
+acc5 = reader.Channels[5]
+acc6 = reader.Channels[6]
+acc_g1 = reader.Channels[7]
+acc_g2 = reader.Channels[8]
+
+
+fig,axs = plot_multiple_datasets([ \
+    # (time, drop_acc1, "k-", "Fall 1 [g]", "Fall 1"), \
+    (time, acc_g2.data, "g-", "Fall 2 [g]", "Fall 2"), \
+    (time, acc3.data, "r-", "Acc 3 [g]", "Acc 2"), \
+    (time, acc2.data, "b-", "Acc 2 [g]", "Acc 2"), \
+    (time, acc6.data, "y-", "Acc 6 [g]", "Acc 6")], 
+    'Time integrals of Acceleration')
+fig.savefig(os.path.join(out_dir, "fall2.png"))
