@@ -2,7 +2,7 @@ import argparse
 from argparse import RawDescriptionHelpFormatter
 import os
 from matplotlib import pyplot as plt
-from apread import APReader, plot_multiple_datasets
+from apread import APReader, plot_multiple_datasets, Channel
 import numpy as np
 from scipy import integrate, signal
 
@@ -33,12 +33,72 @@ def time_to_index(time_array, t):
     """Returns the index of the time array that is closest to the given time t."""
     return np.argmin(np.abs(time_array - t))
 
+def test1(reader: APReader):
+    time = reader.Groups[0].ChannelX.data
+    # impact_time_id = np.argmax([])    
+    # time = time - time[impact_time_id-5]
+    print([x.Name for x in reader.Channels])
+
+    ds = reader.collectChannels(['Force', 'Acc1', 'Fall_g2'])
+
+    fig,axs = plot_multiple_datasets([ \
+        (time, ds[0].data, "g-", "Force [N]", "Fall 2"),
+        (time, ds[1].data, "r-", "PCB Acc [g]", "PCB Acc"),
+        (time, ds[2].data, "b-", "Endevco Acc[g]", "Endevco Acc")], 
+        'Acceleration delay in fall weight')
+    
+    fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
+
+def test3(reader: APReader):
+    time = reader.Groups[0].ChannelX.data
+    # impact_time_id = np.argmax([])    
+    # time = time - time[impact_time_id-5]
+    print([x.Name for x in reader.Channels])
+
+    ds = reader.collectChannels(['Force', 'Acc1', 'Acc2', 'Acc3', 'Acc4', 'Acc7'])
+
+    fig,axs = plot_multiple_datasets([ \
+        (time, ds[0].data, "g-", "Force [N]", "Fall 2"),
+        (time, ds[1].data, "r-", "Acc 1 [g]", "PCB Acc"),
+        (time, ds[2].data, "k-", "Acc 2 (S) [g]", "PCB Acc"),
+        (time, ds[3].data, "y-", "Acc 3 [g]", "PCB Acc"),
+        (time, ds[4].data, "m-", "Acc 4 (S) [g]", "PCB Acc"),
+        (time, ds[5].data, "b-", "Acc 7 [g]", "Acc 7")], 
+        'Acceleration delay in fall weight')
+    
+    fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
+
+
+def test2(reader: APReader, time: Channel, impact_time_id):
+    time = time - time[impact_time_id-5]
+    print([x.Name for x in reader.Channels])
+    # Auswertung auf Impact beziehen und Zeit ab dort messen
+    acc1 = reader.Channels[1]
+    acc2 = reader.Channels[2]
+    acc3 = reader.Channels[3]
+    acc4 = reader.Channels[4]
+    acc5 = reader.Channels[5]
+    acc6 = reader.Channels[6]
+    acc_g1 = reader.Channels[7]
+    acc_g2 = reader.Channels[8]
+
+
+    fig,axs = plot_multiple_datasets([ \
+        # (time, drop_acc1, "k-", "Fall 1 [g]", "Fall 1"), \
+        (time, acc_g2.data, "g-", "Fall 2 [g]", "Fall 2"), \
+        (time, acc3.data, "r-", "Acc 3 [g]", "Acc 2"), \
+        (time, acc2.data, "b-", "Acc 2 [g]", "Acc 2"), \
+        (time, acc6.data, "y-", "Acc 6 [g]", "Acc 6")], 
+        'Time integrals of Acceleration')
+    fig.savefig(os.path.join(out_dir, "fall2.png"))
 
 parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
 
 parser.add_argument('measurement', nargs="?", \
     help="""The measurement to be processed. This can either be a .bin file or a project folder that
     has subfolders 'fracture/acc', where the bin file is located.""")
+parser.add_argument('-test', nargs=1, default=None, \
+    help="""Run the test environment""")
 
 args = parser.parse_args()
 
@@ -60,6 +120,12 @@ reader = APReader(file, verbose=True)
 
 reader.printSummary()
 reader.plot()
+
+if args.test is not None:
+    fname = f'test{args.test[0]}'
+    print(f'Calling {fname}')
+    func = globals()[fname]
+    func(reader)
 
 # slow_group = reader.Groups[0]
 # fall_group = reader.collectDatasets(["Fall_g1", "Fall_g2"])
@@ -179,24 +245,3 @@ fig,axs = plot_multiple_datasets([ \
     'Time integrals of Acceleration')
 fig.savefig(os.path.join(out_dir, "fall.png"))
 
-time = time - time[impact_time_id-5]
-print([x.Name for x in reader.Channels])
-# Auswertung auf Impact beziehen und Zeit ab dort messen
-acc1 = reader.Channels[1]
-acc2 = reader.Channels[2]
-acc3 = reader.Channels[3]
-acc4 = reader.Channels[4]
-acc5 = reader.Channels[5]
-acc6 = reader.Channels[6]
-acc_g1 = reader.Channels[7]
-acc_g2 = reader.Channels[8]
-
-
-fig,axs = plot_multiple_datasets([ \
-    # (time, drop_acc1, "k-", "Fall 1 [g]", "Fall 1"), \
-    (time, acc_g2.data, "g-", "Fall 2 [g]", "Fall 2"), \
-    (time, acc3.data, "r-", "Acc 3 [g]", "Acc 2"), \
-    (time, acc2.data, "b-", "Acc 2 [g]", "Acc 2"), \
-    (time, acc6.data, "y-", "Acc 6 [g]", "Acc 6")], 
-    'Time integrals of Acceleration')
-fig.savefig(os.path.join(out_dir, "fall2.png"))
