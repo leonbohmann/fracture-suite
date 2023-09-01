@@ -33,6 +33,15 @@ def time_to_index(time_array, t):
     """Returns the index of the time array that is closest to the given time t."""
     return np.argmin(np.abs(time_array - t))
 
+def plotChannels(chans: list[Channel], lbs: list[str], title: str):
+    styles = [None] * len(chans)
+    for x in range(0,len(chans)):
+        if len(lbs) > x:
+            styles[x] = lbs[x]
+            
+    return plot_multiple_datasets([(x.Time.data, x.data, l, f'{x.Name} [{x.unit}]', x.Name) for x,l in zip(chans, styles)], title)
+
+
 def test1(reader: APReader):
     time = reader.Groups[0].ChannelX.data
     # impact_time_id = np.argmax([])    
@@ -48,6 +57,42 @@ def test1(reader: APReader):
         'Acceleration delay in fall weight')
     
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
+    
+def test4(reader: APReader):
+    time = reader.Groups[0].ChannelX.data
+    # impact_time_id = np.argmax([])    
+    # time = time - time[impact_time_id-5]
+    print([x.Name for x in reader.Channels])
+
+    ds = reader.collectChannels(['Force', 'Fall_g2'])
+
+    fig,axs = plot_multiple_datasets([ \
+        (time, ds[0].data, "g-", "Force [N]", "Force"),
+        (time, ds[1].data, "r-", "Fall_g2 [g]", "Fall_g2")], 
+        'Acceleration delay in fall weight')
+    
+    fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
+
+def test_hammer_sensor_fallgewicht(reader: APReader):
+    time = reader.Groups[0].ChannelX.data
+    # impact_time_id = np.argmax([])    
+    # time = time - time[impact_time_id-5]
+
+    ds = reader.collectChannels(['Force', 'Acc1', 'Fall_g2'])
+
+    fig,axs = plotChannels(ds, ['r-', 'g-', 'b-'], 
+        'Acceleration delay in fall weight')
+    
+    fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
+
+
+def test_impact_delay(reader:APReader):
+    ds = reader.collectChannels(['Fall_g1', 'Fall_g2', 'Acc2', 'Acc6', 'Acc3'])
+
+    fig,axs = plotChannels(ds, ['b--', 'g--'], 
+        'Acceleration delay in fall weight')
+    
+    fig.savefig(os.path.join(out_dir, f"{reader.fileName}_impact_delay.png"))
 
 def test3(reader: APReader):
     time = reader.Groups[0].ChannelX.data
