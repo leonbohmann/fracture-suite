@@ -565,8 +565,7 @@ class Analyzer(object):
         self.__plot_backend(config.display_region, display=config.displayplots)
         self.__plot_splintersize_accumulation(display=config.displayplots)
         self.__plot_splintersize_distribution(display=config.displayplots)
-
-
+        
         ############
         ############
         # Summary
@@ -961,13 +960,13 @@ class Analyzer(object):
 
         data_x, data_y = zip(*data)
         
-        self.fig_area_sum = plt.figure()
+        self.fig_area_sum, ax = plt.subplots()
         
-        plt.plot(data_x, data_y, 'g-')    
-        plt.plot(data_x, data_y, 'rx', markersize=2)    
-        plt.title('Splinter Size Accumulation')
-        plt.xlabel(f"$Area_i [{'mm' if self.config.cropped_image_size is not None else 'px'}²]$")
-        plt.ylabel(r"$\frac{\sum (Area_i)}{Area_t} [-]$")
+        ax.plot(data_x, data_y, 'g-')    
+        ax.plot(data_x, data_y, 'rx', markersize=2)    
+        ax.set_title('Splinter Size Accumulation')
+        ax.set_xlabel(f"$Area_i [{'mm' if self.config.cropped_image_size is not None else 'px'}²]$")
+        ax.set_ylabel(r"$\frac{\sum (Area_i)}{Area_t} [-]$")
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
         # plt.axvline(5000**2, c='r', label='Image Area')
@@ -997,12 +996,12 @@ class Analyzer(object):
 
         data_x, data_y = zip(*data)
         
-        self.fig_area_distr = plt.figure()
-        plt.plot(data_x, data_y, 'g-')    
-        plt.plot(data_x, data_y, 'ro', markersize=3)    
-        plt.title('Splinter Size Distribution')
-        plt.xlabel(f"Splinter Area [{'mm' if self.config.cropped_image_size is not None else 'px'}²]")
-        plt.ylabel(r"Amount of Splinters [-]")
+        self.fig_area_distr, ax = plt.subplots()
+        ax.plot(data_x, data_y, 'g-')    
+        ax.plot(data_x, data_y, 'ro', markersize=3)    
+        ax.set_title('Splinter Size Distribution')
+        ax.set_xlabel(f"Splinter Area [{'mm' if self.config.cropped_image_size is not None else 'px'}²]")
+        ax.set_ylabel(r"Amount of Splinters [-]")
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
         # plt.axvline(5000**2, c='r', label='Image Area')
