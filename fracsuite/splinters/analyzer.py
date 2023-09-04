@@ -45,7 +45,7 @@ def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] 
     plt.show()
      
 
-def crop_perspective(img, config: AnalyzerConfig):
+def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
     """
     Crops a given image to its containing pane bounds. Finds smallest pane countour with
     4 corner points and aligns, rotates and scales the pane to fit a resulting image.
@@ -93,7 +93,7 @@ def crop_perspective(img, config: AnalyzerConfig):
     # # restore original image by thresholding
     _,im = cv2.threshold(im,127,255,0)
 
-    if config.debug:
+    if debug:
         plotImage(im, 'CROP: Image for rectangle detection')
     
     # fetch contour information
@@ -116,7 +116,7 @@ def crop_perspective(img, config: AnalyzerConfig):
         return img_original
     
     cv2.drawContours(im0, contours, -1, (0,0,255), 10)
-    if config.debug:
+    if debug:
         plotImage(im0, 'CROP: Detected contours')
     
     # Simplify contour
@@ -141,13 +141,13 @@ def crop_perspective(img, config: AnalyzerConfig):
         #raise CropException("Pane boundary could not be found.")
         pageContour = corners        
 
-    if config.debug:
+    if debug:
         cv2.drawContours(im0, [pageContour],-1, (0,0,255), thickness=im.shape[0]//50)
         plotImage(im0, 'CROP: Found rectangle contour')
         
     # Create target points
-    if config.cropped_image_size is not None:
-        width, height=config.cropped_image_size
+    if cropped_image_size is not None:
+        width, height=cropped_image_size
     else:
         height,width=im.shape[0],im.shape[1]
         
@@ -436,7 +436,7 @@ class Analyzer(object):
         print('> Step 1: Preprocessing image...')
         self.original_image = cv2.imread(self.file_path, cv2.IMREAD_GRAYSCALE)
         if config.crop:
-            self.original_image = crop_perspective(self.original_image, config)
+            self.original_image = crop_perspective(self.original_image, config.cropped_image_size, config.debug)
             # this is the default for the input images from cullet scanner
             self.original_image = cv2.rotate(self.original_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.original_image = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
