@@ -80,6 +80,7 @@ def fix_datamatrix_image(image):
     thresholded_image = cv2.dilate(thresholded_image, kernel, iterations=1)
 
     return thresholded_image
+
 def read_barcode_from_roi(original_image, plot = False):
     well = cv2.cvtColor(original_image, cv2.COLOR_BGRA2GRAY)
     well = cv2.GaussianBlur(well, (3, 3), 0.1)
@@ -129,30 +130,22 @@ def read_barcode_from_roi(original_image, plot = False):
     roi_image = cv2.cvtColor(original_image, cv2.COLOR_BGRA2GRAY)
     roi_image = cv2.threshold(roi_image, 95, 255, cv2.THRESH_BINARY)[1]
 
-    for i in range(2):
-        M = perspective_transform(box, (200,200))
-        roi = cv2.warpPerspective(roi_image, M, (200,200))    
-        roi = cv2.resize(roi, (100,100))
-        if plot:
-            plt.imshow(roi)
-            plt.show()
-        
-        decoded_objects = decode_2(roi)
-        
-        if decoded_objects:
-                    for obj in decoded_objects:
-                        data = obj.data.decode('utf-8')
-                        return data  # Return the barcode content if found
-        else:
-            dispImage(roi)
-            
-        original_image = fix_datamatrix_image(original_image)
-        
-        if not isgray(original_image):
-            original_image = cv2.cvtColor(original_image, cv2.COLOR_BGRA2GRAY)
-        
-        roi_image = cv2.adaptiveThreshold(original_image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 61, 30)
-
+    M = perspective_transform(box, (200,200))
+    roi = cv2.warpPerspective(roi_image, M, (200,200))    
+    roi = cv2.resize(roi, (100,100))
+    if plot:
+        plt.imshow(roi)
+        plt.show()
+    
+    decoded_objects = decode_2(roi)
+    
+    if decoded_objects:
+                for obj in decoded_objects:
+                    data = obj.data.decode('utf-8')
+                    return data  # Return the barcode content if found
+    else:
+        dispImage(roi)
+         
     
     # If no Data Matrix barcode was found, return None
     return None
