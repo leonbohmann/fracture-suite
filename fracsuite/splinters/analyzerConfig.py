@@ -165,7 +165,8 @@ class AnalyzerConfig:
         cfg.debug = args.debug
         cfg.debug_experimental = args.exp_debug
         cfg.printconfig = args.printconfig
-
+        cfg.displayplots = args.displayplots
+        
         cfg.gauss_size = (args.gauss_size,args.gauss_size)
         cfg.gauss_sigma = args.gauss_sigma
         cfg.fragment_min_area_px = args.min_area
