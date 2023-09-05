@@ -1,3 +1,4 @@
+import os
 from pyzbar.pyzbar import decode
 from pylibdmtx.pylibdmtx import decode as decode_datamatrix
 
@@ -61,9 +62,12 @@ def get_label(image):
     image = cv2.threshold(image, 180, 255, cv2.THRESH_BINARY)[1]
     # dispImage(image)
     contours, hierarchy = cv2.findContours(255-image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    
+    
     # out = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     # dispImage(cv2.drawContours(out, contours, -1, (255,0,0), 1)    )
-    areas = [cv2.contourArea(cv2.convexHull(x)) for x in contours[1:]]
+    areas = [cv2.contourArea(cv2.convexHull(x)) for x in contours]
     max_i = areas.index(max(areas))
     
     x,y,w,h = cv2.boundingRect(contours[max_i])    
@@ -81,13 +85,13 @@ def get_label(image):
     
 def find_code(label_original, plot = False):
     well = cv2.cvtColor(label_original, cv2.COLOR_BGRA2GRAY)
-    well = cv2.GaussianBlur(well, (3, 3), 0.1)
+    well = cv2.GaussianBlur(well, (3, 3), 0.3)
     well = cv2.threshold(well, 60, 255, cv2.THRESH_BINARY)[1]
 
     if plot:
         plt.subplot(151); plt.title('A')
         plt.imshow(well)
-    harris = cv2.cornerHarris(well, 25, 7, 0.04)
+    harris = cv2.cornerHarris(well, 20, 7, 0.04)
     if plot:
         plt.subplot(152); plt.title('B')
         plt.imshow(harris)
@@ -126,40 +130,18 @@ def find_code(label_original, plot = False):
     box = np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
     
     roi_image = cv2.cvtColor(label_original, cv2.COLOR_BGRA2GRAY)        
-    roi_image = cv2.threshold(roi_image, 127, 255, cv2.THRESH_BINARY)[1]
+    roi_image = cv2.threshold(roi_image, 95, 255, cv2.THRESH_BINARY)[1]
 
-    M = perspective_transform(box, (w,h))
-    roi = cv2.warpPerspective(roi_image, M, (w,h))    
-    roi = cv2.resize(roi, (w//4,h//4))
+    M = perspective_transform(box, (200,200))
+    roi = cv2.warpPerspective(roi_image, M, (200,200))    
+    # roi = cv2.resize(roi, (150,150))
+    roi = cv2.GaussianBlur(roi, (3, 3), 0.3)
     # roi = cv2.threshold(roi, 95, 255, cv2.THRESH_BINARY)[1]
     if plot:
         plt.imshow(roi)
         plt.show()
     
     return roi
-# def improve_datamatrix(image):
-#     # find the first pixel, where a 9x9 area around it is all black
-#     for k in range(image.shape[0]):
-#         for l in range(image.shape[1]):
-#             if np.sum(image[k:k+9, l:l+9]) < 10:
-#                 break
-#         if np.sum(image[k:k+9, l:l+9]) < 10:
-#             break
-    
-#     # use the found pixel coordinate as origin for a traversion, where the kernel of 9x9 is not overlapping
-    
-    
-#     # traverse the image and apply the kernel so that they do not overlap
-#     for i in range(k, image.shape[0], 9):
-#         for j in range(l, image.shape[1], 9):
-#             # if the average of the kernel is greater than 127, make the kernel white
-#             if np.mean(image[i:i+9, j:j+9]) > 127:
-#                 image[i:i+9, j:j+9] = 255
-#             # else make it black
-#             else:
-#                 image[i:i+9, j:j+9] = 0
-    
-#     return image
 
 def read_barcode(image):
     """Reads a barcode from an image.
@@ -195,10 +177,17 @@ def read_barcode(image):
     
     decoded_objects = reader.decode(code_file, possible_formats=['DATA_MATRIX'])
     
+    if os.path.exists(code_file):
+        os.remove(code_file)
+    
     if decoded_objects:
-        for obj in decoded_objects:
-            data = obj.data.decode('utf-8')
-            return data 
+        if isinstance(decoded_objects, list):
+            for obj in decoded_objects:
+                data = obj.data.decode('utf-8')
+                return data 
+        else:
+            data = decoded_objects.parsed
+            return data
     
     return display_image(label)
 
