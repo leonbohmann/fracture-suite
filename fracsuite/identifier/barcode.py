@@ -67,7 +67,7 @@ def get_label(image):
     
     # out = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     # dispImage(cv2.drawContours(out, contours, -1, (255,0,0), 1)    )
-    areas = [cv2.contourArea(cv2.convexHull(x)) for x in contours]
+    areas = [cv2.contourArea(x) for x in contours]
     max_i = areas.index(max(areas))
     
     x,y,w,h = cv2.boundingRect(contours[max_i])    
@@ -134,8 +134,8 @@ def find_code(label_original, plot = False):
 
     M = perspective_transform(box, (200,200))
     roi = cv2.warpPerspective(roi_image, M, (200,200))    
-    # roi = cv2.resize(roi, (150,150))
-    roi = cv2.GaussianBlur(roi, (3, 3), 0.3)
+    roi = cv2.GaussianBlur(roi, (3, 3), 0.8)
+    roi = cv2.resize(roi, (150,150))
     # roi = cv2.threshold(roi, 95, 255, cv2.THRESH_BINARY)[1]
     if plot:
         plt.imshow(roi)
