@@ -8,6 +8,8 @@ from tqdm import tqdm
 from pylibdmtx.pylibdmtx import encode
 from PIL import Image
 
+__path__ = os.path.dirname(__file__)
+
 # dimensions of A4 paper in mm
 A4_WIDTH = 210.0
 A4_HEIGHT = 297.0
@@ -22,16 +24,17 @@ COLUMNS = int(A4_WIDTH/CELL_WIDTH)
 
 # CANVAS_FONT = "ConsolaMono-Bold"
 CANVAS_FONT = "F25_Bank_Printer_Bold"
-CANVAS_FONT_SIZE = 23
+CANVAS_FONT_SIZE = 18
 
-BARCODE_HEIGHT_FAC = 0.6
+BARCODE_HEIGHT_FAC = 0.8
 LABEL_HEIGHT_FAC = 1 - BARCODE_HEIGHT_FAC
+
 
 def create_datamatrix_code(code: str, label: str) -> str:
     encoded = encode(code.encode('utf-8'), )
     img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
-    os.makedirs('out', exist_ok=True)
-    name = f'out/{label}.png'
+    os.makedirs('.out', exist_ok=True)
+    name = f'.out/{label}.png'
     img.save(name)
     return os.path.abspath(name)
     
@@ -42,13 +45,13 @@ def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas
 
     canvas.setFont(CANVAS_FONT, CANVAS_FONT_SIZE)
     # draw label and barcode on canvas at provided coordinates
-    canvas.drawCentredString((x + CELL_WIDTH / 2)*mm, (y + CELL_HEIGHT * LABEL_HEIGHT_FAC / 2)*mm , label )
     canvas.drawImage(fullname, x*mm , (y + CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)    
-    # canvas.rect(x*mm , y*mm, CELL_WIDTH * mm, CELL_HEIGHT * mm, stroke = 1, fill = 0)
+    canvas.drawCentredString((x + CELL_WIDTH / 2)*mm, (y + CELL_HEIGHT * LABEL_HEIGHT_FAC / 2)*mm , label )
+    canvas.rect(x*mm , y*mm, CELL_WIDTH * mm, CELL_HEIGHT * mm, stroke = 1, fill = 0)
     
     
 def generate_pdf(labels_codes: list, filename: str):
-    __path__ = os.path.dirname(__file__)
+    
     fontpath= os.path.join(__path__, f"{CANVAS_FONT}.ttf")
     pdfmetrics.registerFont(TTFont(CANVAS_FONT,fontpath))
     pdfmetrics.registerFontFamily(CANVAS_FONT)

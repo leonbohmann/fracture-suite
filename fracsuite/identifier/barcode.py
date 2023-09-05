@@ -1,11 +1,12 @@
 from pyzbar.pyzbar import decode
-from pylibdmtx.pylibdmtx import decode as decode_2
+from pylibdmtx.pylibdmtx import decode as decode_datamatrix
 
 from matplotlib import pyplot as plt
 import cv2
 import numpy as np
 
 from fracsuite.splinters.analyzer import isgray
+
 def fourCornersSort(pts):
     """ Sort corners: top-left, bot-left, bot-right, top-right """
     # Difference and sum of x and y value
@@ -38,58 +39,54 @@ def perspective_transform(points,  image_size=(200,200)):
     perspective_matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
     return perspective_matrix
 
-def enlarge_roi_with_padding(image, x, y, w, h, padding):
-    """
-    Enlarges the region of interest (ROI) defined by (x, y, w, h) by adding padding while ensuring it remains inside the image bounds.
 
-    Args:
-        image (numpy.ndarray): The input image.
-        x (int): X-coordinate of the top-left corner of the ROI.
-        y (int): Y-coordinate of the top-left corner of the ROI.
-        w (int): Width of the ROI.
-        h (int): Height of the ROI.
-        padding (int): Padding value to be added to all sides of the ROI.
+def display_image(image_array):
+    plt.ion()
+    
+    plt.imshow(image_array)
+    plt.show()
+    plt.pause(0.1)
+    
+    text = input("Enter ID: ")
+    plt.ioff()
+    
+    return text
 
-    Returns:
-        numpy.ndarray: The enlarged ROI.
-    """
-    # Ensure padding is non-negative
-    padding = max(padding, 0)
-
-    # Enlarge the ROI by adding padding while ensuring it stays inside the image bounds
-    x = max(x - padding, 0)
-    y = max(y - padding, 0)
-    w = min(w + 2 * padding, image.shape[1] - x)
-    h = min(h + 2 * padding, image.shape[0] - y)
-
-    # Crop the enlarged ROI from the image
-    enlarged_roi = image[y:y+h, x:x+w]
-
-    return enlarged_roi
-
-def fix_datamatrix_image(image):
-    # Convert the image to grayscale
-    gray_image = image
-    if not isgray(image):
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-
-    # Optionally, apply erosion and dilation to further enhance the barcode
-    kernel = np.ones((3, 3), np.uint8)
-    thresholded_image = cv2.erode(gray_image, kernel, iterations=1)
-    thresholded_image = cv2.dilate(thresholded_image, kernel, iterations=1)
-
-    return thresholded_image
-
-def read_barcode_from_roi(original_image, plot = False):
-    well = cv2.cvtColor(original_image, cv2.COLOR_BGRA2GRAY)
+def get_label(image):
+    orig = image.copy()
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = cv2.GaussianBlur(image, (11, 11), 20)
+    # dispImage(image)
+    image = cv2.threshold(image, 180, 255, cv2.THRESH_BINARY)[1]
+    # dispImage(image)
+    contours, hierarchy = cv2.findContours(255-image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    out = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    dispImage(cv2.drawContours(out, contours, -1, (255,0,0), 1)    )
+    areas = [cv2.contourArea(cv2.convexHull(x)) for x in contours[1:]]
+    max_i = areas.index(max(areas))
+    
+    x,y,w,h = cv2.boundingRect(contours[max_i])    
+    x -= 5
+    y -= 5
+    w += 10
+    h += 10
+    
+    # create box from xywh
+    box = np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
+    M = perspective_transform(box, (700,370))
+    roi = cv2.warpPerspective(orig, M, (700,370))
+    
+    return roi
+    
+def find_code(label_original, plot = False):
+    well = cv2.cvtColor(label_original, cv2.COLOR_BGRA2GRAY)
     well = cv2.GaussianBlur(well, (3, 3), 0.1)
     well = cv2.threshold(well, 60, 255, cv2.THRESH_BINARY)[1]
 
     if plot:
         plt.subplot(151); plt.title('A')
         plt.imshow(well)
-    harris = cv2.cornerHarris(well, 20, 7, 0.04)
+    harris = cv2.cornerHarris(well, 25, 7, 0.04)
     if plot:
         plt.subplot(152); plt.title('B')
         plt.imshow(harris)
@@ -127,28 +124,18 @@ def read_barcode_from_roi(original_image, plot = False):
     # create box from xywh
     box = np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
     
-    roi_image = cv2.cvtColor(original_image, cv2.COLOR_BGRA2GRAY)
-    roi_image = cv2.threshold(roi_image, 95, 255, cv2.THRESH_BINARY)[1]
+    roi_image = cv2.cvtColor(label_original, cv2.COLOR_BGRA2GRAY)        
+    roi_image = cv2.threshold(roi_image, 127, 255, cv2.THRESH_BINARY)[1]
 
-    M = perspective_transform(box, (200,200))
-    roi = cv2.warpPerspective(roi_image, M, (200,200))    
-    roi = cv2.resize(roi, (100,100))
+    M = perspective_transform(box, (w,h))
+    roi = cv2.warpPerspective(roi_image, M, (w,h))    
+    roi = cv2.resize(roi, (w//4,h//4))
+    # roi = cv2.threshold(roi, 95, 255, cv2.THRESH_BINARY)[1]
     if plot:
         plt.imshow(roi)
         plt.show()
     
-    decoded_objects = decode_2(roi)
-    
-    if decoded_objects:
-                for obj in decoded_objects:
-                    data = obj.data.decode('utf-8')
-                    return data  # Return the barcode content if found
-    else:
-        dispImage(roi)
-         
-    
-    # If no Data Matrix barcode was found, return None
-    return None
+    return roi
 
 def read_barcode(image):
     """Reads a barcode from an image.
@@ -162,8 +149,22 @@ def read_barcode(image):
     
     
     # use top right corner as roi
-    roi = image[10:500, 3000:4000]
-    return read_barcode_from_roi(roi)    
+    top_right = image[0:1000, 2000:]
+    label = get_label(top_right)
+    code = find_code(label, True)    
+    
+    # read functions
+    funcs = [decode_datamatrix]
+    
+    for decoder in funcs:
+        decoded_objects = decoder(code)
+        
+        if decoded_objects:
+            for obj in decoded_objects:
+                data = obj.data.decode('utf-8')
+                return data 
+        
+    return display_image(label)
 
 def dispImage(roi):
     plt.imshow(roi)
