@@ -57,19 +57,17 @@ for key, group in grouped_files.items():
     
     series = read_barcode(img0)
     
-    print(series)
+    series = os.path.join(root_dir, series)
     
-    # # iterate over each file in group
-    # for file in group:
-    #     # load image
-    #     img = cv2.imread(file)
-    #     # crop image
-    #     img = crop_perspective(img, 4000, True, False)
-    #     # rotate image
-    #     img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    #     # save image
-    #     cv2.imwrite(file, img)
-        
-    #     # rename image
-    #     new_name = f"{series}_{os.path.basename(file)}"
-    #     os.rename(file, os.path.join(root_dir, new_name))
+    # create a subfolder for the scans called "anisotropy"
+    os.makedirs(os.path.join(series, "anisotropy"), exist_ok=True)
+    
+    # iterate over each file in group, run perspective transform on bitmaps only and copy all into the subfolder
+    for file in group:
+        if file.endswith(".bmp"):
+            img = cv2.imread(file)
+            img = crop_perspective(img, (4000,4000), False)
+            img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            cv2.imwrite(os.path.join(series, "anisotropy", os.path.basename(file)), img)
+        else:
+            os.replace(file, os.path.join(series, "anisotropy", os.path.basename(file)))

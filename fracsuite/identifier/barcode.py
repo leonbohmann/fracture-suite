@@ -61,16 +61,16 @@ def get_label(image):
     image = cv2.threshold(image, 180, 255, cv2.THRESH_BINARY)[1]
     # dispImage(image)
     contours, hierarchy = cv2.findContours(255-image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    out = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    dispImage(cv2.drawContours(out, contours, -1, (255,0,0), 1)    )
+    # out = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    # dispImage(cv2.drawContours(out, contours, -1, (255,0,0), 1)    )
     areas = [cv2.contourArea(cv2.convexHull(x)) for x in contours[1:]]
     max_i = areas.index(max(areas))
     
     x,y,w,h = cv2.boundingRect(contours[max_i])    
-    x -= 5
-    y -= 5
-    w += 10
-    h += 10
+    # x -= 5
+    # y -= 5
+    # w += 10
+    # h += 10
     
     # create box from xywh
     box = np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
@@ -175,7 +175,7 @@ def read_barcode(image):
     # use top right corner as roi
     top_right = image[0:1000, 2000:]
     label = get_label(top_right)
-    code = find_code(label, True)    
+    code = find_code(label)    
     
     # code = improve_datamatrix(code)
     # dispImage(code)
