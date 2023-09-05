@@ -1,6 +1,7 @@
 import os
 import cv2
 import re
+import shutil
 
 from argparse import ArgumentParser
 from itertools import groupby
@@ -8,6 +9,8 @@ from itertools import groupby
 from fracsuite.splinters.analyzer import crop_perspective
 from fracsuite.identifier import read_barcode
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+
+from rich import print
 
 def get_unique_scan_id(file) -> str:
     """Get the first 4 numbers of cullet scanner file name.
@@ -62,9 +65,11 @@ sorted_files = sorted(files, key=get_unique_scan_id)
 # group files for file id
 grouped_files = {k: list(g) for k, g in groupby(sorted_files, key=get_unique_scan_id)}
 
+# create archive folder
+archive_folder = os.path.join(root_dir, ".archive")
+os.makedirs(archive_folder, exist_ok=True)
 
 for key, group in grouped_files.items():
-    
     if not any(file.endswith(".bmp") and "Transmission" in file for file in group):
         print(f"Couldn't find Transmission-Scan for scan ID {key}!")
         continue
@@ -104,5 +109,11 @@ for key, group in grouped_files.items():
             img = crop_perspective(img, (4000,4000), False)
             img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
             cv2.imwrite(os.path.join(subfolder, f'{get_scan_type(file)}.bmp'), img)
+            
+            # move source image to archive
+            os.rename(file, os.path.join(archive_folder, os.path.basename(file)))
         else:
-            os.replace(file, os.path.join(subfolder, os.path.basename(file)))
+            # copy file to archive
+            shutil.copy(file, os.path.join(archive_folder, os.path.basename(file)))
+            
+            os.rename(file, os.path.join(subfolder, os.path.basename(file)))
