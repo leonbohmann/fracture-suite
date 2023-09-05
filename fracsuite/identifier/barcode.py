@@ -4,6 +4,7 @@ from pylibdmtx.pylibdmtx import decode as decode_datamatrix
 from matplotlib import pyplot as plt
 import cv2
 import numpy as np
+import zxing
 
 from fracsuite.splinters.analyzer import isgray
 
@@ -136,6 +137,29 @@ def find_code(label_original, plot = False):
         plt.show()
     
     return roi
+# def improve_datamatrix(image):
+#     # find the first pixel, where a 9x9 area around it is all black
+#     for k in range(image.shape[0]):
+#         for l in range(image.shape[1]):
+#             if np.sum(image[k:k+9, l:l+9]) < 10:
+#                 break
+#         if np.sum(image[k:k+9, l:l+9]) < 10:
+#             break
+    
+#     # use the found pixel coordinate as origin for a traversion, where the kernel of 9x9 is not overlapping
+    
+    
+#     # traverse the image and apply the kernel so that they do not overlap
+#     for i in range(k, image.shape[0], 9):
+#         for j in range(l, image.shape[1], 9):
+#             # if the average of the kernel is greater than 127, make the kernel white
+#             if np.mean(image[i:i+9, j:j+9]) > 127:
+#                 image[i:i+9, j:j+9] = 255
+#             # else make it black
+#             else:
+#                 image[i:i+9, j:j+9] = 0
+    
+#     return image
 
 def read_barcode(image):
     """Reads a barcode from an image.
@@ -153,18 +177,32 @@ def read_barcode(image):
     label = get_label(top_right)
     code = find_code(label, True)    
     
-    # read functions
-    funcs = [decode_datamatrix]
+    # code = improve_datamatrix(code)
+    # dispImage(code)
     
-    for decoder in funcs:
-        decoded_objects = decoder(code)
+    reader = zxing.BarCodeReader()
+    
+    decoded_objects = decode_datamatrix(code)
+    
+    if decoded_objects:
+        for obj in decoded_objects:
+            data = obj.data.decode('utf-8')
+            return data 
         
-        if decoded_objects:
-            for obj in decoded_objects:
-                data = obj.data.decode('utf-8')
-                return data 
-        
+    
+    cv2.imwrite('temp.png', code)
+    code_file = "temp.png"
+    
+    decoded_objects = reader.decode(code_file, possible_formats=['DATA_MATRIX'])
+    
+    if decoded_objects:
+        for obj in decoded_objects:
+            data = obj.data.decode('utf-8')
+            return data 
+    
     return display_image(label)
+
+
 
 def dispImage(roi):
     plt.imshow(roi)
