@@ -470,6 +470,7 @@ class Analyzer(object):
         all_contours = detect_fragments(self.preprocessed_image, config)
         stencil = np.zeros((self.preprocessed_image.shape[0], \
             self.preprocessed_image.shape[1]), dtype=np.uint8)
+        
         for c in all_contours:
             cv2.drawContours(stencil, [c], -1, 255, thickness = -1) 
         
@@ -478,7 +479,7 @@ class Analyzer(object):
         # first step is to skeletonize the stencil        
         print('> Step 2.1: Skeletonize 1|2')
         skeleton = skeletonize(255-stencil)
-        skeleton = skeleton.astype(np.uint8)  * 255
+        skeleton = skeleton.astype(np.uint8) * 255
         cv2.imwrite(self.__get_out_file('.debug/skeleton.png'), skeleton)
         
         if config.debug:
@@ -536,7 +537,7 @@ class Analyzer(object):
         cv2.imwrite(self.__get_out_file(f"debug_skeleton.{self.config.ext_imgs}"), self.image_skeleton_rgb)
 
         combined = cv2.addWeighted(self.image_contours, 1.0, self.image_filled, 0.3, 0.0)
-        cv2.imwrite(self.__get_out_file(f"img_contourfills_combined.{self.config.ext_imgs}"), combined)
+        cv2.imwrite(self.__get_out_file(f"img_contours_filled_combined.{self.config.ext_imgs}"), combined)
         
 
         #############
@@ -882,7 +883,7 @@ class Analyzer(object):
         combined = cv2.addWeighted(255-self.original_image, 1.0, img, 0.75, 0.0)
         cv2.imwrite(self.__get_out_file(f"img_splintersizes_combined.{self.config.ext_imgs}"), combined)
         combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, img, 0.6, 0.0)
-        cv2.imwrite(self.__get_out_file(f"debug_skeleton_combined.{self.config.ext_imgs}"), combined)
+        cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)
         
     
     def __plot_backend(self, region = None, display = False) -> None:
