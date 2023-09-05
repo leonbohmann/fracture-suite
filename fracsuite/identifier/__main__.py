@@ -1,5 +1,6 @@
 import os
 import cv2
+import re
 
 from argparse import ArgumentParser
 from itertools import groupby
@@ -20,8 +21,28 @@ def get_unique_scan_id(file) -> str:
     """
     return os.path.basename(file)[:4]
 
+def get_scan_type(input: str) -> str:
+    """
+    Function to extract content between the last two brackets in a filename.
+    Args:
+        filename (str): The filename from which content is to be extracted.
+    Returns:
+        str: The content between the last two brackets.
+    """
+    # Find all substrings that match the pattern
+    matches = re.findall(r'\[.*?\]', input)
+
+    # If there are matches, return the content of the last match
+    # without the brackets. Otherwise, return an empty string.
+    if matches:
+        return matches[-1][1:-1]
+    else:
+        return ''
+
 parser = ArgumentParser()
 parser.add_argument('directory', type=str, help='Directory with scans.')
+parser.add_argument('--dry', action="store_true", help='Perform dry run that only reads codes.')
+
 args = parser.parse_args()
 
 config = AnalyzerConfig()
@@ -57,10 +78,24 @@ for key, group in grouped_files.items():
     
     series = read_barcode(img0)
     
+    # if None, Datamatrix could not be read
+    if series is None:
+        print(f"Couldn't find series for scan ID {key}!")
+        continue
+        
+    print(f"Found {series} for ID {key}...")
+    
+    if args.dry:
+        continue
+    
     series = os.path.join(root_dir, series)
+    subfolder = os.path.join(series, "anisotropy")    
+    if os.path.exists(subfolder):
+        print(f"Scan ID {key} already processed!")
+        continue
     
     # create a subfolder for the scans called "anisotropy"
-    os.makedirs(os.path.join(series, "anisotropy"), exist_ok=True)
+    os.makedirs(subfolder, exist_ok=True)
     
     # iterate over each file in group, run perspective transform on bitmaps only and copy all into the subfolder
     for file in group:
@@ -68,6 +103,6 @@ for key, group in grouped_files.items():
             img = cv2.imread(file)
             img = crop_perspective(img, (4000,4000), False)
             img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            cv2.imwrite(os.path.join(series, "anisotropy", os.path.basename(file)), img)
+            cv2.imwrite(os.path.join(subfolder, f'{get_scan_type(file)}.bmp'), img)
         else:
-            os.replace(file, os.path.join(series, "anisotropy", os.path.basename(file)))
+            os.replace(file, os.path.join(subfolder, os.path.basename(file)))
