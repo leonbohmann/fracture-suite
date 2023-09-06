@@ -5,7 +5,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from tqdm import tqdm
-from pylibdmtx.pylibdmtx import encode, ENCODING_SIZE_NAMES
+from pylibdmtx.pylibdmtx import encode, ENCODING_SIZE_NAMES, decode
 from PIL import Image
 
 __path__ = os.path.dirname(__file__)
@@ -36,6 +36,11 @@ def create_datamatrix_code(code: str, label: str) -> str:
     os.makedirs('.out', exist_ok=True)
     name = f'.out/{label}.png'
     img.save(name)
+    
+    content = decode(img)
+    if content[0].data.decode('utf-8') != code:
+        raise Exception(f"Decoded code {content[0].data.decode('utf-8')} does not match original code {code}!")
+    
     return os.path.abspath(name)
     
 def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas):
