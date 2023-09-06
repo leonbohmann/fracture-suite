@@ -5,7 +5,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from tqdm import tqdm
-from pylibdmtx.pylibdmtx import encode
+from pylibdmtx.pylibdmtx import encode, ENCODING_SIZE_NAMES
 from PIL import Image
 
 __path__ = os.path.dirname(__file__)
@@ -24,14 +24,14 @@ COLUMNS = int(A4_WIDTH/CELL_WIDTH)
 
 # CANVAS_FONT = "ConsolaMono-Bold"
 CANVAS_FONT = "F25_Bank_Printer_Bold"
-CANVAS_FONT_SIZE = 18
+CANVAS_FONT_SIZE = 21
 
-BARCODE_HEIGHT_FAC = 0.8
+BARCODE_HEIGHT_FAC = 0.7
 LABEL_HEIGHT_FAC = 1 - BARCODE_HEIGHT_FAC
 
 
 def create_datamatrix_code(code: str, label: str) -> str:
-    encoded = encode(code.encode('utf-8'), )
+    encoded = encode(code.encode('utf-8'), size='RectAuto')
     img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
     os.makedirs('.out', exist_ok=True)
     name = f'.out/{label}.png'
