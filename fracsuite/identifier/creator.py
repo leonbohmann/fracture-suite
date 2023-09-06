@@ -23,24 +23,24 @@ CELL_HEIGHT = 37.0
 ROWS = int(A4_HEIGHT/CELL_HEIGHT)  # // is floor division
 COLUMNS = int(A4_WIDTH/CELL_WIDTH)
 
-# CANVAS_FONT = "ConsolaMono-Bold"
 CANVAS_FONT = "F25_Bank_Printer_Bold"
-CANVAS_FONT_SIZE = 23
+# CANVAS_FONT = "Consolas"
+CANVAS_FONT_SIZE = 24
 
 BARCODE_HEIGHT_FAC = 0.6
 LABEL_HEIGHT_FAC = 1 - BARCODE_HEIGHT_FAC
 
 
 def create_datamatrix_code(code: str, label: str) -> str:
-    encoded = encode(code.encode('utf-8'), size='RectAuto')
+    encoded = encode(code.encode('utf-8'), size='RectAuto')    
     img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
     os.makedirs('.out', exist_ok=True)
     name = f'.out/{label}.png'
     img.save(name)
     
-    content = decode(img)
-    if content[0].data.decode('utf-8') != code:
-        raise Exception(f"Decoded code {content[0].data.decode('utf-8')} does not match original code {code}!")
+    content = decode(img, max_count=1)
+    if content[0].data.decode('utf-8') != code:        
+        print(f"Decoded code {content[0].data.decode('utf-8')} does not match original code {code}!")
     
     return os.path.abspath(name)
     
@@ -51,8 +51,8 @@ def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas
 
     canvas.setFont(CANVAS_FONT, CANVAS_FONT_SIZE)
     # draw label and barcode on canvas at provided coordinates
-    canvas.drawImage(fullname, x*mm , (y + CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)    
-    canvas.drawCentredString((x + CELL_WIDTH / 2)*mm, (y + CELL_HEIGHT * LABEL_HEIGHT_FAC / 2)*mm , label )
+    canvas.drawImage(fullname, x*mm , (y + 0.95 * CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)    
+    canvas.drawCentredString((x + CELL_WIDTH / 2)*mm, (y + CELL_HEIGHT * LABEL_HEIGHT_FAC / 2)*mm , label, )
     canvas.rect(x*mm , y*mm, CELL_WIDTH * mm, CELL_HEIGHT * mm, stroke = 1, fill = 0)
     
     
@@ -61,6 +61,7 @@ def generate_pdf(labels_codes: list, filename: str):
     fontpath= os.path.join(__path__, f"{CANVAS_FONT}.ttf")
     pdfmetrics.registerFont(TTFont(CANVAS_FONT,fontpath))
     pdfmetrics.registerFontFamily(CANVAS_FONT)
+
     c = canvas.Canvas(filename, pagesize=(210*mm, 297*mm))
 
     # coordinates of top left corner of each cell
@@ -99,40 +100,21 @@ if __name__ == "__main__":
                     label = f'{t}.{s}.{b}.{i:02d}'
                     labels.append((label,label))
                     # f"lb.de/specimen/{label}"
-             
+    
+    existentLabels = [
+        "8.110.A.11",
+        "8.110.A.12",   
+        "8.110.B.11",   
+        "8.110.B.12",   
+        "8.110.Z.13",   
+        "8.110.Z.14",           
+    ]             
              
     manual_labels = []
-    manual_labels.append("12.110.A.11")
-    manual_labels.append("8.110.A.12")
-    manual_labels.append("8.110.B.11")
-    manual_labels.append("8.110.B.12")
-    manual_labels.append("8.110.Z.13")
-    manual_labels.append("8.110.Z.14")
-    
-    manual_labels.append("8.110.B.1")
-    manual_labels.append("8.110.B.2")
-    manual_labels.append("8.110.B.3")
-    manual_labels.append("8.110.B.4")
-    manual_labels.append("8.110.B.5")
-    
-    manual_labels.append("8.110.A.1")
-    manual_labels.append("8.110.A.2")
-    manual_labels.append("8.110.A.3")
-    manual_labels.append("8.110.A.4")
-    manual_labels.append("8.110.A.5")
-    
-    manual_labels.append("8.140.B.1")
-    manual_labels.append("8.140.B.2")
-    manual_labels.append("8.140.B.3")
-    manual_labels.append("8.140.B.4")
-    manual_labels.append("8.140.B.5")
-    
-    manual_labels.append("8.140.A.1")
-    manual_labels.append("8.140.A.2")
-    manual_labels.append("8.140.A.3")
     
     
-    labels = [(label, label) for label in manual_labels]
+    
+    labels = [label for label in labels if label not in existentLabels]
     generate_pdf(labels, "output.pdf")
     
     if os.path.exists(".out"):
