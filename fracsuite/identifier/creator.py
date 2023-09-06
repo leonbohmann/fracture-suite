@@ -1,4 +1,5 @@
 import os
+import shutil
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -24,9 +25,9 @@ COLUMNS = int(A4_WIDTH/CELL_WIDTH)
 
 # CANVAS_FONT = "ConsolaMono-Bold"
 CANVAS_FONT = "F25_Bank_Printer_Bold"
-CANVAS_FONT_SIZE = 21
+CANVAS_FONT_SIZE = 23
 
-BARCODE_HEIGHT_FAC = 0.7
+BARCODE_HEIGHT_FAC = 0.6
 LABEL_HEIGHT_FAC = 1 - BARCODE_HEIGHT_FAC
 
 
@@ -101,7 +102,7 @@ if __name__ == "__main__":
              
              
     manual_labels = []
-    manual_labels.append("8.110.A.11")
+    manual_labels.append("12.110.A.11")
     manual_labels.append("8.110.A.12")
     manual_labels.append("8.110.B.11")
     manual_labels.append("8.110.B.12")
@@ -133,3 +134,9 @@ if __name__ == "__main__":
     
     labels = [(label, label) for label in manual_labels]
     generate_pdf(labels, "output.pdf")
+    
+    if os.path.exists(".out"):
+        shutil.rmtree(".out", ignore_errors=True)
+        
+    if os.path.exists("output.pdf"):
+        os.system("start output.pdf")
