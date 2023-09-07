@@ -1,4 +1,5 @@
 from __future__ import annotations
+import csv
 
 import os
 import random
@@ -539,7 +540,9 @@ class Analyzer(object):
         # detect fragments on the closed skeleton
         print('> Step 5: Final contour analysis...')
         self.contours = detect_fragments(self.image_skeleton, config)        
-        self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]        
+        self.splinters = [Splinter(x,i,size_f, config) for i,x in enumerate(self.contours)]
+        
+        self.__save_data(config)
         
         self.image_skeleton_rgb = cv2.cvtColor(skeleton, cv2.COLOR_GRAY2BGR)
         
@@ -635,6 +638,19 @@ class Analyzer(object):
         
         return image
 
+    def __save_data(self, config: AnalyzerConfig) -> None:
+        """Save splinter data to a csv file.
+
+        Args:
+            config (AnalyzerConfig): Configuration.
+        """
+        
+        # save data to csv file
+        with open(self.__get_out_file("splinter_data.csv"), 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile, delimiter=';')
+            writer.writerow(['id', 'area', 'circumfence', 'alignment_score', 'angle', 'c_x [px]', 'c_y [px]', 'c_x [mm]', 'c_y [mm]'])
+            for i, s in tqdm(enumerate(self.splinters), desc='Saving data...', leave=False):
+                writer.writerow([i, s.area, s.circumfence, s.alignment_score, s.angle, s.centroid_px[0], s.centroid_px[1], s.centroid_mm[0], s.centroid_mm[1]])
 
     def __count_splinters_in_norm_region(self, config: AnalyzerConfig) -> float:
         # create rectangle around args.normregioncenter with 5x5cm size
@@ -694,7 +710,7 @@ class Analyzer(object):
         # analyze splinter orientations
         orientation_image = self.original_image.copy()
         orients = []
-        for s in tqdm(self.splinters, leave=False):
+        for s in tqdm(self.splinters, leave=False, desc='Analyzing orientations...'):
             orientation = s.measure_orientation(config)
             orients.append(orientation)
             color = get_color(orientation, colormap_name='turbo')
@@ -719,7 +735,7 @@ class Analyzer(object):
             fig.waitforbuttonpress()
         
         fig.tight_layout()
-        fig.savefig(self.__get_out_file(f"fig_impact_influence.{config.ext_plots}"))
+        fig.savefig(self.__get_out_file(f"fig_splinter_orientation.{config.ext_plots}"))
 
 
     def __create_voronoi(self, config: AnalyzerConfig):

@@ -8,8 +8,10 @@ class Splinter:
     "Orientation of the splinter in degrees."
     angle_vector: tuple[float, float]
     "Normalized orientation vector"
+    alignment_score: float = np.nan
+    "Score indicating how much the splinter points into the direction of the impact point."
     
-    def __init__(self, contour, index, mm_px: float):
+    def __init__(self, contour, index, mm_px: float, config = None):
         """Create a splinter from a contour.
 
         Args:
@@ -49,6 +51,9 @@ class Splinter:
         #     _,_, self.angle = cv2.fitEllipse(self.contour)
         # except:
         #     self.angle = np.nan
+        
+        if config is not None:
+            self.measure_orientation(config)
 
     def calculate_roughness(self) -> float:
         """Calculate the roughness of the contour by comparing the circumfence
@@ -109,8 +114,8 @@ class Splinter:
         angle_vector = np.array([np.cos(angle_radians), np.sin(angle_radians)])
         dot_product = np.dot(line_direction, angle_vector)
         magnitude_line = np.linalg.norm(line_direction)
-        alignment_score = np.abs(dot_product) / magnitude_line
-        return alignment_score 
+        self.alignment_score = np.abs(dot_product) / magnitude_line
+        return self.alignment_score 
 
 
 
