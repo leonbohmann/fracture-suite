@@ -153,9 +153,8 @@ def read_barcode(image):
         str: Barcode value.
     """
     
-    
-    # use top right corner as roi
-    top_right = image[0:1000, 2000:]
+    w,h = image.shape[:2]
+    top_right = image[0:int(h/3), int(w/2):]
     label = get_label(top_right)
     code = find_code(label)    
     
