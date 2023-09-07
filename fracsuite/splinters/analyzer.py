@@ -152,11 +152,24 @@ def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
         cv2.drawContours(im0, [pageContour],-1, (0,0,255), thickness=im.shape[0]//50)
         plotImage(im0, 'CROP: Found rectangle contour')
         
+    
+    
+    im_h, im_w =im.shape[0],im.shape[1]
+    
+    if im_w > im_h:        
+        f = im_w / 4000
+        im_w = 4000
+        im_h = int(im_w / f)
+    else:
+        f = im_h / 4000
+        im_h = 4000
+        im_w = int(im_h / f)
+                
     # Create target points
     if cropped_image_size is not None:
         width, height=cropped_image_size
     else:
-        height,width=im.shape[0],im.shape[1]
+        height,width=im_w, im_h
         
     tPoints = np.array([[0, 0],
                     [0, height],
@@ -172,7 +185,8 @@ def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
     M = cv2.getPerspectiveTransform(sPoints, tPoints)     
 
     img_original = cv2.warpPerspective(img_original, M, (int(width), int(height)))
-
+    # print(img_original.shape)
+    # plotImage(img_original, 'CROP: Cropped image')
     # and return the transformed image
     return img_original
 

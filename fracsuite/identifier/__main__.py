@@ -5,6 +5,7 @@ import shutil
 
 from argparse import ArgumentParser
 from itertools import groupby
+from fracsuite.identifier.barcode import dispImage
 
 from fracsuite.splinters.analyzer import crop_perspective
 from fracsuite.identifier import read_barcode
@@ -45,8 +46,12 @@ def get_scan_type(input: str) -> str:
 parser = ArgumentParser()
 parser.add_argument('directory', type=str, help='Directory with scans.')
 parser.add_argument('--dry', action="store_true", help='Perform dry run that only reads codes.')
+parser.add_argument('-debug', choices=['label', 'code', 'barcode', 'error'], nargs="*", help='Show debug images.')
 
 args = parser.parse_args()
+
+if args.debug:
+    print("[yellow]Debug mode enabled![/yellow]")
 
 config = AnalyzerConfig()
 
@@ -78,10 +83,11 @@ for key, group in grouped_files.items():
     img0_path = next(file for file in group if file.endswith(".bmp") and "Transmission" in file)
     # load image and perform OCR to find specimen Identifier ([thickness].[residual_stress].[boundary].[ID])
     img0 = cv2.imread(img0_path)
-    img0 = crop_perspective(img0, (4000,4000), False) 
+    img0 = crop_perspective(img0, None, False) 
     img0 = cv2.rotate(img0, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    dispImage(img0, "Original", "Main", args.debug)
     
-    series = read_barcode(img0)
+    series = read_barcode(img0, args.debug)
     
     # if None, Datamatrix could not be read
     if series is None:

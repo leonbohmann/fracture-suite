@@ -53,96 +53,90 @@ def display_image(image_array):
     
     return text
 
-def get_label(image):
+def get_label(image, debug = None):
     orig = image.copy()
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = cv2.GaussianBlur(image, (11, 11), 20)
-    # dispImage(image)
-    image = cv2.threshold(image, 180, 255, cv2.THRESH_BINARY)[1]
-    # dispImage(image)
+    image = cv2.GaussianBlur(image, (15, 15), 20)
+    dispImage(image, "LABEL: gaussian blur", "label",debug)
+    
+    image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 21, 1.5)
+    dispImage(image, "LABEL: adaptive threshold", "label",debug)
+    image = cv2.erode(image, np.ones((3,3), np.uint8), iterations=3)
+    dispImage(image, "LABEL: eroded", "label",debug)
+    # image = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)[1]
+    # dispImage(image, "LABEL: thresholded", "label",debug)    
+    image = cv2.dilate(image, np.ones((3,3), np.uint8), iterations=3)
+    dispImage(image, "LABEL: dilated", "label",debug)
     contours, hierarchy = cv2.findContours(255-image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     
     
-    # out = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    # dispImage(cv2.drawContours(out, contours, -1, (255,0,0), 1)    )
     areas = [cv2.contourArea(x) for x in contours]
     max_i = areas.index(max(areas))
     
+    
     x,y,w,h = cv2.boundingRect(contours[max_i])    
-    # x -= 5
-    # y -= 5
-    # w += 10
-    # h += 10
+    x += 15
+    y += 15
+    w -= 15
+    h -= 15
     
     # create box from xywh
     box = np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
+    
+    out = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)    
+    dispImage(cv2.drawContours(out, [box], -1, (255,0,0), 10), "LABEL: Label-Contour", "label", debug)
+    
     M = perspective_transform(box, (700,370))
     roi = cv2.warpPerspective(orig, M, (700,370))
     
     return roi
     
-def find_code(label_original, plot = False):
+def find_code(label_original, debug = None):
     well = cv2.cvtColor(label_original, cv2.COLOR_BGRA2GRAY)
-    well = cv2.GaussianBlur(well, (3, 3), 0.3)
-    well = cv2.threshold(well, 60, 255, cv2.THRESH_BINARY)[1]
-
-    if plot:
-        plt.subplot(151); plt.title('A')
-        plt.imshow(well)
-    harris = cv2.cornerHarris(well, 20, 7, 0.04)
-    if plot:
-        plt.subplot(152); plt.title('B')
-        plt.imshow(harris)
-
-    x, thr = cv2.threshold(harris, 0.1 * harris.max(), 255, cv2.THRESH_BINARY)
-    thr = thr.astype('uint8')
-    if plot:
-        plt.subplot(153); plt.title('C')
-        plt.imshow(thr)
     
-    contours, hierarchy = cv2.findContours(thr, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)    
+    # use only the top half of the image
+    h,w = well.shape[:2]
+    well = well[0:int(h/2), :]
+    
+    well = cv2.GaussianBlur(well, (5, 5), 1.3)
+    dispImage(well, "CODE: Gaussian Blur", "code", debug)
+    
+    well = cv2.erode(well, np.ones((3,3), np.uint8), iterations=2)
+    thr = cv2.threshold(well, 100, 255, cv2.THRESH_BINARY)[1]
+
+    dispImage(thr, "CODE: Thresholded","code", debug)
+
+    contours, hierarchy = cv2.findContours(255-thr, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)    
     areas = [cv2.contourArea(cv2.convexHull(x)) for x in contours]
-    max_i = areas.index(max(areas))
-    d = cv2.drawContours(np.zeros_like(thr), contours, max_i, 255, 1)
-    if plot:
-        plt.subplot(154); plt.title('D')
-        plt.imshow(d)
+    max_i = areas.index(max(areas))        
 
     rect = cv2.minAreaRect(contours[max_i])
     box = cv2.boxPoints(rect)
-    box = np.int0(box)
-    e = cv2.drawContours(well,[box],0,1,1)    
-    if plot:
-        plt.subplot(155); plt.title('E')
-        plt.imshow(e)
-        plt.show()
-    
+    box = np.int0(box)      
+  
     # extract box from image
     x,y,w,h = cv2.boundingRect(contours[max_i])    
-    x -= 5
-    y -= 5
-    w += 10
-    h += 10
+    x -= 15
+    y -= 15
+    w += 30
+    h += 30
+    
+    dispImage(cv2.drawContours(label_original.copy(), [box], -1, (255,0,0), 10), "CODE: Code-Contour", "code", debug)
     
     # create box from xywh
     box = np.array([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])
     
-    roi_image = cv2.cvtColor(label_original, cv2.COLOR_BGRA2GRAY)        
-    roi_image = cv2.threshold(roi_image, 95, 255, cv2.THRESH_BINARY)[1]
+    roi_image = label_original.copy()
 
     M = perspective_transform(box, (w,h))
     roi = cv2.warpPerspective(roi_image, M, (w,h))    
-    roi = cv2.GaussianBlur(roi, (3, 3), 0.8)
-    roi = cv2.resize(roi, (int(w*0.7),int(h*0.7)))
-    # roi = cv2.threshold(roi, 95, 255, cv2.THRESH_BINARY)[1]
-    if plot:
-        plt.imshow(roi)
-        plt.show()
-    
+    roi = cv2.resize(roi, (int(w*0.5),int(h*0.5)))
+    roi = cv2.GaussianBlur(roi, (3, 3), 1.8)
+   
     return roi
 
-def read_barcode(image):
+def read_barcode(image, debug = None):
     """Reads a barcode from an image.
 
     Args:
@@ -152,25 +146,38 @@ def read_barcode(image):
         str: Barcode value.
     """
     
-    w,h = image.shape[:2]
+    h,w = image.shape[:2]
     top_right = image[0:int(h/3), int(w/2):]
-    label = get_label(top_right)
-    code = find_code(label)    
+    dispImage(top_right, "BC: top-right", "barcode", debug)
+    label = get_label(top_right, debug)
+    dispImage(label, "BC: Label", "barcode", debug)
+    code = find_code(label, debug)    
+    dispImage(code, "BC: Code", "barcode", debug)
     
     # code = improve_datamatrix(code)
     # dispImage(code)
     
     decoded_objects = decode_datamatrix(code)
-    
+    if debug:
+        print(decoded_objects)
+        
     if decoded_objects:
         for obj in decoded_objects:
             data = obj.data.decode('utf-8')
             return data 
-    
+    elif debug:
+        dispImage(code, "NOTFOUND: Code", "error", debug)
+        
     return display_image(label)
 
 
 
-def dispImage(roi):
+def dispImage(roi, title = "", section = "", debug = None):
+    if debug and section not in debug:
+        return
+    elif not debug:
+        return
+    
     plt.imshow(roi)
+    plt.title(title)
     plt.show()
