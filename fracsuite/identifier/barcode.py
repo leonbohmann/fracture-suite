@@ -5,7 +5,6 @@ from pylibdmtx.pylibdmtx import decode as decode_datamatrix
 from matplotlib import pyplot as plt
 import cv2
 import numpy as np
-import zxing
 
 from fracsuite.splinters.analyzer import isgray
 
@@ -161,32 +160,12 @@ def read_barcode(image):
     # code = improve_datamatrix(code)
     # dispImage(code)
     
-    reader = zxing.BarCodeReader()
-    
     decoded_objects = decode_datamatrix(code)
     
     if decoded_objects:
         for obj in decoded_objects:
             data = obj.data.decode('utf-8')
             return data 
-        
-    
-    cv2.imwrite('temp.png', code)
-    code_file = "temp.png"
-    
-    decoded_objects = reader.decode(code_file, possible_formats=['DATA_MATRIX'])
-    
-    if os.path.exists(code_file):
-        os.remove(code_file)
-    
-    if decoded_objects:
-        if isinstance(decoded_objects, list):
-            for obj in decoded_objects:
-                data = obj.data.decode('utf-8')
-                return data 
-        else:
-            data = decoded_objects.parsed
-            return data
     
     return display_image(label)
 
