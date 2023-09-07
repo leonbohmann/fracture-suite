@@ -53,7 +53,7 @@ def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas
     # draw label and barcode on canvas at provided coordinates
     canvas.drawImage(fullname, x*mm , (y + 0.95 * CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)    
     canvas.drawCentredString((x + CELL_WIDTH / 2)*mm, (y + CELL_HEIGHT * LABEL_HEIGHT_FAC / 2)*mm , label, )
-    canvas.rect(x*mm , y*mm, CELL_WIDTH * mm, CELL_HEIGHT * mm, stroke = 1, fill = 0)
+    # canvas.rect(x*mm , y*mm, CELL_WIDTH * mm, CELL_HEIGHT * mm, stroke = 1, fill = 0)
     
     
 def generate_pdf(labels_codes: list, filename: str):
@@ -86,6 +86,13 @@ if __name__ == "__main__":
     # stretch barcode,datamatrix not stretched!
     ASPECT_RATIO = True
     
+
+    existing_label_path = os.path.join(__path__, "existing_labels.txt")
+    # read existing labels from "existing_labels.txt" file
+    with open(existing_label_path, "r") as f:
+        existentLabels = [line.strip() for line in f.readlines()]
+
+
     thick = [4,8,12]
     sig = {4: [x for x in range(70,150,10)], 8: [x for x in range(70,150,10)], 12: [x for x in range(40,120,10)]}
     bound = ["Z", "A", "B"]
@@ -99,26 +106,37 @@ if __name__ == "__main__":
                 for i in lfnr:
                     label = f'{t}.{s}.{b}.{i:02d}'
                     labels.append((label,label))
-                    # f"lb.de/specimen/{label}"
-    
-    existentLabels = [
-        "8.110.A.11",
-        "8.110.A.12",   
-        "8.110.B.11",   
-        "8.110.B.12",   
-        "8.110.Z.13",   
-        "8.110.Z.14",           
-    ]             
              
-    manual_labels = []
-    
-    
+    manual_labels = [
+        "SCHOTT1",
+        "SCHOTT2",
+        "SCHOTT3",
+        "SCHOTT4",
+        "SCHOTT5",
+        "8.140.Z.11",
+        "8.140.Z.12",
+        "8.140.A.11",
+        "8.140.A.12",
+    ]
     
     labels = [label for label in labels if label not in existentLabels]
-    generate_pdf(labels, "output.pdf")
+
+    used_labels = []
+    for label in manual_labels:
+        used_labels.append((label, label))
+    
+    for n in range(len(used_labels),24):
+        used_labels.append(labels.pop())
+
+    generate_pdf(used_labels, "2023_09_07.pdf")
     
     if os.path.exists(".out"):
         shutil.rmtree(".out", ignore_errors=True)
         
     if os.path.exists("output.pdf"):
         os.system("start output.pdf")
+
+    # append used labels to existing_label_path file
+    with open(existing_label_path, "a") as f:
+        for label in used_labels:
+            f.write(label[0] + "\n")
