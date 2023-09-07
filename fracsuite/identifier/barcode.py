@@ -132,10 +132,10 @@ def find_code(label_original, plot = False):
     roi_image = cv2.cvtColor(label_original, cv2.COLOR_BGRA2GRAY)        
     roi_image = cv2.threshold(roi_image, 95, 255, cv2.THRESH_BINARY)[1]
 
-    M = perspective_transform(box, (200,200))
-    roi = cv2.warpPerspective(roi_image, M, (200,200))    
+    M = perspective_transform(box, (w,h))
+    roi = cv2.warpPerspective(roi_image, M, (w,h))    
     roi = cv2.GaussianBlur(roi, (3, 3), 0.8)
-    roi = cv2.resize(roi, (150,150))
+    roi = cv2.resize(roi, (int(w*0.7),int(h*0.7)))
     # roi = cv2.threshold(roi, 95, 255, cv2.THRESH_BINARY)[1]
     if plot:
         plt.imshow(roi)

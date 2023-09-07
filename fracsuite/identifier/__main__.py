@@ -78,7 +78,11 @@ for key, group in grouped_files.items():
     img0_path = next(file for file in group if file.endswith(".bmp") and "Transmission" in file)
     # load image and perform OCR to find specimen Identifier ([thickness].[residual_stress].[boundary].[ID])
     img0 = cv2.imread(img0_path)
-    img0 = crop_perspective(img0, (4000,4000), False)    
+    img0 = crop_perspective(img0, (4000,4000), False) 
+
+    # check, if multiple series are fond in image
+    if isinstance(img0, list):
+           
     img0 = cv2.rotate(img0, cv2.ROTATE_90_COUNTERCLOCKWISE)
     
     series = read_barcode(img0)
