@@ -107,12 +107,12 @@ def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
             cv2.contourArea(cnt)
         ))
 
-    os.makedirs('.debug', exist_ok=True)
-    # count files in debug folder
-    file_count = len(os.listdir('.debug'))
+    # os.makedirs('.debug', exist_ok=True)
+    # # count files in debug folder
+    # file_count = len(os.listdir('.debug'))
 
-    cv2.imwrite(os.path.join('.debug', f'contours_{file_count}.png'), 
-                cv2.drawContours(im0, contours, -1, (0,0,255), 10))
+    # cv2.imwrite(os.path.join('.debug', f'contours_{file_count}.png'), 
+    #             cv2.drawContours(im0, contours, -1, (0,0,255), 10))
     
     # sort contours after their area
     contour_info = sorted(contour_info, key=lambda c: c[2], reverse=True)
