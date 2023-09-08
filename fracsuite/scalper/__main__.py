@@ -145,6 +145,9 @@ class Specimen:
             thickness = meas.measured_thickness
            
         self.measured_thickness = thickness 
+        
+        # calculate strain energy density
+        self.U_d = 1/5 * (1-self.nue)/self.E * self.sig_h
     
     def __calc_homogenous_princ_stress(self):
         """
@@ -170,6 +173,7 @@ class Specimen:
         file.write(f'{self.measured_thickness:<35}\t# thickness\n')   
         file.write(f'{self.sig_h:<35}\t# homogenous stress\n')   
         file.write(f'{self.sig_h_dev:<35}\t# hom stress std-dev\n')
+        file.write(f'{self.U_d:<35}\t# energy density\n')
         file.write('\n')
         
         file.write(f'# {"name":18}\t{"sig_1":<20}\t{"sig_2":<20}\n')
