@@ -33,6 +33,13 @@ import os
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
+import matplotlib
+
+matplotlib.rcParams['figure.figsize'] = (6, 4)
+matplotlib.rc('axes', axisbelow=True) # to get grid into background
+matplotlib.rc('grid', linestyle="--") # line style
+matplotlib.rcParams.update({'font.size': 12}) # font size
+
 parser = AnalyzerConfig.get_parser(__doc__)
 
 parser.add_argument("--all", default=False, 

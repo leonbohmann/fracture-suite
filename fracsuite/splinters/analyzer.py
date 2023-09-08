@@ -3,8 +3,10 @@ import csv
 
 import os
 import random
+import pickle
 
 import cv2
+from matplotlib.ticker import FuncFormatter, ScalarFormatter
 import numpy as np
 import numpy.typing as nptyp
 from matplotlib import pyplot as plt
@@ -590,6 +592,7 @@ class Analyzer(object):
         self.__plot_backend(config.display_region, display=config.displayplots)
         self.__plot_splintersize_accumulation(display=config.displayplots)
         self.__plot_splintersize_distribution(display=config.displayplots)
+        self.__plot_logarithmic_histograms(config, display=config.displayplots)
         
         ############
         ############
@@ -598,6 +601,10 @@ class Analyzer(object):
         print(f'Splinter count: {len(self.contours)}')
         self.__check_detection_ratio(config, doprint=True)
         print('\n')
+        
+        print("> Saving data...")
+        with open(self.__get_out_file("splinters.pkl"), 'wb') as f:
+            pickle.dump(self, f)
         
     def preprocess_image(self, image, config: AnalyzerConfig) -> nptyp.ArrayLike:
         """Preprocess a raw image.
@@ -922,6 +929,46 @@ class Analyzer(object):
         combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, img, 0.6, 0.0)
         cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)
         
+        
+    def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig):
+        return self.__plot_logarithmic_histograms(config, axes=axs)
+        
+    def __plot_logarithmic_histograms(self, config: AnalyzerConfig, display = False, axes = None) -> Figure:
+        """Plots a graph of Splinter Size Distribution.
+
+        Returns:
+            Figure: The figure, that is displayed.
+        """
+        # fetch areas from splinters
+        areas = [np.log10(x.area) for x in self.splinters if x.area > 0]
+        # ascending sort, smallest to largest
+        areas.sort()
+          
+        fig, ax = plt.subplots()
+        if axes is not None:
+            ax = axes
+        
+        # density: normalize the bins data count to the total amount of data
+        ax.hist(areas, bins=int(config.probabilitybins),
+                density=True, label=self.config.specimen_name,
+                alpha=0.5)
+        ax.set_xlim([0, np.max(areas)])
+        # ax.set_xscale('log')
+        ticks = FuncFormatter(lambda x, pos: '{0:.0f}'.format(10**x))
+        ax.xaxis.set_major_formatter(ticks)
+        
+        # ax.xaxis.set_major_formatter(ScalarFormatter())
+        ax.set_xlabel('Splinter Area [mm²]')
+        ax.set_ylabel('Probability (Area) [-]')
+        if display:
+            plt.show()
+            
+        if axes is None:
+            fig.tight_layout()
+            fig.savefig(self.__get_out_file(f"fig_log_probability.{self.config.ext_plots}"))
+        else:
+            plt.close(fig)
+        return fig
     
     def __plot_backend(self, region = None, display = False) -> None:
         """

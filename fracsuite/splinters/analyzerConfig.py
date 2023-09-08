@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from rich import print
 import argparse
 
@@ -34,8 +35,9 @@ class AnalyzerConfig:
     "crop input image"
     impact_position: tuple[float, float] = None
     "impact position in mm [X Y]"
-
-
+    probabilitybins: bool = 75
+    "number of bins for probability plot"
+    
     debug: bool = False
     "enable debug output"
     debug_experimental: bool = False
@@ -64,6 +66,10 @@ class AnalyzerConfig:
     path: str = ""
     "Path to data"
 
+    specimen_name: str = ""
+    "Name of the specimen"
+    
+    
     norm_region_center: tuple[float, float] = None
     "Center for evaluation region according to DIN in mm [X Y]"
 
@@ -139,7 +145,7 @@ class AnalyzerConfig:
             help='Center for evaluation region according to DIN in mm [X Y]')
         post.add_argument('-normregionsize', nargs=2, metavar=('W', 'H'), type=float, default=(50,50),
             help='Size for evaluation region according to DIN in mm.')
-
+        post.add_argument('-probabilitybins', help='Number of bins for probability plot.', type=int, default=75)
 
         output_group = parser.add_argument_group("Output")
         output_group.add_argument('-out', nargs="?", help='Output directory path.', \
@@ -192,6 +198,8 @@ class AnalyzerConfig:
         cfg.norm_region_center = args.normregioncenter
         cfg.norm_region_size = args.normregionsize
 
+        cfg.probabilitybins = args.probabilitybins
+
         if args.debug is True:
             cfg.displayplots = True
 
@@ -207,6 +215,17 @@ class AnalyzerConfig:
 
         cfg.path = args.path
 
+        # find specimen pattern
+        pattern = r'(\d+\.\d+\.[A-Za-z]\.\d+(-[^\s]+)?)'
+        match = re.search(pattern, cfg.path)
+
+        # Check if a match was found
+        if match:
+            cfg.specimen_name = match.group(0)   
+        else:
+            cfg.specimen_name = "unknown"
+        
+        
         if cfg.printconfig:
             cfg.print()
 
