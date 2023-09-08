@@ -42,7 +42,7 @@ def plotChannels(chans: list[Channel], lbs: list[str], title: str):
     return plot_multiple_datasets([(x.Time.data, x.data, l, f'{x.Name} [{x.unit}]', x.Name) for x,l in zip(chans, styles)], title)
 
 
-def test1(reader: APReader):
+def test_1(reader: APReader):
     time = reader.Groups[0].ChannelX.data
     # impact_time_id = np.argmax([])    
     # time = time - time[impact_time_id-5]
@@ -58,7 +58,7 @@ def test1(reader: APReader):
     
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
     
-def test4(reader: APReader):
+def test_4(reader: APReader):
     time = reader.Groups[0].ChannelX.data
     # impact_time_id = np.argmax([])    
     # time = time - time[impact_time_id-5]
@@ -94,7 +94,7 @@ def test_impact_delay(reader:APReader):
     
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_impact_delay.png"))
 
-def test3(reader: APReader):
+def test_3(reader: APReader):
     time = reader.Groups[0].ChannelX.data
     # impact_time_id = np.argmax([])    
     # time = time - time[impact_time_id-5]
@@ -114,7 +114,7 @@ def test3(reader: APReader):
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
 
 
-def test2(reader: APReader):
+def test_2(reader: APReader):
     channel_max = [(x.Name, np.max(x.data), np.min(x.data)) for x in reader.Channels]
 
     for max in channel_max:
@@ -248,13 +248,19 @@ def test2(reader: APReader):
         'Comparison of different impact times')
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_fall2.png"))
 
+# get all test-functions
+test_funcs = [x for x in globals().values() if callable(x) and x.__name__.startswith('test')]
+# strip leading underscore and test from names
+test_names = sorted([x.__name__[5:] for x in test_funcs])
+
 parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
 
 parser.add_argument('measurement', nargs="?", \
     help="""The measurement to be processed. This can either be a .bin file or a project folder that
     has subfolders 'fracture/acc', where the bin file is located.""")
-parser.add_argument('-test', nargs=1, default=None, \
+parser.add_argument('-test', nargs=1, default=None, choices=test_names,
     help="""Run the test environment""")
+parser.add_argument('--sameaxis', action="store_true", help='Plot all datasets in the same axis.')
 
 args = parser.parse_args()
 
@@ -275,10 +281,10 @@ out_dir = os.path.dirname(file)
 reader = APReader(file, verbose=True)
 
 reader.printSummary()
-reader.plot()
+reader.plot(sameAxis=args.sameaxis)
 
 if args.test is not None:
-    fname = f'test{args.test[0]}'
+    fname = f'test_{args.test[0]}'
     print(f'Calling {fname}')
     func = globals()[fname]
     func(reader)
