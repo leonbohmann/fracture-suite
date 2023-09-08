@@ -176,7 +176,7 @@ class Specimen:
         file.write(f'{self.measured_thickness:<35}\t# thickness [mm]\n')   
         file.write(f'{self.sig_h:<35}\t# homogenous stress [MPa]\n')   
         file.write(f'{self.sig_h_dev:<35}\t# hom stress std-dev [-]\n')
-        file.write(f'{self.U_d:<35}\t# energy density [MPa]\n')
+        file.write(f'{self.U_d:<35}\t# energy density [J/m³]\n')
         file.write('\n')
         
         file.write(f'# {"name":18}\t{"sig_1":<20}\t{"sig_2":<20}\n')
