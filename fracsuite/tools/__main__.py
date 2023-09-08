@@ -17,7 +17,7 @@ app = typer.Typer()
 
 
 @app.command(name="loghist")
-def log_histograms(path:str, specimen_names: list[str]):
+def log_histograms(path:str, specimen_names: list[str], xlim: tuple[float,float] = None):
     analyzers: list[Analyzer] = []
     for name in specimen_names:
         basepath = os.path.join(path, name, "fracture", "splinter/splinters.pkl")
@@ -39,6 +39,9 @@ def log_histograms(path:str, specimen_names: list[str]):
     for analyzer in analyzers:        
         analyzer.plot_logarithmic_to_axes(ax, cfg)
     
+    if xlim is not None:
+        ax.set_xlim(xlim)
+        
     ax.legend(loc='best')
     fig.tight_layout()
     fig.savefig(os.path.join(path, "log_histograms.png"))
