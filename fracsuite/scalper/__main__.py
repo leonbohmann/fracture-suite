@@ -109,6 +109,9 @@ class Specimen:
     sig_h: float                # homogenous pre-stress value
     sig_h_dev: float            # standard deviation of pre-stress
     
+    nue: float = 0.23
+    E: float = 72.0e3
+    
     def __init__(self, name: str, measurements: dict[str,list[Measurement]]):
         self.name = name
         self.sig_h = 0.0
@@ -147,7 +150,7 @@ class Specimen:
         self.measured_thickness = thickness 
         
         # calculate strain energy density
-        self.U_d = 1/5 * (1-self.nue)/self.E * self.sig_h
+        self.U_d = 1/5 * (1-self.nue)/self.E * self.sig_h ** 2
     
     def __calc_homogenous_princ_stress(self):
         """
@@ -170,10 +173,10 @@ class Specimen:
         self.sig_h_dev = np.std(stresses1 + stresses2)       
     
     def to_file(self, file):
-        file.write(f'{self.measured_thickness:<35}\t# thickness\n')   
-        file.write(f'{self.sig_h:<35}\t# homogenous stress\n')   
-        file.write(f'{self.sig_h_dev:<35}\t# hom stress std-dev\n')
-        file.write(f'{self.U_d:<35}\t# energy density\n')
+        file.write(f'{self.measured_thickness:<35}\t# thickness [mm]\n')   
+        file.write(f'{self.sig_h:<35}\t# homogenous stress [MPa]\n')   
+        file.write(f'{self.sig_h_dev:<35}\t# hom stress std-dev [-]\n')
+        file.write(f'{self.U_d:<35}\t# energy density [MPa]\n')
         file.write('\n')
         
         file.write(f'# {"name":18}\t{"sig_1":<20}\t{"sig_2":<20}\n')
