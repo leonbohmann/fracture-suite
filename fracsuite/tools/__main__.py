@@ -44,7 +44,7 @@ def log_histograms(path:str, specimen_names: list[str], xlim: tuple[float,float]
         
     ax.legend(loc='best')
     fig.tight_layout()
-    fig.savefig(os.path.join(path, "log_histograms.png"))
+    fig.savefig(os.path.join(path, f"{analyzers[0].config.specimen_name.replace('.','_')}_log_histograms.png"))
     
 @app.command()
 def test():

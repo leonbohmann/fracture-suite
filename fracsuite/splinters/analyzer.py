@@ -954,8 +954,11 @@ class Analyzer(object):
                 alpha=0.5)
         ax.set_xlim([0, np.max(areas)])
         # ax.set_xscale('log')
-        ticks = FuncFormatter(lambda x, pos: '{0:.0f}'.format(10**x))
+        ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(10**x))
+        ticksy = FuncFormatter(lambda x, pos: '{0:.2f}'.format(x))
         ax.xaxis.set_major_formatter(ticks)
+        ax.yaxis.set_major_formatter(ticksy)
+        
         
         # ax.xaxis.set_major_formatter(ScalarFormatter())
         ax.set_xlabel('Splinter Area [mm²]')
