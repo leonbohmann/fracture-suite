@@ -150,7 +150,7 @@ class Specimen:
         self.measured_thickness = thickness 
         
         # calculate strain energy density
-        self.U_d = 1/5 * (1-self.nue)/self.E * self.sig_h ** 2
+        self.U_d = 1e6/5 * (1-self.nue)/self.E * self.sig_h ** 2
     
     def __calc_homogenous_princ_stress(self):
         """
