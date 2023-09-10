@@ -50,10 +50,11 @@ args = parser.parse_args()
 config = AnalyzerConfig.from_args(args)
 
 if args.all:
+    print(f"Running analysis on all subfolders of '{config.path}'.")
     project_dir = config.path
     for file in os.listdir(project_dir):
-        project_path = os.path.join(project_dir, file, '\\')
-        
+        project_path = os.path.join(project_dir, file) + "\\"
+        print(f"Running analysis on '{project_path}'.")
         if os.path.exists(project_path):
             config.path = project_path
             analyzer = Analyzer(config)
