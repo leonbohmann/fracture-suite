@@ -930,10 +930,10 @@ class Analyzer(object):
         cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)
         
         
-    def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig):
-        return self.__plot_logarithmic_histograms(config, axes=axs)
+    def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig, label = None):
+        return self.__plot_logarithmic_histograms(config, axes=axs, label=label)
         
-    def __plot_logarithmic_histograms(self, config: AnalyzerConfig, display = False, axes = None) -> Figure:
+    def __plot_logarithmic_histograms(self, config: AnalyzerConfig, display = False, axes = None, label = None) -> Figure:
         """Plots a graph of Splinter Size Distribution.
 
         Returns:
@@ -948,9 +948,14 @@ class Analyzer(object):
         if axes is not None:
             ax = axes
         
+        if label is None:
+            label = self.config.specimen_name
+        else:
+            label = label(self)
+            
         # density: normalize the bins data count to the total amount of data
         ax.hist(areas, bins=int(config.probabilitybins),
-                density=True, label=self.config.specimen_name,
+                density=True, label=label,
                 alpha=0.5)
         ax.set_xlim([0, np.max(areas)])
         # ax.set_xscale('log')

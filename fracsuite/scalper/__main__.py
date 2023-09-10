@@ -53,7 +53,7 @@ class ScalpProject:
     
     filepath: str
     measurements: list[Measurement]
-    specimens: list[Specimen]
+    specimens: list[ScalpSpecimen]
     
     def __init__(self, path: os.PathLike):
         
@@ -76,7 +76,7 @@ class ScalpProject:
             specimen_measurements[ms.specimen].append(ms) 
         
         # create a list of all specimens for easy access
-        self.specimens = [Specimen(name, measurements) for name, measurements in specimen_measurements.items()]
+        self.specimens = [ScalpSpecimen(name, measurements) for name, measurements in specimen_measurements.items()]
         
         
     def write_measurements(self, output_directory: str | None, output_extension):
@@ -100,7 +100,7 @@ class ScalpProject:
                 specimen.to_file(file)
             
         
-class Specimen:
+class ScalpSpecimen:
     """ Object, that contains information about a specimen. """
     name: str
     measurementlocations: list[MeasurementLocation]
@@ -402,7 +402,7 @@ def remove_duplicates(my_list, my_lambda):
     return new_list
 
 
-def get_specimens_from_projects(projects) -> list[Specimen]:
+def get_specimens_from_projects(projects) -> list[ScalpSpecimen]:
     """Extract all specimens in a distinct list from a list of projects.
 
     Args:
