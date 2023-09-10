@@ -1,12 +1,15 @@
-import pickle
-import os
 import argparse
+import os
+import pickle
+
 import typer
-from rich import print
-from fracsuite.splinters.analyzer import Analyzer
-from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
+from rich import print
+from typing_extensions import Annotated
+
+from fracsuite.splinters.analyzer import Analyzer
+from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -16,15 +19,25 @@ plt.rcParams.update({'font.size': 12}) # font size
 
 app = typer.Typer()
 
+def sort_two_arrays(array1, array2) -> tuple[list, list]:
+    # Combine x and y into pairs
+    pairs = list(zip(array1, array2))
+    # Sort the pairs based on the values in x
+    sorted_pairs = sorted(pairs, key=lambda pair: pair[0])
+    # Separate the sorted pairs back into separate arrays
+    return zip(*sorted_pairs)    
 
 @app.command(name="loghist")
-def log_histograms(path:str, specimen_names: list[str], xlim: tuple[float,float] = None):
+def log_histograms(path: Annotated[str, typer.Argument(help='Base path for specimens')], 
+                   specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')], 
+                   xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = None):
     analyzers: list[Analyzer] = []
     for name in specimen_names:
-        basepath = os.path.join(path, name, "fracture", "splinter/splinters.pkl")
+        spec_path = os.path.join(path, name)
+        basepath = os.path.join(spec_path, "fracture", "splinter/splinters.pkl")
         
         if not os.path.exists(basepath):
-            print(f"Could not find splinter file for {name}. Create it using:\n [green]py -m fracsuite.splinters '{basepath}' -cropsize 4000 -realsize 500[/green]")
+            print(f"Could not find splinter file for '{name}'. Create it using:\n [green]py -m fracsuite.splinters '{spec_path}' -cropsize 4000 -realsize 500[/green]")
             continue
         
         with open(basepath, "rb") as f:
@@ -48,12 +61,26 @@ def plot_histograms(xlim: tuple[float,float], analyzers:  list[Analyzer], legend
         ax.set_xlim(xlim)
         
     ax.legend(loc='best')
+    ax.grid(True, which='both', axis='both')
     fig.tight_layout()
     return fig
     
+    
+    
 @app.command(name='loghist_sigma')
-def loghist_sigma(path: str, sigmas: str, delta: float = 10, xlim: tuple[float,float] = None):
-    """Find all splinters from the path, whose stress is within a range sigmas.
+def loghist_sigma(path: Annotated[str, typer.Argument(help='Base path for specimens')], 
+                  sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')], 
+                  delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10, 
+                  xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = None):
+    """
+    Plots histograms of splinter sizes for specimens with stress in a given range.
+
+
+    Args:
+        path (str): The base path for the specimens.
+        sigmas (str): The stress range. Either a single value or a range separated by a dash (i.e. '100-110' or '120').
+        delta (float, optional): Additional margin for the stress range. Defaults to 10.
+        xlim (tuple[float,float], optional): Plot limits on x axis. Defaults to None.
     """
     if "-" in sigmas:
         sigmas = [float(s) for s in sigmas.split("-")]        
@@ -68,9 +95,10 @@ def loghist_sigma(path: str, sigmas: str, delta: float = 10, xlim: tuple[float,f
     stresses: dict[str, float] = {}
     
     for dir in os.listdir(path):
+        spec_path = os.path.join(path, dir)
         # if dir is a directory
-        if os.path.isdir(os.path.join(path, dir)):
-            basepath = os.path.join(path, dir, "scalp")
+        if os.path.isdir(spec_path):
+            basepath = os.path.join(spec_path, "scalp")
             
             if not os.path.exists(basepath):
                 print(f"Could not find scalp folder for {dir}.")
@@ -91,7 +119,7 @@ def loghist_sigma(path: str, sigmas: str, delta: float = 10, xlim: tuple[float,f
                             spl_file = os.path.join(path, dir, "fracture", "splinter/splinters.pkl")
                             
                             if not os.path.exists(spl_file):
-                                print(f"Could not find splinter file for {dir}. Create it using:\n [green]py -m fracsuite.splinters '{spl_file}' -cropsize 4000 -realsize 500[/green]")
+                                print(f"Could not find splinter file for '{dir}'. Create it using:\n [green]py -m fracsuite.splinters '{spec_path}' -cropsize 4000 -realsize 500[/green]")
                                 continue
                             
                             with open(spl_file, "rb") as f:
@@ -102,6 +130,28 @@ def loghist_sigma(path: str, sigmas: str, delta: float = 10, xlim: tuple[float,f
                 
     fig = plot_histograms(xlim, analyzers, lambda x: f"{x.config.specimen_name}_{stresses[x.config.specimen_name]:.2f}")
     fig.savefig(os.path.join(path, f"{sigmas[0]}-{sigmas[1]}_log_histograms.png"))
+    plt.close(fig)
+    
+    print("* Mean splinter sizes:")
+    for analyzer in analyzers:
+        print(f"\t '{analyzer.config.specimen_name}' ({stresses[analyzer.config.specimen_name]:.2f}): {analyzer.get_mean_splinter_size():.2f}")
+    
+    fig,ax = plt.subplots()
+    
+    sizes = [analyzer.get_mean_splinter_size() for analyzer in analyzers]
+    stresses = [stresses[analyzer.config.specimen_name] for analyzer in analyzers]
+    
+    # sort by stress
+    sorted_x, sorted_y = sort_two_arrays(stresses, sizes)
+    ax.plot(sorted_x, sorted_y, 'b-')
+    ax.set_xlabel("Stress [MPa]")
+    ax.set_ylabel("Mean splinter size [mm²]")
+    fig.tight_layout()
+    fig.savefig(os.path.join(path, f"{sigmas[0]}-{sigmas[1]}_stress_vs_size.png"))
+
+    
+    
+    
     
 app()
 

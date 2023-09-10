@@ -24,6 +24,11 @@ from fracsuite.splinters.splinter import Splinter
 
 from scipy.spatial import Delaunay
 
+plt.rcParams['figure.figsize'] = (6, 4)
+plt.rc('axes', axisbelow=True) # to get grid into background
+plt.rc('grid', linestyle="--") # line style
+plt.rcParams.update({'font.size': 12}) # font size
+
 def isgray(img):
         if len(img.shape) < 3: 
             return True
@@ -536,7 +541,7 @@ class Analyzer(object):
             print('> Step 4: Filter spots...')
             self.__filter_dark_spots(config)
         else:
-            print('> Step 4: Filter spots (SKIPPED)')
+            print('> Step 4: Filter spots ([orange]SKIPPED[/orange])')
         
         #############
         # detect fragments on the closed skeleton
@@ -583,7 +588,7 @@ class Analyzer(object):
             print("> Step 8: Count splinters in norm region...")
             self.__count_splinters_in_norm_region(config)
         else:
-            print("> Step 8: (SKIPPED)")
+            print("> Step 8: Count splinters in norm region... ([orange]SKIPPED[/orange])")
             
 
         self.__create_splintersize_filled_image(config)
@@ -929,6 +934,13 @@ class Analyzer(object):
         combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, img, 0.6, 0.0)
         cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)
         
+    def get_mean_splinter_size(self) -> float:
+        """Returns the mean splinter size.
+
+        Returns:
+            float: The mean splinter size.
+        """
+        return np.mean([x.area for x in self.splinters])
         
     def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig, label = None):
         return self.__plot_logarithmic_histograms(config, axes=axs, label=label)
@@ -972,6 +984,7 @@ class Analyzer(object):
             plt.show()
             
         if axes is None:
+            ax.grid(True, which='both', axis='both')
             fig.tight_layout()
             fig.savefig(self.__get_out_file(f"fig_log_probability.{self.config.ext_plots}"))
         else:
@@ -1066,6 +1079,8 @@ class Analyzer(object):
         if display:
             plt.show()
 
+        ax.grid(True, which='both', axis='both')
+        self.fig_area_sum.tight_layout()        
         self.fig_area_sum.savefig(self.__get_out_file(f"fig_sumofarea.{self.config.ext_plots}"))
 
         return self.fig_area_sum
@@ -1101,5 +1116,8 @@ class Analyzer(object):
         if display:
             plt.show()
             
+        ax.grid(True, which='both', axis='both')
+        
+        self.fig_area_distr.tight_layout()
         self.fig_area_distr.savefig(self.__get_out_file(f"fig_distribution.{self.config.ext_plots}"))
         return self.fig_area_distr
