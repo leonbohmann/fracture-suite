@@ -50,6 +50,25 @@ class Specimen:
         # get name from path
         self.name = os.path.basename(os.path.normpath(path))
         
+        # get thickness from name
+        if self.name.count(".") == 3:
+            vars = self.name.split(".")
+            self.thickness = float(vars[0])
+            self.nom_stress = float(vars[1])
+            
+            if vars[2].isdigit():
+                vars[2],vars[3] = vars[3], vars[2]
+            
+            self.boundary = vars[2]
+            
+            if not "-" in vars[3]:
+                self.nbr = int(vars[3])
+                self.comment = ""
+            else:
+                last_sec = vars[3].split("-")
+                self.nbr = int(last_sec[0])
+                self.comment = last_sec[1]
+        
         # load scalp
         scalp_path = os.path.join(self.path, "scalp")
         scalp_file = find_file(scalp_path, "*.pkl")
@@ -60,8 +79,8 @@ class Specimen:
 
 
         # load splinters
-        splinters_path = os.path.join(self.path, "fracture", "splinter")
-        splinters_file = find_file(splinters_path, "*.pkl")
+        self.splinters_path = os.path.join(self.path, "fracture", "splinter")
+        splinters_file = find_file(self.splinters_path, "*.pkl")
         if splinters_file is not None:
             self.splinters = Analyzer.load(splinters_file)  
             self.splinters.config.specimen_name = self.name          

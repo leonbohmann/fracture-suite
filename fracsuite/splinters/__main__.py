@@ -30,12 +30,16 @@ https://github.com/leonbohmann/fracture-suite
 """
 
 import os
+import sys
+
+from tqdm import tqdm
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 import matplotlib
 
 from fracsuite.tools.general import GeneralSettings
+from fracsuite.tools.specimen import Specimen
 
 matplotlib.rcParams['figure.figsize'] = (6, 4)
 matplotlib.rc('axes', axisbelow=True) # to get grid into background
@@ -49,6 +53,7 @@ parser = AnalyzerConfig.get_parser(__doc__)
 parser.add_argument("--all", default=False, 
                     help="Instruct the analyzer to run the analysis on every subfolder.",
                     action='store_true')
+parser.add_argument("--all-exclude", default=[], nargs="+")
 
 args = parser.parse_args()
 
@@ -61,12 +66,27 @@ if config.path[1] != ":":
 if args.all:
     print(f"Running analysis on all subfolders of '{config.path}'.")
     project_dir = config.path
-    for file in os.listdir(project_dir):
+    
+    for file in (pbar := tqdm(os.listdir(project_dir))):
+        
+        if any([x in file for x in args.all_exclude]):
+            continue
+        
         project_path = os.path.join(project_dir, file) + "\\"
-        print(f"Running analysis on '{project_path}'.")
-        if os.path.exists(project_path):
-            config.path = project_path
-            analyzer = Analyzer(config)
+        
+        if os.path.exists(project_path) and os.path.isdir(project_path):
+            spec = Specimen(project_path)
+            
+            pbar.set_description(f"Processing {spec.name}...")
+            try:
+                config.path = project_path
+                stdout = sys.stdout
+                sys.stdout = open(os.devnull, 'w')
+                analyzer = Analyzer(config)
+                sys.stdout = stdout                
+            except:
+                print(f"> [red]Failed to run analysis on '{project_path}'.[/red]")
+                continue
         
         
         

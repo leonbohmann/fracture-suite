@@ -2,6 +2,7 @@ import argparse
 from argparse import RawDescriptionHelpFormatter
 import os
 from matplotlib import pyplot as plt
+from tqdm import tqdm
 from apread import APReader, plot_multiple_datasets, Channel
 import numpy as np
 from scipy import integrate, signal
@@ -28,6 +29,24 @@ Usage:
 Command line usage is shown below. For further information visit:
 https://github.com/leonbohmann/fracture-suite
 """  
+
+def reader_to_csv(reader: APReader):
+    """Writes the reader data to a csv file."""
+    # create csv file
+    csv_file = os.path.join(out_dir, f"{reader.fileName}.csv")
+    with open(csv_file, 'w') as f:
+        # write header
+        f.write("Time [s];")
+        for chan in reader.Channels:
+            f.write(f"{chan.Name} [{chan.unit}];")
+        f.write("\n")
+        # write data
+        for i in tqdm(range(0, len(reader.Channels[0].data))):
+            f.write(f"{reader.Groups[0].ChannelX.data[i]};")
+            for chan in reader.Channels:
+                f.write(f"{chan.data[i]};")
+            f.write("\n")
+
 
 def time_to_index(time_array, t):
     """Returns the index of the time array that is closest to the given time t."""
@@ -279,6 +298,8 @@ out_dir = os.path.dirname(file)
 # file = r"d:\Forschung\Glasbruch\Versuche.Reihe\Proben\4.70.30.B\fracture\acc\4.70.30.A_fracture.bin"
 # pfile = r"d:\Forschung\Glasbruch\Versuche.Reihe\Proben\8.140.Z.2\frac\8_140_Z_2.bin"
 reader = APReader(file, verbose=True)
+
+reader_to_csv(reader)
 
 reader.printSummary()
 reader.plot(sameAxis=args.sameaxis)

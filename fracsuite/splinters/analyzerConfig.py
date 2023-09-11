@@ -92,7 +92,8 @@ class AnalyzerConfig:
         Returns:
             argparse.ArgumentParser: Can be used to create AnalyzerConfig.
         """
-        parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)
+        parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                         argument_default=argparse.SUPPRESS)
 
         parser.add_argument('path', nargs="?", 
                              help='The path of the image to be processed or a folder that contains' \

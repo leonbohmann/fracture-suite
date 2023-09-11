@@ -595,7 +595,7 @@ class Analyzer(object):
 
         print("> Create output plots...")
         self.__plot_backend(config.display_region, display=config.displayplots)
-        self.__plot_splintersize_accumulation(display=config.displayplots)
+        self.plot_splintersize_accumulation(display=config.displayplots)
         self.__plot_splintersize_distribution(display=config.displayplots)
         self.__plot_logarithmic_histograms(config, display=config.displayplots)
         
@@ -760,8 +760,18 @@ class Analyzer(object):
     def __create_voronoi(self, config: AnalyzerConfig):
         centroids = [x.centroid_px for x in self.splinters if x.has_centroid]
         voronoi = Voronoi(centroids)
-        fig = voronoi_plot_2d(voronoi, show_points=True, point_size=5, show_vertices=False, line_colors='red')
         
+        voronoi_img = np.zeros_like(self.original_image, dtype=np.uint8)
+        voronoi_img = cv2.cvtColor(voronoi_img, cv2.COLOR_BGR2GRAY)        
+        for i, r in tqdm(enumerate(voronoi.regions), leave=False, desc='Creating Voronoi diagram...'):
+            if -1 not in r and len(r) > 0:
+                polygon = [voronoi.vertices[i] for i in r]
+                polygon = np.array(polygon, dtype=int)
+                cv2.polylines(voronoi_img, [polygon], isClosed=True, color=255, thickness=2)          
+                
+        cv2.imwrite(self.__get_out_file(f"voronoi_img.{config.ext_imgs}"), voronoi_img)
+        np.fre
+        fig = voronoi_plot_2d(voronoi, show_points=True, point_size=5, show_vertices=False, line_colors='red')        
         plt.imshow(self.original_image)
         plt.axis('off')  # Turn off axis labels and ticks
         plt.title('Voronoi Plot Overlay on Image')
@@ -795,6 +805,7 @@ class Analyzer(object):
         
         fig.tight_layout()
         fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
+        del fig
             
     def __filter_dark_spots(self, config: AnalyzerConfig):
         # create normal threshold of original image to get dark spots
@@ -888,6 +899,8 @@ class Analyzer(object):
             plt.imshow(cimg)
             plt.show()
         
+        del skel_mask 
+        
         
     def __get_out_file(self, file_name: str, file_ext: str = None) -> str:
         """Returns an absolute file path to the output directory.
@@ -949,10 +962,10 @@ class Analyzer(object):
         """
         return np.mean([x.area for x in self.splinters])
         
-    def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig, label = None):
+    def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig, label: str = None):
         return self.__plot_logarithmic_histograms(config, axes=axs, label=label)
         
-    def __plot_logarithmic_histograms(self, config: AnalyzerConfig, display = False, axes = None, label = None) -> Figure:
+    def __plot_logarithmic_histograms(self, config: AnalyzerConfig, display = False, axes = None, label: str = None) -> Figure:
         """Plots a graph of Splinter Size Distribution.
 
         Returns:
@@ -969,8 +982,6 @@ class Analyzer(object):
         
         if label is None:
             label = self.config.specimen_name
-        else:
-            label = label(self)
             
         # density: normalize the bins data count to the total amount of data
         ax.hist(areas, bins=int(config.probabilitybins),
@@ -1049,8 +1060,8 @@ class Analyzer(object):
             
         self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{self.config.ext_plots}"))
         return self.fig_comparison
-        
-    def __plot_splintersize_accumulation(self, display = False) -> Figure:
+      
+    def plot_splintersize_accumulation(self, display = False) -> Figure:
         """Plots a graph of accumulated share of area for splinter sizes.
 
         Returns:
@@ -1069,7 +1080,7 @@ class Analyzer(object):
             area_i += area    
             
             p = area_i / total_area
-            data.append((area, p))
+            data.append((np.log10(area), p))
 
         data_x, data_y = zip(*data)
         

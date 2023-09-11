@@ -1,6 +1,8 @@
 import argparse
 import os
 import pickle
+import numpy as np
+from tqdm import tqdm
 
 import typer
 from matplotlib import pyplot as plt
@@ -33,7 +35,8 @@ def sort_two_arrays(array1, array2) -> tuple[list, list]:
 @app.command(name="loghist")
 def log_histograms(path: Annotated[str, typer.Argument(help='Base path for specimens')], 
                    specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')], 
-                   xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = None):
+                   xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = None,
+                   more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False):
     
     specimens: list[Specimen] = []
     for name in specimen_names:
@@ -50,7 +53,12 @@ def log_histograms(path: Annotated[str, typer.Argument(help='Base path for speci
         print("[red]No specimens loaded.[/red]")
         return
     
-    fig = plot_histograms(xlim, specimens)
+    legend_f = None
+    if more_data:
+        def legend_f(x: Specimen):
+            return f'{x.name}_{x.scalp.measured_thickness:.2f}_{abs(x.scalp.sig_h):.2f}'
+    
+    fig = plot_histograms(xlim, specimens, legend=legend_f)
     out_name = os.path.join(path, f"{specimens[0].name.replace('.','_')}_log_histograms.png")
     fig.savefig(out_name)
     print(f"Saved to '{out_name}'.")
@@ -67,17 +75,22 @@ def disp_mean_sizes(specimens: list[Specimen]):
         print(f"\t '{specimen.name}' ({specimen.scalp.sig_h:.2f}): {specimen.splinters.get_mean_splinter_size():.2f}")
     
     
-def plot_histograms(xlim: tuple[float,float], specimens: list[Specimen], legend = None) -> Figure:
+def plot_histograms(xlim: tuple[float,float], specimens: list[Specimen], legend = None, plot_mean = False) -> Figure:
     cfg = AnalyzerConfig()
     
     fig, ax = plt.subplots()
     
     for specimen in specimens:
-        specimen.splinters.plot_logarithmic_to_axes(ax, cfg, label=legend)
+        specimen.splinters.plot_logarithmic_to_axes(ax, cfg, label=legend(specimen))
+        if plot_mean:
+            mean = specimen.splinters.get_mean_splinter_size()
+            ax.axvline(np.log10(mean), color='r', linestyle='--', label=f"Ø={mean:.2f}mm²")
     
     if xlim is not None:
         ax.set_xlim(xlim)
-        
+    
+            
+    
     ax.legend(loc='best')
     ax.grid(True, which='both', axis='both')
     fig.tight_layout()
@@ -143,15 +156,41 @@ def loghist_sigma(path: Annotated[str, typer.Argument(help='Base path for specim
             specimens.append(specimen.splinters)
             print(f"Loaded '{dir}' ({stress:.2f}).")
                 
-    fig = plot_histograms(xlim, specimens, lambda x: f"{x.name}_{x.scalp.sig_h:.2f}")
+    fig = plot_histograms(xlim, specimens, lambda x: f"{x.name}_{abs(x.scalp.sig_h):.2f}")
     fig.savefig(os.path.join(path, f"{sigmas[0]}-{sigmas[1]}_log_histograms.png"))
     plt.close(fig)
     
     disp_mean_sizes(specimens)
     
-    
-    
-
+@app.command(name='loghist_all')
+def plot_all_histos():
+    """Plot histograms for all specimens in the base path."""
+    for dir in (pbar := tqdm(os.listdir(general.base_path))):
+        spec_path = os.path.join(general.base_path, dir)
+        if not os.path.isdir(spec_path):
+            continue
+        
+        spec = Specimen(spec_path)
+        if spec.splinters is None or spec.scalp is None:
+            continue
+        pbar.set_description(f"Processing {spec.name}...")
+        fig = plot_histograms(None, [spec], lambda x: f"{x.name}_{abs(x.scalp.sig_h):.2f}", plot_mean=True)
+        fig.savefig(os.path.join(spec.splinters_path, f"{spec.name}_log_histogram.png"))
+        plt.close(fig)
+        del fig
+@app.command(name='accumulation_all')
+def plot_all_accumulations():
+    """Plot histograms for all specimens in the base path."""
+    for dir in (pbar := tqdm(os.listdir(general.base_path))):
+        spec_path = os.path.join(general.base_path, dir)
+        if not os.path.isdir(spec_path):
+            continue
+        
+        spec = Specimen(spec_path)
+        if spec.splinters is None or spec.scalp is None:
+            continue
+        pbar.set_description(f"Processing {spec.name}...")
+        spec.splinters.plot_splintersize_accumulation()
     
 @app.command()
 def marina_organize(path: str):
