@@ -94,6 +94,11 @@ class AnalyzerConfig:
         """
         parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)
 
+        parser.add_argument('path', nargs="?", 
+                             help='The path of the image to be processed or a folder that contains' \
+                                'a file in subfolder "[path]/fracture/morph/...Transmission.bmp". Instead'
+                                ' of a folder, you can also specify the base_path in tools.settings and then use the specimen ID only "1.1.A.1".')
+
         gnrl_group = parser.add_argument_group("General")
         gnrl_group.add_argument('--displayplots', action='store_true', \
             help='Instruct the analyzer to display output plots.', default=False)
@@ -107,7 +112,6 @@ class AnalyzerConfig:
             type=int, default=None, metavar=('X1', 'Y1', 'X2', 'Y2'))
 
         imgroup = parser.add_argument_group("Image operations")
-        imgroup.add_argument('path', nargs="?", help='The path of the image to be processed or a folder that contains a file in subfolder "[path]/fracture/morph/...Transmission.bmp".')
         imgroup.add_argument('-realsize', nargs="*", help='Real size of the input image. If only one dim is provided, a square geometry is used.',\
             type=int, default=None, metavar=('WIDTH', 'HEIGHT'))
         imgroup.add_argument('-cropsize', nargs="*", help='Crop image size in pixels. If only one dim is provided, a square geometry is used.',\

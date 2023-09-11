@@ -53,6 +53,13 @@ pip install fracsuite
 
 ## Usage
 
+### Settings
+
+```bat
+py -m fracsuite.tools settings "key" "value"
+```
+
+Use "base_path" to specify a base folder for specimens. After that, you can use a specimen ID as a path for other modules.
 
 ### Use the module directly
 
