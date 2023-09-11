@@ -35,10 +35,14 @@ from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 import matplotlib
 
+from fracsuite.tools.general import GeneralSettings
+
 matplotlib.rcParams['figure.figsize'] = (6, 4)
 matplotlib.rc('axes', axisbelow=True) # to get grid into background
 matplotlib.rc('grid', linestyle="--") # line style
 matplotlib.rcParams.update({'font.size': 12}) # font size
+
+general_settings = GeneralSettings()
 
 parser = AnalyzerConfig.get_parser(__doc__)
 
@@ -47,7 +51,12 @@ parser.add_argument("--all", default=False,
                     action='store_true')
 
 args = parser.parse_args()
+
 config = AnalyzerConfig.from_args(args)
+
+if config.path[1] != ":":
+    config.path = os.path.join(general_settings.base_path, config.path) + "\\"
+    
 
 if args.all:
     print(f"Running analysis on all subfolders of '{config.path}'.")

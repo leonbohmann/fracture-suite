@@ -608,8 +608,15 @@ class Analyzer(object):
         print('\n')
         
         print("> Saving data...")
+        self.save_object()
+        
+    def save_object(self):
         with open(self.__get_out_file("splinters.pkl"), 'wb') as f:
             pickle.dump(self, f)
+    
+    def load(path) -> Analyzer:
+        with open(path, 'rb') as f:
+            return pickle.load(f)
         
     def preprocess_image(self, image, config: AnalyzerConfig) -> nptyp.ArrayLike:
         """Preprocess a raw image.

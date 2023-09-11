@@ -10,12 +10,15 @@ from typing_extensions import Annotated
 
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+from fracsuite.tools.general import GeneralSettings
+from fracsuite.tools.specimen import Specimen
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
 plt.rc('grid', linestyle="--") # line style
 plt.rcParams.update({'font.size': 12}) # font size
 
+general = GeneralSettings()
 
 app = typer.Typer()
 
@@ -31,31 +34,46 @@ def sort_two_arrays(array1, array2) -> tuple[list, list]:
 def log_histograms(path: Annotated[str, typer.Argument(help='Base path for specimens')], 
                    specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')], 
                    xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = None):
-    analyzers: list[Analyzer] = []
+    
+    specimens: list[Specimen] = []
     for name in specimen_names:
         spec_path = os.path.join(path, name)
-        basepath = os.path.join(spec_path, "fracture", "splinter/splinters.pkl")
+        specimen = Specimen(spec_path)
         
-        if not os.path.exists(basepath):
-            print(f"Could not find splinter file for '{name}'. Create it using:\n [green]py -m fracsuite.splinters '{spec_path}' -cropsize 4000 -realsize 500[/green]")
+        if specimen.splinters is None:
             continue
         
-        with open(basepath, "rb") as f:
-            analyzer = pickle.load(f)
-            analyzers.append(analyzer)
-            
-            print(f"Loaded '{name}'.")
+        specimens.append(specimen)
+        print(f"Loaded '{name}'.")
     
-    fig = plot_histograms(xlim, analyzers)
-    fig.savefig(os.path.join(path, f"{analyzers[0].config.specimen_name.replace('.','_')}_log_histograms.png"))
+    if len(specimens) == 0 or any([x.splinters is None for x in specimens]):
+        print("[red]No specimens loaded.[/red]")
+        return
+    
+    fig = plot_histograms(xlim, specimens)
+    out_name = os.path.join(path, f"{specimens[0].name.replace('.','_')}_log_histograms.png")
+    fig.savefig(out_name)
+    print(f"Saved to '{out_name}'.")
+    disp_mean_sizes(specimens)
+    
+def disp_mean_sizes(specimens: list[Specimen]):
+    """Displays mean splinter sizes.
 
-def plot_histograms(xlim: tuple[float,float], analyzers:  list[Analyzer], legend = None) -> Figure:
+    Args:
+        specimens (list[Specimen]): Specimens to display.
+    """
+    print("* Mean splinter sizes:")
+    for specimen in specimens:
+        print(f"\t '{specimen.name}' ({specimen.scalp.sig_h:.2f}): {specimen.splinters.get_mean_splinter_size():.2f}")
+    
+    
+def plot_histograms(xlim: tuple[float,float], specimens: list[Specimen], legend = None) -> Figure:
     cfg = AnalyzerConfig()
     
     fig, ax = plt.subplots()
     
-    for analyzer in analyzers:        
-        analyzer.plot_logarithmic_to_axes(ax, cfg, label=legend)
+    for specimen in specimens:
+        specimen.splinters.plot_logarithmic_to_axes(ax, cfg, label=legend)
     
     if xlim is not None:
         ax.set_xlim(xlim)
@@ -65,7 +83,26 @@ def plot_histograms(xlim: tuple[float,float], analyzers:  list[Analyzer], legend
     fig.tight_layout()
     return fig
     
+def plot_stress_size(specimens: list[Specimen]):    
+    fig,ax = plt.subplots()
     
+    sizes = [x.splinters.get_mean_splinter_size() for x in specimens]
+    stresses = [x.scalp.sig_h for x in specimens]
+    
+    # sort by stress
+    sorted_x, sorted_y = sort_two_arrays(stresses, sizes)
+    ax.plot(sorted_x, sorted_y, 'b-')
+    ax.set_xlabel("Stress [MPa]")
+    ax.set_ylabel("Mean splinter size [mm²]")
+    fig.tight_layout()
+    
+    # count amount of files whose name is stress_vs_size
+    count = 0
+    for file in os.listdir(general.base_path):
+        if file.startswith("stress_vs_size"):
+            count += 1
+    
+    fig.savefig(os.path.join(general.base_path, f"stress_vs_size.png"))
     
 @app.command(name='loghist_sigma')
 def loghist_sigma(path: Annotated[str, typer.Argument(help='Base path for specimens')], 
@@ -91,63 +128,29 @@ def loghist_sigma(path: Annotated[str, typer.Argument(help='Base path for specim
 
     print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
     
-    analyzers: list[Analyzer] = []
-    stresses: dict[str, float] = {}
+    specimens: list[Specimen] = []
     
     for dir in os.listdir(path):
         spec_path = os.path.join(path, dir)
-        # if dir is a directory
-        if os.path.isdir(spec_path):
-            basepath = os.path.join(spec_path, "scalp")
-            
-            if not os.path.exists(basepath):
-                print(f"Could not find scalp folder for {dir}.")
-                continue
-            
-            # find "*_stress.txt" file
-            for file in os.listdir(basepath):
-                if file.endswith("_stress.txt"):
-                    # extract stress from filename
-                    with open(os.path.join(basepath, file), "r") as f:
-                        lines = f.readlines()
-                        stress = abs(float(lines[1].split(" ")[0]))
+        
+        specimen = Specimen(spec_path)
+        
+        if specimen.splinters is None or specimen.scalp is None:
+            continue
                         
-                        stresses[dir] = stress
-                        
-                        if stress >= sigmas[0] and stress <= sigmas[1]:
-                            # load splinters
-                            spl_file = os.path.join(path, dir, "fracture", "splinter/splinters.pkl")
-                            
-                            if not os.path.exists(spl_file):
-                                print(f"Could not find splinter file for '{dir}'. Create it using:\n [green]py -m fracsuite.splinters '{spec_path}' -cropsize 4000 -realsize 500[/green]")
-                                continue
-                            
-                            with open(spl_file, "rb") as f:
-                                analyzer = pickle.load(f)
-                                analyzers.append(analyzer)
-                                print(f"Loaded '{dir}'.")
-                            break
+        stress = specimen.scalp.sig_h        
+        if stress >= sigmas[0] and stress <= sigmas[1]:
+            specimens.append(specimen.splinters)
+            print(f"Loaded '{dir}' ({stress:.2f}).")
                 
-    fig = plot_histograms(xlim, analyzers, lambda x: f"{x.config.specimen_name}_{stresses[x.config.specimen_name]:.2f}")
+    fig = plot_histograms(xlim, specimens, lambda x: f"{x.name}_{x.scalp.sig_h:.2f}")
     fig.savefig(os.path.join(path, f"{sigmas[0]}-{sigmas[1]}_log_histograms.png"))
     plt.close(fig)
     
-    print("* Mean splinter sizes:")
-    for analyzer in analyzers:
-        print(f"\t '{analyzer.config.specimen_name}' ({stresses[analyzer.config.specimen_name]:.2f}): {analyzer.get_mean_splinter_size():.2f}")
+    disp_mean_sizes(specimens)
     
-    fig,ax = plt.subplots()
     
-    sizes = [analyzer.get_mean_splinter_size() for analyzer in analyzers]
-    stresses = [stresses[analyzer.config.specimen_name] for analyzer in analyzers]
     
-    # sort by stress
-    sorted_x, sorted_y = sort_two_arrays(stresses, sizes)
-    ax.plot(sorted_x, sorted_y, 'b-')
-    ax.set_xlabel("Stress [MPa]")
-    ax.set_ylabel("Mean splinter size [mm²]")
-    fig.tight_layout()
-    fig.savefig(os.path.join(path, f"{sigmas[0]}-{sigmas[1]}_stress_vs_size.png"))
 
     
 @app.command()
@@ -196,6 +199,14 @@ def marina_organize(path: str):
                 if "Transmission" in file2 and num not in file2:
                     os.rename(os.path.join(morph_path, file2), os.path.join(morph_path, num + " " + file2))
                     break
-        
+     
+@app.command()
+def setting(key, value):
+    general = GeneralSettings()
+    general.update_setting(key, value)
+    
+    print(f"Updated setting '{key}' to '{value}'.")
+    
+
 app()
 
