@@ -108,33 +108,32 @@ if __name__ == "__main__":
                     labels.append((label,label))
              
     manual_labels = [
-        "SCHOTT1",
-        "SCHOTT2",
-        "SCHOTT3",
-        "SCHOTT4",
-        "SCHOTT5",
-        "8.140.Z.11",
-        "8.140.Z.12",
-        "8.140.A.11",
-        "8.140.A.12",
+        "SCHOTT_A",
+        "SCHOTT_B",
+        "SCHOTT_C",
+        "SCHOTT_D",
+        "SCHOTT_E",
     ]
     
-    labels = [label for label in labels if label not in existentLabels]
+    labels = [(label,label) for _,label in labels if label not in existentLabels]
 
     used_labels = []
     for label in manual_labels:
         used_labels.append((label, label))
+    used_labels = [(label,label) for _,label in used_labels if label not in existentLabels]
     
     for n in range(len(used_labels),24):
-        used_labels.append(labels.pop())
+        used_labels.append(labels.pop(0))
 
-    generate_pdf(used_labels, "2023_09_07.pdf")
+    name = f'{used_labels[0][0]}-{used_labels[-1][0]}.pdf'
+
+    generate_pdf(used_labels, name)
     
     if os.path.exists(".out"):
         shutil.rmtree(".out", ignore_errors=True)
         
-    if os.path.exists("output.pdf"):
-        os.system("start output.pdf")
+    if os.path.exists(name):
+        os.system(f"start {name}")
 
     # append used labels to existing_label_path file
     with open(existing_label_path, "a") as f:

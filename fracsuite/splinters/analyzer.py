@@ -436,6 +436,8 @@ class Analyzer(object):
         # folder operations
         if config.path.endswith('\\'):
             search_path = os.path.join(config.path, 'fracture', 'morphology')
+            
+            
             for file in os.listdir(search_path):
                 if 'Transmission' in file and file.endswith('.bmp'):
                     print(f"[green]Found image in specimen folder.[/green]")
@@ -770,7 +772,6 @@ class Analyzer(object):
                 cv2.polylines(voronoi_img, [polygon], isClosed=True, color=255, thickness=2)          
                 
         cv2.imwrite(self.__get_out_file(f"voronoi_img.{config.ext_imgs}"), voronoi_img)
-        np.fre
         fig = voronoi_plot_2d(voronoi, show_points=True, point_size=5, show_vertices=False, line_colors='red')        
         plt.imshow(self.original_image)
         plt.axis('off')  # Turn off axis labels and ticks
@@ -1058,7 +1059,7 @@ class Analyzer(object):
         if display:
             plt.show()
             
-        self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{self.config.ext_plots}"))
+        self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{self.config.ext_plots}"))        
         return self.fig_comparison
       
     def plot_splintersize_accumulation(self, display = False) -> Figure:

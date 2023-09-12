@@ -8,6 +8,8 @@ from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_file
 
+general = GeneralSettings()
+
 
 class Specimen:
     """ Container class for a specimen. """
@@ -29,7 +31,7 @@ class Specimen:
     name: str
     "Specimen name."
     
-    def __init__(self, path: str):
+    def __init__(self, path: str, log_missing = True):
         """Create a new specimen.
 
         Args:
@@ -74,15 +76,17 @@ class Specimen:
         scalp_file = find_file(scalp_path, "*.pkl")
         if scalp_file is not None:
             self.scalp = ScalpSpecimen.load(scalp_file)
-        else:            
+        elif log_missing:            
             print(f"Could not find scalp file for '{path}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
 
         # load splinters
+        self.has_fracture_scans = os.path.exists(os.path.join(self.path, "fracture", "morphology")) \
+            and find_file(os.path.join(self.path, "fracture", "morphology"), ".bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
         splinters_file = find_file(self.splinters_path, "*.pkl")
         if splinters_file is not None:
             self.splinters = Analyzer.load(splinters_file)  
             self.splinters.config.specimen_name = self.name          
-        else:
+        elif log_missing:            
             print(f"Could not find splinter file for '{path}'. Create it using [green]fracsuite.splinters[/green].")        

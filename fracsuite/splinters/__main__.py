@@ -31,6 +31,7 @@ https://github.com/leonbohmann/fracture-suite
 
 import os
 import sys
+from matplotlib import pyplot as plt
 
 from tqdm import tqdm
 from fracsuite.splinters.analyzer import Analyzer
@@ -60,12 +61,17 @@ args = parser.parse_args()
 config = AnalyzerConfig.from_args(args)
 
 if config.path[1] != ":":
+    print(f"[bold][green]Using base path '{general_settings.base_path}'.[/green][/bold]")
     config.path = os.path.join(general_settings.base_path, config.path) + "\\"
     
 
 if args.all:
     print(f"Running analysis on all subfolders of '{config.path}'.")
     project_dir = config.path
+    if os.path.exists("log.txt"):   
+        os.remove("log.txt")
+    
+    f = open("log.txt", "a")
     
     for file in (pbar := tqdm(os.listdir(project_dir))):
         
@@ -75,19 +81,26 @@ if args.all:
         project_path = os.path.join(project_dir, file) + "\\"
         
         if os.path.exists(project_path) and os.path.isdir(project_path):
-            spec = Specimen(project_path)
+            spec = Specimen(project_path, log_missing=False)
+            
+            if not spec.has_fracture_scans:
+                continue
             
             pbar.set_description(f"Processing {spec.name}...")
             try:
                 config.path = project_path
                 stdout = sys.stdout
-                sys.stdout = open(os.devnull, 'w')
+                sys.stdout = f
                 analyzer = Analyzer(config)
-                sys.stdout = stdout                
-            except:
-                print(f"> [red]Failed to run analysis on '{project_path}'.[/red]")
+                sys.stdout = stdout    
+                del analyzer           
+                plt.close('all')
+            except Exception as e:
+                print(f"> Failed to run analysis on '{project_path}'.")
+                print(e)
                 continue
-        
+    
+    f.close()
         
         
 else:
