@@ -1,6 +1,5 @@
-import argparse
 import os
-import pickle
+from typing import List, Tuple
 import numpy as np
 from tqdm import tqdm
 
@@ -10,7 +9,6 @@ from matplotlib.figure import Figure
 from rich import print
 from typing_extensions import Annotated
 
-from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.specimen import Specimen
@@ -22,7 +20,10 @@ plt.rcParams.update({'font.size': 12}) # font size
 
 general = GeneralSettings()
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_short=False)
+
+def specimen_parser(input: str):
+    return input
 
 def sort_two_arrays(array1, array2) -> tuple[list, list]:
     # Combine x and y into pairs
@@ -33,10 +34,11 @@ def sort_two_arrays(array1, array2) -> tuple[list, list]:
     return zip(*sorted_pairs)    
 
 @app.command(name="loghist")
-def log_histograms(path: Annotated[str, typer.Argument(help='Base path for specimens')], 
-                   specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')], 
-                   xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = None,
+def log_histograms(specimen_names: Annotated[List[str], typer.Argument(help='Names of specimens to load', parser=specimen_parser)], 
+                   xlim: Annotated[Tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
                    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False):
+    
+    path = general.base_path
     
     specimens: list[Specimen] = []
     for name in specimen_names:
@@ -53,15 +55,22 @@ def log_histograms(path: Annotated[str, typer.Argument(help='Base path for speci
         print("[red]No specimens loaded.[/red]")
         return
     
-    legend_f = None
-    if more_data:
+    
+    def legend_none(x: Specimen):
+        return f'{x.name}'
+    
+    legend = legend_none
+    
+    if more_data:        
         def legend_f(x: Specimen):
             return f'{x.name}_{x.scalp.measured_thickness:.2f}_{abs(x.scalp.sig_h):.2f}'
-    
-    fig = plot_histograms(xlim, specimens, legend=legend_f)
+        legend = legend_f
+        
+    fig = plot_histograms(xlim, specimens, legend=legend)
     out_name = os.path.join(path, f"{specimens[0].name.replace('.','_')}_log_histograms.png")
     fig.savefig(out_name)
     print(f"Saved to '{out_name}'.")
+    os.system(f"start {out_name}")
     disp_mean_sizes(specimens)
     
 def disp_mean_sizes(specimens: list[Specimen]):
@@ -121,7 +130,7 @@ def plot_stress_size(specimens: list[Specimen]):
 def loghist_sigma(path: Annotated[str, typer.Argument(help='Base path for specimens')], 
                   sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')], 
                   delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10, 
-                  xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = None):
+                  xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0,2)):
     """
     Plots histograms of splinter sizes for specimens with stress in a given range.
 
@@ -246,6 +255,6 @@ def setting(key, value):
     
     print(f"Updated setting '{key}' to '{value}'.")
     
-
 app()
+
 

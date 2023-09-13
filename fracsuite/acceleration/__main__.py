@@ -7,6 +7,8 @@ from apread import APReader, plot_multiple_datasets, Channel
 import numpy as np
 from scipy import integrate, signal
 
+from fracsuite.tools.general import GeneralSettings
+
 descr=\
 """
  █████╗  ██████╗ ██████╗███████╗██╗     ███████╗██████╗  █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
@@ -29,6 +31,8 @@ Usage:
 Command line usage is shown below. For further information visit:
 https://github.com/leonbohmann/fracture-suite
 """  
+
+general = GeneralSettings()
 
 def reader_to_csv(reader: APReader):
     """Writes the reader data to a csv file."""
@@ -133,7 +137,7 @@ def test_3(reader: APReader):
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
 
 
-def test_2(reader: APReader):
+def test_integrate(reader: APReader):
     channel_max = [(x.Name, np.max(x.data), np.min(x.data)) for x in reader.Channels]
 
     for max in channel_max:
@@ -286,6 +290,9 @@ args = parser.parse_args()
 if args.measurement.lower().endswith('.bin'):
     file = args.measurement
 else:
+    if args.measurement.count('.') == 3:
+        args.measurement = os.path.join(general.base_path, args.measurement)
+    
     search_path = os.path.join(args.measurement, 'fracture', 'acceleration')
     for pfile in os.listdir(search_path):
         if pfile.lower().endswith('bin'):
@@ -299,7 +306,7 @@ out_dir = os.path.dirname(file)
 # pfile = r"d:\Forschung\Glasbruch\Versuche.Reihe\Proben\8.140.Z.2\frac\8_140_Z_2.bin"
 reader = APReader(file, verbose=True)
 
-reader_to_csv(reader)
+# reader_to_csv(reader)
 
 reader.printSummary()
 reader.plot(sameAxis=args.sameaxis)

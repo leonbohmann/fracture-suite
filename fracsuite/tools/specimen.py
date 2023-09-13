@@ -73,7 +73,7 @@ class Specimen:
         
         # load scalp
         scalp_path = os.path.join(self.path, "scalp")
-        scalp_file = find_file(scalp_path, "*.pkl")
+        scalp_file = find_file(scalp_path, "pkl")
         if scalp_file is not None:
             self.scalp = ScalpSpecimen.load(scalp_file)
         elif log_missing:            
@@ -84,7 +84,7 @@ class Specimen:
         self.has_fracture_scans = os.path.exists(os.path.join(self.path, "fracture", "morphology")) \
             and find_file(os.path.join(self.path, "fracture", "morphology"), ".bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
-        splinters_file = find_file(self.splinters_path, "*.pkl")
+        splinters_file = find_file(self.splinters_path, "pkl")
         if splinters_file is not None:
             self.splinters = Analyzer.load(splinters_file)  
             self.splinters.config.specimen_name = self.name          

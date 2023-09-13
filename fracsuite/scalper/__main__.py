@@ -7,7 +7,7 @@ import os
 import pickle
 from collections import defaultdict
 from typing import Tuple, TypeVar
-
+from rich import print
 import numpy as np
 from fracsuite.scalper.scalpSpecimen import ScalpProject, ScalpSpecimen
 
@@ -63,7 +63,7 @@ def remove_duplicates(my_list, my_lambda):
     return new_list
 
 
-def get_specimens_from_projects(projects) -> list[ScalpSpecimen]:
+def get_specimens_from_projects(projects: list[ScalpProject]) -> list[ScalpSpecimen]:
     """Extract all specimens in a distinct list from a list of projects.
 
     Args:
@@ -73,6 +73,7 @@ def get_specimens_from_projects(projects) -> list[ScalpSpecimen]:
         list[Specimen]: Ordered and distinct list of all specimens.
     """
     specimens = flatten_and_sort([x.specimens for x in projects], lambda s: s.name)
+    specimens = [x for x in specimens if not x.invalid]
     specimens = remove_duplicates(specimens, lambda t: t.name)
     
     return specimens
@@ -124,15 +125,14 @@ if args.folder is not None:
     files = glob.glob(os.path.join(project_folder, '**', f'*{extension}'), recursive=True)
     
     for file in files:
-        print(f'Analyze file: {file.replace(project_folder, "")}')
+        print(f'[green]Analyze[/green] file: {file.replace(project_folder, "")}')
         project = ScalpProject(file)
-        project.write_measurements(output_directory, output_extension)        
         projects.append(project)
+        for spec in project.specimens:
+            print(f'\t{"!!!" if spec.invalid else ""}\t{spec.name:10}: {len(spec.measurementlocations)} Locations ({[f"{x.location_name} ({len(x.measurements)})" for x in spec.measurementlocations]})')
 # analyze one project
 else:
     project = ScalpProject(project_file)
-    project.write_measurements(output_directory, output_extension)    
-
     projects.append(project)
     
     
@@ -164,3 +164,7 @@ for specimen in specimens:
         print(f'\t{loc.location_name}={loc.stress[0]:.2f}/{loc.stress[1]:.2f}', end = "")
         
     print()
+    
+# write specimen
+for specimen in specimens:
+    specimen.write_measurements(output_directory, output_extension)

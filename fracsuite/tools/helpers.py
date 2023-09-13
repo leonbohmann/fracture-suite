@@ -2,8 +2,8 @@ import os
 
 
 
-def find_file(path: str, ext: str) -> str | None:
-# find .pkl file in scalppath
+def find_file(path: os.PathLike, ext: str) -> str | None:
+           
     if not os.path.exists(path):
         return None
 

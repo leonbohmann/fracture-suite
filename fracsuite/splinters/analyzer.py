@@ -1081,7 +1081,7 @@ class Analyzer(object):
             area_i += area    
             
             p = area_i / total_area
-            data.append((np.log10(area), p))
+            data.append((area, p))
 
         data_x, data_y = zip(*data)
         

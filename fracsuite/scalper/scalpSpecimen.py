@@ -7,7 +7,7 @@ import os
 import pickle
 from typing import Tuple
 import numpy as np
-
+from rich import print
 import xml.etree.ElementTree as ET
 
 from fracsuite.scalper.scalp_stress import calculate_simple
@@ -53,46 +53,34 @@ class ScalpProject:
         self.specimens = [ScalpSpecimen(name, measurements) for name, measurements in specimen_measurements.items()]
         
         
-    def write_measurements(self, output_directory: str | None, output_extension):
-        """Writes the measurements to an output directory.
-
-        Args:
-            output_directory (str): Output path
-            output_extension (str): Output extension
-        """
-        
-        
-        for measurement in self.measurements:
-           
-            # build output path and create it if necessary
-            output_path = os.path.join(output_directory, measurement.specimen, 'scalp')
-            os.makedirs(output_path, exist_ok=True)
-            output_path = os.path.join(output_path, f"{measurement.name}.{output_extension}")
-            with open(output_path, "w") as file:
-                measurement.to_file(file)
-
-        for specimen in self.specimens:
-            output_path = os.path.join(output_directory, specimen.name, 'scalp')
-            output_fpath = os.path.join(output_path, f"{specimen.name}_stress.txt")
-            with open(output_fpath, "w") as file:
-                specimen.to_file(file)
-                            
-            specimen.save(output_path)
             
         
 class ScalpSpecimen:
     """ Object, that contains information about a specimen. """
     name: str
     measurementlocations: list[MeasurementLocation]
+    "List of all measurement locations on this specimen."
+    measurements: list[Measurement]
+    "List of all measurements on this specimen."
+    invalid: bool = False
+    "If true, the specimen is invalid and will not be used for calculation."        
     
-    measured_thickness: float   # measured thickness
-    sig_h: float                # homogenous pre-stress value
-    sig_h_dev: float            # standard deviation of pre-stress
+    measured_thickness: float
+    "Measured thickness of the specimen."
+    sig_h: float
+    "Homogenous pre-stress value of the specimen."
+    sig_h_dev: float
+    "Standard deviation of the homogenous pre-stress value of the specimen."
     
     nue: float = 0.23
+    "Poisson's ratio of the glass."
     E: float = 72.0e3
+    "Young's modulus of the glass."
     
-    def __init__(self, name: str, measurements: dict[str,list[Measurement]]):
+    def __init__(self, name: str, measurements: list[Measurement]):
+        self.invalid = False
+        self.measurements = measurements
+        
         self.name = name
         self.sig_h = 0.0
                         
@@ -144,10 +132,21 @@ class ScalpSpecimen:
         for location in self.measurementlocations: 
             # dont use invalid locations for stress measurement
             if location.invalid:
+                print(f"[yellow]WARNING[/yellow]: Invalid location {location.location_name} in specimen {self.name}.")
                 continue
                    
             stresses1.append(location.stress[0])
             stresses2.append(location.stress[1])
+        
+        stresses = stresses1 + stresses2
+        
+        # if no valid location is found, the specimen is invalid
+        if len(stresses) == 0:
+            print(f"[yellow]WARNING[/yellow]: No valid locations in specimen {self.name}.")
+            self.sig_h = np.nan
+            self.sig_h_dev = np.nan
+            self.invalid = True
+            return
         
         self.sig_h = np.mean(stresses1 + stresses2) 
         self.sig_h_dev = np.std(stresses1 + stresses2)       
@@ -163,7 +162,6 @@ class ScalpSpecimen:
     
     def load(file_path) -> ScalpSpecimen:        
         with open(file_path, "rb") as file_path:
-            # print(f"Loading specimen from file: {file_path}"
             return pickle.load(file_path)            
     
     def to_file(self, file):
@@ -177,6 +175,33 @@ class ScalpSpecimen:
         
         for loc in self.measurementlocations:
             file.write(f'{loc.location_name:20}\t{loc.stress[0]:<20}\t{loc.stress[1]:<20}\n')
+    
+    
+    def write_measurements(self, output_directory: str | None, output_extension):
+        """Writes the measurements to an output directory.
+
+        Args:
+            output_directory (str): Output path
+            output_extension (str): Output extension
+        """
+        
+        
+        for measurement in self.measurements:
+           
+            # build output path and create it if necessary
+            output_path = os.path.join(output_directory, measurement.specimen, 'scalp')
+            os.makedirs(output_path, exist_ok=True)
+            output_path = os.path.join(output_path, f"{measurement.name}.{output_extension}")
+            with open(output_path, "w") as file:
+                measurement.to_file(file)
+
+        
+        output_path = os.path.join(output_directory, self.name, 'scalp')
+        output_fpath = os.path.join(output_path, f"{self.name}_stress.txt")
+        with open(output_fpath, "w") as file:
+            self.to_file(file)
+                        
+        self.save(output_path)
     
     def __str__(self):
         return self.name
@@ -224,7 +249,8 @@ class MeasurementLocation:
                 sig = input(f"Enter stress for {specimen_name}-{location_name}, Direction {missing_dir} [sigma]: ")   
                 
                 # if no stress is applied, the location is invalid
-                if sig == '':
+                if sig == "":
+                    print("Measurement location invalid!")
                     self.invalid = True
                     self.stress = (np.nan, np.nan)
                     return
