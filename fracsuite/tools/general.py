@@ -1,21 +1,29 @@
 import json
 import os
 
+from rich import print
+from rich.pretty import pretty_repr
 
 class GeneralSettings:
     base_path: str = ""
+    plot_extension: str = ".pdf"
     
     def __init__(self) -> None:
+        self.load()
+    
+    def __str__(self):
+        return "General Settings"
+    
+    def load(self):
         cfg_path = self.__get_cfg_file()
         # read config file from ~/.config
-        if os.path.exists(cfg_path):            
+        if os.path.exists(cfg_path):                        
             with open(cfg_path, "r") as f:
                 # load json and save members to self
                 conf = json.load(f)
                 for key in conf:
-                    setattr(self, key, conf[key])            
-        pass
-    
+                    setattr(self, key, conf[key])
+                    
     def save(self) -> None:
         # save members to json
         cfg_path = self.__get_cfg_file()
@@ -26,6 +34,25 @@ class GeneralSettings:
         setattr(self, key, value)
         self.save()
         
+    def print(self):
+        print(pretty_repr(self.__dict__))
+        
     def __get_cfg_file(self) -> str:
         return os.path.join(__file__, "..", "..", "..", "config.json")
         
+    def clear(self):
+        # delete cfg file
+        cfg_path = self.__get_cfg_file()
+        p = self.base_path
+        pe = self.plot_extension
+        if os.path.exists(cfg_path):
+            os.remove(cfg_path)   
+            
+        keys = [x for x in self.__dict__]
+        # reset members
+        for key in keys:
+            delattr(self, key)
+            
+        self.base_path = p
+        self.plot_extension = pe
+        self.save()

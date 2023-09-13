@@ -11,6 +11,26 @@ class Splinter:
     alignment_score: float = np.nan
     "Score indicating how much the splinter points into the direction of the impact point."
     
+    
+    roughness: float
+    "Roughness of the splinter."
+    roundness: float
+    """
+    Roundness of the splinter. Calculated using the relation between area and 
+    the corresponding circle area with the same circumfence.
+    """
+    
+    area: float
+    "Area of the splinter."
+    circumfence: float
+    "Circumfence of the splinter."
+    centroid_mm: tuple[float, float]
+    "Centroid of the splinter in mm."
+    centroid_px: tuple[float, float]
+    "Centroid of the splinter in px."
+    has_centroid: bool
+    "True if the centroid could be calculated."
+    
     def __init__(self, contour, index, mm_px: float, config = None):
         """Create a splinter from a contour.
 
@@ -26,7 +46,7 @@ class Splinter:
         self.circumfence = cv2.arcLength(self.contour, True) * mm_px
         
         # roundness
-        self.roundness = 4 * np.pi * self.area / self.circumfence ** 2
+        self.roundness = self.calculate_roundness()
         # roughness
         self.roughness = self.calculate_roughness()
         
@@ -55,6 +75,21 @@ class Splinter:
         if config is not None:
             self.measure_orientation(config)
 
+    
+        
+    
+    def calculate_roundness(self) -> float:
+        """Calculate the roundness of the contour by comparing the area of the
+        contour to the area of its corresponding circle with the same circumfence.
+
+        Returns:
+            float: A value indicating how round the contour is.
+        """
+        contour = self.contour
+        area = cv2.contourArea(contour)
+        circumfence = cv2.arcLength(contour,True)
+        return 4 * np.pi * area / circumfence ** 2
+    
     def calculate_roughness(self) -> float:
         """Calculate the roughness of the contour by comparing the circumfence
         of the contour to the circumfence of its convex hull.
@@ -67,7 +102,7 @@ class Splinter:
         hull = cv2.convexHull(contour)
         hullperimeter = cv2.arcLength(hull,True)
         
-        return perimeter / hullperimeter
+        return perimeter / hullperimeter - 1
     
     def __calculate_orientation(self):
         """Calculate the orientation of the splinter in degrees."""
@@ -98,7 +133,19 @@ class Splinter:
         x1,y1,x2,y2 = rect
         x,y = self.centroid_mm
         return x1 <= x <= x2 and y1 <= y <= y2
+    def in_region_px(self, rect: tuple[float,float,float,float]) -> bool:
+        """Check if the splinter is in the given region.
 
+        Args:
+            rect (tuple[float,float,float,float]): Region to check. (x1,y1,x2,y2)
+
+        Returns:
+            bool: True if the splinter is in the region.
+        """
+        x1,y1,x2,y2 = rect
+        x,y = self.centroid_px
+        return x1 <= x <= x2 and y1 <= y <= y2
+    
     def __calculate_orientation_score(self, origin) -> float:
         """Calculate the alignment score of the splinter with the given vector.
         

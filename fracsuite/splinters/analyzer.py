@@ -19,6 +19,7 @@ from scipy.spatial.distance import pdist
 from skimage.morphology import skeletonize
 from tqdm import tqdm
 from rich import inspect, print
+from rich.progress import track
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
 
@@ -304,7 +305,77 @@ def csintkern(events, region, h):
     
     return X, Y, Z
 
-def csintkern_optimized(events, region, h=500):
+def csintkern_splinters(region, splinters:list[Splinter],  h=200, z_action = None):
+    """Calculate an intensity based on splinters in a region with size h and use z_action
+    to perform calculations on the splinters in that region.
+
+    Args:
+        region (tuple): _description_
+        splinters (list[Splinter]): _description_
+        h (int, optional): Scan region size in px. Defaults to 200px.
+        z_action (def(list[Specimen]), optional): Gets called for every region. Defaults to None, which
+            will return the length of the specimen..
+
+    Returns:
+        X,Y,Z: The meshgrid and the intensity values.
+    """
+    px_w, px_h = region
+    
+    # Get the ranges for x and y
+    minx = 0
+    maxx = np.max(region[0])
+    miny = 0
+    maxy = np.max(region[1])
+    
+    # Get 50 linearly spaced points
+    xd = np.linspace(minx, maxx, int(np.ceil(px_w/h)))
+    yd = np.linspace(miny, maxy, int(np.ceil(px_h/h)))
+    X, Y = np.meshgrid(xd, yd)
+    
+    # perform the action on every area element
+    if z_action is None:
+        def z_action(x: list[Splinter]):
+            return len(x)
+        
+    result = np.empty(X.shape)
+    # print(result.shape)
+    # print(len(xd))
+    # print(len(yd))
+    
+    # Iterate over all points and find splinters in the area of X, Y and intensity_h
+    for i in track(range(1,len(xd) - 1), transient=True):
+        for j in range(1,len(yd) - 1):
+            x1,y1=xd[i]-h//2,yd[j]-h//2
+            x2,y2=xd[i]+h//2,yd[j]+h//2
+
+            # Create a region (x1, y1, x2, y2)
+            region_rect = (x1, y1, x2, y2)
+
+
+            # Collect splinters in the current region
+            splinters_in_region = [splinter for splinter in splinters if splinter.in_region_px(region_rect)]
+
+            # Apply z_action to collected splinters
+            result[j, i] = z_action(splinters_in_region) if len(splinters_in_region) > 0 else 0
+            
+    Z = result.reshape(X.shape)
+
+    return X,Y,Z
+    # Z = np.zeros(X.shape)
+    # for i in track(range(X.shape[0]), leave=False):
+    #     for j in range(X.shape[1]):
+    #         # find splinters in the area
+    #         splinters_in_area = []
+    #         for splinter in splinters:
+    #             if splinter.in_region((X[i,j], Y[i,j])):
+    #                 splinters_in_area.append(splinter)
+    #         x = X[i,j]
+    #         y = Y[i,j]
+    #         Z[i,j] = z_action(x,y)
+    
+    pass
+
+def csintkern_optimized_distances(events, region, r=500):
     n, d = events.shape
     
     # Get the ranges for x and y
@@ -313,20 +384,23 @@ def csintkern_optimized(events, region, h=500):
     miny = np.min(region[:][1])
     maxy = np.max(region[:][1])
     
+    w = maxx - minx
+    h = maxy - miny
+    
     # Get 50 linearly spaced points
-    xd = np.linspace(minx, maxx, 50)
-    yd = np.linspace(miny, maxy, 50)
+    xd = np.linspace(minx, maxx, w//r)
+    yd = np.linspace(miny, maxy,    h//r)
     X, Y = np.meshgrid(xd, yd)
     st = np.column_stack((X.ravel(), Y.ravel()))
     ns = len(st)
     
     # Precompute distances
     dist_matrix = np.linalg.norm(events[:, np.newaxis, :] - st[np.newaxis, :, :], axis=-1)
-    t = np.maximum(0, 1 - (dist_matrix / h) ** 2) ** 2
+    t = np.maximum(0, 1 - (dist_matrix / r) ** 2) ** 2
 
     # Calculate intensities
     z = np.sum(t, axis=0)
-    z *= 3 / (np.pi * h)
+    # z *= 3 / (np.pi * h)
 
     Z = z.reshape(X.shape)
     
@@ -780,15 +854,62 @@ class Analyzer(object):
             plt.show()
         fig.savefig(self.__get_out_file(f"voronoi.{config.ext_plots}"))
         
-        events = np.array(centroids)
-        region = np.array([[0,self.original_image.shape[1]], [0, self.original_image.shape[0]]])
         
         # optimal_h = estimate_optimal_h(events, region)
         # print(f'Optimal h: {optimal_h}')
         
         #TODO: compare voronoi splinter size distribution to actual distribution
         # X,Y,Z = csintkern(events, region, 500)        
-        X, Y, Z = csintkern_optimized(events, region, config.intensity_h)
+        fig = self.create_intensity_plot(config.intensity_h)
+        fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
+        del fig
+    
+    def plot_intensity(self, 
+                       region_size: float, 
+                       z_action, 
+                       clr_label="Intensity [Splinters / Area]",
+                       fig_title="Fracture Intensity",
+                       xlabel="Pixels",
+                       ylabel="Pixels",): 
+        """Create an intensity plot of the fracture.
+
+        Args:
+            intensity_h (float): Size of the analyzed regions.
+            z_action (def(list[Specimen])): The action that is called for every region.
+            clr_label (str, optional): Colorbar title. Defaults to "Intensity [Splinters / Area]".
+
+        Returns:
+            Figure: A figure showing the intensity plot.
+        """
+        region = np.array([self.original_image.shape[1], self.original_image.shape[0]])
+        # print(f'Creating intensity plot with region={region}...')
+        
+        X, Y, Z = csintkern_splinters(region, self.splinters, region_size, z_action)
+        fig,axs = plt.subplots()
+        axs.imshow(self.original_image)
+        axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
+        fig.colorbar(axim, label=clr_label)
+        axs.xaxis.tick_top()
+        axs.xaxis.set_label_position('top')
+        axs.set_xlabel(xlabel)
+        axs.set_ylabel(ylabel)
+        axs.set_title(f'{fig_title} (h={region_size:.2f})')
+        
+        fig.tight_layout()
+        return fig
+    
+    def create_intensity_plot(self, intensity_h: float):
+        """Create a plot of the fracture intensity.
+
+        Args:
+            config (AnalyzerConfig): Configuration.
+        """
+        centroids = [x.centroid_px for x in self.splinters if x.has_centroid]
+
+        events = np.array(centroids)
+        region = np.array([[0,self.original_image.shape[1]], [0, self.original_image.shape[0]]])
+        
+        X, Y, Z = csintkern_optimized_distances(events, region, intensity_h)
         fig,axs = plt.subplots()
         axs.imshow(self.image_contours)
         axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
@@ -799,15 +920,11 @@ class Analyzer(object):
         axs.xaxis.set_label_position('top')
         axs.set_xlabel('Pixels')
         axs.set_ylabel('Pixels')
-        axs.set_title(f'Fracture Intensity (h={config.intensity_h:.2f})')
-        
-        if config.debug_experimental:
-            plt.show()
+        axs.set_title(f'Fracture Intensity (h={intensity_h:.2f})')
         
         fig.tight_layout()
-        fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
-        del fig
-            
+        return fig
+    
     def __filter_dark_spots(self, config: AnalyzerConfig):
         # create normal threshold of original image to get dark spots
         img = preprocess_spot_detect(self.original_image)

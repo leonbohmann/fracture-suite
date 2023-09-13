@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import os
 
@@ -9,6 +10,27 @@ from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_file
 
 general = GeneralSettings()
+
+def fetch_specimens(specimen_names: list[str], path: str) -> list[Specimen]:
+    """Fetch a list of specimens from a given path.
+
+    Args:
+        specimen_names (list[str]): The names of the specimens.
+        path (str): THe base path to the specimens.
+    """
+    
+    specimens: list[Specimen] = []
+    for name in specimen_names:
+        spec_path = os.path.join(path, name)
+        specimen = Specimen(spec_path)
+        
+        if specimen.splinters is None:
+            continue
+        
+        specimens.append(specimen)
+        print(f"Loaded '{name}'.")
+        
+    return specimens
 
 
 class Specimen:

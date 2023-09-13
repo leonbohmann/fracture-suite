@@ -11,7 +11,10 @@ from typing_extensions import Annotated
 
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.specimen import Specimen
+from fracsuite.tools.specimen import Specimen, fetch_specimens
+
+from fracsuite.tools.plot import app as plt_app
+from fracsuite.tools.config import app as config_app
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -21,6 +24,8 @@ plt.rcParams.update({'font.size': 12}) # font size
 general = GeneralSettings()
 
 app = typer.Typer(pretty_exceptions_short=False)
+app.add_typer(plt_app, name="plot")
+app.add_typer(config_app, name="config")
 
 def specimen_parser(input: str):
     return input
@@ -36,20 +41,12 @@ def sort_two_arrays(array1, array2) -> tuple[list, list]:
 @app.command(name="loghist")
 def log_histograms(specimen_names: Annotated[List[str], typer.Argument(help='Names of specimens to load', parser=specimen_parser)], 
                    xlim: Annotated[Tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
-                   more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False):
+                   more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
+                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 20):
     
     path = general.base_path
+    specimens = fetch_specimens(specimen_names, path)
     
-    specimens: list[Specimen] = []
-    for name in specimen_names:
-        spec_path = os.path.join(path, name)
-        specimen = Specimen(spec_path)
-        
-        if specimen.splinters is None:
-            continue
-        
-        specimens.append(specimen)
-        print(f"Loaded '{name}'.")
     
     if len(specimens) == 0 or any([x.splinters is None for x in specimens]):
         print("[red]No specimens loaded.[/red]")
@@ -66,8 +63,10 @@ def log_histograms(specimen_names: Annotated[List[str], typer.Argument(help='Nam
             return f'{x.name}_{x.scalp.measured_thickness:.2f}_{abs(x.scalp.sig_h):.2f}'
         legend = legend_f
         
-    fig = plot_histograms(xlim, specimens, legend=legend)
-    out_name = os.path.join(path, f"{specimens[0].name.replace('.','_')}_log_histograms.png")
+    fig = plot_histograms(xlim, specimens, legend=legend, n=n_bins)
+    out_name = f"{specimens[0].name.replace('.','_')}_log_histograms"
+    c = len([x for x in os.listdir(path) if x.startswith(out_name)])
+    out_name = os.path.join(path, f"{out_name}_{c}.png")
     fig.savefig(out_name)
     print(f"Saved to '{out_name}'.")
     os.system(f"start {out_name}")
@@ -84,8 +83,14 @@ def disp_mean_sizes(specimens: list[Specimen]):
         print(f"\t '{specimen.name}' ({specimen.scalp.sig_h:.2f}): {specimen.splinters.get_mean_splinter_size():.2f}")
     
     
-def plot_histograms(xlim: tuple[float,float], specimens: list[Specimen], legend = None, plot_mean = False) -> Figure:
+def plot_histograms(xlim: tuple[float,float], 
+                    specimens: list[Specimen], 
+                    legend = None, 
+                    plot_mean = False,
+                    n: int = 50) -> Figure:
     cfg = AnalyzerConfig()
+    
+    cfg.probabilitybins = n
     
     fig, ax = plt.subplots()
     
@@ -200,6 +205,10 @@ def plot_all_accumulations():
             continue
         pbar.set_description(f"Processing {spec.name}...")
         spec.splinters.plot_splintersize_accumulation()
+   
+@app.command()
+def plot_roughness():
+    pass
     
 @app.command()
 def marina_organize(path: str):
@@ -248,12 +257,6 @@ def marina_organize(path: str):
                     os.rename(os.path.join(morph_path, file2), os.path.join(morph_path, num + " " + file2))
                     break
      
-@app.command()
-def setting(key, value):
-    general = GeneralSettings()
-    general.update_setting(key, value)
-    
-    print(f"Updated setting '{key}' to '{value}'.")
     
 app()
 

@@ -1,3 +1,4 @@
 {
-    "base_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Proben\\"
+    "base_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Proben\\",
+    "plot_extension": "png"
 }
