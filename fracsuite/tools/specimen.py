@@ -205,6 +205,7 @@ class Specimen:
 
 @app.command()        
 def sync():
+    """Sync all specimen configs."""
     # iterate over all splinters
     for name in track(os.listdir(general.base_path), description="Syncing specimen configs...", transient=False):
         
