@@ -21,7 +21,7 @@ from tqdm import tqdm
 from rich import inspect, print
 from rich.progress import track
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.splinter import Splinter
+from fracsuite.splinters.splinter import Splinter, SplinterCollection
 
 from scipy.spatial import Delaunay
 
@@ -166,12 +166,12 @@ def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
     im_h, im_w =im.shape[0],im.shape[1]
     
     if im_w > im_h:        
-        f = im_w / 4000
-        im_w = 4000
+        f = im_w / cropped_image_size[0]
+        im_w = cropped_image_size[0]
         im_h = int(im_w / f)
     else:
-        f = im_h / 4000
-        im_h = 4000
+        f = im_h / cropped_image_size[1]
+        im_h = cropped_image_size[1]
         im_w = int(im_h / f)
                 
     # Create target points
@@ -477,7 +477,7 @@ class Analyzer(object):
     
     contours: list[nptyp.ArrayLike]
     "List of all contours."
-    splinters: list[Splinter]
+    splinters: SplinterCollection
     "List of all splinters."
     
     axs: list[plt.Axes]
@@ -687,10 +687,13 @@ class Analyzer(object):
         self.save_object()
         
     def save_object(self):
-        with open(self.__get_out_file("splinters.pkl"), 'wb') as f:
+        with open(self.__get_out_file("analyzer.pkl"), 'wb') as f:
             pickle.dump(self, f)
+        # with open(self.__get_out_file("splinters.pkl"), 'wb') as f:
+        #     pickle.dump(self.splinters, f)
     
     def load(path) -> Analyzer:
+        # lyzer = Analyzer()
         with open(path, 'rb') as f:
             return pickle.load(f)
         

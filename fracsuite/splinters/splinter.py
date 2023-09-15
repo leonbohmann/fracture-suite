@@ -181,3 +181,8 @@ class Splinter:
         # calculate the angle between the centroid and the impact point
         
         return self.__calculate_orientation_score(config.impact_position)
+
+
+class SplinterCollection(list):
+    pass
+        
