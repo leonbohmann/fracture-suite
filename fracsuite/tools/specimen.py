@@ -30,10 +30,6 @@ def fetch_specimens(specimen_names: list[str], path: str) -> list[Specimen]:
         spec_path = os.path.join(path, name)
         specimen = Specimen(spec_path, lazy=True)
         
-        if not specimen.has_splinters:
-            continue
-        
-        specimen.lazy_load()
         specimens.append(specimen)
         print(f"Loaded '{name}'.")
         
@@ -123,6 +119,8 @@ class Specimen:
     "Thickness of the specimen."
     nbr: int = 0
     "Number of the specimen."
+    comment: str = ""
+    "Comment of the specimen."
     
     def lazy_load(self):
         """Load the specimen lazily."""
@@ -130,9 +128,9 @@ class Specimen:
         if self.loaded:
             print("[red]Specimen already loaded.")
         
-        self.scalp = ScalpSpecimen.load(self.__scalp_file)
-        self.splinters = Analyzer.load(self.__splinters_file)        
-        self.splinters.config.specimen_name = self.name
+        # self.scalp = ScalpSpecimen.load(self.__scalp_file)
+        # self.splinters = Analyzer.load(self.__splinters_file)        
+        # self.splinters.config.specimen_name = self.name
         
         self.loaded = True
     
@@ -198,7 +196,7 @@ class Specimen:
         self.has_splinters = self.__splinters_file is not None
         
         if self.__splinters_file is not None and not lazy:
-            self.splinters = Analyzer.load(self.__splinters_file)  
+            # self.splinters = Analyzer.load(self.__splinters_file)  
             self.splinters.config.specimen_name = self.name          
         elif log_missing:            
             print(f"Could not find splinter file for '{path}'. Create it using [green]fracsuite.splinters[/green].")        
@@ -215,5 +213,73 @@ def sync():
         
         
         s = Specimen(spec_path, log_missing=False, lazy=True)
-        print(s.settings['break_mode'])
-                       
+
+
+@app.command()
+def export():
+    import xlsxwriter
+    
+    workbook_path = os.path.join(general.base_path, "summary1.xlsx")
+    
+    workbook = xlsxwriter.Workbook(workbook_path)
+ 
+    # The workbook object is then used to add new
+    # worksheet via the add_worksheet() method.
+    worksheet = workbook.add_worksheet()
+    
+    
+    worksheet.write(0, 0, "Boundary: A (allseitig), Z (zweiseitig), B (gebettet)")
+    worksheet.write(1, 0, "Comment: B (Bohrung)")
+    
+    start_row = 10
+    
+    worksheet.write(start_row, 0, "Name")
+    worksheet.write(start_row, 1, "Thickness")
+    worksheet.write(start_row, 2, "Pre-Stress")
+    worksheet.write(start_row, 3, "Boundary")
+    worksheet.write(start_row, 4, "Nbr")    
+    worksheet.write(start_row, 5, "Comment")
+    worksheet.write(start_row, 6, "Break-Mode")
+    worksheet.write(start_row, 7, "Break-Position")
+    worksheet.write(start_row, 8, "Real pre-stress")
+    worksheet.write(start_row, 9, "(std-dev)")
+    worksheet.write(start_row, 10, "Mean splinter size")
+    
+    
+    row = start_row + 1
+    for name in track(os.listdir(general.base_path), description="Syncing specimen configs...", transient=False):
+        
+        spec_path = os.path.join(general.base_path, name)
+        if not os.path.isdir(spec_path):
+            continue
+        
+        
+        s = Specimen(spec_path, log_missing=False)                       
+        # extract data
+        worksheet.write(row, 0, s.name)    
+        worksheet.write(row, 1, s.thickness)    
+        worksheet.write(row, 2, s.nom_stress)    
+        worksheet.write(row, 3, s.boundary)    
+        worksheet.write(row, 4, s.nbr)    
+        worksheet.write(row, 5, s.comment)    
+        worksheet.write(row, 6, s.settings['break_mode'])            
+        worksheet.write(row, 7, s.settings['break_pos'])    
+        if s.has_scalp:
+            worksheet.write(row, 8, s.scalp.sig_h)    
+            worksheet.write(row, 9, s.scalp.sig_h_dev)    
+        if s.has_splinters:
+            worksheet.write(row, 10, s.splinters.get_mean_splinter_size())    
+        
+        
+        
+        
+        row += 1
+        del s
+        
+        
+    
+    # Finally, close the Excel file
+    # via the close() method.
+    workbook.close()
+    
+    os.system(f'start {workbook_path}')

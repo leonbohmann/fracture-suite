@@ -58,12 +58,13 @@ class Splinter:
             
             self.centroid_mm =  (cX * mm_px, cY * mm_px)
             self.centroid_px =  (cX, cY)
+            self.has_centroid = True
         except:
             self.centroid_mm = (np.nan, np.nan)
             self.centroid_px = (np.nan, np.nan)
             
+            self.has_centroid = False
         
-        self.has_centroid = not any(np.isnan(self.centroid_mm)) and not any(np.isnan(self.centroid_px))
         
 
         self.angle = self.__calculate_orientation()
@@ -181,8 +182,3 @@ class Splinter:
         # calculate the angle between the centroid and the impact point
         
         return self.__calculate_orientation_score(config.impact_position)
-
-
-class SplinterCollection(list):
-    pass
-        

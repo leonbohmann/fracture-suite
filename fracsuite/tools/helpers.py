@@ -15,6 +15,18 @@ def find_file(path: os.PathLike, ext: str) -> str | None:
             return os.path.join(path, file)
         
     return None    
+
+def find_files(path: os.PathLike, ext: str) -> str | None:
+           
+    if not os.path.exists(path):
+        return []
+    
+    files = []
+    for file in os.listdir(path):
+        if file.endswith(ext):
+            files.append(os.path.join(path, file))
+    
+    return files
    
 def write_image(out_img, out_path):
     cv2.imwrite(out_path, out_img)

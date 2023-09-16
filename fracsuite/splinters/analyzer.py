@@ -4,43 +4,50 @@ import csv
 import os
 import random
 import pickle
+from typing import Callable
 
 import cv2
-from matplotlib.ticker import FuncFormatter, ScalarFormatter
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import numpy.typing as nptyp
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.widgets import RectangleSelector
 import matplotlib.colors as colors
-import matplotlib.cm as cmx
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from scipy.spatial.distance import pdist
 from skimage.morphology import skeletonize
 from tqdm import tqdm
-from rich import inspect, print
+from rich import print
 from rich.progress import track
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.splinter import Splinter, SplinterCollection
+from fracsuite.splinters.splinter import Splinter
 
-from scipy.spatial import Delaunay
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
 plt.rc('grid', linestyle="--") # line style
 plt.rcParams.update({'font.size': 12}) # font size
 
-def isgray(img):
-        if len(img.shape) < 3: 
-            return True
-        if img.shape[2] == 1: 
-            return True
-        # b,g,r = img[:,:,0], img[:,:,1], img[:,:,2]
-        return False  
-   
+def is_gray(img):
+    return len(img.shape) == 2
+
+def is_rgb(img):
+    return len(img.shape) == 3
+
+def to_gray(img):
+    if is_gray(img):
+        return img
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+def to_rgb(img):
+    if is_rgb(img):
+        return img
+    return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
 def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] = None):
-    if isgray(img) and color:
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if color:
+        img = to_rgb(img)
     
     fig, axs = plt.subplots()
     axs.imshow(img)
@@ -52,9 +59,10 @@ def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] 
         axs.set_ylim((y1,y2))
         
     plt.show()
+    plt.close(fig)
      
 
-def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
+def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool, return_matrix: bool = False):
     """
     Crops a given image to its containing pane bounds. Finds smallest pane countour with
     4 corner points and aligns, rotates and scales the pane to fit a resulting image.
@@ -90,12 +98,8 @@ def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
     im = img.copy()
     im0 = img.copy()
     
-    if not isgray(im):
-        im = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    
-    if isgray(im0):
-        im0 = cv2.cvtColor(im0,cv2.COLOR_GRAY2BGR)
-        
+    im = to_gray(im)
+    im0 = to_rgb(im0)
     
     # # apply gaussian blur to image to we can get rid of some noise
     im = cv2.GaussianBlur(im, (5,5), 5)
@@ -193,12 +197,28 @@ def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
     # Warping perspective
     M = cv2.getPerspectiveTransform(sPoints, tPoints)     
 
-    img_original = cv2.warpPerspective(img_original, M, (int(width), int(height)))
+    img_original = crop_matrix(img_original, M, (int(width), int(height)))
     # print(img_original.shape)
     # plotImage(img_original, 'CROP: Cropped image')
     # and return the transformed image
+    
+    if return_matrix:
+        return img_original, M
+    
     return img_original
 
+def crop_matrix(img, M, size):
+    """Crop an image using a transformation matrix.
+
+    Args:
+        img (Image): The image to crop.
+        M (np.array): The transformation matrix.
+        size (tuple[int,int]): The size of the resulting image.
+
+    Returns:
+        Image: The cropped image.
+    """
+    return cv2.warpPerspective(img, M, size)
 
 
 def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
@@ -223,7 +243,7 @@ def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
     As = []
     ks = []
     # Iterate over all contours
-    for i in tqdm(range(len(contours)), desc = 'Eliminate small contours', leave=False):
+    for i in range(len(contours)):
         contour_area = contours_areas[i]
         contour_perim = cv2.arcLength(contours[i], False)
         
@@ -445,9 +465,7 @@ def get_color(value, min_value = 0, max_value = 1, colormap_name='viridis'):
     return tuple(int(255 * channel) for channel in rgb_color)
 
 def preprocess_spot_detect(img):
-    if not isgray(img):
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
+    img = to_gray(img)
     img = cv2.GaussianBlur(img, (5,5), 3)
     img = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
     return img
@@ -477,7 +495,7 @@ class Analyzer(object):
     
     contours: list[nptyp.ArrayLike]
     "List of all contours."
-    splinters: SplinterCollection
+    splinters: list[Splinter]
     "List of all splinters."
     
     axs: list[plt.Axes]
@@ -488,8 +506,10 @@ class Analyzer(object):
     
     config: AnalyzerConfig
     "Configuration of the analyzer."
+    detection_ratio: float
+    "Ratio of detected fragments to all fragments."
     
-    def __init__(self, config: AnalyzerConfig = None):
+    def __init__(self, config: AnalyzerConfig = None, updater: Callable[[float, str]] = None):
         """Create a new analyzer object.
 
         Args:
@@ -503,6 +523,12 @@ class Analyzer(object):
         """
         if config is None:
             config = AnalyzerConfig()
+
+        do_print = False        
+        if updater is None:
+            do_print = True
+            def updater(x, title):
+                print(title)
         
         self.config = config
         
@@ -514,7 +540,7 @@ class Analyzer(object):
             
             for file in os.listdir(search_path):
                 if 'Transmission' in file and file.endswith('.bmp'):
-                    print(f"[green]Found image in specimen folder.[/green]")
+                    updater(0, f"[green]Found image in specimen folder.[/green]")
                     self.file_path = os.path.join(search_path, file)
                     self.file_dir = os.path.dirname(self.file_path)
                     break
@@ -530,21 +556,21 @@ class Analyzer(object):
             self.out_dir = os.path.join(self.out_dir, os.path.splitext(os.path.basename(config.path))[0])
         
         
-        print(f"Input file: '[bold]{self.file_path}[/bold]'")
-        print(f"Output directory: '[bold]{self.out_dir}[/bold]'")
+        updater(0, f"Input file: '[bold]{self.file_path}[/bold]'")
+        updater(0, f"Output directory: '[bold]{self.out_dir}[/bold]'")
         # create output directory if not exists
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
             
         #############
         # image operations
-        print('> Step 1: Preprocessing image...')
-        self.original_image = cv2.imread(self.file_path, cv2.IMREAD_GRAYSCALE)
+        updater(1/9, '> Step 1: Preprocessing image...')
+        self.original_image = cv2.imread(self.file_path, cv2.IMREAD_COLOR)
         if config.crop:
             self.original_image = crop_perspective(self.original_image, config.cropped_image_size, config.debug)
             # this is the default for the input images from cullet scanner
             self.original_image = cv2.rotate(self.original_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            self.original_image = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
+            self.original_image = to_rgb(self.original_image)
         
         self.preprocessed_image = self.preprocess_image(self.original_image, config)
         
@@ -571,7 +597,7 @@ class Analyzer(object):
             
         #############
         # initial contour operations
-        print('> Step 2: Analyzing contours...')
+        updater(2/9, '> Step 2: Analyzing contours...')
         all_contours = detect_fragments(self.preprocessed_image, config)
         stencil = np.zeros((self.preprocessed_image.shape[0], \
             self.preprocessed_image.shape[1]), dtype=np.uint8)
@@ -582,7 +608,7 @@ class Analyzer(object):
         #############
         # advanced image operations
         # first step is to skeletonize the stencil        
-        print('> Step 2.1: Skeletonize 1|2')
+        updater(2/9, 'Step 2.1: Skeletonize 1|2')
         skeleton = skeletonize(255-stencil)
         skeleton = skeleton.astype(np.uint8) * 255
         cv2.imwrite(self.__get_out_file('.debug/skeleton.png'), skeleton)
@@ -596,7 +622,7 @@ class Analyzer(object):
         if config.debug:
             plotImage(skeleton, 'SKEL1 - Closed', False, region=config.display_region)
         # second step is to skeletonize the closed skeleton from #1
-        print('> Step 2.2: Skeletonize 2|2')
+        updater(2/9, 'Step 2.2: Skeletonize 2|2')
         skeleton = skeletonize(skeleton)
         skeleton = skeleton.astype(np.uint8) * 255
         cv2.imwrite(self.__get_out_file('.debug/closed_skeleton.png'), skeleton)
@@ -607,27 +633,27 @@ class Analyzer(object):
         
         #############
         # detect fragments on the closed skeleton
-        print('> Step 3: Preliminary contour analysis...')
+        updater(3/9, 'Step 3: Preliminary contour analysis...')
         self.contours = detect_fragments(skeleton, config)        
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
 
         #############
         # filter dark spots and delete fragments
         if not config.skip_darkspot_removal:
-            print('> Step 4: Filter spots...')
-            self.__filter_dark_spots(config)
+            updater(4/9, 'Step 4: Filter spots...')
+            self.__filter_dark_spots(config, updater)
         else:
-            print('> Step 4: Filter spots ([orange]SKIPPED[/orange])')
+            updater(4/9, 'Step 4: Filter spots... (SKIPPED)')
         
         #############
         # detect fragments on the closed skeleton
-        print('> Step 5: Final contour analysis...')
+        updater(5/9, 'Step 5: Final contour analysis')
         self.contours = detect_fragments(self.image_skeleton, config)        
         self.splinters = [Splinter(x,i,size_f, config) for i,x in enumerate(self.contours)]
         
         self.__save_data(config)
         
-        self.image_skeleton_rgb = cv2.cvtColor(skeleton, cv2.COLOR_GRAY2BGR)
+        self.image_skeleton_rgb = to_rgb(self.image_skeleton)
         
         
         #############
@@ -649,27 +675,27 @@ class Analyzer(object):
 
         #############
         # Stochastic analysis
-        print("> Step 6: Stochastic analysis...")    
+        updater(6/9, 'Step 6: Stochastic analysis')
         self.__create_voronoi(config)
 
         #############
         # Orientational analysis
         if config.impact_position is not None:
-            print("> Step 7: Orientation analysis...") 
+            updater(7/9, 'Step 7: Orientation analysis')
             self.__create_impact_influence(size_f, config)
         
         #############
         # count splinters in norm region
         if config.norm_region_center is not None:
-            print("> Step 8: Count splinters in norm region...")
+            updater(8/9, 'Step 8: Count splinters in norm region...')
             self.__count_splinters_in_norm_region(config)
         else:
-            print("> Step 8: Count splinters in norm region... ([orange]SKIPPED[/orange])")
+            updater(8/9, 'Step 8: Count splinters in norm region... ([orange]SKIPPED[/orange])')
             
 
         self.__create_splintersize_filled_image(config)
 
-        print("> Create output plots...")
+        updater(9/9, 'Create output plots')
         self.__plot_backend(config.display_region, display=config.displayplots)
         self.plot_splintersize_accumulation(display=config.displayplots)
         self.__plot_splintersize_distribution(display=config.displayplots)
@@ -678,25 +704,17 @@ class Analyzer(object):
         ############
         ############
         # Summary
-        print('\n\n')
-        print(f'Splinter count: {len(self.contours)}')
-        self.__check_detection_ratio(config, doprint=True)
-        print('\n')
+        self.__check_detection_ratio(config, doprint=do_print)
         
-        print("> Saving data...")
+        updater(9/9, 'Saving data')
         self.save_object()
         
     def save_object(self):
-        with open(self.__get_out_file("analyzer.pkl"), 'wb') as f:
-            pickle.dump(self, f)
-        # with open(self.__get_out_file("splinters.pkl"), 'wb') as f:
-        #     pickle.dump(self.splinters, f)
-    
-    def load(path) -> Analyzer:
-        # lyzer = Analyzer()
-        with open(path, 'rb') as f:
-            return pickle.load(f)
-        
+        with open(self.__get_out_file("splinters.pkl"), 'wb') as f:
+            pickle.dump(self.splinters, f)
+        with open(self.__get_out_file("config.pkl"), 'wb') as f:
+            pickle.dump(self.config, f)
+                                
     def preprocess_image(self, image, config: AnalyzerConfig) -> nptyp.ArrayLike:
         """Preprocess a raw image.
 
@@ -715,8 +733,7 @@ class Analyzer(object):
         
         rsz_fac = config.resize_factor # x times smaller
 
-        if not isgray(image):
-            image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)
+        image = to_gray(image)
 
         # Apply Gaussian blur to reduce noise and enhance edge detection
         image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
@@ -747,7 +764,7 @@ class Analyzer(object):
         with open(self.__get_out_file("splinter_data.csv"), 'w', newline='') as csvfile:
             writer = csv.writer(csvfile, delimiter=';')
             writer.writerow(['id', 'area', 'circumfence', 'alignment_score', 'angle', 'c_x [px]', 'c_y [px]', 'c_x [mm]', 'c_y [mm]'])
-            for i, s in tqdm(enumerate(self.splinters), desc='Saving data...', leave=False):
+            for i, s in enumerate(self.splinters):
                 writer.writerow([i, s.area, s.circumfence, s.alignment_score, s.angle, s.centroid_px[0], s.centroid_px[1], s.centroid_mm[0], s.centroid_mm[1]])
 
     def __count_splinters_in_norm_region(self, config: AnalyzerConfig) -> float:
@@ -766,7 +783,7 @@ class Analyzer(object):
             if s.in_region((x1,y1,x2,y2)):
                 s_count += 1
 
-        print(f'Splinters in norm region: {s_count}')
+        # print(f'Splinters in norm region: {s_count}')
 
         # transform to real image size
         x1 = int(x1 // config.size_factor)
@@ -779,7 +796,7 @@ class Analyzer(object):
         cv2.rectangle(norm_region_mask, (x1,y1), (x2,y2), 255, -1)
         # create image parts        
         normed_image = cv2.bitwise_and(self.image_filled, self.image_filled, mask=norm_region_mask)
-        normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
+        normed_image_surr = to_gray(self.original_image) #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
         # add images together
         normed_image = cv2.addWeighted(normed_image, 0.3, normed_image_surr, 1.0, 0)
         cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)        
@@ -800,15 +817,18 @@ class Analyzer(object):
             
         p = total_area / total_img_size * 100
         if doprint:
+            self.detection_ratio = p
             print(f'Detection Ratio: {p:.2f}%')
         
         return p
         
-    def __create_impact_influence(self, size_f: float, config: AnalyzerConfig):
+    def __create_impact_influence(self, size_f: float, config: AnalyzerConfig, updater = None):
         # analyze splinter orientations
         orientation_image = self.original_image.copy()
         orients = []
-        for s in tqdm(self.splinters, leave=False, desc='Analyzing orientations...'):
+        for s in self.splinters:
+            if updater is not None:
+                updater(0, 'Analyzing splinter orientation', len(self.splinters))
             orientation = s.measure_orientation(config)
             orients.append(orientation)
             color = get_color(orientation, colormap_name='turbo')
@@ -834,15 +854,16 @@ class Analyzer(object):
         
         fig.tight_layout()
         fig.savefig(self.__get_out_file(f"fig_splinter_orientation.{config.ext_plots}"))
-
+        plt.close(fig)
 
     def __create_voronoi(self, config: AnalyzerConfig):
-        centroids = [x.centroid_px for x in self.splinters if x.has_centroid]
+        centroids = np.array([x.centroid_px for x in self.splinters if x.has_centroid])
         voronoi = Voronoi(centroids)
         
         voronoi_img = np.zeros_like(self.original_image, dtype=np.uint8)
-        voronoi_img = cv2.cvtColor(voronoi_img, cv2.COLOR_BGR2GRAY)        
-        for i, r in tqdm(enumerate(voronoi.regions), leave=False, desc='Creating Voronoi diagram...'):
+        if not is_gray(voronoi_img):
+            voronoi_img = cv2.cvtColor(voronoi_img, cv2.COLOR_BGR2GRAY)        
+        for i, r in enumerate(voronoi.regions):
             if -1 not in r and len(r) > 0:
                 polygon = [voronoi.vertices[i] for i in r]
                 polygon = np.array(polygon, dtype=int)
@@ -863,9 +884,7 @@ class Analyzer(object):
         
         #TODO: compare voronoi splinter size distribution to actual distribution
         # X,Y,Z = csintkern(events, region, 500)        
-        fig = self.create_intensity_plot(config.intensity_h)
-        fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
-        del fig
+        self.create_intensity_plot(config.intensity_h, config)
     
     def plot_intensity(self, 
                        region_size: float, 
@@ -901,7 +920,7 @@ class Analyzer(object):
         fig.tight_layout()
         return fig
     
-    def create_intensity_plot(self, intensity_h: float):
+    def create_intensity_plot(self, intensity_h: float, config: AnalyzerConfig):
         """Create a plot of the fracture intensity.
 
         Args:
@@ -926,16 +945,27 @@ class Analyzer(object):
         axs.set_title(f'Fracture Intensity (h={intensity_h:.2f})')
         
         fig.tight_layout()
-        return fig
+        fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
+        plt.close(fig)
     
-    def __filter_dark_spots(self, config: AnalyzerConfig):
+    def __filter_dark_spots(self, config: AnalyzerConfig, task = None):
+        
         # create normal threshold of original image to get dark spots
         img = preprocess_spot_detect(self.original_image)
         if config.debug_experimental:
             cimg = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
         i_del = []
         removed_splinters: list[Splinter] = []
-        for i,s in enumerate(bar := tqdm(self.splinters, leave=False)):
+        
+        if task is None:
+            splints = enumerate(tqdm(self.splinters, leave=False, desc='Filtering dark spots...'))
+        else:
+            splints =  enumerate(self.splinters)
+        
+        for i,s in splints:
+            if task is not None:
+                task(i, 'Filtering dark spots...', len(self.splinters))
+                
             x, y, w, h = cv2.boundingRect(s.contour)
             roi_orig = img[y:y+h, x:x+w]
             
@@ -947,8 +977,7 @@ class Analyzer(object):
             result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
             
             # Check if all pixels in the contour area are black
-            if np.mean(result) < 0.25:
-                bar.set_description(f'Removed {len(i_del)} Splinters')
+            if np.mean(result) < 0.25:                
                 i_del.append(i)
             elif config.debug_experimental:
                 cv2.drawContours(cimg, [s.contour], -1, rand_col(), 1)
@@ -963,7 +992,9 @@ class Analyzer(object):
             
         skel_mask = self.image_skeleton.copy()
         
-        for s in tqdm(removed_splinters, leave=False):
+        for s in removed_splinters:
+            if task is not None:
+                task(i, 'Filling up dark spots...', len(removed_splinters))
             c = s.centroid_px
             
             # Remove the original contour from the mask
@@ -1070,21 +1101,15 @@ class Analyzer(object):
             cv2.drawContours(img, [s.contour], -1, clr, -1)
             
         cv2.imwrite(self.__get_out_file("img_splintersizes", config.ext_imgs), img)
-        combined = cv2.addWeighted(255-self.original_image, 1.0, img, 0.75, 0.0)
-        cv2.imwrite(self.__get_out_file(f"img_splintersizes_combined.{self.config.ext_imgs}"), combined)
+        combined = cv2.addWeighted(self.original_image, 1.0, img, 0.75, 0.0)
+        cv2.imwrite(self.__get_out_file(f"img_splintersizes_combined.{self.config.ext_imgs}"), combined)        
+        # print(img.shape)
+        # print(self.image_skeleton_rgb.shape)
         combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, img, 0.6, 0.0)
-        cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)
-        
-    def get_mean_splinter_size(self) -> float:
-        """Returns the mean splinter size.
-
-        Returns:
-            float: The mean splinter size.
-        """
-        return np.mean([x.area for x in self.splinters])
+        cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)        
         
     def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig, label: str = None):
-        return self.__plot_logarithmic_histograms(config, axes=axs, label=label)
+        self.__plot_logarithmic_histograms(config, axes=axs, label=label)
         
     def __plot_logarithmic_histograms(self, config: AnalyzerConfig, display = False, axes = None, label: str = None) -> Figure:
         """Plots a graph of Splinter Size Distribution.
@@ -1126,9 +1151,8 @@ class Analyzer(object):
             ax.grid(True, which='both', axis='both')
             fig.tight_layout()
             fig.savefig(self.__get_out_file(f"fig_log_probability.{self.config.ext_plots}"))
-        else:
-            plt.close(fig)
-        return fig
+        
+        plt.close(fig)
     
     def __plot_backend(self, region = None, display = False) -> None:
         """
@@ -1180,7 +1204,7 @@ class Analyzer(object):
             plt.show()
             
         self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{self.config.ext_plots}"))        
-        return self.fig_comparison
+        plt.close(self.fig_comparison)
       
     def plot_splintersize_accumulation(self, display = False) -> Figure:
         """Plots a graph of accumulated share of area for splinter sizes.
@@ -1205,7 +1229,7 @@ class Analyzer(object):
 
         data_x, data_y = zip(*data)
         
-        self.fig_area_sum, ax = plt.subplots()
+        fig, ax = plt.subplots()
         
         ax.plot(data_x, data_y, 'g-')    
         ax.plot(data_x, data_y, 'rx', markersize=2)    
@@ -1219,10 +1243,9 @@ class Analyzer(object):
             plt.show()
 
         ax.grid(True, which='both', axis='both')
-        self.fig_area_sum.tight_layout()        
-        self.fig_area_sum.savefig(self.__get_out_file(f"fig_sumofarea.{self.config.ext_plots}"))
-
-        return self.fig_area_sum
+        fig.tight_layout()        
+        fig.savefig(self.__get_out_file(f"fig_sumofarea.{self.config.ext_plots}"))
+        plt.close(fig)
     
     def __plot_splintersize_distribution(self, display = False) -> Figure:
         """Plots a graph of Splinter Size Distribution.
@@ -1243,7 +1266,7 @@ class Analyzer(object):
 
         data_x, data_y = zip(*data)
         
-        self.fig_area_distr, ax = plt.subplots()
+        fig, ax = plt.subplots()
         ax.plot(data_x, data_y, 'g-')    
         ax.plot(data_x, data_y, 'ro', markersize=3)    
         ax.set_title('Splinter Size Distribution')
@@ -1257,6 +1280,6 @@ class Analyzer(object):
             
         ax.grid(True, which='both', axis='both')
         
-        self.fig_area_distr.tight_layout()
-        self.fig_area_distr.savefig(self.__get_out_file(f"fig_distribution.{self.config.ext_plots}"))
-        return self.fig_area_distr
+        fig.tight_layout()
+        fig.savefig(self.__get_out_file(f"fig_distribution.{self.config.ext_plots}"))
+        plt.close(fig)

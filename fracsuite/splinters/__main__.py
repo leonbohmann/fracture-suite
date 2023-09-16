@@ -30,12 +30,16 @@ https://github.com/leonbohmann/fracture-suite
 """
 
 import os
+import shutil
 import sys
+import time
 from matplotlib import pyplot as plt
-
-from tqdm import tqdm
+# import module
+import traceback
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+from rich import print
+from rich.progress import track, Progress, SpinnerColumn, TimeElapsedColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 import matplotlib
 
@@ -55,12 +59,14 @@ parser.add_argument("--all", default=False,
                     help="Instruct the analyzer to run the analysis on every subfolder.",
                     action='store_true')
 parser.add_argument("--all-exclude", default=[], nargs="+")
+parser.add_argument("--clear-splinters", action='store_true', default=False)
 
 args = parser.parse_args()
 
+    
 config = AnalyzerConfig.from_args(args)
 
-if config.path[1] != ":":
+if args.all or config.path[1] != ":":
     print(f"[bold][green]Using base path '{general_settings.base_path}'.[/green][/bold]")
     config.path = os.path.join(general_settings.base_path, config.path) + "\\"
     
@@ -68,41 +74,62 @@ if config.path[1] != ":":
 if args.all:
     print(f"Running analysis on all subfolders of '{config.path}'.")
     project_dir = config.path
+    matplotlib.use('Agg')
+    
     if os.path.exists("log.txt"):   
         os.remove("log.txt")
     
-    f = open("log.txt", "a")
-    
-    for file in (pbar := tqdm(os.listdir(project_dir))):
-        
-        if any([x in file for x in args.all_exclude]):
-            continue
-        
-        project_path = os.path.join(project_dir, file) + "\\"
-        
-        if os.path.exists(project_path) and os.path.isdir(project_path):
-            spec = Specimen(project_path, log_missing=False)
+    with Progress(    
+                TextColumn("[progress.description]{task.description:<50}"),
+                BarColumn(bar_width=80),
+                TaskProgressColumn(justify="right"),
+                TimeRemainingColumn(),
+                TimeElapsedColumn(),
+            transient=True) as progress:
+        all_task = progress.add_task("[green]Analyzing...", total=len(os.listdir(project_dir)))
+        for file in os.listdir(project_dir):
+            progress.update(all_task, description=f"'{file}'...", total=len(os.listdir(project_dir)))
+            file_task = progress.add_task(f"Analyzing '{file}'...", total=1.0)
             
-            if not spec.has_fracture_scans:
+            def update_file_task(val, title, total = 1.0):
+                progress.update(file_task, completed=val, description=title, total=total)
+            
+            if any([x in file for x in args.all_exclude]):
+                progress.remove_task(file_task)                
                 continue
             
-            pbar.set_description(f"Processing {spec.name}...")
-            try:
-                config.path = project_path
-                stdout = sys.stdout
-                sys.stdout = f
-                analyzer = Analyzer(config)
-                sys.stdout = stdout    
-                del analyzer           
-                plt.close('all')
-            except Exception as e:
-                print(f"> Failed to run analysis on '{project_path}'.")
-                print(e)
-                continue
-    
-    f.close()
-        
-        
+            project_path = os.path.join(project_dir, file) + "\\"
+            
+            if os.path.exists(project_path) and os.path.isdir(project_path):
+                spec = Specimen(project_path, log_missing=False, lazy=True)
+                
+                if spec.settings['break_pos'] == "center":
+                    config.impact_position = (250,250)
+                else:
+                    config.impact_position = (500,500)
+                    
+                if args.clear_splinters:
+                    shutil.rmtree(spec.splinters_path, ignore_errors=True)
+                
+                if not spec.has_fracture_scans:
+                    progress.remove_task(file_task)
+                    continue
+                
+                try:
+                    config.path = project_path
+                    analyzer = Analyzer(config, update_file_task)   
+                    plt.close()
+                except Exception as e:
+                    print(f'[bold red]Error[/bold red] while analyzing specimen: {file}')
+                    print(e.__dict__)
+                    traceback.print_exc()
+                    progress.remove_task(file_task)                    
+                    continue
+            
+            progress.remove_task(file_task)  
+            progress.update(all_task, advance=1, refresh=True)    
+            progress.refresh()
+            time.sleep(0.1)          
 else:
     analyzer = Analyzer(config)
     

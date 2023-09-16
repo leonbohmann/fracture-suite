@@ -218,7 +218,8 @@ class AnalyzerConfig:
         elif args.cropsize is not None and len(args.cropsize) == 1:
             cfg.cropped_image_size = (args.cropsize[0], args.cropsize[0])
 
-        cfg.path = args.path
+        if not hasattr(args, "all") or (hasattr(args, "all") and not args.all):
+            cfg.path = args.path
 
         # find specimen pattern
         pattern = r'(\d+\.\d+\.[A-Za-z]\.\d+(-[^\s]+)?)'

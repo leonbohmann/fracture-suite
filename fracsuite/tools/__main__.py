@@ -3,14 +3,16 @@ import os
 import cv2
 import typer
 from matplotlib import pyplot as plt
+from rich import print
 from rich.progress import track
 from typing_extensions import Annotated
 
-from fracsuite.splinters.analyzer import crop_perspective
+from fracsuite.splinters.analyzer import crop_matrix, crop_perspective
 from fracsuite.tools.config import app as config_app
 from fracsuite.tools.general import GeneralSettings
+from fracsuite.tools.helpers import find_files
 from fracsuite.tools.plot import app as plt_app
-from fracsuite.tools.specimen import fetch_specimens, app as specimen_app
+from fracsuite.tools.specimen import fetch_specimens, app as specimen_app, fetch_specimens_by
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -74,29 +76,53 @@ def marina_organize(path: str):
   
 @app.command(name='crop_frac')
 def crop_fracture_morph(
-    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
-    rotate: Annotated[bool, typer.Option(help='Rotate image by 90°.')] = False,
-    rotate_only: Annotated[bool, typer.Option(help='Only rotate image by 90°, skip cropping.')] = True,
+    specimen_name: Annotated[str, typer.Option(help='Name of specimen to load')] = "",
+    all: Annotated[bool, typer.Option('--all', help='Perform this action on all specimen.')] = False,
+    rotate: Annotated[bool, typer.Option('--rotate', help='Rotate image by 90°.')] = False,
+    crop: Annotated[bool, typer.Option('--crop', help='Crop the image.')] = True,
+    size: Annotated[tuple[int,int], typer.Option(help='Image size.', metavar='Y X')] = (4000, 4000),
+    rotate_only: Annotated[bool, typer.Option('--rotate-only', help='Only rotate image by 90°, skip cropping.')] = False,
+    resize_only: Annotated[bool, typer.Option('--resize_only', help='Only resize the image to 4000px².')] = False,
 ):
-    from stat import S_IREAD, S_IRGRP, S_IROTH
+    from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE
+    if all:
+        specimens = fetch_specimens_by(lambda x: True, general.base_path)
+    else:    
+        specimens = fetch_specimens([specimen_name], general.base_path)
     
-    specimen = fetch_specimens([specimen_name], general.base_path)[0]
     
-    path = specimen.fracture_morph_dir
-    
-    for file in track(os.listdir(path)):
-        if file.endswith(".bmp"):
-            img = cv2.imread(os.path.join(path, file))
+    for specimen in track(specimens):        
+        path = specimen.fracture_morph_dir
+        if not  os.path.exists(path):
+            continue
+        
+        imgs = [(x,cv2.imread(x, cv2.IMREAD_GRAYSCALE)) for x in find_files(path, 'bmp')]
+        
+        if len(imgs) == 0:
+            continue
+        
+        img0 = [y for x,y in imgs if "Transmission" in x][0]
+        _, M0 = crop_perspective(img0, size, False, True)
+        
+        for file,img in imgs:
+            if not os.access(file, os.W_OK):
+                print(f"Skipping '{os.path.basename(file)}', no write access.")
+                continue
             
-            if not rotate_only:
-                img = crop_perspective(img, (4000,4000), False)
+            if resize_only:
+                img = cv2.resize(img, size)
             
-            if rotate or rotate_only:
+            if not rotate_only and crop and not resize_only:
+                img = crop_matrix(img, M0, size)
+
+            if (rotate or rotate_only) and not resize_only:
                 img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            
-            cv2.imwrite(os.path.join(path, file), img)
+                
+            cv2.imwrite(file, img)
             os.chmod(os.path.join(path, file), S_IREAD|S_IRGRP|S_IROTH)
-       
+            
+        # elif file.endswith(".bmp") and not os.access(os.path.join(path, file), os.W_OK):
+        #     os.chmod(os.path.join(path, file), S_IWRITE)
     
 app()
 
