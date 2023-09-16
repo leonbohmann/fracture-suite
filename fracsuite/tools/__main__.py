@@ -9,9 +9,10 @@ from typing_extensions import Annotated
 
 from fracsuite.splinters.analyzer import crop_matrix, crop_perspective
 from fracsuite.tools.config import app as config_app
+from fracsuite.tools.plot import app as plt_app
+from fracsuite.tools.acc import app as acc_app
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_files
-from fracsuite.tools.plot import app as plt_app
 from fracsuite.tools.specimen import fetch_specimens, app as specimen_app, fetch_specimens_by
 
 plt.rcParams['figure.figsize'] = (6, 4)
@@ -25,7 +26,17 @@ app = typer.Typer(pretty_exceptions_short=False)
 app.add_typer(plt_app, name="plot")
 app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
+app.add_typer(acc_app, name="acc")
 
+@app.command()
+def test(parallel:bool = False):
+    path = general.base_path
+    
+    all = fetch_specimens_by(lambda x: "SCHOTT" not in x.name, path, lazy_load=False,
+                             parallel_load=parallel)
+    
+    for s in all:
+        print(s.name)
     
 @app.command()
 def marina_organize(path: str):

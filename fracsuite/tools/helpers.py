@@ -1,29 +1,50 @@
 import os
 import cv2
+import re
 
 from matplotlib import colors, pyplot as plt
 import numpy as np
 
 
-def find_file(path: os.PathLike, ext: str) -> str | None:
-           
+def find_file(path: os.PathLike, filter: str) -> str | None:
+    """Searches a path for a file that matches with the filter.
+
+    Args:
+        path (os.PathLike): The base path to search in.
+        filter (str): Filter.
+
+    Returns:
+        str | None: The full path to the found file or None, if not found.
+    """
     if not os.path.exists(path):
         return None
 
+    assert filter != "", "Filter must not be empty."
+    
+    filter = filter.lower().replace(".", "\.").replace("*", ".*")
+        
     for file in os.listdir(path):
-        if file.endswith(ext):
+        if re.match(filter, file.lower()) is not None:
             return os.path.join(path, file)
         
     return None    
 
-def find_files(path: os.PathLike, ext: str) -> str | None:
-           
+def find_files(path: os.PathLike, filter: str) -> list[str]:
+    """Searches a path for files that match with the filter.
+
+    Args:
+        path (os.PathLike): The path to search in.
+        filter (str): Filter.
+
+    Returns:
+        list[str]: The full paths to the found files. Empty, if none found.
+    """
     if not os.path.exists(path):
         return []
     
     files = []
     for file in os.listdir(path):
-        if file.endswith(ext):
+        if re.match(filter, file) is not None:
             files.append(os.path.join(path, file))
     
     return files

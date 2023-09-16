@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pickle
 import re
 from rich import print
 import argparse
@@ -248,6 +249,18 @@ class AnalyzerConfig:
         """
         args = AnalyzerConfig.get_parser(descr).parse_args()
         return args, AnalyzerConfig.from_args(args)
+
+    def load(path) -> AnalyzerConfig:
+        """Load a configuration from a file.
+
+        Args:
+            path (str): Path to the file.
+
+        Returns:
+            AnalyzerConfig: The loaded configuration.
+        """
+        with open(path, "rb") as f:
+            return pickle.load(f)
 
     def __init__(self):
         pass

@@ -1,35 +1,41 @@
 from __future__ import annotations
 import json
+from pathos.pools import ProcessPool
 import os
+import pickle
 from typing import Any, Callable, TypeVar
 import numpy as np
 
-from rich import print
-from rich.progress import track
-import typer
-
+from rich import inspect, print
+from rich.progress import track, Progress
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen
-from fracsuite.splinters.analyzer import Analyzer
+from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_file
+import typer
+import functools
 
 app = typer.Typer()
 
 general = GeneralSettings()
 
-def fetch_specimens(specimen_names: list[str], path: str) -> list[Specimen]:
+def fetch_specimens(specimen_names: list[str] | str, path: str) -> list[Specimen]:
     """Fetch a list of specimens from a given path.
 
     Args:
         specimen_names (list[str]): The names of the specimens.
         path (str): THe base path to the specimens.
     """
+    if not isinstance(specimen_names, list):
+        specimen_names = [specimen_names]
     
     specimens: list[Specimen] = []
     for name in specimen_names:
         spec_path = os.path.join(path, name)
         specimen = Specimen(spec_path, lazy=True)
         
+        specimen.lazy_load()
         specimens.append(specimen)
         print(f"Loaded '{name}'.")
         
@@ -38,55 +44,109 @@ def fetch_specimens(specimen_names: list[str], path: str) -> list[Specimen]:
 def default_value(specimen: Specimen) -> Specimen:
     return specimen
 
+def load_specimen(args) -> Specimen | None:    
+    spec_path, lazy_load = args[0], args[1]
+    if not os.path.isdir(spec_path):
+        return None
+    
+    
+    global shared_decider
+    global shared_value_converter
+
+    specimen = Specimen(spec_path, log_missing=False, lazy=lazy_load)
+    if not shared_decider(specimen):
+        return None
+    
+    return shared_value_converter(specimen)
+
 _T1 = TypeVar('_T1')
 def fetch_specimens_by(decider: Callable[[Specimen], bool], 
                        path: str, 
                        max_n: int = 1000, 
                        sortby: Callable[[Specimen], Any] = None,
-                       value: Callable[[Specimen], _T1 | Specimen] = default_value) -> list[_T1]:
+                       value: Callable[[Specimen], _T1 | Specimen] = default_value,
+                       lazy_load: bool = False,
+                       parallel_load: bool = False) -> list[_T1]:
     """Fetch a list of specimens from a given path.
 
     Args:
         decider (func(Specimen)): Decider if the specimen should be selected.
         path (str): THe base path to the specimens.
     """
+    def init_pool(decider, value):
+        global shared_decider
+        global shared_value_converter
+        shared_decider = decider
+        shared_value_converter = value
+        
+    if parallel_load:
+        p = ProcessPool(nodes=8, initializer=init_pool, initargs=(decider, value), maxtasksperchild=1)    
+    else:
+        init_pool(decider, value)
+    
     if value is None:
         def value(specimen: Specimen):
             return specimen
     
-    data: list[Any] = []
+    directories=  [os.path.join(path,x) for x in os.listdir(path) 
+                   if os.path.isdir(os.path.join(path,x))]
     
-    for name in track(os.listdir(path), description="Loading specimens...", transient=True):
+    
+    data: list[Any] = []
+    if parallel_load:
+        data = p.amap(load_specimen, 
+                    [(x, lazy_load) for x in directories])
+        with Progress() as progress:
+            task = progress.add_task("[green]Loading specimens...", total=len(directories))
+            # inspect(data, methods=True, private=True)
+            while not data.ready():
+                progress.update(task, completed=len(directories)-data._number_left, total=len(directories))
+                pass
+        data = [x for x in data.get() if x is not None]                
+    else:
+        for dir in track(directories, description="Loading specimens...", transient=True):
+            spec = load_specimen((dir, lazy_load))
+            if spec is not None:
+                data.append(spec)
         
-        spec_path = os.path.join(path, name)
-        if not os.path.isdir(spec_path):
-            continue
+    
+    # for name in track(os.listdir(path), description="Loading specimens...", transient=True):
+        
+    #     spec_path = os.path.join(path, name)
+    #     if not os.path.isdir(spec_path):
+    #         continue
         
         
-        specimen = Specimen(spec_path, log_missing=False, lazy=True)
+    #     specimen = Specimen(spec_path, log_missing=False, lazy=lazy_load)
         
-        if not decider(specimen):
-            continue
+    #     if not decider(specimen):
+    #         continue
         
-        specimen.lazy_load()
-        data.append(value(specimen))
-        # print(f"Loaded '{name}'.")
+    #     if lazy_load:
+    #         specimen.lazy_load()
+            
+    #     data.append(value(specimen))
+    #     # print(f"Loaded '{name}'.")
         
-        if len(data) >= max_n:
-            break
+    #     if len(data) >= max_n:
+    #         break
         
     print(f"Loaded {len(data)} specimens.")
     
     if sortby is not None:
         data = sorted(data, key=sortby)
-                
+
+    if parallel_load:
+        p.close()                
     return data
 
 class Specimen:
     """ Container class for a specimen. """
     
-    splinters: Analyzer = None
-    "Splinter analysis."
+    splinters: list[Splinter] = None
+    "Splinters on the glass ply."
+    splinter_config: AnalyzerConfig = None
+    "Splinter analysis configuration that can be used to rerun it."
     scalp: ScalpSpecimen = None
     "Scalp analysis."
     
@@ -128,9 +188,9 @@ class Specimen:
         if self.loaded:
             print("[red]Specimen already loaded.")
         
-        # self.scalp = ScalpSpecimen.load(self.__scalp_file)
-        # self.splinters = Analyzer.load(self.__splinters_file)        
-        # self.splinters.config.specimen_name = self.name
+        self.__load_scalp()        
+        self.__load_splinters()
+        self.__load_splinter_config()
         
         self.loaded = True
     
@@ -139,10 +199,8 @@ class Specimen:
 
         Args:
             path (str): Path of the specimen.
-        """
-        
-        self.loaded = not lazy
-        
+        """        
+        self.loaded = not lazy        
         self.path = path
         
         cfg_path = os.path.join(path, "config.json")
@@ -178,7 +236,7 @@ class Specimen:
         
         # load scalp
         scalp_path = os.path.join(self.path, "scalp")
-        self.__scalp_file = find_file(scalp_path, "pkl")
+        self.__scalp_file = find_file(scalp_path, "*.pkl")
         self.has_scalp = self.__scalp_file is not None
         if self.__scalp_file is not None and not lazy:
             self.scalp = ScalpSpecimen.load(self.__scalp_file)
@@ -191,16 +249,50 @@ class Specimen:
         self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
             and find_file(self.fracture_morph_dir, ".bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
-        self.__splinters_file = find_file(self.splinters_path, "pkl")
-        
+        self.__splinters_file = find_file(self.splinters_path, "splinters.pkl")        
+        self.__config_file = find_file(self.splinters_path, "config.pkl")        
         self.has_splinters = self.__splinters_file is not None
+        self.has_splinter_config = self.__config_file is not None
+        self.has_config = self.__config_file is not None
         
         if self.__splinters_file is not None and not lazy:
-            # self.splinters = Analyzer.load(self.__splinters_file)  
-            self.splinters.config.specimen_name = self.name          
+            self.__load_splinters()  
         elif log_missing:            
-            print(f"Could not find splinter file for '{path}'. Create it using [green]fracsuite.splinters[/green].")        
+            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")        
 
+        if self.__config_file is not None and not lazy:
+            self.__load_splinter_config()
+        elif log_missing:
+            print(f"Could not find splinter config file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
+        
+    def __load_scalp(self, file = None):
+        if not self.has_scalp:
+            return
+        if file is None:
+            file = self.__scalp_file
+                
+        self.scalp = ScalpSpecimen.load(file)
+       
+        
+    def __load_splinters(self, file = None):
+        if not self.has_splinters:
+            return
+        
+        if file is None:
+            file = self.__splinters_file
+            
+        with open(file, "rb") as f:
+            self.splinters = pickle.load(f)
+    
+    def __load_splinter_config(self, file = None):
+        if not self.has_splinter_config:
+            return
+        
+        if file is None:
+            file = self.__config_file
+            
+        self.splinter_config = AnalyzerConfig.load(file)
+            
 @app.command()        
 def sync():
     """Sync all specimen configs."""
