@@ -31,7 +31,7 @@ class Splinter:
     has_centroid: bool
     "True if the centroid could be calculated."
     
-    def __init__(self, contour, index, mm_px: float, config = None):
+    def __init__(self, contour, index, mm_px: float):
         """Create a splinter from a contour.
 
         Args:
@@ -68,13 +68,6 @@ class Splinter:
         
 
         self.angle = self.__calculate_orientation()
-        # try:
-        #     _,_, self.angle = cv2.fitEllipse(self.contour)
-        # except:
-        #     self.angle = np.nan
-        
-        if config is not None:
-            self.measure_orientation(config)
 
     
         
@@ -167,11 +160,11 @@ class Splinter:
 
 
 
-    def measure_orientation(self, config) -> float:
+    def measure_orientation(self, impact_position: tuple[float,float]) -> float:
         """Calculate, how much the splinters orientation points to the impactpoint of config.
 
         Args:
-            config (AnalyzerConfig): Configuration object.
+            impact_position (tuple[float,float]): Impact position in mm.
 
         Returns:
             float: Orientation in degrees.
@@ -181,4 +174,4 @@ class Splinter:
 
         # calculate the angle between the centroid and the impact point
         
-        return self.__calculate_orientation_score(config.impact_position)
+        return self.__calculate_orientation_score(impact_position)

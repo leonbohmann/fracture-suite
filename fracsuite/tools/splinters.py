@@ -22,7 +22,7 @@ from fracsuite.tools.specimen import Specimen, fetch_specimens, fetch_specimens_
 
 app = typer.Typer()
 
-general = GeneralSettings.create()
+general = GeneralSettings.get()
 
 def finalize(out_name: str):
     print(f"Saved to '{out_name}'.")

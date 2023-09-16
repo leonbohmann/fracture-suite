@@ -5,6 +5,21 @@ import re
 from matplotlib import colors, pyplot as plt
 import numpy as np
 
+from fracsuite.tools.general import GeneralSettings
+
+general = GeneralSettings.get()
+
+def get_specimenname_from_path(path: os.PathLike) -> str:
+    # find specimen pattern
+    pattern = r'(\d+\.\d+\.[A-Za-z]\.\d+(-[^\s]+)?)'
+    match = re.search(pattern, path)
+
+    # Check if a match was found
+    if match:
+        return match.group(0)
+
+def get_specimen_path(specimen_name: str) -> str:
+    return os.path.join(general.base_path, specimen_name)
 
 def find_file(path: os.PathLike, filter: str) -> str | None:
     """Searches a path for a file that matches with the filter.
@@ -20,14 +35,14 @@ def find_file(path: os.PathLike, filter: str) -> str | None:
         return None
 
     assert filter != "", "Filter must not be empty."
-    
+
     filter = filter.lower().replace(".", "\.").replace("*", ".*")
-        
+
     for file in os.listdir(path):
         if re.match(filter, file.lower()) is not None:
             return os.path.join(path, file)
-        
-    return None    
+
+    return None
 
 def find_files(path: os.PathLike, filter: str) -> list[str]:
     """Searches a path for files that match with the filter.
@@ -41,17 +56,17 @@ def find_files(path: os.PathLike, filter: str) -> list[str]:
     """
     if not os.path.exists(path):
         return []
-    
+
     files = []
     for file in os.listdir(path):
         if re.match(filter, file) is not None:
             files.append(os.path.join(path, file))
-    
+
     return files
-   
+
 def write_image(out_img, out_path):
     cv2.imwrite(out_path, out_img)
-    
+
 def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo_r'):
     # Normalize the value to be in the range [0, 1]
     normalized_value = (value - min_value) / (max_value - min_value)
@@ -82,25 +97,25 @@ def annotate_image_cbar(image, title, cbar = cv2.COLORMAP_TURBO, min_value = 0, 
     value_thickness = title_thickness // 2
 
     title_height = int(0.05 * height)
-    colorbar_height = int(0.05 * height)    
-    
+    colorbar_height = int(0.05 * height)
+
     title_background = np.zeros((title_height, width, 3), dtype=np.uint8)
     colorbar_background = np.zeros((colorbar_height, width, 3), dtype=np.uint8)
-    
+
     # add colorbar to the background
     scale_x0 = int(width * 0.2)
     scale_width = int(width - 2 * scale_x0)  # Adjust the width as needed
     scale = np.linspace(0, 255, scale_width).astype(np.uint8)
     cbar_height = int(colorbar_height * 0.6)
     cbar_y0 = int(colorbar_height * 0.2)
-    
+
     colormap = cv2.applyColorMap(np.arange(256, dtype=np.uint8).reshape(1, 256), cbar)
-    scaled_colormap = cv2.resize(colormap, (scale_width, cbar_height))    
+    scaled_colormap = cv2.resize(colormap, (scale_width, cbar_height))
     colorbar_background[cbar_y0:-cbar_y0, scale_x0:scale_x0 + scale_width] = scaled_colormap
-    
+
     min_text= f"{min_value:.2f}"
     max_text= f"{max_value:.2f}"
-    
+
     # Add min and max value labels with adjusted font size and thickness
     value_font = cv2.FONT_HERSHEY_SIMPLEX
     value_size = cv2.getTextSize(min_text, value_font, value_font_scale, value_thickness)[0]

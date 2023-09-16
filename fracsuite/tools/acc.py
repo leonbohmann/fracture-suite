@@ -13,7 +13,7 @@ from fracsuite.tools.helpers import find_file
 from fracsuite.tools.specimen import fetch_specimens
 
 app = typer.Typer()
-general = GeneralSettings.create()
+general = GeneralSettings.get()
 
 
 def reader_to_csv(reader: APReader, out_dir, dot: str = "."):

@@ -20,7 +20,7 @@ plt.rc('axes', axisbelow=True) # to get grid into background
 plt.rc('grid', linestyle="--") # line style
 plt.rcParams.update({'font.size': 12}) # font size
 
-general = GeneralSettings.create()
+general = GeneralSettings.get()
 
 app = typer.Typer(pretty_exceptions_short=False)
 app.add_typer(splinter_app, name="splinters")

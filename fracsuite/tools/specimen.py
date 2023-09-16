@@ -19,7 +19,7 @@ import functools
 
 app = typer.Typer()
 
-general = GeneralSettings.create()
+general = GeneralSettings.get()
 
 def fetch_specimens(specimen_names: list[str] | str, path: str) -> list[Specimen]:
     """Fetch a list of specimens from a given path.

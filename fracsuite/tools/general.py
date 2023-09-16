@@ -10,9 +10,10 @@ class GeneralSettings:
     __create_key = object()
     
     base_path: str = ""
-    plot_extension: str = ".pdf"
+    plot_extension: str = "pdf"
+    image_extension: str = "png"
     
-    def create() -> GeneralSettings:
+    def get() -> GeneralSettings:
         """Creates a new instance of GeneralSettings or returns the existing one and returns it."""
         if 'general' in globals():
             global general        
@@ -23,7 +24,8 @@ class GeneralSettings:
         return general        
     
     def __init__(self, key) -> None:
-        assert key == self.__create_key, "GeneralSettings must be created using GeneralSettings.create()."
+        assert key == self.__create_key, \
+            "GeneralSettings must be created using GeneralSettings.get()."
         
         print("Loading general settings...", end="")
         self.load()

@@ -4,8 +4,15 @@ import re
 from rich import print
 import argparse
 
+from fracsuite.tools.general import GeneralSettings
+from fracsuite.tools.helpers import get_specimenname_from_path
+
+general = GeneralSettings.get()
 
 class AnalyzerConfig:
+    resize_factor: float = 1.0
+    "factor to resize input image in preprocess"
+
     gauss_size: tuple[int,int] = (5,5)
     "gaussian filter size before adaptive thold"
     gauss_sigma: float = 5.0
@@ -23,30 +30,20 @@ class AnalyzerConfig:
 
     fragment_min_area_px: int = 20
     "minimum fragment area"
-    fragment_max_area_px: int = 25000
+    fragment_max_area_px: int = 2500
     "maximum fragment area"
-    
+
     size_factor: float = 1.0
-    "factor to scale fragment size in mm/px"
+    "factor to scale fragment size [mm/px]"
     real_image_size: tuple[int,int] = None
     "real image size in mm"
     cropped_image_size: tuple[int,int] = None
-    "real image size in mm"
+    "image size in px"
     crop: bool = False
     "crop input image"
-    impact_position: tuple[float, float] = None
-    "impact position in mm [X Y]"
-    probabilitybins: bool = 75
-    "number of bins for probability plot"
-    
+
     debug: bool = False
     "enable debug output"
-    debug_experimental: bool = False
-    "enable debug output"
-    display_region: tuple[int,int,int,int]  = None
-    "region to display in output plots (x1,y1,x2,y2)"
-    resize_factor: float = 1.0
-    "factor to resize input image in preprocess"
     displayplots: bool = False
     "Display plots during creation"
     printconfig: bool = False
@@ -54,34 +51,19 @@ class AnalyzerConfig:
 
     out_name: str = ""
     "name of the output directory"
-    ext_plots: str = "png"
-    "output extension for plots"
-    ext_imgs: str = "png"
-    "output extension for images"
 
     skip_darkspot_removal: bool  = False
     "skip dark spot removal"
-    intensity_h: int = 500
-    "intensity kernel width in px"
 
     path: str = ""
     "Path to data"
 
     specimen_name: str = ""
     "Name of the specimen"
-    
-    
-    norm_region_center: tuple[float, float] = None
-    "Center for evaluation region according to DIN in mm [X Y]"
-
-    norm_region_size: tuple[float, float] = (50,50)
-    "Size for evaluation region according to DIN in mm [W H]"
-
-
 
     def get_parser(descr) -> argparse.ArgumentParser:
         """
-        Create and return an argumentParser, that can be used to initialize a new 
+        Create and return an argumentParser, that can be used to initialize a new
         AnalyzerConfig with `AnalyzerConfig.from_args(args)` method.
 
         This can be used, if the argumentparser should be extended. I.e. if highspeed
@@ -96,22 +78,19 @@ class AnalyzerConfig:
         parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter,
                                          argument_default=argparse.SUPPRESS)
 
-        parser.add_argument('path', nargs="?", 
+        parser.add_argument('path', nargs="?",
                              help='The path of the image to be processed or a folder that contains' \
                                 'a file in subfolder "[path]/fracture/morph/...Transmission.bmp". Instead'
-                                ' of a folder, you can also specify the base_path in tools.settings and then use the specimen ID only "1.1.A.1".')
+                                ' of a folder, you can also specify the base_path in tools.settings and then use the specimen ID only "1.1.A.1".'
+                                f' Current base_path: "{general.base_path}"')
 
         gnrl_group = parser.add_argument_group("General")
         gnrl_group.add_argument('--displayplots', action='store_true', \
             help='Instruct the analyzer to display output plots.', default=False)
         gnrl_group.add_argument('--debug', action='store_true', \
             help='Sets a debug flag to display verbose output.', default=False)
-        gnrl_group.add_argument('--exp-debug', action='store_true', \
-            help='Sets an experimental debug flag to display verbose output.', default=False)
         gnrl_group.add_argument('--printconfig', action='store_true', \
             help='Print the config before starting the script.', default=False)
-        gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs. [Pixels]',\
-            type=int, default=None, metavar=('X1', 'Y1', 'X2', 'Y2'))
 
         imgroup = parser.add_argument_group("Image operations")
         imgroup.add_argument('-realsize', nargs="*", help='Real size of the input image. If only one dim is provided, a square geometry is used.',\
@@ -143,23 +122,10 @@ class AnalyzerConfig:
             type=int, default=5)
         post.add_argument('--skip-spot-elim', help='Instruct the postprocessor to skip "dark-spot" removal.',\
             action="store_true", default=False)
-        post.add_argument('-intensity-width', help='Pixel width for intensity calculation.',\
-            type=int, default=500)
-        post.add_argument('-impactposition', nargs=2, metavar=('X', 'Y'), type=float, 
-            help='Impact position in mm [X Y]', default=(50,50))
-        post.add_argument('-normregioncenter', nargs=2, metavar=('X', 'Y'), type=float, default=None,
-            help='Center for evaluation region according to DIN in mm [X Y]')
-        post.add_argument('-normregionsize', nargs=2, metavar=('W', 'H'), type=float, default=(50,50),
-            help='Size for evaluation region according to DIN in mm.')
-        post.add_argument('-probabilitybins', help='Number of bins for probability plot.', type=int, default=75)
 
         output_group = parser.add_argument_group("Output")
         output_group.add_argument('-out', nargs="?", help='Output directory path.', \
             default="fracsuite-output")
-        output_group.add_argument('-plot-ext', nargs="?", help='Plot file extension. Default: png.', \
-            default="png", choices=['png', 'pdf', 'jpg', 'bmp'])
-        output_group.add_argument('-image-ext', nargs="?", help='Image file extension. Default: png.',\
-            default="png", choices=['png', 'jpg', 'bmp'])
 
         return parser
 
@@ -175,10 +141,9 @@ class AnalyzerConfig:
         """
         cfg = AnalyzerConfig()
         cfg.debug = args.debug
-        cfg.debug_experimental = args.exp_debug
         cfg.printconfig = args.printconfig
         cfg.displayplots = args.displayplots
-        
+
         cfg.gauss_size = (args.gauss_size,args.gauss_size)
         cfg.gauss_sigma = args.gauss_sigma
         cfg.fragment_min_area_px = args.min_area
@@ -193,18 +158,8 @@ class AnalyzerConfig:
         cfg.cropped_image_size = args.cropsize
         cfg.real_image_size = args.realsize
         cfg.resize_factor = args.resize_fac
-        cfg.impact_position = args.impactposition
 
-        cfg.display_region = args.display_region
-        cfg.intensity_h = args.intensity_width
-        cfg.ext_plots = args.plot_ext
-        cfg.ext_imgs = args.image_ext
         cfg.skip_darkspot_removal = args.skip_spot_elim
-
-        cfg.norm_region_center = args.normregioncenter
-        cfg.norm_region_size = args.normregionsize
-
-        cfg.probabilitybins = args.probabilitybins
 
         if args.debug is True:
             cfg.displayplots = True
@@ -223,16 +178,8 @@ class AnalyzerConfig:
             cfg.path = args.path
 
         # find specimen pattern
-        pattern = r'(\d+\.\d+\.[A-Za-z]\.\d+(-[^\s]+)?)'
-        match = re.search(pattern, cfg.path)
+        cfg.specimen_name = get_specimenname_from_path(cfg.path)
 
-        # Check if a match was found
-        if match:
-            cfg.specimen_name = match.group(0)   
-        else:
-            cfg.specimen_name = "unknown"
-        
-        
         if cfg.printconfig:
             cfg.print()
 
