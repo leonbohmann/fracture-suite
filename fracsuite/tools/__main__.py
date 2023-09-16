@@ -9,7 +9,7 @@ from typing_extensions import Annotated
 
 from fracsuite.splinters.analyzer import crop_matrix, crop_perspective
 from fracsuite.tools.config import app as config_app
-from fracsuite.tools.plot import app as plt_app
+from fracsuite.tools.splinters import app as splinter_app
 from fracsuite.tools.acc import app as acc_app
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_files
@@ -20,10 +20,10 @@ plt.rc('axes', axisbelow=True) # to get grid into background
 plt.rc('grid', linestyle="--") # line style
 plt.rcParams.update({'font.size': 12}) # font size
 
-general = GeneralSettings()
+general = GeneralSettings.create()
 
 app = typer.Typer(pretty_exceptions_short=False)
-app.add_typer(plt_app, name="plot")
+app.add_typer(splinter_app, name="splinters")
 app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
 app.add_typer(acc_app, name="acc")

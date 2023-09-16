@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 
@@ -5,11 +7,28 @@ from rich import print
 from rich.pretty import pretty_repr
 
 class GeneralSettings:
+    __create_key = object()
+    
     base_path: str = ""
     plot_extension: str = ".pdf"
     
-    def __init__(self) -> None:
+    def create() -> GeneralSettings:
+        """Creates a new instance of GeneralSettings or returns the existing one and returns it."""
+        if 'general' in globals():
+            global general        
+        else:
+            global general
+            general = GeneralSettings(GeneralSettings.__create_key)
+        
+        return general        
+    
+    def __init__(self, key) -> None:
+        assert key == self.__create_key, "GeneralSettings must be created using GeneralSettings.create()."
+        
+        print("Loading general settings...", end="")
         self.load()
+        print("[green]OK[/green]")
+        
     
     def __str__(self):
         return "General Settings"

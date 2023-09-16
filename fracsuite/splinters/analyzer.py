@@ -22,6 +22,7 @@ from rich import print
 from rich.progress import track
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
+from fracsuite.tools.plotting import plot_impact_influence
 
 
 plt.rcParams['figure.figsize'] = (6, 4)
@@ -561,7 +562,8 @@ class Analyzer(object):
         # create output directory if not exists
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
-            
+        
+        
         #############
         # image operations
         updater(1/9, '> Step 1: Preprocessing image...')
@@ -580,7 +582,11 @@ class Analyzer(object):
         # calculate scale factors to make measurements in real units
         size_f = 1
         "size factor for mm/px"
-        if config.real_image_size is not None and config.cropped_image_size is not None:
+        if config.real_image_size is not None:
+            
+            if config.cropped_image_size is None:
+                config.cropped_image_size = self.preprocessed_image.shape[:2]
+                
             # fx: mm/px
             fx = config.real_image_size[0] / config.cropped_image_size[0]
             fy = config.real_image_size[1] / config.cropped_image_size[1]
@@ -682,7 +688,11 @@ class Analyzer(object):
         # Orientational analysis
         if config.impact_position is not None:
             updater(7/9, 'Step 7: Orientation analysis')
-            self.__create_impact_influence(size_f, config)
+            plot_impact_influence((2000,2000), 
+                                  self.splinters, 
+                                  self.__get_out_file(f'fig_splinter_orientation.{config.ext_plots}'), 
+                                  config,
+                                  updater)
         
         #############
         # count splinters in norm region
@@ -822,39 +832,7 @@ class Analyzer(object):
         
         return p
         
-    def __create_impact_influence(self, size_f: float, config: AnalyzerConfig, updater = None):
-        # analyze splinter orientations
-        orientation_image = self.original_image.copy()
-        orients = []
-        for s in self.splinters:
-            if updater is not None:
-                updater(0, 'Analyzing splinter orientation', len(self.splinters))
-            orientation = s.measure_orientation(config)
-            orients.append(orientation)
-            color = get_color(orientation, colormap_name='turbo')
-            cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
-            # p2 = (s.centroid_px + s.angle_vector * 15).astype(np.int32)
-            # cv2.line(orientation_image, s.centroid_px, p2, (255,255,255), 3)
-        cv2.circle(orientation_image, (np.array(config.impact_position) / size_f).astype(np.uint32),
-                   np.min(orientation_image.shape[:2]) // 50, (255,0,0), -1)
-
-        # save plot
-        fig, axs = plt.subplots()
-        axim = axs.imshow(orientation_image, cmap='turbo', vmin=0, vmax=1)
-        fig.colorbar(axim, label='Strength  [-]')
-        axs.xaxis.tick_top()
-        axs.xaxis.set_label_position('top')
-        axs.set_xlabel('Pixels')
-        axs.set_ylabel('Pixels')
-        axs.set_title('Splinter orientation towards impact point')
-        # create a contour plot of the orientations, that is overlayed onto the original image
-        if config.debug:
-            fig.show()
-            fig.waitforbuttonpress()
-        
-        fig.tight_layout()
-        fig.savefig(self.__get_out_file(f"fig_splinter_orientation.{config.ext_plots}"))
-        plt.close(fig)
+    
 
     def __create_voronoi(self, config: AnalyzerConfig):
         centroids = np.array([x.centroid_px for x in self.splinters if x.has_centroid])

@@ -2,7 +2,9 @@ import os
 from itertools import groupby
 from typing import Annotated, List
 
+import altair as alt
 import cv2
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import typer
 from matplotlib import pyplot as plt
@@ -15,11 +17,12 @@ from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image_cbar, get_color, write_image
+from fracsuite.tools.plotting import plot_impact_influence
 from fracsuite.tools.specimen import Specimen, fetch_specimens, fetch_specimens_by
 
 app = typer.Typer()
 
-general = GeneralSettings()
+general = GeneralSettings.create()
 
 def finalize(out_name: str):
     print(f"Saved to '{out_name}'.")
@@ -284,6 +287,48 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
     
     finalize(out_name)
 
+
+@app.command(name="log2dhist")
+def log_2d_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load', parser=specimen_parser)], 
+                   xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
+                   more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
+                   nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
+                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 20):
+    
+    path = general.base_path
+    specimens = fetch_specimens(specimen_names, path)
+    
+    
+    if len(specimens) == 0 or any([x.splinters is None for x in specimens]):
+        print("[red]No specimens loaded.[/red]")
+        return
+    
+    def legend_none(x: Specimen):
+        return f'{x.name}'
+    
+    legend = legend_none
+    
+    if more_data:        
+        def legend_f(x: Specimen):
+            return f'{x.name}_{x.scalp.measured_thickness:.2f}_{abs(x.scalp.sig_h):.2f}'
+        legend = legend_f
+    
+    alt.Chart(specimens).mark_rect().encode(
+        alt.X('IMDB_Rating:Q').bin(maxbins=60),
+        alt.Y('Rotten_Tomatoes_Rating:Q').bin(maxbins=40),
+        alt.Color('count():Q').scale(scheme='greenblue')
+    )
+        
+    fig = plot_histograms(xlim, specimens, legend=legend, n=n_bins, has_legend=not nolegend)
+    out_name = f"{specimens[0].name.replace('.','_')}_log_histograms"
+    c = len([x for x in os.listdir(path) if x.startswith(out_name)])
+    out_name = os.path.join(path, f"{out_name}_{c}.png")
+    fig.savefig(out_name)
+    
+    disp_mean_sizes(specimens)
+    
+    finalize(out_name)
+
 @app.command(name="loghist")
 def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load', parser=specimen_parser)], 
                    xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
@@ -295,7 +340,7 @@ def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Nam
     specimens = fetch_specimens(specimen_names, path)
     
     
-    if len(specimens) == 0 or any([x.splinters is None for x in specimens]):
+    if specimens is None or (isinstance(specimens, list) and len(specimens)==0):
         print("[red]No specimens loaded.[/red]")
         return
     
@@ -329,25 +374,30 @@ def disp_mean_sizes(specimens: list[Specimen]):
     """
     print("* Mean splinter sizes:")
     for specimen in specimens:
-        print(f"\t '{specimen.name}' ({specimen.scalp.sig_h:.2f}): {specimen.splinters.get_mean_splinter_size():.2f}")
-    
-    
+        print(f"\t '{specimen.name}' ({specimen.scalp.sig_h:.2f}): {np.mean([x.area for x in specimen.splinters]):.2f}")
+      
+
 def plot_histograms(xlim: tuple[float,float], 
                     specimens: list[Specimen], 
                     legend = None, 
                     plot_mean = False,
                     n: int = 50,
-                    has_legend: bool = True) -> Figure:
-    cfg = AnalyzerConfig()
-    
-    cfg.probabilitybins = n
-    
+                    has_legend: bool = True) -> Figure:    
     fig, ax = plt.subplots()
     
     for specimen in specimens:
-        specimen.splinters.plot_logarithmic_to_axes(ax, cfg, label=legend(specimen))
+        # fetch areas from splinters
+        areas = [np.log10(x.area) for x in specimen.splinters if x.area > 0]
+        # ascending sort, smallest to largest
+        areas.sort()
+            
+        # density: normalize the bins data count to the total amount of data
+        ax.hist(areas, bins=int(n),
+                density=True, label=legend(specimen),
+                alpha=0.5)
+
         if plot_mean:
-            mean = specimen.splinters.get_mean_splinter_size()
+            mean = np.mean([x.area for x in specimen.splinters])
             ax.axvline(np.log10(mean), color='r', linestyle='--', label=f"Ø={mean:.2f}mm²")
     
     if xlim is not None:
@@ -357,6 +407,15 @@ def plot_histograms(xlim: tuple[float,float],
     if has_legend:
         ax.legend(loc='best')
         
+    # ax.set_xscale('log')
+    ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(10**x))
+    ticksy = FuncFormatter(lambda x, pos: '{0:.2f}'.format(x))
+    ax.xaxis.set_major_formatter(ticks)
+    ax.yaxis.set_major_formatter(ticksy)
+    
+    # ax.xaxis.set_major_formatter(ScalarFormatter())
+    ax.set_xlabel('Splinter Area [mm²]')
+    ax.set_ylabel('Probability (Area) [-]')
     ax.grid(True, which='both', axis='both')
     fig.tight_layout()
     return fig
@@ -444,3 +503,13 @@ def loghist_sigma(sigmas: Annotated[str, typer.Argument(help='Stress range. Eith
 #         pbar.set_description(f"Processing {spec.name}...")
 #         spec.splinters.plot_splintersize_accumulation()
    
+   
+@app.command()
+def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
+    """Plot the orientation of splinters."""
+    specimen = fetch_specimens([specimen_name], general.base_path)[0]
+    cfg = specimen.splinter_config
+    cfg.impact_position = (50,50)
+    out_name = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"splinter_orientation.{general.plot_extension}")
+    plot_impact_influence((4000,4000), specimen.splinters, out_name, cfg)
+    finalize(out_name)

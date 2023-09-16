@@ -4,7 +4,7 @@ from rich import print, inspect
 from fracsuite.tools.general import GeneralSettings
 
 app = typer.Typer()
-general = GeneralSettings()
+general = GeneralSettings.create()
 
 
 @app.command()

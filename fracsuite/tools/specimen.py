@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time 
 import json
 from pathos.pools import ProcessPool
 import os
@@ -18,7 +19,7 @@ import functools
 
 app = typer.Typer()
 
-general = GeneralSettings()
+general = GeneralSettings.create()
 
 def fetch_specimens(specimen_names: list[str] | str, path: str) -> list[Specimen]:
     """Fetch a list of specimens from a given path.
@@ -49,10 +50,9 @@ def load_specimen(args) -> Specimen | None:
     if not os.path.isdir(spec_path):
         return None
     
-    
     global shared_decider
     global shared_value_converter
-
+    
     specimen = Specimen(spec_path, log_missing=False, lazy=lazy_load)
     if not shared_decider(specimen):
         return None
@@ -73,6 +73,7 @@ def fetch_specimens_by(decider: Callable[[Specimen], bool],
         decider (func(Specimen)): Decider if the specimen should be selected.
         path (str): THe base path to the specimens.
     """
+    time0 = time.time()
     def init_pool(decider, value):
         global shared_decider
         global shared_value_converter
@@ -80,7 +81,7 @@ def fetch_specimens_by(decider: Callable[[Specimen], bool],
         shared_value_converter = value
         
     if parallel_load:
-        p = ProcessPool(nodes=8, initializer=init_pool, initargs=(decider, value), maxtasksperchild=1)    
+        p = ProcessPool(initializer=init_pool, initargs=(decider, value))    
     else:
         init_pool(decider, value)
     
@@ -88,7 +89,7 @@ def fetch_specimens_by(decider: Callable[[Specimen], bool],
         def value(specimen: Specimen):
             return specimen
     
-    directories=  [os.path.join(path,x) for x in os.listdir(path) 
+    directories = [os.path.join(path,x) for x in os.listdir(path) 
                    if os.path.isdir(os.path.join(path,x))]
     
     
@@ -102,7 +103,7 @@ def fetch_specimens_by(decider: Callable[[Specimen], bool],
             while not data.ready():
                 progress.update(task, completed=len(directories)-data._number_left, total=len(directories))
                 pass
-        data = [x for x in data.get() if x is not None]                
+        data = [x for x in data.get() if x is not None]
     else:
         for dir in track(directories, description="Loading specimens...", transient=True):
             spec = load_specimen((dir, lazy_load))
@@ -137,7 +138,10 @@ def fetch_specimens_by(decider: Callable[[Specimen], bool],
         data = sorted(data, key=sortby)
 
     if parallel_load:
-        p.close()                
+        p.close()   
+        
+    time1 = time.time()
+    print(f"Loading took {time1-time0}.")             
     return data
 
 class Specimen:
@@ -181,6 +185,9 @@ class Specimen:
     "Number of the specimen."
     comment: str = ""
     "Comment of the specimen."
+    
+    acc_file: str = ""
+    "Path to the acceleration file."
     
     def lazy_load(self):
         """Load the specimen lazily."""
@@ -233,6 +240,9 @@ class Specimen:
                 last_sec = vars[3].split("-")
                 self.nbr = int(last_sec[0])
                 self.comment = last_sec[1]
+        # load acceleration
+        acc_path = os.path.join(self.path, "fracture", "acceleration")
+        self.acc_file = find_file(acc_path, "*.bin")
         
         # load scalp
         scalp_path = os.path.join(self.path, "scalp")
@@ -247,7 +257,7 @@ class Specimen:
         # load splinters
         self.fracture_morph_dir = os.path.join(self.path, "fracture", "morphology")
         self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
-            and find_file(self.fracture_morph_dir, ".bmp") is not None
+            and find_file(self.fracture_morph_dir, "*.bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
         self.__splinters_file = find_file(self.splinters_path, "splinters.pkl")        
         self.__config_file = find_file(self.splinters_path, "config.pkl")        
@@ -264,6 +274,7 @@ class Specimen:
             self.__load_splinter_config()
         elif log_missing:
             print(f"Could not find splinter config file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
+     
         
     def __load_scalp(self, file = None):
         if not self.has_scalp:
@@ -272,8 +283,7 @@ class Specimen:
             file = self.__scalp_file
                 
         self.scalp = ScalpSpecimen.load(file)
-       
-        
+     
     def __load_splinters(self, file = None):
         if not self.has_splinters:
             return
@@ -375,3 +385,4 @@ def export():
     workbook.close()
     
     os.system(f'start {workbook_path}')
+    

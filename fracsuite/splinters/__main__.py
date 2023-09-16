@@ -51,7 +51,7 @@ matplotlib.rc('axes', axisbelow=True) # to get grid into background
 matplotlib.rc('grid', linestyle="--") # line style
 matplotlib.rcParams.update({'font.size': 12}) # font size
 
-general_settings = GeneralSettings()
+general_settings = GeneralSettings.create()
 
 parser = AnalyzerConfig.get_parser(__doc__)
 
@@ -60,6 +60,7 @@ parser.add_argument("--all", default=False,
                     action='store_true')
 parser.add_argument("--all-exclude", default=[], nargs="+")
 parser.add_argument("--clear-splinters", action='store_true', default=False)
+parser.add_argument("--update-plots", action='store_true', default=False)
 
 args = parser.parse_args()
 
@@ -106,7 +107,7 @@ if args.all:
                 if spec.settings['break_pos'] == "center":
                     config.impact_position = (250,250)
                 else:
-                    config.impact_position = (500,500)
+                    config.impact_position = (50,50)
                     
                 if args.clear_splinters:
                     shutil.rmtree(spec.splinters_path, ignore_errors=True)
