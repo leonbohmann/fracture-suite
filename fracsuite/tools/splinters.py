@@ -13,6 +13,7 @@ from rich import print
 from rich.progress import Progress, SpinnerColumn, track
 from scipy.optimize import curve_fit
 from fracsuite.core.image import to_gray, to_rgb
+from fracsuite.core.plotting import plot_intensity
 
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
@@ -94,7 +95,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     # create contour plot of roughness
     specimen = fetch_specimens(specimen_name, general.base_path)[0]
 
-    fig = specimen.splinters.plot_intensity(regionsize, roughness_function, clr_label='Mean roughness')
+    fig = plot_intensity(specimen.get_fracture_image(), specimen.splinters, regionsize, roughness_function, clr_label='Mean roughness')
 
     # with Progress(SpinnerColumn("arc", ), transient=False, ) as progress:
     #     task = progress.add_task("Create intensity plots", total=1, )
@@ -102,7 +103,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     #     # Mark the task as complete
     #     progress.update(task, completed=1)
 
-    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"fig_roughintensity.{general.plot_extension}")
+    out_path = os.path.join(specimen.splinters_path, f"fig_roughintensity.{general.image_extension}")
     fig.savefig(out_path, dpi=500)
     del fig
     finalize(out_path)
