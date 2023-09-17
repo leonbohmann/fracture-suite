@@ -109,7 +109,7 @@ class AnalyzerConfig:
         prep.add_argument('-max-area', help='Maximum fragment area threshold [px²]',\
             type=float, default=25000)
         prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
-            type=float, default=1)
+            type=float, default=5)
         prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
             type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
         prep.add_argument('-resize-fac', help='Image resize factor before adaptive th.',\
