@@ -295,6 +295,7 @@ class Analyzer(object):
         self.save_object()
 
         self.__check_detection_ratio(config)
+        self.__plot_backend(display=config.displayplots)
         # #############
         # # Stochastic analysis
         # updater(6, 'Stochastic analysis')
@@ -554,8 +555,8 @@ class Analyzer(object):
             self.ax3.set_ylim(y1, y2)
         else:
             # zoom into the image so that 25% of the image width is visible
-            x0, x1 = self.original_image.shape[0] * 0.25, self.original_image.shape[0] * 0.75
-            y0, y1 = self.original_image.shape[1] * 0.25, self.original_image.shape[1] * 0.75
+            x0, x1 = self.original_image.shape[0] * 0.25, self.original_image.shape[0] * 0.40
+            y0, y1 = self.original_image.shape[1] * 0.25, self.original_image.shape[1] * 0.40
 
             self.ax1.set_xlim(x0, x1)
             self.ax1.set_ylim(y0, y1)
