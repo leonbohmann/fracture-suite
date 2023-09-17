@@ -1,4 +1,5 @@
 import os
+import time
 
 import cv2
 import typer
@@ -13,7 +14,7 @@ from fracsuite.tools.splinters import app as splinter_app
 from fracsuite.tools.acc import app as acc_app
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_files
-from fracsuite.tools.specimen import fetch_specimens, app as specimen_app, fetch_specimens_by
+from fracsuite.tools.specimen import Specimen, app as specimen_app
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -30,13 +31,10 @@ app.add_typer(acc_app, name="acc")
 
 @app.command()
 def test(parallel:bool = False):
-    path = general.base_path
-
-    all = fetch_specimens_by(lambda x: "SCHOTT" not in x.name, path, lazy_load=False,
-                             parallel_load=parallel)
-
-    for s in all:
-        print(s.name)
+    time0 = time.time()
+    all = Specimen.get_all_by(lambda x: "SCHOTT" not in x.name)
+    time1 = time.time()
+    print(f"Loading all specimens took {time1-time0:.2f}s.")
 
 @app.command()
 def marina_organize(path: str):
@@ -85,21 +83,34 @@ def marina_organize(path: str):
                     os.rename(os.path.join(morph_path, file2), os.path.join(morph_path, num + " " + file2))
                     break
 
-@app.command(name='crop_frac')
+@app.command(name='crop-frac')
 def crop_fracture_morph(
     specimen_name: Annotated[str, typer.Option(help='Name of specimen to load')] = "",
     all: Annotated[bool, typer.Option('--all', help='Perform this action on all specimen.')] = False,
     rotate: Annotated[bool, typer.Option('--rotate', help='Rotate image by 90°.')] = False,
     crop: Annotated[bool, typer.Option('--crop', help='Crop the image.')] = True,
-    size: Annotated[tuple[int,int], typer.Option(help='Image size.', metavar='Y X')] = (4000, 4000),
+    size: Annotated[tuple[int,int], typer.Option(help='Image size.', metavar='Y X')] = general.default_image_size_px,
     rotate_only: Annotated[bool, typer.Option('--rotate-only', help='Only rotate image by 90°, skip cropping.')] = False,
     resize_only: Annotated[bool, typer.Option('--resize_only', help='Only resize the image to 4000px².')] = False,
 ):
+    f"""Crop and resize fracture morphology images. Can run on all specimens, several or just one single one.
+
+    Args:
+        specimen_name (Annotated[str, typer.Option, optional): The specimen names. Defaults to 'Name of specimen to load')]
+        all (bool, optional): Run the method on all specimens. Defaults to False.
+        rotate (bool, optional): Rotate the input image 90° CCW. Defaults to False.
+        crop (bool, optional): Crop the input image to ply bounds. Defaults to True.
+        size (tuple[int,int], optional): Size of the image. Defaults to {general.default_image_size_px}.
+        rotate_only (bool, optional): Only rotate the images. Defaults to False.
+        resize_only (bool, optional): Only resizes the images. Defaults to False.
+    """
     from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE
     if all:
-        specimens = fetch_specimens_by(lambda x: True, general.base_path)
+        specimens = Specimen.get_all()
+    elif isinstance(specimen_name, Specimen):
+        specimens = [specimen_name]
     else:
-        specimens = fetch_specimens([specimen_name], general.base_path)
+        specimens = Specimen.get_all(specimen_name)
 
 
     for specimen in track(specimens):

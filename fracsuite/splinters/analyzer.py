@@ -189,6 +189,8 @@ class Analyzer(object):
             # f: mm/px
             size_f = fx
             config.size_factor = size_f
+        else:
+            print("[orange]Warning[/orange]: No real image size specified.")
 
         #############
         # initial contour operations
@@ -287,7 +289,6 @@ class Analyzer(object):
 
         for s in self.splinters:
             s.measure_orientation(position)
-
 
         update_main(8, 'Save data...')
         self.__save_data(config)
@@ -732,87 +733,6 @@ class Analyzer(object):
         # X,Y,Z = csintkern(events, region, 500)
         self.create_intensity_plot(config.intensity_h, config)
 
-    def plot_intensity(self,
-                       region_size: float,
-                       z_action,
-                       clr_label="Intensity [Splinters / Area]",
-                       fig_title="Fracture Intensity",
-                       xlabel="Pixels",
-                       ylabel="Pixels",):
-        """Create an intensity plot of the fracture.
-
-        Args:
-            intensity_h (float): Size of the analyzed regions.
-            z_action (def(list[Specimen])): The action that is called for every region.
-            clr_label (str, optional): Colorbar title. Defaults to "Intensity [Splinters / Area]".
-
-        Returns:
-            Figure: A figure showing the intensity plot.
-        """
-        region = np.array([self.original_image.shape[1], self.original_image.shape[0]])
-        # print(f'Creating intensity plot with region={region}...')
-
-        X, Y, Z = csintkern_splinters(region, self.splinters, region_size, z_action)
-        fig,axs = plt.subplots()
-        axs.imshow(self.original_image)
-        axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
-        fig.colorbar(axim, label=clr_label)
-        axs.xaxis.tick_top()
-        axs.xaxis.set_label_position('top')
-        axs.set_xlabel(xlabel)
-        axs.set_ylabel(ylabel)
-        axs.set_title(f'{fig_title} (h={region_size:.2f})')
-
-        fig.tight_layout()
-        return fig
-
-    def create_intensity_plot(self, intensity_h: float, config: AnalyzerConfig):
-        """Create a plot of the fracture intensity.
-
-        Args:
-            config (AnalyzerConfig): Configuration.
-        """
-        centroids = [x.centroid_px for x in self.splinters if x.has_centroid]
-
-        events = np.array(centroids)
-        region = np.array([[0,self.original_image.shape[1]], [0, self.original_image.shape[0]]])
-
-        X, Y, Z = csintkern_optimized_distances(events, region, intensity_h)
-        fig,axs = plt.subplots()
-        axs.imshow(self.image_contours)
-        axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
-        fig.colorbar(axim, label='Intensity [Splinters / Area]')
-        # plt.scatter([x[0] for x in centroids], [x[1] for x in centroids], color='red', alpha=0.5, label='Data Points')
-        # plt.legend()
-        axs.xaxis.tick_top()
-        axs.xaxis.set_label_position('top')
-        axs.set_xlabel('Pixels')
-        axs.set_ylabel('Pixels')
-        axs.set_title(f'Fracture Intensity (h={intensity_h:.2f})')
-
-        fig.tight_layout()
-        fig.savefig(self.__get_out_file(f"fig_intensity.{config.ext_plots}"))
-        plt.close(fig)
-
-
-        def __create_splintersize_filled_image(self, config: AnalyzerConfig):
-        img = self.original_image.copy()
-        areas = [x.area for x in self.splinters]
-
-        min_area = np.min(areas)
-        max_area = np.max(areas)
-
-        for s in self.splinters:
-            clr = get_color(s.area, min_value=min_area, max_value=max_area, colormap_name='turbo')
-            cv2.drawContours(img, [s.contour], -1, clr, -1)
-
-        cv2.imwrite(self.__get_out_file("img_splintersizes", config.ext_imgs), img)
-        combined = cv2.addWeighted(self.original_image, 1.0, img, 0.75, 0.0)
-        cv2.imwrite(self.__get_out_file(f"img_splintersizes_combined.{self.config.ext_imgs}"), combined)
-        # print(img.shape)
-        # print(self.image_skeleton_rgb.shape)
-        combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, img, 0.6, 0.0)
-        cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)
 
     def plot_logarithmic_to_axes(self, axs, config: AnalyzerConfig, label: str = None):
         self.__plot_logarithmic_histograms(config, axes=axs, label=label)

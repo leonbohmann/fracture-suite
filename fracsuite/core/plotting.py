@@ -2,10 +2,11 @@
 Plotting helper functions
 """
 
+from typing import Callable
 from matplotlib import pyplot as plt
 import numpy as np
 from fracsuite.core.image import to_rgb
-from fracsuite.core.stochastics import csintkern_splinters
+from fracsuite.core.stochastics import csintkern_objects
 from fracsuite.splinters.splinter import Splinter
 
 
@@ -25,14 +26,15 @@ def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] 
     plt.show()
     plt.close(fig)
 
-def plot_intensity(original_image: np.ndarray,
+def plot_splinter_kernel_contours(original_image: np.ndarray,
                    splinters: list[Splinter],
-                   region_size: float,
-                    z_action,
+                   kernel_width: float,
+                    z_action: Callable[[list[Splinter]], float] = None,
                     clr_label="Intensity [Splinters / Area]",
                     fig_title="Fracture Intensity",
                     xlabel="Pixels",
-                    ylabel="Pixels",):
+                    ylabel="Pixels",
+                    plot_vertices: bool = False):
     """Create an intensity plot of the fracture.
 
     Args:
@@ -46,16 +48,24 @@ def plot_intensity(original_image: np.ndarray,
     region = np.array([original_image.shape[1], original_image.shape[0]])
     # print(f'Creating intensity plot with region={region}...')
 
-    X, Y, Z = csintkern_splinters(region, splinters, region_size, z_action)
+    X, Y, Z = csintkern_objects(region,
+                                splinters,
+                                lambda x,r: x.in_region_px(r),
+                                kernel_width,
+                                z_action)
     fig,axs = plt.subplots()
     axs.imshow(original_image)
+
+    if plot_vertices:
+        axs.scatter(X, Y, marker='o', c='red')
+
     axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
     fig.colorbar(axim, label=clr_label)
     axs.xaxis.tick_top()
     axs.xaxis.set_label_position('top')
     axs.set_xlabel(xlabel)
     axs.set_ylabel(ylabel)
-    axs.set_title(f'{fig_title} (h={region_size:.2f})')
+    axs.set_title(f'{fig_title} (h={kernel_width:.2f})')
 
     fig.tight_layout()
     return fig

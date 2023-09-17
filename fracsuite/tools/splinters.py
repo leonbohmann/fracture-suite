@@ -12,15 +12,14 @@ from matplotlib.figure import Figure
 from rich import print
 from rich.progress import Progress, SpinnerColumn, track
 from scipy.optimize import curve_fit
-from fracsuite.core.image import to_gray, to_rgb
-from fracsuite.core.plotting import plot_intensity
 
+from fracsuite.core.plotting import plot_splinter_kernel_contours
+from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image_cbar, get_color, write_image
-from fracsuite.tools.plotting import plot_impact_influence
-from fracsuite.tools.specimen import Specimen, fetch_specimens, fetch_specimens_by
+from fracsuite.tools.specimen import Specimen
 
 app = typer.Typer()
 
@@ -32,11 +31,12 @@ def finalize(out_name: str):
 
 @app.command(name='norm')
 def count_splinters_in_norm_region(
-        specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
+        specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
         norm_region_center: Annotated[tuple[int,int], typer.Option(help='Center of the norm region in mm.', metavar='X Y')] = (400,400),
         norm_region_size: Annotated[tuple[int,int], typer.Option(help='Size of the norm region in mm.', metavar='W H')] = (50,50),
     ) -> float:
-    specimen = fetch_specimens(specimen_name, general.base_path)[0]
+    specimen = Specimen.get(specimen_name)
+    assert specimen is not None, "Specimen not found."
 
     # create rectangle around args.normregioncenter with 5x5cm size
     # and count splinters in it
@@ -93,9 +93,15 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
         return np.mean([splinter.calculate_roughness() for splinter in splinters])
 
     # create contour plot of roughness
-    specimen = fetch_specimens(specimen_name, general.base_path)[0]
+    specimen = Specimen.get(specimen_name)
+    assert specimen is not None, "Specimen not found."
 
-    fig = plot_intensity(specimen.get_fracture_image(), specimen.splinters, regionsize, roughness_function, clr_label='Mean roughness')
+    fig = plot_splinter_kernel_contours(specimen.get_fracture_image(),
+                                        splinters=specimen.splinters,
+                                        kernel_width=regionsize,
+                                        z_action=roughness_function,
+                                        clr_label='Mean roughness',
+                                        fig_title='Splinter Roughness')
 
     # with Progress(SpinnerColumn("arc", ), transient=False, ) as progress:
     #     task = progress.add_task("Create intensity plots", total=1, )
@@ -120,7 +126,8 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
         return np.mean([splinter.calculate_roundness() for splinter in splinters])
 
     # create contour plot of roughness
-    specimen = fetch_specimens([specimen_name], general.base_path)[0]
+    specimen = Specimen.get(specimen_name)
+    assert specimen is not None, "Specimen not found."
 
     fig = specimen.splinters.plot_intensity(regionsize, roundness_function, clr_label='', fig_title='Mean roundness ')
 
@@ -139,7 +146,9 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
 @app.command()
 def intensity(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
               regionsize: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200,):
-    specimen = fetch_specimens([specimen_name], general.base_path)[0]
+    specimen = Specimen.get(specimen_name)
+
+    assert specimen is not None, "Specimen not found."
 
     with Progress(SpinnerColumn("arc", ), transient=False, ) as progress:
         task = progress.add_task("Create intensity plots", total=1, )
@@ -160,7 +169,7 @@ def intensity(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
     """Plot the roughness of a specimen."""
 
-    specimen = fetch_specimens(specimen_name, general.base_path)[0]
+    specimen = Specimen.get(specimen_name)
 
 
     out_img = specimen.get_fracture_image()
@@ -202,8 +211,7 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
     """Plot the roundness of a specimen."""
 
-    specimen = fetch_specimens([specimen_name], general.base_path)[0]
-
+    specimen = Specimen.get(specimen_name)
 
     out_img = specimen.get_fracture_image()
 
@@ -238,6 +246,7 @@ def str_to_intlist(input: str) -> list[int]:
         return [input    ]
 
     return [int(x) for x in input.split(",")]
+
 def specimen_parser(input: str):
     return input
 
@@ -275,7 +284,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
     def specimen_value(spec: Specimen):
         return (spec.boundary, spec.splinters.get_mean_splinter_size(), np.abs(spec.scalp.sig_h))
 
-    specimens = fetch_specimens_by(decider, general.base_path, value=specimen_value, sortby=lambda x: x[0])
+    specimens = Specimen.get_all_by(decider, specimen_value, sortby=lambda x: x[0])
 
     # group specimens by boundary conditions
     t = groupby(specimens, lambda x: x[0])
@@ -348,8 +357,7 @@ def log_2d_histograms(specimen_names: Annotated[list[str], typer.Argument(help='
                    n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 20):
 
     path = general.base_path
-    specimens = fetch_specimens(specimen_names, path)
-
+    specimens = Specimen.get_all(specimen_names)
 
     if len(specimens) == 0 or any([x.splinters is None for x in specimens]):
         print("[red]No specimens loaded.[/red]")
@@ -382,17 +390,16 @@ def log_2d_histograms(specimen_names: Annotated[list[str], typer.Argument(help='
     finalize(out_name)
 
 @app.command(name="loghist")
-def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load', parser=specimen_parser)],
+def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
                    xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
                    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
                    nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
-                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 20):
+                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 50):
 
     path = general.base_path
-    specimens = fetch_specimens(specimen_names, path)
+    specimens = Specimen.get_all(specimen_names)
 
-
-    if specimens is None or (isinstance(specimens, list) and len(specimens)==0):
+    if len(specimens)==0:
         print("[red]No specimens loaded.[/red]")
         return
 
@@ -557,11 +564,116 @@ def loghist_sigma(sigmas: Annotated[str, typer.Argument(help='Stress range. Eith
 
 
 @app.command()
-def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
+def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
     """Plot the orientation of splinters."""
-    specimen = fetch_specimens([specimen_name], general.base_path)[0]
+    specimen = Specimen.get(specimen_name)
+
     cfg = specimen.splinter_config
     cfg.impact_position = (50,50)
     out_name = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"splinter_orientation.{general.plot_extension}")
-    plot_impact_influence((4000,4000), specimen.splinters, out_name, cfg)
+
+    def plot_impact_influence(size, splinters: list[Splinter], out_file, impact_pos, size_fac,  updater = None):
+        """Creates a 2D Image of the splinter orientation towards an impact point.
+
+        Args:
+            img0 (Image): Source image to plot the orientations on.
+            splinters (list[Splinter]): List with splinters.
+            out_file (str): Output figure file.
+            config (AnalyzerConfig): Configuration
+            size_f (float): _description_
+            updater (_type_, optional): _description_. Defaults to None.
+        """
+        # analyze splinter orientations
+        orientation_image = np.zeros((size[1], size[0], 3), dtype=np.uint8)
+        orients = []
+        for s in splinters:
+            if updater is not None:
+                updater(0, 'Analyzing splinter orientation', len(splinters))
+            orientation = s.measure_orientation(impact_pos)
+            orients.append(orientation)
+            color = get_color(orientation, colormap_name='turbo')
+            cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
+            # p2 = (s.centroid_px + s.angle_vector * 15).astype(np.int32)
+            # cv2.line(orientation_image, s.centroid_px, p2, (255,255,255), 3)
+        cv2.circle(orientation_image, (np.array(impact_pos) / size_fac).astype(np.uint32),
+                    np.min(orientation_image.shape[:2]) // 50, (255,0,0), -1)
+
+        # save plot
+        fig, axs = plt.subplots()
+        axim = axs.imshow(orientation_image, cmap='turbo', vmin=0, vmax=1)
+        fig.colorbar(axim, label='Strength  [-]')
+        axs.xaxis.tick_top()
+        axs.xaxis.set_label_position('top')
+        axs.set_xlabel('Pixels')
+        axs.set_ylabel('Pixels')
+        axs.set_title('Splinter orientation towards impact point')
+        # create a contour plot of the orientations, that is overlayed onto the original image
+
+        fig.tight_layout()
+        fig.savefig(out_file)
+        plt.close(fig)
+
+    plot_impact_influence(general.default_image_size_px,
+                          specimen.splinters,
+                          out_name,
+                          specimen.get_impact_position(),
+                          cfg.size_factor)
     finalize(out_name)
+
+@app.command()
+def fracture_intensity(
+        specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+        kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 5,
+        plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False):
+    """Plot the intensity of the fracture image."""
+
+    specimen = Specimen.get(specimen_name)
+
+    original_image = specimen.get_fracture_image()
+
+    # this counts the splinters in the kernel by default
+    fig = plot_splinter_kernel_contours(original_image,
+                                        specimen.splinters,
+                                        kernel_width,
+                                        plot_vertices=plot_vertices,)
+
+    out_name = specimen.get_splinter_outfile(f"fig_fracture_intensity.{general.plot_extension}")
+    fig.savefig(out_name, dpi=500)
+    finalize(out_name)
+
+@app.command(name='create-voronoi')
+def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
+    # specimen = fetch_specimens(specimen_name, general.base_path)
+    # assert specimen is not None, "Specimen not found."
+
+
+    # def __create_voronoi(self, config: AnalyzerConfig):
+    #     centroids = np.array([x.centroid_px for x in self.splinters if x.has_centroid])
+    #     voronoi = Voronoi(centroids)
+
+    #     voronoi_img = np.zeros_like(self.original_image, dtype=np.uint8)
+    #     if not is_gray(voronoi_img):
+    #         voronoi_img = cv2.cvtColor(voronoi_img, cv2.COLOR_BGR2GRAY)
+    #     for i, r in enumerate(voronoi.regions):
+    #         if -1 not in r and len(r) > 0:
+    #             polygon = [voronoi.vertices[i] for i in r]
+    #             polygon = np.array(polygon, dtype=int)
+    #             cv2.polylines(voronoi_img, [polygon], isClosed=True, color=255, thickness=2)
+
+    #     cv2.imwrite(self.__get_out_file(f"voronoi_img.{config.ext_imgs}"), voronoi_img)
+    #     fig = voronoi_plot_2d(voronoi, show_points=True, point_size=5, show_vertices=False, line_colors='red')
+    #     plt.imshow(self.original_image)
+    #     plt.axis('off')  # Turn off axis labels and ticks
+    #     plt.title('Voronoi Plot Overlay on Image')
+    #     if config.debug:
+    #         plt.show()
+    #     fig.savefig(self.__get_out_file(f"voronoi.{config.ext_plots}"))
+
+
+    #     # optimal_h = estimate_optimal_h(events, region)
+    #     # print(f'Optimal h: {optimal_h}')
+
+    #     #TODO: compare voronoi splinter size distribution to actual distribution
+    #     # X,Y,Z = csintkern(events, region, 500)
+    #     self.create_intensity_plot(config.intensity_h, config)
+    pass

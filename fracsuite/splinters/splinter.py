@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 
 
-class Splinter: 
+class Splinter:
 
     angle: float
     "Orientation of the splinter in degrees."
@@ -10,16 +10,16 @@ class Splinter:
     "Normalized orientation vector"
     alignment_score: float = np.nan
     "Score indicating how much the splinter points into the direction of the impact point."
-    
-    
+
+
     roughness: float
     "Roughness of the splinter."
     roundness: float
     """
-    Roundness of the splinter. Calculated using the relation between area and 
+    Roundness of the splinter. Calculated using the relation between area and
     the corresponding circle area with the same circumfence.
     """
-    
+
     area: float
     "Area of the splinter."
     circumfence: float
@@ -30,7 +30,7 @@ class Splinter:
     "Centroid of the splinter in px."
     has_centroid: bool
     "True if the centroid could be calculated."
-    
+
     def __init__(self, contour, index, mm_px: float):
         """Create a splinter from a contour.
 
@@ -41,37 +41,37 @@ class Splinter:
         """
         self.ID = index
         self.contour = contour
-        
+
         self.area = cv2.contourArea(self.contour) * mm_px ** 2
         self.circumfence = cv2.arcLength(self.contour, True) * mm_px
-        
+
         # roundness
         self.roundness = self.calculate_roundness()
         # roughness
         self.roughness = self.calculate_roughness()
-        
+
         # centroid
         try:
             M = cv2.moments(self.contour)
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
-            
+
             self.centroid_mm =  (cX * mm_px, cY * mm_px)
             self.centroid_px =  (cX, cY)
             self.has_centroid = True
         except:
             self.centroid_mm = (np.nan, np.nan)
             self.centroid_px = (np.nan, np.nan)
-            
+
             self.has_centroid = False
-        
-        
+
+
 
         self.angle = self.__calculate_orientation()
 
-    
-        
-    
+
+
+
     def calculate_roundness(self) -> float:
         """Calculate the roundness of the contour by comparing the area of the
         contour to the area of its corresponding circle with the same circumfence.
@@ -83,7 +83,7 @@ class Splinter:
         area = cv2.contourArea(contour)
         circumfence = cv2.arcLength(contour,True)
         return 4 * np.pi * area / circumfence ** 2
-    
+
     def calculate_roughness(self) -> float:
         """Calculate the roughness of the contour by comparing the circumfence
         of the contour to the circumfence of its convex hull.
@@ -95,9 +95,9 @@ class Splinter:
         perimeter = cv2.arcLength(contour,True)
         hull = cv2.convexHull(contour)
         hullperimeter = cv2.arcLength(hull,True)
-        
+
         return perimeter / hullperimeter - 1
-    
+
     def __calculate_orientation(self):
         """Calculate the orientation of the splinter in degrees."""
         M = cv2.moments(self.contour)
@@ -139,24 +139,24 @@ class Splinter:
         x1,y1,x2,y2 = rect
         x,y = self.centroid_px
         return x1 <= x <= x2 and y1 <= y <= y2
-    
+
     def __calculate_orientation_score(self, origin) -> float:
         """Calculate the alignment score of the splinter with the given vector.
-        
+
         Returns:
             A value from [0,1] indicating, how much the splinter points into the direction of the given vector.
         """
         centroid = self.centroid_mm
         dx = origin[0] - centroid[0]
         dy = origin[1] - centroid[1]
-        
+
         angle_radians = np.deg2rad(self.angle)
         line_direction = np.array([dx, dy])
         angle_vector = np.array([np.cos(angle_radians), np.sin(angle_radians)])
         dot_product = np.dot(line_direction, angle_vector)
         magnitude_line = np.linalg.norm(line_direction)
         self.alignment_score = np.abs(dot_product) / magnitude_line
-        return self.alignment_score 
+        return self.alignment_score
 
 
 
@@ -173,5 +173,5 @@ class Splinter:
             return np.nan
 
         # calculate the angle between the centroid and the impact point
-        
+
         return self.__calculate_orientation_score(impact_position)

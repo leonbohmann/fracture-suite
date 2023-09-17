@@ -10,7 +10,8 @@ import cv2
 import typer
 from pathos.pools import ProcessPool
 from rich import print
-from rich.progress import Progress, track
+from rich.progress import Progress, track, SpinnerColumn, TextColumn, TimeElapsedColumn
+from fracsuite.core.progress import get_spinner_prog, ProgSpinner
 
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
@@ -22,128 +23,55 @@ app = typer.Typer()
 
 general = GeneralSettings.get()
 
-def fetch_specimens(specimen_names: list[str] | str, path: str) -> list[Specimen]:
-    """Fetch a list of specimens from a given path.
+# def fetch_specimens(specimen_names: list[str] | str | Specimen, path: str) -> list[Specimen] | Specimen | None:
+#     """Fetch a list of specimens from a given path.
 
-    Args:
-        specimen_names (list[str]): The names of the specimens.
-        path (str): THe base path to the specimens.
-    """
-    if not isinstance(specimen_names, list):
-        specimen_names = [specimen_names]
+#     Args:
+#         specimen_names (list[str]): The names of the specimens.
+#         path (str): THe base path to the specimens.
 
-    specimens: list[Specimen] = []
-    for name in specimen_names:
-        spec_path = os.path.join(path, name)
-        specimen = Specimen(spec_path, lazy=True)
+#     Returns:
+#         specimen_names is list[str]?
+#             list[Specimen]: The list of specimens.
+#         specimen_names is str?
+#             Specimen: The specimen.
+#         specimen_names is Specimen?
+#             Specimen: The specimen.
+#     """
+#     if isinstance(specimen_names, Specimen):
+#         return specimen_names
 
-        specimen.lazy_load()
-        specimens.append(specimen)
-        print(f"Loaded '{name}'.")
+#     single_specimen = False
+#     if not isinstance(specimen_names, list):
+#         single_specimen = True
+#         specimen_names = [specimen_names]
 
-    return specimens
+#     specimens: list[Specimen] = []
+#     for name in specimen_names:
+#         spec_path = os.path.join(path, name)
 
-def default_value(specimen: Specimen) -> Specimen:
-    return specimen
+#         if not os.path.exists(spec_path):
+#             continue
 
-def load_specimen(args) -> Specimen | None:
-    spec_path, lazy_load = args[0], args[1]
-    if not os.path.isdir(spec_path):
-        return None
+#         specimen = Specimen(spec_path, lazy=True)
 
-    global shared_decider
-    global shared_value_converter
+#         specimen.lazy_load()
+#         specimens.append(specimen)
+#         print(f"Loaded '{name}'.")
 
-    specimen = Specimen(spec_path, log_missing=False, lazy=lazy_load)
-    if not shared_decider(specimen):
-        return None
+#     if len(specimens) > 1 and not single_specimen:
+#         return specimens
+#     elif len(specimens) == 1 and single_specimen:
+#         return specimens[0]
+#     elif single_specimen:
+#         return None
 
-    return shared_value_converter(specimen)
+#     return []
 
-_T1 = TypeVar('_T1')
-def fetch_specimens_by(decider: Callable[[Specimen], bool],
-                       path: str,
-                       max_n: int = 1000,
-                       sortby: Callable[[Specimen], Any] = None,
-                       value: Callable[[Specimen], _T1 | Specimen] = default_value,
-                       lazy_load: bool = False,
-                       parallel_load: bool = False) -> list[_T1]:
-    """Fetch a list of specimens from a given path.
+class SpecimenException(Exception):
+    """Exception for specimen related errors."""
+    pass
 
-    Args:
-        decider (func(Specimen)): Decider if the specimen should be selected.
-        path (str): THe base path to the specimens.
-    """
-    time0 = time.time()
-    def init_pool(decider, value):
-        global shared_decider
-        global shared_value_converter
-        shared_decider = decider
-        shared_value_converter = value
-
-    if parallel_load:
-        p = ProcessPool(initializer=init_pool, initargs=(decider, value))
-    else:
-        init_pool(decider, value)
-
-    if value is None:
-        def value(specimen: Specimen):
-            return specimen
-
-    directories = [os.path.join(path,x) for x in os.listdir(path)
-                   if os.path.isdir(os.path.join(path,x))]
-
-
-    data: list[Any] = []
-    if parallel_load:
-        data = p.amap(load_specimen,
-                    [(x, lazy_load) for x in directories])
-        with Progress() as progress:
-            task = progress.add_task("[green]Loading specimens...", total=len(directories))
-            # inspect(data, methods=True, private=True)
-            while not data.ready():
-                progress.update(task, completed=len(directories)-data._number_left, total=len(directories))
-                pass
-        data = [x for x in data.get() if x is not None]
-    else:
-        for dir in track(directories, description="Loading specimens...", transient=True):
-            spec = load_specimen((dir, lazy_load))
-            if spec is not None:
-                data.append(spec)
-
-
-    # for name in track(os.listdir(path), description="Loading specimens...", transient=True):
-
-    #     spec_path = os.path.join(path, name)
-    #     if not os.path.isdir(spec_path):
-    #         continue
-
-
-    #     specimen = Specimen(spec_path, log_missing=False, lazy=lazy_load)
-
-    #     if not decider(specimen):
-    #         continue
-
-    #     if lazy_load:
-    #         specimen.lazy_load()
-
-    #     data.append(value(specimen))
-    #     # print(f"Loaded '{name}'.")
-
-    #     if len(data) >= max_n:
-    #         break
-
-    print(f"Loaded {len(data)} specimens.")
-
-    if sortby is not None:
-        data = sorted(data, key=sortby)
-
-    if parallel_load:
-        p.close()
-
-    time1 = time.time()
-    print(f"Loading took {time1-time0}.")
-    return data
 
 class Specimen:
     """ Container class for a specimen. """
@@ -190,15 +118,26 @@ class Specimen:
     acc_file: str = ""
     "Path to the acceleration file."
 
-    def lazy_load(self):
+    def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
 
         if self.loaded:
             print("[red]Specimen already loaded.")
 
-        self.__load_scalp()
-        self.__load_splinters()
-        self.__load_splinter_config()
+        if self.__splinters_file:
+            self.__load_splinters()
+        elif log_missing_data:
+            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
+
+        if self.__config_file is not None:
+            self.__load_splinter_config()
+        elif log_missing_data:
+            print(f"Could not find splinter config file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
+
+        if self.__scalp_file is not None:
+            self.scalp = ScalpSpecimen.load(self.__scalp_file)
+        elif log_missing_data:
+            print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
         self.loaded = True
 
@@ -208,7 +147,6 @@ class Specimen:
         Args:
             path (str): Path of the specimen.
         """
-        self.loaded = not lazy
         self.path = path
 
         self.__cfg_path = os.path.join(path, "config.json")
@@ -245,17 +183,12 @@ class Specimen:
         acc_path = os.path.join(self.path, "fracture", "acceleration")
         self.acc_file = find_file(acc_path, "*.bin")
 
-        # load scalp
+        # scalp requisites
         scalp_path = os.path.join(self.path, "scalp")
         self.__scalp_file = find_file(scalp_path, "*.pkl")
         self.has_scalp = self.__scalp_file is not None
-        if self.__scalp_file is not None and not lazy:
-            self.scalp = ScalpSpecimen.load(self.__scalp_file)
-        elif log_missing and not lazy:
-            print(f"Could not find scalp file for '{path}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
-
-        # load splinters
+        # splinters requisites
         self.fracture_morph_dir = os.path.join(self.path, "fracture", "morphology")
         self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
             and find_file(self.fracture_morph_dir, "*.bmp") is not None
@@ -266,16 +199,9 @@ class Specimen:
         self.has_splinter_config = self.__config_file is not None
         self.has_config = self.__config_file is not None
 
-        if self.__splinters_file is not None and not lazy:
-            self.__load_splinters()
-        elif log_missing and not lazy:
-            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
 
-        if self.__config_file is not None and not lazy:
-            self.__load_splinter_config()
-        elif log_missing and not lazy:
-            print(f"Could not find splinter config file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
-
+        if not lazy:
+            self.load(log_missing)
 
     def set_setting(self, key, value):
         self.settings[key] = value
@@ -294,6 +220,17 @@ class Specimen:
         transmission_file = find_file(self.fracture_morph_dir, "*Transmission*")
         if transmission_file is not None:
             return cv2.imread(transmission_file)
+
+    def get_splinter_outfile(self, name: str):
+        return os.path.join(self.splinters_path, name)
+
+    def get_impact_position(self):
+        if self.settings['break_pos'] == "center":
+            return (250,250)
+        elif self.settings['break_pos'] == "corner":
+            return (50,50)
+
+        raise Exception("Invalid break position.")
 
     def __load_scalp(self, file = None):
         if not self.has_scalp:
@@ -321,6 +258,118 @@ class Specimen:
             file = self.__config_file
 
         self.splinter_config = AnalyzerConfig.load(file)
+
+    def get(name: str | Specimen, load: bool = True) -> Specimen:
+        """Gets a specimen by name. Raises exception, if not found."""
+        if isinstance(name, Specimen):
+            return name
+
+        path = os.path.join(general.base_path, name)
+        if not os.path.isdir(path):
+            raise SpecimenException(f"Specimen '{name}' not found.")
+
+        return Specimen(path, lazy=not load)
+
+    def get_all(names: list[str] = None, load: bool = True) -> list[Specimen]:
+        """
+        Get a list of specimens by name. Raises exception, if any is not found.
+
+        If names=None, all specimens are returned.
+
+        Args:
+            load(bool): States, if the specimens should be loaded or not.
+        """
+        specimens: list[Specimen] = []
+
+        if names is None:
+            return Specimen.get_all_by(lambda x: True, load=load)
+
+        for name in track(names, description="Loading specimens...", transient=False):
+            dir = os.path.join(general.base_path, name)
+            specimen = Specimen.get(dir, load)
+            specimens.append(specimen)
+
+        if len(specimens) == 0:
+            raise SpecimenException("No specimens found.")
+
+        return specimens
+
+    def __default_value(specimen: Specimen) -> Specimen:
+        return specimen
+
+    def load_specimens(data: list[Specimen]):
+        # load specimens using multiple cores
+        with get_spinner_prog():
+            p = ProcessPool()
+            d = p.amap(lambda x: x.load(), data)
+
+            while not d.ready():
+                time.sleep(0.3)
+
+            p.close()
+
+
+    _T1 = TypeVar('_T1')
+    def get_all_by( decider: Callable[[Specimen], bool],
+                    value: Callable[[Specimen], _T1 | Specimen] = None,
+                    max_n: int = 1000,
+                    sortby: Callable[[Specimen], Any] = None,
+                    load: bool = True) -> list[_T1]:
+        """
+        Loads specimens with a decider function.
+        Iterates over all specimens in the base path.
+        """
+
+        def load_specimen(spec_path, load, decider, value) -> Specimen | None:
+            """Load a single specimen.
+
+            Args:
+                spec_path (str):        Path of the specimen.
+                decider (func(bool)):   Decides, if the specimen should be loaded.
+                value (func(Specimen)->Specimen):
+                                        Function that can convert the specimen.
+                load (bool):            Do not load the specimen data.
+                lazy_load (bool):       Instruct the function to load the specimen data afterwards.
+
+            Returns:
+                Specimen | None: Specimen or None.
+            """
+            if not os.path.isdir(spec_path):
+                return None
+
+            if value is None:
+                value = Specimen.__default_value
+
+            specimen = Specimen(spec_path, log_missing=False, lazy=not load)
+            if not decider(specimen):
+                return None
+
+            return value(specimen)
+
+        if value is None:
+            def value(specimen: Specimen):
+                return specimen
+
+        directories = [os.path.join(general.base_path,x) for x in os.listdir(general.base_path)]
+        directories = [x for x in directories if os.path.isdir(x)]
+
+        data: list[Any] = []
+        for dir in track(directories, description="Loading specimens...", transient=True):
+            spec = load_specimen(dir, load, decider, value)
+            if spec is not None:
+                data.append(spec)
+            if len(data) >= max_n:
+                break
+
+        print(f"Loaded {len(data)} specimens.")
+
+        if len(data) == 0:
+            raise SpecimenException("No specimens found.")
+
+        if sortby is not None:
+            data = sorted(data, key=sortby)
+
+        return data
 
 @app.command()
 def sync():

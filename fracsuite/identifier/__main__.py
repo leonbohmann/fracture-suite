@@ -13,6 +13,10 @@ from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 from rich import print
 
+from fracsuite.tools.general import GeneralSettings
+
+general = GeneralSettings.get()
+
 def get_unique_scan_id(file) -> str:
     """Get the first 4 numbers of cullet scanner file name.
     Format is: [ID] [Date] ([img_type]).[ext]
@@ -60,7 +64,7 @@ root_dir = args.directory
 
 
 # read input folder and group files
-extensions = [".bmp", ".zip"]   
+extensions = [".bmp", ".zip"]
 files: list[str] = [os.path.join(root_dir, f) \
         for f in os.listdir(root_dir) \
             if os.path.isfile(os.path.join(root_dir, f)) \
@@ -78,48 +82,48 @@ for key, group in grouped_files.items():
     if not any(file.endswith(".bmp") and "Transmission" in file for file in group):
         print(f"Couldn't find Transmission-Scan for scan ID {key}!")
         continue
-    
+
     # get bitmaps from group
     img0_path = next(file for file in group if file.endswith(".bmp") and "Transmission" in file)
     # load image and perform OCR to find specimen Identifier ([thickness].[residual_stress].[boundary].[ID])
     img0 = cv2.imread(img0_path)
-    img0 = crop_perspective(img0, None, False) 
+    img0 = crop_perspective(img0, None, False)
     img0 = cv2.rotate(img0, cv2.ROTATE_90_COUNTERCLOCKWISE)
     dispImage(img0, "Original", "Main", args.debug)
-    
+
     series = read_barcode(img0, args.debug)
-    
+
     # if None, Datamatrix could not be read
     if series is None:
         print(f"Couldn't find series for scan ID {key}!")
         continue
-        
+
     print(f"Found {series} for ID {key}...")
-    
+
     if args.dry:
         continue
-    
+
     series = os.path.join(root_dir, series)
-    subfolder = os.path.join(series, "anisotropy")    
+    subfolder = os.path.join(series, "anisotropy")
     if os.path.exists(subfolder):
         print(f"Scan ID {key} already processed!")
         continue
-    
+
     # create a subfolder for the scans called "anisotropy"
     os.makedirs(subfolder, exist_ok=True)
-    
+
     # iterate over each file in group, run perspective transform on bitmaps only and copy all into the subfolder
     for file in group:
         if file.endswith(".bmp"):
             img = cv2.imread(file)
-            img = crop_perspective(img, (4000,4000), False)
+            img = crop_perspective(img, general.default_image_size_px, False)
             img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
             cv2.imwrite(os.path.join(subfolder, f'{get_scan_type(file)}.bmp'), img)
-            
+
             # move source image to archive
             os.rename(file, os.path.join(archive_folder, os.path.basename(file)))
         else:
             # copy file to archive
             shutil.copy(file, os.path.join(archive_folder, os.path.basename(file)))
-            
+
             os.rename(file, os.path.join(subfolder, os.path.basename(file)))

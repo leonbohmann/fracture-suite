@@ -10,7 +10,7 @@ from rich.progress import track
 
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_file
-from fracsuite.tools.specimen import fetch_specimens
+from fracsuite.tools.specimen import Specimen
 
 app = typer.Typer()
 general = GeneralSettings.get()
@@ -26,18 +26,18 @@ def reader_to_csv(reader: APReader, out_dir, dot: str = "."):
         for chan in reader.Channels:
             f.write(f"{chan.Name} [{chan.unit}];")
         f.write("\n")
-        
+
         # write header
         f.write("Maximum;")
         for chan in reader.Channels:
             f.write(f"{np.max(chan.data)};")
         f.write("\n")
-        
+
         f.write("Minimum;")
         for chan in reader.Channels:
             f.write(f"{np.min(chan.data)};")
         f.write("\n")
-        
+
         f.write("Time of Maximum;")
         for chan in reader.Channels:
             max_i = np.argmax(chan.data)
@@ -47,14 +47,14 @@ def reader_to_csv(reader: APReader, out_dir, dot: str = "."):
             else:
                 f.write(";")
         f.write("\n")
-        
+
         # write data
         max_len = np.max([len(x.data) for x in reader.Channels])
         for i in track(range(0, max_len)):
             f.write(";")
-            for g in reader.Groups:       
+            for g in reader.Groups:
                 if i < len(g.ChannelX.data):
-                    f.write(f"{g.ChannelX.data[i]};")         
+                    f.write(f"{g.ChannelX.data[i]};")
                 for chan in g.ChannelsY:
                     if i < len(chan.data):
                         f.write(f"{chan.data[i]};")
@@ -67,30 +67,30 @@ def reader_to_csv(reader: APReader, out_dir, dot: str = "."):
         content = content.replace(".", dot)
     with open(csv_file, 'w') as f:
         f.write(content)
-        
-    
+
+
 @app.command()
 def plot_impact(
-    specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],    
+    specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
 ):
     """Plots the impact of the given specimen."""
-    
-    specimen = fetch_specimens(specimen_name, general.base_path)
-    
+
+    specimen = Specimen.get(specimen_name)
+
     reader = APReader(specimen.acc_file)
 
     reader.printSummary()
-    
+
     time_peak = -np.inf
     peaks = []
     for group in reader.Groups:
         print(f"Group '{group.Name}'")
-        
+
         time = group.ChannelX
-        
-        drops = [x for x in group.ChannelsY if "fall" in x.Name.lower()]      
-        
-        if len(drops) >= 0: 
+
+        drops = [x for x in group.ChannelsY if "fall" in x.Name.lower()]
+
+        if len(drops) >= 0:
             for drop in drops:
                 max_i = np.argmax(drop.data)
                 time_peak = time.data[max_i]
@@ -102,21 +102,21 @@ def plot_impact(
     # get 0.5s before and 3 seconds after the impact from all channels
     before = impact_time - 0.003
     after = impact_time + 00.003
-    
+
     # get the channels
     g_channels = reader.collectChannels(['Acc_1', 'Acc_2', 'Acc_3', 'Acc_4', 'Acc_5', 'Acc_6'])
     drop_channels = reader.collectChannels(['Fall_g1', 'Fall_g2'])
-    
+
     g_data = []
     # collect channel data and their times
     for chan in g_channels:
         g_data.append((chan, chan.Time.data, chan.data))
-        
+
     drop_data = []
     # collect channel data and their times
     for chan in drop_channels:
         drop_data.append((chan, chan.Time.data, chan.data))
-        
+
     # plot the data
     fig = plt.figure()
     fig.suptitle(f"Impact of specimen '{specimen_name}'")
@@ -124,27 +124,27 @@ def plot_impact(
     ax.set_xlabel("Time [s]")
     ax.set_ylabel("Acceleration [g]")
     ax.grid()
-    
+
     # plot the g channels
     for chan, time, data in g_data:
         ax.plot(time, data, label=chan.Name)
-        
-        
+
+
     # plot the impact time
     ax.axvline(impact_time, color="red", label="Impact Time")
-    
+
     # plot the 0.5s before and 3 seconds after the impact
-    ax.set_xlim(before, after)    
-    
+    ax.set_xlim(before, after)
+
     ax1 = ax.twinx()
     # plot the drop channels
     for chan, time, data in drop_data:
         ax1.plot(time, data, "--", label=chan.Name)
-        
+
     plt.legend(loc="upper right")
     plt.show()
-    
-    
+
+
     return
     drop1 = reader.collectChannels(['Fall_g1'])
     drop2 = reader.collectChannels(['Fall_g2'])
@@ -154,19 +154,19 @@ def plot_impact(
     # find peak in drop1
     peak1_i = np.argmax(drop1[0].data)
     time_peak = time1.data[peak1_i]
-    
-    
+
+
     fig = plt.figure()
-    
-    
-        
+
+
+
 @app.command()
 def to_csv(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
     number_dot: Annotated[str, typer.Option(help="Number format dot.")] = ".",
     plot: Annotated[bool, typer.Option(help="Plot the reader before saving.")] = False):
     """Converts the given specimen to a csv file."""
-    specimen = fetch_specimens(specimen_name, general.base_path)
+    specimen = Specimen.get(specimen_name)
 
     acc_path = os.path.join(specimen.path, "fracture", "acceleration")
     acc_file = find_file(acc_path, "*.BIN")
@@ -174,11 +174,10 @@ def to_csv(
     if acc_file is None:
         print(f"Could not find acceleration file for specimen '{specimen_name}'.")
         return
-    
+
     reader = APReader(acc_file)
-    
+
     if plot:
-        reader.plot()    
-        
+        reader.plot()
+
     reader_to_csv(reader, acc_path, number_dot)
-    

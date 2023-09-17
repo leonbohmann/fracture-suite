@@ -1,4 +1,8 @@
 {
     "base_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Proben\\",
-    "plot_extension": "png"
+    "plot_extension": "png",
+    "default_image_size_px": [
+        4000,
+        4000
+    ]
 }
