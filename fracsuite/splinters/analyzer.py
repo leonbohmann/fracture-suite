@@ -5,7 +5,6 @@ import json
 import os
 import pickle
 import shutil
-from typing import Any, Callable
 
 import cv2
 import numpy as np
@@ -22,7 +21,9 @@ from fracsuite.core.plotting import plotImage
 from fracsuite.core.progress import get_progress
 
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.processing import closeImg, crop_perspective, detect_fragments, preprocess_image, preprocess_spot_detect
+from fracsuite.splinters.processing import \
+    closeImg, crop_perspective, detect_fragments, \
+        preprocess_image, preprocess_spot_detect
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import get_specimen_path
@@ -109,7 +110,9 @@ class Analyzer(object):
         self.config = config
 
         if clear_splinters:
-            fracpath = os.path.join(get_specimen_path(config.specimen_name), 'fracture', 'splinter')
+            fracpath = os.path.join(get_specimen_path(config.specimen_name),
+                                    'fracture',
+                                    'splinter')
             shutil.rmtree(fracpath, ignore_errors=True)
 
         #############
@@ -119,14 +122,15 @@ class Analyzer(object):
 
             for file in os.listdir(search_path):
                 if 'Transmission' in file and file.endswith('.bmp'):
-                    update_main(0, f"[green]Found image in specimen folder.[/green]")
+                    update_main(0,
+                                "[green]Found image in specimen folder.[/green]")
                     self.file_path = os.path.join(search_path, file)
                     self.file_dir = os.path.dirname(self.file_path)
                     break
             self.out_dir = os.path.join(config.path, 'fracture', 'splinter')
 
             if self.file_dir is None:
-                raise Exception("Could not find a morphology file in the specified folder.")
+                raise Exception("Could not find a morphology file.")
 
             specimen_config_file = os.path.join(config.path, 'config.json')
             with open(specimen_config_file, 'r') as f:
@@ -137,7 +141,9 @@ class Analyzer(object):
             self.file_dir = os.path.dirname(config.path)
             self.out_dir = os.path.join(self.file_dir, config.out_name)
 
-            self.out_dir = os.path.join(self.out_dir, os.path.splitext(os.path.basename(config.path))[0])
+            self.out_dir = os.path.join(self.out_dir,
+                                        os.path.splitext(
+                                            os.path.basename(config.path))[0])
 
 
         update_main(0, f"Input file: '[bold]{self.file_path}[/bold]'")
@@ -152,9 +158,12 @@ class Analyzer(object):
         update_main(1, 'Preprocessing image...')
         self.original_image = cv2.imread(self.file_path, cv2.IMREAD_COLOR)
         if config.crop:
-            self.original_image = crop_perspective(self.original_image, config.cropped_image_size, config.debug)
+            self.original_image = crop_perspective(self.original_image,
+                                                   config.cropped_image_size,
+                                                   config.debug)
             # this is the default for the input images from cullet scanner
-            self.original_image = cv2.rotate(self.original_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            self.original_image = cv2.rotate(self.original_image,
+                                             cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.original_image = to_rgb(self.original_image)
 
         self.preprocessed_image = preprocess_image(self.original_image, config)
@@ -195,6 +204,7 @@ class Analyzer(object):
         # advanced image operations
         # first step is to skeletonize the stencil
         update_main(2, 'Skeletonize 1|2')
+        # skeleton = thinning(255-stencil)  * 255
         skeleton = skeletonize(255-stencil)
         skeleton = skeleton.astype(np.uint8) * 255
         cv2.imwrite(self.__get_out_file('.debug/skeleton.png'), skeleton)
@@ -209,6 +219,7 @@ class Analyzer(object):
             plotImage(skeleton, 'SKEL1 - Closed', False, region=config.display_region)
         # second step is to skeletonize the closed skeleton from #1
         update_main(2, 'Skeletonize 2|2')
+        # skeleton = thinning(skeleton)* 255
         skeleton = skeletonize(skeleton)
         skeleton = skeleton.astype(np.uint8) * 255
         cv2.imwrite(self.__get_out_file('.debug/closed_skeleton.png'), skeleton)
@@ -251,16 +262,21 @@ class Analyzer(object):
         for c in self.contours:
             cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
         # filled splinters
-        cv2.imwrite(self.__get_out_file(f"img_filled.{general.image_extension}"), self.image_filled)
+        cv2.imwrite(self.__get_out_file(f"img_filled.{general.image_extension}"),
+                    self.image_filled)
         # contoured splinters
-        cv2.imwrite(self.__get_out_file(f"img_contours.{general.image_extension}"), self.image_contours)
+        cv2.imwrite(self.__get_out_file(f"img_contours.{general.image_extension}"),
+                    self.image_contours)
         # preprocessed image
-        cv2.imwrite(self.__get_out_file(f"img_debug_preprocessed.{general.image_extension}"), self.preprocessed_image)
+        cv2.imwrite(self.__get_out_file(f"img_debug_preprocessed.{general.image_extension}"),
+                    self.preprocessed_image)
         # skeleton
-        cv2.imwrite(self.__get_out_file(f"img_debug_skeleton.{general.image_extension}"), self.image_skeleton_rgb)
+        cv2.imwrite(self.__get_out_file(f"img_debug_skeleton.{general.image_extension}"),
+                    self.image_skeleton_rgb)
         # contours with filled combined
         combined = cv2.addWeighted(self.image_contours, 1.0, self.image_filled, 0.3, 0.0)
-        cv2.imwrite(self.__get_out_file(f"img_contours_filled_combined.{general.image_extension}"), combined)
+        cv2.imwrite(self.__get_out_file(f"img_contours_filled_combined.{general.image_extension}"),
+                    combined)
 
         #############
         # Orientational analysis
@@ -277,7 +293,7 @@ class Analyzer(object):
         self.__save_data(config)
         self.save_object()
 
-
+        self.__check_detection_ratio(config)
         # #############
         # # Stochastic analysis
         # updater(6, 'Stochastic analysis')

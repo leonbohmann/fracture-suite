@@ -31,7 +31,6 @@ https://github.com/leonbohmann/fracture-suite
 
 import os
 import shutil
-import sys
 import time
 from matplotlib import pyplot as plt
 # import module
@@ -40,7 +39,6 @@ from fracsuite.core.progress import get_progress
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from rich import print
-from rich.progress import track, Progress, SpinnerColumn, TimeElapsedColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 import matplotlib
 
@@ -62,6 +60,7 @@ parser.add_argument("--all", default=False,
 parser.add_argument("--all-exclude", default=[], nargs="+")
 parser.add_argument("--clear-splinters", action='store_true', default=False)
 parser.add_argument("--update-plots", action='store_true', default=False)
+# parser.add_argument("--open", action='store_true', default=False)
 
 args = parser.parse_args()
 
@@ -114,7 +113,7 @@ if args.all:
 
                 try:
                     config.path = project_path
-                    analyzer = Analyzer(config, update_file_task)
+                    analyzer = Analyzer(config, progress, file_task)
                     plt.close()
                 except Exception as e:
                     print(f'[bold red]Error[/bold red] while analyzing specimen: {file}')
@@ -127,5 +126,7 @@ if args.all:
             progress.update(all_task, advance=1, refresh=True)
             progress.refresh()
             time.sleep(0.1)
+
+        print("[green]Finished.")
 else:
     analyzer = Analyzer(config, clear_splinters = args.clear_splinters)
