@@ -92,7 +92,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
         return np.mean([splinter.calculate_roughness() for splinter in splinters])
 
     # create contour plot of roughness
-    specimen = fetch_specimens([specimen_name], general.base_path)[0]
+    specimen = fetch_specimens(specimen_name, general.base_path)[0]
 
     fig = specimen.splinters.plot_intensity(regionsize, roughness_function, clr_label='Mean roughness')
 
@@ -159,13 +159,13 @@ def intensity(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
     """Plot the roughness of a specimen."""
 
-    specimen = fetch_specimens([specimen_name], general.base_path)[0]
+    specimen = fetch_specimens(specimen_name, general.base_path)[0]
 
 
-    out_img = specimen.splinters.original_image.copy()
+    out_img = specimen.get_fracture_image()
     out_img = cv2.cvtColor(out_img, cv2.COLOR_BGR2RGB)
 
-    rough = [splinter.calculate_roughness() for splinter in specimen.splinters.splinters]
+    rough = [splinter.calculate_roughness() for splinter in specimen.splinters]
     max_r = np.max(rough)
     min_r = np.min(rough)
 
@@ -177,7 +177,7 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     # d = np.median(rough) - min_r
     # max_r = np.median(rough) + d
 
-    for splinter in track(specimen.splinters.splinters, description="Calculating roughness", transient=True):
+    for splinter in track(specimen.splinters, description="Calculating roughness", transient=True):
         roughness = splinter.calculate_roughness()
         clr = get_color(roughness, min_r, max_r)
 
@@ -204,9 +204,9 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     specimen = fetch_specimens([specimen_name], general.base_path)[0]
 
 
-    out_img = specimen.splinters.original_image.copy()
+    out_img = specimen.get_fracture_image()
 
-    rounds = [splinter.calculate_roundness() for splinter in specimen.splinters.splinters]
+    rounds = [splinter.calculate_roundness() for splinter in specimen.splinters]
     max_r = np.max(rounds)
     min_r = np.min(rounds)
 
@@ -219,7 +219,7 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     min_r = np.mean(rounds) - np.mean(rounds) * 0.6
 
 
-    for splinter in track(specimen.splinters.splinters):
+    for splinter in track(specimen.splinters):
         r = splinter.calculate_roundness()
         clr = get_color(r, min_r, max_r)
 
