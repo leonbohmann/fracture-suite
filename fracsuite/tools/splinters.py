@@ -647,3 +647,14 @@ def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of sp
     #     # X,Y,Z = csintkern(events, region, 500)
     #     self.create_intensity_plot(config.intensity_h, config)
     pass
+
+def get_detection_rate(splinters: list[Splinter], real_size: tuple[float,float]) -> float:
+    #############
+    # check percentage of detected splinters
+    total_area = np.sum([x.area for x in splinters])
+
+    total_img_size = real_size[0] * real_size[1]
+
+    p = total_area / total_img_size * 100
+
+    return p

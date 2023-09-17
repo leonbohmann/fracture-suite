@@ -294,7 +294,7 @@ class Analyzer(object):
         self.__save_data(config)
         self.save_object()
 
-        self.__check_detection_ratio(config)
+
         self.__plot_backend(display=config.displayplots)
         # #############
         # # Stochastic analysis
@@ -302,6 +302,15 @@ class Analyzer(object):
         # self.__create_voronoi(config)
 
 
+        data = {}
+
+        data['detection_rate'] = self.__check_detection_ratio(config)
+        data['realsize'] = config.real_image_size
+        data['size_factor'] = config.size_factor
+        data['cropsize'] = config.cropped_image_size
+
+        with open(self.__get_out_file('splinters_data.json'), 'w') as f:
+            json.dump(data, f, indent=4)
 
 
         # self.__create_splintersize_filled_image(config)

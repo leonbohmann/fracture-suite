@@ -193,12 +193,18 @@ class Specimen:
         self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
             and find_file(self.fracture_morph_dir, "*.bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
+        self.__splinters_data_file = find_file(self.splinters_path, "splinters_data.json")
         self.__splinters_file = find_file(self.splinters_path, "splinters.pkl")
         self.__config_file = find_file(self.splinters_path, "config.pkl")
         self.has_splinters = self.__splinters_file is not None
         self.has_splinter_config = self.__config_file is not None
         self.has_config = self.__config_file is not None
 
+        if self.__splinters_data_file is not None:
+            with open(self.__splinters_data_file, "r") as f:
+                self.splinters_data = json.load(f)
+        else:
+            self.splinters_data = {}
 
         if not lazy:
             self.load(log_missing)
