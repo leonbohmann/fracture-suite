@@ -504,7 +504,7 @@ def loghist_sigma(sigmas: Annotated[str, typer.Argument(help='Stress range. Eith
 
         return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
 
-    specimens: list[Specimen] = fetch_specimens_by(in_sigma_range, general.base_path, max_n=maxspecimen)
+    specimens: list[Specimen] = Specimen.get_all_by(in_sigma_range, max_n=maxspecimen)
 
 
     out_path = os.path.join(general.base_path, f"{sigmas[0]}-{sigmas[1]}_log_histograms.png")

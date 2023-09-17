@@ -543,7 +543,10 @@ class Analyzer(object):
         # Overlay found contours on the original image
         self.ax2.set_title("Detected Cracks")
         self.ax2.axis('off')
-        self.ax2.imshow(self.image_contours)
+        img = self.image_contours
+        for c in self.contours:
+            cv2.drawContours(img, [c], -1, (255,0,0), 2)
+        self.ax2.imshow(img)
 
         if region is not None:
             (x1, y2, x2, y1) = region
@@ -583,7 +586,7 @@ class Analyzer(object):
         if display:
             plt.show()
 
-        self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{self.config.ext_plots}"))
+        self.fig_comparison.savefig(self.__get_out_file(f"fig_comparison.{general.plot_extension}"))
         plt.close(self.fig_comparison)
 
 
