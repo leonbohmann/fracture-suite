@@ -83,7 +83,7 @@ def count_splinters_in_norm_region(
 
 @app.command()
 def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
-                regionsize: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200,):
+                kernel_width: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200,):
     """Create a contour plot of the roughness on the specimen.
 
     Args:
@@ -98,16 +98,10 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
 
     fig = plot_splinter_kernel_contours(specimen.get_fracture_image(),
                                         splinters=specimen.splinters,
-                                        kernel_width=regionsize,
+                                        kernel_width=kernel_width,
                                         z_action=roughness_function,
                                         clr_label='Mean roughness',
                                         fig_title='Splinter Roughness')
-
-    # with Progress(SpinnerColumn("arc", ), transient=False, ) as progress:
-    #     task = progress.add_task("Create intensity plots", total=1, )
-    #     # Start your operation here
-    #     # Mark the task as complete
-    #     progress.update(task, completed=1)
 
     out_path = os.path.join(specimen.splinters_path, f"fig_roughintensity.{general.image_extension}")
     fig.savefig(out_path, dpi=500)
@@ -116,7 +110,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
 
 @app.command()
 def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
-                regionsize: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200,):
+                kernel_width: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200,):
     """Create a contour plot of the roundness on the specimen.
 
     Args:
@@ -129,41 +123,17 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     specimen = Specimen.get(specimen_name)
     assert specimen is not None, "Specimen not found."
 
-    fig = specimen.splinters.plot_intensity(regionsize, roundness_function, clr_label='', fig_title='Mean roundness ')
-
-    # with Progress(SpinnerColumn("arc", ), transient=False, ) as progress:
-    #     task = progress.add_task("Create intensity plots", total=1, )
-    #     # Start your operation here
-    #     # Mark the task as complete
-    #     progress.update(task, completed=1)
+    fig = plot_splinter_kernel_contours(specimen.get_fracture_image(),
+                                        splinters=specimen.splinters,
+                                        kernel_width=kernel_width,
+                                        z_action=roundness_function,
+                                        clr_label='Mean roughness',
+                                        fig_title='Splinter Roughness')
 
     out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"fig_roundintensity.{general.plot_extension}")
     fig.savefig(out_path, dpi=500)
     del fig
     finalize(out_path)
-
-
-@app.command()
-def intensity(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
-              regionsize: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200,):
-    specimen = Specimen.get(specimen_name)
-
-    assert specimen is not None, "Specimen not found."
-
-    with Progress(SpinnerColumn("arc", ), transient=False, ) as progress:
-        task = progress.add_task("Create intensity plots", total=1, )
-        # Start your operation here
-        fig = specimen.splinters.create_intensity_plot(regionsize)
-        # Mark the task as complete
-        progress.update(task, completed=1)
-
-    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"fig_fracintensity.{general.plot_extension}")
-    fig.savefig(out_path, dpi=500)
-    del fig
-    finalize(out_path)
-
-
-
 
 @app.command()
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
@@ -389,7 +359,7 @@ def log_2d_histograms(specimen_names: Annotated[list[str], typer.Argument(help='
 
     finalize(out_name)
 
-@app.command(name="loghist")
+@app.command()
 def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
                    xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
                    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
@@ -641,7 +611,7 @@ def fracture_intensity(
     fig.savefig(out_name, dpi=500)
     finalize(out_name)
 
-@app.command(name='create-voronoi')
+@app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
     # specimen = fetch_specimens(specimen_name, general.base_path)
     # assert specimen is not None, "Specimen not found."
