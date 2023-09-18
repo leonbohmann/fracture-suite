@@ -5,7 +5,7 @@ import os
 import pickle
 import re
 import time
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, List, TypeVar
 
 import cv2
 import typer
@@ -277,7 +277,7 @@ class Specimen:
 
         return Specimen(path, lazy=not load)
 
-    def get_all(names: list[str] = None, load: bool = True, name_filter: str = None) -> list[Specimen]:
+    def get_all(names: list[str] = None, load: bool = True, name_filter: str = None) -> List[Specimen]:
         """
         Get a list of specimens by name. Raises exception, if any is not found.
 
@@ -471,3 +471,23 @@ def export():
     workbook.close()
 
     os.system(f'start {workbook_path}')
+
+
+@app.command()
+def list(setting: str = None, value: str = None):
+    all = Specimen.get_all(load=False)
+    print("Name\tSetting\tValue")
+    for spec in all:
+
+        if setting not in spec.settings:
+            continue
+        if value is not None and spec.settings[setting] != value:
+            continue
+
+        print(spec.name, end="")
+
+        for s, k in spec.settings.items():
+
+            print(f"\t{k}", end="")
+
+        print()
