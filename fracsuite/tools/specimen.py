@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import re
 import time
 from typing import Any, Callable, TypeVar
 
@@ -276,19 +277,29 @@ class Specimen:
 
         return Specimen(path, lazy=not load)
 
-    def get_all(names: list[str] = None, load: bool = True) -> list[Specimen]:
+    def get_all(names: list[str] = None, load: bool = True, name_filter: str = None) -> list[Specimen]:
         """
         Get a list of specimens by name. Raises exception, if any is not found.
 
-        If names=None, all specimens are returned.
+        If names=None and no name_filter, all specimens are returned.
 
         Args:
+            names(list[str]): List of specimen names.
             load(bool): States, if the specimens should be loaded or not.
+            name_filter(str): Filter for the specimen names.
         """
         specimens: list[Specimen] = []
 
-        if names is None:
+        if names is None and name_filter is None:
             return Specimen.get_all_by(lambda x: True, load=load)
+        elif names is None and name_filter is not None:
+            name_filter = name_filter.replace(".", "\.").replace("*", ".*")
+            filter = re.compile(name_filter)
+            return Specimen.get_all_by(
+                lambda x: filter.search(x.name) is not None,
+                load=load
+            )
+
 
         for name in track(names, description="Loading specimens...", transient=False):
             dir = os.path.join(general.base_path, name)

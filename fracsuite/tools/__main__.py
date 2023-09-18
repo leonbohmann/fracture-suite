@@ -37,6 +37,13 @@ def test(parallel:bool = False):
     print(f"Loading all specimens took {time1-time0:.2f}s.")
 
 @app.command()
+def test_find_by_filter(filter: str):
+    all = Specimen.get_all(name_filter=filter)
+
+    for specimen in all:
+        print(specimen.name)
+
+@app.command()
 def marina_organize(path: str):
     # find all folders in path that contain three dots
     for dir in os.listdir(path):
