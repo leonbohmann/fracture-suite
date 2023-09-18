@@ -15,6 +15,7 @@ from fracsuite.tools.acc import app as acc_app
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_files
 from fracsuite.tools.specimen import Specimen, app as specimen_app
+from fracsuite.tools.test_prep import test_prep_app
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -28,6 +29,7 @@ app.add_typer(splinter_app, name="splinters")
 app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
 app.add_typer(acc_app, name="acc")
+app.add_typer(test_prep_app, name="test-prep")
 
 @app.command()
 def test(parallel:bool = False):
@@ -38,7 +40,7 @@ def test(parallel:bool = False):
 
 @app.command()
 def test_find_by_filter(filter: str):
-    all = Specimen.get_all(name_filter=filter)
+    all = Specimen.get_all(filter)
 
     for specimen in all:
         print(specimen.name)

@@ -2,6 +2,7 @@ from rich.progress import Progress, SpinnerColumn, \
     TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
 
 
+
 def get_progress():
     return Progress(
                 TextColumn("[progress.description]{task.description:<50}"),
@@ -13,20 +14,30 @@ def get_progress():
 
 class ProgSpinner():
 
-    def __init__(self, spinnerProgress: Progress):
+    def __init__(self, spinnerProgress: Progress, title: str = "Loading ..."):
         self.progress = spinnerProgress
+        self.task = self.progress.add_task(description=title)
+
+    def set_description(self, description: str):
+        self.progress.update(self.task, description=description)
+    def set_total(self, total: int):
+        self.progress.update(self.task, total=total)
+    def set_completed(self, completed: int):
+        self.progress.update(self.task, completed=completed)
+    def advance(self):
+        self.progress.advance(self.task)
 
     def __enter__(self):
-        return self.progress.__enter__()
+        self.progress.__enter__()
+        return self
     def __exit__(self, exc_type, exc_val, exc_tb):
         return self.progress.__exit__(exc_type, exc_val, exc_tb)
 
 
-def get_spinner_prog(description: str = "Loading ..."):
+def get_specimen_loader(description: str = "Loading specimens...") -> ProgSpinner:
     prog = Progress(
-                SpinnerColumn(),
+                TaskProgressColumn(),
                 TextColumn("[progress.description]{task.description:<50}"),
                 TimeElapsedColumn(),
             transient=True)
-    prog.add_task(description=description, total=1.0)
-    return prog
+    return ProgSpinner(prog, description)

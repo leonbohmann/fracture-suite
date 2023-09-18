@@ -94,10 +94,13 @@ class Analyzer(object):
 
         step_count = 8
 
+        no_progress = progress is None
         if progress is None:
             progress = get_progress()
-            main_task = progress.add_task("Initializing...", total=step_count)
             progress.start()
+
+        if main_task is None:
+            main_task = progress.add_task("Initializing...", total=step_count)
 
         progress.update(main_task, total=step_count)
 
@@ -315,6 +318,8 @@ class Analyzer(object):
             json.dump(data, f, indent=4)
 
 
+        if no_progress:
+            progress.stop()
         # self.__create_splintersize_filled_image(config)
 
         # update_main(9, 'Create output plots')

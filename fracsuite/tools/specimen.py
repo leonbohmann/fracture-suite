@@ -8,13 +8,15 @@ import time
 from typing import Any, Callable, List, TypeVar
 
 import cv2
+import numpy as np
 import typer
 from pathos.pools import ProcessPool
 from rich import print
 from rich.progress import Progress, track, SpinnerColumn, TextColumn, TimeElapsedColumn
-from fracsuite.core.progress import get_spinner_prog, ProgSpinner
+from fracsuite.core.progress import get_specimen_loader, ProgSpinner
 
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen
+from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
@@ -218,6 +220,9 @@ class Specimen:
         with open(self.__cfg_path, "w") as f:
             json.dump(self.settings, f, indent=4)
 
+    def get_analyzer(self, cfg: AnalyzerConfig = None, progress: Progress = None, task = None):
+        return Analyzer(cfg if cfg is not None else self.splinter_config, progress = progress, main_task=task)
+
     def get_filled_image(self):
         filled_file = find_file(self.splinters_path, "img_filled.png")
         if filled_file is not None:
@@ -228,7 +233,7 @@ class Specimen:
         if transmission_file is not None:
             return cv2.imread(transmission_file)
 
-    def get_splinter_outfile(self, name: str):
+    def get_splinter_outfile(self, name: str) -> str:
         return os.path.join(self.splinters_path, name)
 
     def get_impact_position(self):
@@ -277,7 +282,7 @@ class Specimen:
 
         return Specimen(path, lazy=not load)
 
-    def get_all(names: list[str] = None, load: bool = True, name_filter: str = None) -> List[Specimen]:
+    def get_all(names: list[str] = None, load: bool = True) -> List[Specimen]:
         """
         Get a list of specimens by name. Raises exception, if any is not found.
 
@@ -290,10 +295,10 @@ class Specimen:
         """
         specimens: list[Specimen] = []
 
-        if names is None and name_filter is None:
+        if names is None:
             return Specimen.get_all_by(lambda x: True, load=load)
-        elif names is None and name_filter is not None:
-            name_filter = name_filter.replace(".", "\.").replace("*", ".*")
+        elif isinstance(names, str) or (names is not None and len(names) == 1 and "*" in names[0]):
+            name_filter = names.replace(".", "\.").replace("*", ".*")
             filter = re.compile(name_filter)
             return Specimen.get_all_by(
                 lambda x: filter.search(x.name) is not None,
@@ -313,18 +318,6 @@ class Specimen:
 
     def __default_value(specimen: Specimen) -> Specimen:
         return specimen
-
-    def load_specimens(data: list[Specimen]):
-        # load specimens using multiple cores
-        with get_spinner_prog():
-            p = ProcessPool()
-            d = p.amap(lambda x: x.load(), data)
-
-            while not d.ready():
-                time.sleep(0.3)
-
-            p.close()
-
 
     _T1 = TypeVar('_T1')
     def get_all_by( decider: Callable[[Specimen], bool],
@@ -371,12 +364,21 @@ class Specimen:
         directories = [x for x in directories if os.path.isdir(x)]
 
         data: list[Any] = []
-        for dir in track(directories, description="Loading specimens...", transient=True):
-            spec = load_specimen(dir, load, decider, value)
-            if spec is not None:
-                data.append(spec)
-            if len(data) >= max_n:
-                break
+
+        max_iter = len(directories)
+
+        with get_specimen_loader('Loading specimens...') as p:
+            p.set_total(max_iter)
+
+            for dir in directories:
+                spec = load_specimen(dir, load, decider, value)
+                p.advance()
+
+                if spec is not None:
+                    data.append(spec)
+                    p.set_description(f'Loaded {len(data)} specimens...')
+                if len(data) >= max_n:
+                    break
 
         print(f"Loaded {len(data)} specimens.")
 

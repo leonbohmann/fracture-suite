@@ -1,10 +1,11 @@
 import os
 from itertools import groupby
+import re
 from typing import Annotated, List
 
 import altair as alt
 import cv2
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, LinearLocator
 import numpy as np
 import typer
 from matplotlib import pyplot as plt
@@ -15,10 +16,11 @@ from scipy.optimize import curve_fit
 
 from fracsuite.core.plotting import plot_splinter_kernel_contours
 from fracsuite.core.image import to_gray, to_rgb
+from fracsuite.core.progress import get_progress
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image_cbar, get_color, write_image
+from fracsuite.tools.helpers import annotate_image_cbar, bin_data, get_color, write_image
 from fracsuite.tools.specimen import Specimen
 
 app = typer.Typer()
@@ -320,43 +322,84 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
 
 @app.command(name="log2dhist")
-def log_2d_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load', parser=specimen_parser)],
-                   xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
-                   more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
-                   nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
-                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 20):
+def log_2d_histograms(
+    sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')],
+    boundary: Annotated[str, typer.Option(help='Allowed boundaries.')] = ["ABZ"],
+    exclude: Annotated[str, typer.Option(help='Exclude specimen names matching this.')] = None,
+    delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
+    maxspecimen: Annotated[int, typer.Option(help='Maximum amount of specimens.')] = 50,
+    n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
+    """Plot a 2D histogram of splinter sizes and stress."""
+    if "-" in sigmas:
+        sigmas = [float(s) for s in sigmas.split("-")]
+    elif sigmas == "all":
+        sigmas = [0,1000]
+    else:
+        sigmas = [float(sigmas), float(sigmas)]
+        sigmas[0] = max(0, sigmas[0] - delta)
+        sigmas[1] += delta
 
-    path = general.base_path
-    specimens = Specimen.get_all(specimen_names)
+    print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
+
+    def in_sigma_range(specimen: Specimen):
+        if not specimen.has_scalp:
+            return False
+        if not specimen.has_splinters:
+            return False
+        if specimen.boundary not in boundary:
+            return False
+        if exclude is not None and re.match(exclude.replace(".","\.").replace("*",".*"), specimen.name):
+            return False
+
+        return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+
+    specimens: list[Specimen] = Specimen.get_all_by(in_sigma_range, max_n=maxspecimen)
+
 
     if len(specimens) == 0 or any([x.splinters is None for x in specimens]):
         print("[red]No specimens loaded.[/red]")
         return
 
-    def legend_none(x: Specimen):
-        return f'{x.name}'
+    binrange = np.linspace(0,2,n_bins)
+    fig, axs = plt.subplots(figsize=(8, 5))
 
-    legend = legend_none
+    with get_progress() as progress:
+        an_task = progress.add_task("Loading splinters...", total=len(specimens))
+        data = []
+        stress = []
+        for specimen in specimens:
 
-    if more_data:
-        def legend_f(x: Specimen):
-            return f'{x.name}_{x.scalp.measured_thickness:.2f}_{abs(x.scalp.sig_h):.2f}'
-        legend = legend_f
+            areas = [np.log10(x.area) for x in specimen.splinters if x.area > 0]
+            # ascending sort, smallest to largest
+            areas.sort()
 
-    alt.Chart(specimens).mark_rect().encode(
-        alt.X('IMDB_Rating:Q').bin(maxbins=60),
-        alt.Y('Rotten_Tomatoes_Rating:Q').bin(maxbins=40),
-        alt.Color('count():Q').scale(scheme='greenblue')
-    )
+            hist, edges = bin_data(areas, binrange)
+            data.append((hist, specimen.name))
+            stress.append(specimen.scalp.sig_h)
+            progress.update(an_task, advance=1)
 
-    fig = plot_histograms(xlim, specimens, legend=legend, n=n_bins, has_legend=not nolegend)
-    out_name = f"{specimens[0].name.replace('.','_')}_log_histograms"
-    c = len([x for x in os.listdir(path) if x.startswith(out_name)])
-    out_name = os.path.join(path, f"{out_name}_{c}.png")
+    # sort data and names for ascending stress
+    stress, data = sort_two_arrays(stress, data)
+    names = [x[1] for x in data]
+    data = [x[0] for x in data]
+    axs.set_xlabel("Splinter Area [mm²]")
+    axs.set_ylabel("Pre-Stress [MPa]")
+    axs.set_xticks(np.arange(0, n_bins, 5), [f'{10**edges[x]:.2f}' for x in np.arange(1, n_bins + 1, 5)])
+    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' for x in stress])
+
+    axy = axs.secondary_yaxis('right')
+    axy.set_yticks(axs.get_yticks(), [x for x in names])
+
+    dt = np.array(data)
+    axs.imshow(dt, cmap='Blues', aspect='auto', interpolation='none')
+
+
+    axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
+    fig.tight_layout()
+    plt.show()
+
+    out_name = os.path.join(general.base_path, f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
     fig.savefig(out_name)
-
-    disp_mean_sizes(specimens)
-
     finalize(out_name)
 
 @app.command()

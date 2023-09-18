@@ -2,8 +2,10 @@
 Plotting helper functions
 """
 
-from typing import Callable
+from typing import Any, Callable, TypeVar
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import numpy as np
 from fracsuite.core.image import to_rgb
 from fracsuite.core.stochastics import csintkern_objects
@@ -69,3 +71,18 @@ def plot_splinter_kernel_contours(original_image: np.ndarray,
 
     fig.tight_layout()
     return fig
+
+
+
+T2 = TypeVar('T2')
+def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tuple[Figure, Axes]:
+    """Plot the values of a list of objects.
+
+    Args:
+        values (list[T2]): The values to plot.
+        values_func (Callable[[T2], Any]): The function that returns the value to plot.
+    """
+    fig, axs = plt.subplots(1, len(values))
+    for i,x in enumerate(values):
+        values_func(x, axs[i])
+    return fig,axs

@@ -138,3 +138,10 @@ def annotate_image_cbar(image, title, cbar = cv2.COLORMAP_TURBO, min_value = 0, 
     final_image = np.vstack([title_background, image, colorbar_background])
 
     return final_image
+
+
+def img_part(im, x, y, w, h):
+    return im[y:y+h, x:x+w]
+
+def bin_data(data, binrange) -> tuple[list[float], list[float]]:
+    return np.histogram(data, binrange, density=True)
