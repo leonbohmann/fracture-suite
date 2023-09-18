@@ -1,6 +1,7 @@
 from __future__ import annotations
 import pickle
 import re
+import cv2
 from rich import print
 import argparse
 
@@ -9,7 +10,7 @@ from fracsuite.tools.helpers import get_specimenname_from_path
 
 general = GeneralSettings.get()
 
-class AnalyzerConfig:
+class PreprocessorConfig:
     resize_factor: float = 1.0
     "factor to resize input image in preprocess"
 
@@ -22,6 +23,34 @@ class AnalyzerConfig:
     "adaptive threshold block size"
     thresh_sensitivity: float = 5.0
     "adaptive threshold sensitivity"
+    thresh_adapt_mode: int = cv2.ADAPTIVE_THRESH_MEAN_C
+    "adaptive threshold mode"
+
+    def __init__(self, block: int = 11,
+                 sens: float = 5.0,
+                 gauss_size: tuple[int,int] = (5,5),
+                 gauss_sigma: float = 5.0,
+                 resize_factor: float = 1.0,
+                 adapt_mode: str = "mean"):
+        self.threshold_block_size = block
+        self.threshold_sensitivity = sens
+        self.gauss_size = gauss_size
+        self.gauss_sigma = gauss_sigma
+        self.resize_factor = resize_factor
+        self.thresh_adapt_mode = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
+            if adapt_mode == "gaussian" else cv2.ADAPTIVE_THRESH_MEAN_C
+        pass
+
+    def print(self):
+        print(self.__dict__)
+
+defaultPrepConfig = PreprocessorConfig()
+aggressivePrepConfig = PreprocessorConfig(adapt_mode="mean", block=11, sens=7)
+softPrepConfig = PreprocessorConfig(adapt_mode="gaussian", block=5, sens=3)
+
+class AnalyzerConfig:
+    prep: PreprocessorConfig = defaultPrepConfig
+    "Preprocessor configuration"
 
     skelclose_size: int = 3
     "size of final closing kernel for skeleton"
@@ -60,6 +89,9 @@ class AnalyzerConfig:
 
     specimen_name: str = ""
     "Name of the specimen"
+
+    interest_region : tuple[int,int,int,int] = None
+    "x,y,w,h of the interest region in mm"
 
     def get_parser(descr) -> argparse.ArgumentParser:
         """
@@ -100,26 +132,29 @@ class AnalyzerConfig:
 
         prep = parser.add_argument_group("Preprocessor")
         # image preprocessing arguments
+        prep.add_argument('-adapt-mode', help='Adaptive threshold mode', type=str, choices=["gaussian", "mean"], default="mean")
+        prep.add_argument('-prepconfig', help='Preprocessor config mode.', default=None,
+                          choices=[str(x.removesuffix("PrepConfig")) for x in globals().keys() if x.endswith("PrepConfig")])
         prep.add_argument('-gauss-size', help='Gaussian filter size',\
             type=int, default=5)
         prep.add_argument('-gauss-sigma', help='Gaussian filter sigma',\
             type=float, default=5)
-        prep.add_argument('-min-area', help='Minimum fragment area threshold [px²]',\
-            type=float, default=20)
-        prep.add_argument('-max-area', help='Maximum fragment area threshold [px²]',\
-            type=float, default=25000)
         prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
             type=float, default=5)
         prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
             type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
         prep.add_argument('-resize-fac', help='Image resize factor before adaptive th.',\
             type=float, default=1.0)
+        prep.add_argument('-min-area', help='Minimum fragment area threshold [px²]',\
+            type=float, default=20)
+        prep.add_argument('-max-area', help='Maximum fragment area threshold [px²]',\
+            type=float, default=25000)
 
         post = parser.add_argument_group("Postprocessor")
         post.add_argument('-skelclose-sz', help='Size for final skeleton close kernel.',\
-            type=int, default=3)
+            type=int, default=4)
         post.add_argument('-skelclose-amnt', help='Iterations for final skeleton close kernel.',\
-            type=int, default=5)
+            type=int, default=3)
         post.add_argument('--skip-spot-elim', help='Instruct the postprocessor to skip "dark-spot" removal.',\
             action="store_true", default=False)
 
@@ -144,20 +179,28 @@ class AnalyzerConfig:
         cfg.printconfig = args.printconfig
         cfg.displayplots = args.displayplots
 
-        cfg.gauss_size = (args.gauss_size,args.gauss_size)
-        cfg.gauss_sigma = args.gauss_sigma
         cfg.fragment_min_area_px = args.min_area
         cfg.fragment_max_area_px = args.max_area
 
 
-        cfg.thresh_block_size = args.thresh_block
-        cfg.thresh_sensitivity = args.thresh_sens
         cfg.skelclose_size = args.skelclose_sz
         cfg.skelclose_amnt = args.skelclose_amnt
         cfg.crop = args.cropsize is not None
         cfg.cropped_image_size = args.cropsize
         cfg.real_image_size = args.realsize
-        cfg.resize_factor = args.resize_fac
+
+        if args.prepconfig is not None:
+            prep: PreprocessorConfig = globals()[args.prepconfig + "PrepConfig"]
+            cfg.prep = prep
+        else:
+            cfg.prep = defaultPrepConfig
+            cfg.prep.thresh_adapt_mode = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
+                if args.adapt_mode == "gaussian" else cv2.ADAPTIVE_THRESH_MEAN_C
+            cfg.prep.gauss_size = (args.gauss_size,args.gauss_size)
+            cfg.prep.gauss_sigma = args.gauss_sigma
+            cfg.prep.thresh_block_size = args.thresh_block
+            cfg.prep.thresh_sensitivity = args.thresh_sens
+            cfg.prep.resize_factor = args.resize_fac
 
         cfg.skip_darkspot_removal = args.skip_spot_elim
 

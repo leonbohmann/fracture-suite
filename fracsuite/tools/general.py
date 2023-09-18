@@ -14,6 +14,8 @@ class GeneralSettings:
     plot_extension: str = "pdf"
     image_extension: str = "png"
     default_image_size_px: tuple[int,int] = (4000, 4000)
+    interest_region: str = (250,250,50,50)
+    "x,y,w,h of the interest region in mm"
 
     def get() -> GeneralSettings:
         """Creates a new instance of GeneralSettings or returns the existing one and returns it."""

@@ -9,7 +9,7 @@ from fracsuite.tools.general import GeneralSettings
 
 general = GeneralSettings.get()
 
-def get_specimenname_from_path(path: os.PathLike) -> str:
+def get_specimenname_from_path(path: os.PathLike) -> str | None:
     # find specimen pattern
     pattern = r'(\d+\.\d+\.[A-Za-z]\.\d+(-[^\s]+)?)'
     match = re.search(pattern, path)

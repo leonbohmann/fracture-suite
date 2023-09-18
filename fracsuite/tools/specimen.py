@@ -136,7 +136,7 @@ class Specimen:
             print(f"Could not find splinter config file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
 
         if self.__scalp_file is not None:
-            self.scalp = ScalpSpecimen.load(self.__scalp_file)
+            self.__load_scalp()
         elif log_missing_data:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 

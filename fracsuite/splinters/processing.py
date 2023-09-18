@@ -28,28 +28,28 @@ def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
             np.array: Preprocessed image.
         """
 
-        rsz_fac = config.resize_factor # x times smaller
+        rsz_fac = config.prep.resize_factor # x times smaller
 
         image = to_gray(image)
 
         # Apply Gaussian blur to reduce noise and enhance edge detection
-        image = cv2.GaussianBlur(image, config.gauss_size, config.gauss_sigma)
+        image = cv2.GaussianBlur(image, config.prep.gauss_size, config.prep.gauss_sigma)
         image = cv2.resize(image,
                            (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
 
         if config.debug:
-            plotImage(image, 'PREP: GaussianBlur -> Resize',
-                      region=config.display_region)
+            plotImage(image, 'PREP: GaussianBlur -> Resize', region=config.interest_region)
 
         # Use adaptive thresholding
-        image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, \
-            cv2.THRESH_BINARY, config.thresh_block_size, config.thresh_sensitivity)
+        image = cv2.adaptiveThreshold(image, 255, config.prep.thresh_adapt_mode, \
+            cv2.THRESH_BINARY, config.prep.thresh_block_size, config.prep.thresh_sensitivity)
 
         if config.debug:
-            plotImage(image, 'PREP: ... -> Adaptive Thresh',
-                      region=config.display_region)
+            plotImage(image, 'PREP: ... -> Adaptive Thresh', region=config.interest_region)
 
         return image
+
+
 def crop_perspective(img,
                      cropped_image_size: tuple[int,int],
                      debug: bool,

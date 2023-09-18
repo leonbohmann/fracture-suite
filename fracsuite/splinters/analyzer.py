@@ -26,7 +26,7 @@ from fracsuite.splinters.processing import \
         preprocess_image, preprocess_spot_detect
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import get_specimen_path
+from fracsuite.tools.helpers import get_specimen_path, get_specimenname_from_path
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -136,6 +136,7 @@ class Analyzer(object):
             with open(specimen_config_file, 'r') as f:
                 self.specimen_config = json.load(f)
 
+            config.interest_region = general.interest_region
         else:
             self.file_path = config.path
             self.file_dir = os.path.dirname(config.path)
@@ -201,6 +202,7 @@ class Analyzer(object):
 
         for c in all_contours:
             cv2.drawContours(stencil, [c], -1, 255, thickness = -1)
+        cv2.imwrite(self.__get_out_file('.debug/stencil.png'), 255-stencil)
 
         #############
         # advanced image operations
@@ -212,13 +214,13 @@ class Analyzer(object):
         cv2.imwrite(self.__get_out_file('.debug/skeleton.png'), skeleton)
 
         if config.debug:
-            plotImage(skeleton, 'SKEL1', False, region=config.display_region)
+            plotImage(skeleton, 'SKEL1', False, region=config.interest_region)
         skeleton = closeImg(skeleton, config.skelclose_size, config.skelclose_amnt)
 
         cv2.imwrite(self.__get_out_file('.debug/closed.png'), skeleton)
 
         if config.debug:
-            plotImage(skeleton, 'SKEL1 - Closed', False, region=config.display_region)
+            plotImage(skeleton, 'SKEL1 - Closed', False, region=config.interest_region)
         # second step is to skeletonize the closed skeleton from #1
         update_main(2, 'Skeletonize 2|2')
         # skeleton = thinning(skeleton)* 255
@@ -226,7 +228,7 @@ class Analyzer(object):
         skeleton = skeleton.astype(np.uint8) * 255
         cv2.imwrite(self.__get_out_file('.debug/closed_skeleton.png'), skeleton)
         if config.debug:
-            plotImage(skeleton, 'SKEL2', False, region=config.display_region)
+            plotImage(skeleton, 'SKEL2', False, region=config.interest_region)
 
         self.image_skeleton = skeleton.copy()
 
@@ -554,7 +556,7 @@ class Analyzer(object):
         self.ax2.axis('off')
         img = self.image_contours
         for c in self.contours:
-            cv2.drawContours(img, [c], -1, (255,0,0), 2)
+            cv2.drawContours(img, [c], -1, (255,0,0), 1)
         self.ax2.imshow(img)
 
         if region is not None:
