@@ -404,6 +404,7 @@ def sync():
 
 @app.command()
 def export():
+    """Export all specimen configs to a single excel file."""
     import xlsxwriter
 
     workbook_path = os.path.join(general.base_path, "summary1.xlsx")

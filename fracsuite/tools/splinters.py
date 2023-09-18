@@ -365,7 +365,7 @@ def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Nam
                    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
                    nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
                    n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 50):
-
+    """Plot logaritmic histograms of splinter sizes for specimens."""
     path = general.base_path
     specimens = Specimen.get_all(specimen_names)
 
