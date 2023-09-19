@@ -222,11 +222,11 @@ def str_to_intlist(input: str) -> list[int]:
 def specimen_parser(input: str):
     return input
 
-def sort_two_arrays(array1, array2) -> tuple[list, list]:
+def sort_two_arrays(array1, array2, reversed = False) -> tuple[list, list]:
     # Combine x and y into pairs
     pairs = list(zip(array1, array2))
     # Sort the pairs based on the values in x
-    sorted_pairs = sorted(pairs, key=lambda pair: pair[0])
+    sorted_pairs = sorted(pairs, key=lambda pair: pair[0], reverse=reversed)
     # Separate the sorted pairs back into separate arrays
     return zip(*sorted_pairs)
 
@@ -254,7 +254,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
         return True
 
     def specimen_value(spec: Specimen):
-        return (spec.boundary, spec.splinters.get_mean_splinter_size(), np.abs(spec.scalp.sig_h))
+        return (spec.boundary, np.mean([x.area for x in spec.splinters]), np.abs(spec.get_energy()))
 
     specimens = Specimen.get_all_by(decider, specimen_value, sortby=lambda x: x[0])
 
@@ -300,15 +300,15 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
             # return a*np.exp(-b*x) + c
             # return a * x ** 2 + b*x + c
 
-        params = curve_fit(func, stresses, sizes, bounds=([-np.inf, 0, -np.inf], [np.inf, np.inf, np.inf]))
+        # params = curve_fit(func, stresses, sizes, bounds=([-np.inf, 0, -np.inf], [np.inf, np.inf, np.inf]))
 
-        s_inter = np.linspace(min_sig, max_sig, 50)
-        ax.plot(s_inter, func(s_inter, *params[0]), '--', color=ps.get_facecolor()[0], linewidth=0.5)
+        # s_inter = np.linspace(min_sig, max_sig, 50)
+        # ax.plot(s_inter, func(s_inter, *params[0]), '--', color=ps.get_facecolor()[0], linewidth=0.5)
 
         # p = np.polyfit(stresses, sizes, 4)
         # s_inter = np.linspace(stresses[0], stresses[-1], 100)
         # plt.plot(s_inter, np.polyval(p, s_inter), '--', color=ps.get_facecolor()[0])
-    ax.set_xlabel("Stress [MPa]")
+    ax.set_xlabel("Strain Energy  [J/m²]")
     ax.set_ylabel("Mean splinter size [mm²]")
     ax.set_ylim((min_size-2, max_size+2))
     if not nolegend:
@@ -363,10 +363,11 @@ def log_2d_histograms(
     binrange = np.linspace(0,2,n_bins)
     fig, axs = plt.subplots(figsize=(8, 5))
 
+    data = []
+    stress = []
+
     with get_progress() as progress:
         an_task = progress.add_task("Loading splinters...", total=len(specimens))
-        data = []
-        stress = []
         for specimen in specimens:
 
             areas = [np.log10(x.area) for x in specimen.splinters if x.area > 0]
@@ -375,28 +376,32 @@ def log_2d_histograms(
 
             hist, edges = bin_data(areas, binrange)
             data.append((hist, specimen.name))
-            stress.append(specimen.scalp.sig_h)
+            stress.append(specimen.get_energy())
             progress.update(an_task, advance=1)
 
     # sort data and names for ascending stress
-    stress, data = sort_two_arrays(stress, data)
+    stress, data = sort_two_arrays(stress, data, True)
     names = [x[1] for x in data]
     data = [x[0] for x in data]
     axs.set_xlabel("Splinter Area [mm²]")
-    axs.set_ylabel("Pre-Stress [MPa]")
+    axs.set_ylabel("Strain Energy [J/m²]")
     axs.set_xticks(np.arange(0, n_bins, 5), [f'{10**edges[x]:.2f}' for x in np.arange(1, n_bins + 1, 5)])
-    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' for x in stress])
+    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' if i % 5 == 0 else "" for i,x in enumerate(stress)])
 
     axy = axs.secondary_yaxis('right')
-    axy.set_yticks(axs.get_yticks(), [x for x in names])
+    axy.set_yticks(axs.get_yticks(), [x  for i,x in enumerate(names)])
 
     dt = np.array(data)
     axs.imshow(dt, cmap='Blues', aspect='auto', interpolation='none')
 
+    fig2 = plot_histograms((0,2), specimens, plot_mean=True)
+    plt.show()
 
     axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
     fig.tight_layout()
-    plt.show()
+
+
+    disp_mean_sizes(specimens)
 
     out_name = os.path.join(general.base_path, f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
     fig.savefig(out_name)
@@ -457,6 +462,10 @@ def plot_histograms(xlim: tuple[float,float],
                     has_legend: bool = True) -> Figure:
     fig, ax = plt.subplots()
 
+    if legend is None:
+        def legend(x):
+            return f'{x.name}'
+
     for specimen in specimens:
         # fetch areas from splinters
         areas = [np.log10(x.area) for x in specimen.splinters if x.area > 0]
@@ -464,13 +473,13 @@ def plot_histograms(xlim: tuple[float,float],
         areas.sort()
 
         # density: normalize the bins data count to the total amount of data
-        ax.hist(areas, bins=int(n),
+        _,_,container = ax.hist(areas, bins=int(n),
                 density=True, label=legend(specimen),
                 alpha=0.5)
 
         if plot_mean:
             mean = np.mean([x.area for x in specimen.splinters])
-            ax.axvline(np.log10(mean), color='r', linestyle='--', label=f"Ø={mean:.2f}mm²")
+            ax.axvline(np.log10(mean), linestyle='--', label=f"Ø={mean:.2f}mm²")
 
     if xlim is not None:
         ax.set_xlim(xlim)

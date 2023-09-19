@@ -244,6 +244,10 @@ class Specimen:
 
         raise Exception("Invalid break position.")
 
+    def get_energy(self):
+        t0 = (self.scalp.measured_thickness * 1e-3)
+        return self.scalp.U_d * t0
+
     def __load_scalp(self, file = None):
         if not self.has_scalp:
             return
