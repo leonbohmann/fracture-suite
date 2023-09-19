@@ -16,6 +16,7 @@ from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_files
 from fracsuite.tools.specimen import Specimen, app as specimen_app
 from fracsuite.tools.test_prep import test_prep_app
+from fracsuite.tools.nominals import nominals_app
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -30,6 +31,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
 app.add_typer(acc_app, name="acc")
 app.add_typer(test_prep_app, name="test-prep")
+app.add_typer(nominals_app, name="stress")
 
 @app.command()
 def test(parallel:bool = False):

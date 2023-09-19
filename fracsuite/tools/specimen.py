@@ -111,7 +111,7 @@ class Specimen:
     "Boundary condition of the specimen."
     nom_stress: int = 0
     "Nominal stress of the specimen."
-    thickness: float = 0
+    thickness: int = 0
     "Thickness of the specimen."
     nbr: int = 0
     "Number of the specimen."
@@ -167,8 +167,8 @@ class Specimen:
         # get thickness from name
         if self.name.count(".") == 3:
             vars = self.name.split(".")
-            self.thickness = float(vars[0])
-            self.nom_stress = float(vars[1])
+            self.thickness = int(vars[0])
+            self.nom_stress = int(vars[1])
 
             if vars[2].isdigit():
                 vars[2],vars[3] = vars[3], vars[2]
