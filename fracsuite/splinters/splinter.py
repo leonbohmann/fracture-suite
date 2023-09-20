@@ -79,10 +79,29 @@ class Splinter:
         Returns:
             float: A value indicating how round the contour is.
         """
-        contour = self.contour
-        area = cv2.contourArea(contour)
-        circumfence = cv2.arcLength(contour,True)
-        return 4 * np.pi * area / circumfence ** 2
+        #check if contour has at least 5 points
+        if len(self.contour) < 5:
+            rect = cv2.minAreaRect(self.contour)
+            # find width and height of rect
+            width = rect[1][0]
+            height = rect[1][1]
+
+            top = np.max([width,height])
+            bot = np.min([width,height])
+
+
+            if bot != 0:
+                r = top/bot
+                return np.abs(1-r)
+            else:
+                return 0
+
+        # find enclosing ellipse radii
+        ellipse = cv2.fitEllipse(self.contour)
+        a = ellipse[1][0] / 2
+        b = ellipse[1][1] / 2
+
+        return np.abs(1-a/b)
 
     def calculate_roughness(self) -> float:
         """Calculate the roughness of the contour by comparing the circumfence

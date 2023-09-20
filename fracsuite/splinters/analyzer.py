@@ -15,18 +15,26 @@ from matplotlib.widgets import RectangleSelector
 from rich import print
 from rich.progress import Progress, Task
 from skimage.morphology import skeletonize
+
 from fracsuite.core.coloring import rand_col
 from fracsuite.core.image import to_rgb
-from fracsuite.core.plotting import plotImage
+from fracsuite.core.plotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
-
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.processing import \
-    closeImg, crop_perspective, detect_fragments, \
-        preprocess_image, preprocess_spot_detect
+from fracsuite.splinters.processing import (
+    closeImg,
+    crop_perspective,
+    detect_fragments,
+    erodeImg,
+    preprocess_image,
+    preprocess_spot_detect,
+)
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import get_specimen_path, get_specimenname_from_path
+from fracsuite.tools.helpers import (
+    dispImage,
+    get_specimen_path,
+)
 
 plt.rcParams['figure.figsize'] = (6, 4)
 plt.rc('axes', axisbelow=True) # to get grid into background
@@ -77,7 +85,10 @@ class Analyzer(object):
                  config: AnalyzerConfig = None,
                  progress: Progress = None,
                  main_task: Task = None,
-                 clear_splinters: bool = False):
+                 clear_splinters: bool = False,
+                 silent: bool = False,
+                 no_save: bool = False,
+                 splinters_only: bool = False):
         """Create a new analyzer object.
 
         Args:
@@ -90,25 +101,34 @@ class Analyzer(object):
                 Actual size in mm of the input rectangular ply.
         """
         if config is None:
+            print("[orange]Warning[/orange]: No config specified. Using default config.")
             config = AnalyzerConfig()
 
         step_count = 8
 
         no_progress = progress is None
-        if progress is None:
+        if progress is None and not silent:
             progress = get_progress()
             progress.start()
 
-        if main_task is None:
+        if main_task is None and not silent:
             main_task = progress.add_task("Initializing...", total=step_count)
 
-        progress.update(main_task, total=step_count)
 
-        def update_main(value, str):
+
+        def update_main(value, str, total = None):
             """Updates the progress bar."""
+            if silent:
+                return
+
             progress.update(main_task,
                             completed=value,
                             description=str)
+
+            if total is not None:
+                progress.update(main_task, total=total)
+
+        update_main(0, 'Initializing...', total=step_count)
 
         self.config = config
 
@@ -169,8 +189,15 @@ class Analyzer(object):
             self.original_image = cv2.rotate(self.original_image,
                                              cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.original_image = to_rgb(self.original_image)
+        # preprocessed image has black cracks
 
         self.preprocessed_image = preprocess_image(self.original_image, config)
+
+
+        prep1 = closeImg(self.preprocessed_image, sz=2, it=2)
+        # if not silent:
+        #     plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image),
+        #             ('Prep1', prep1)], region=(2500,2500,100,100))
 
         #############
         # calculate scale factors to make measurements in real units
@@ -207,6 +234,14 @@ class Analyzer(object):
             cv2.drawContours(stencil, [c], -1, 255, thickness = -1)
         cv2.imwrite(self.__get_out_file('.debug/stencil.png'), 255-stencil)
 
+
+        # erode stencil
+        er_stencil = erodeImg(stencil)
+        er1_stencil = erodeImg(er_stencil, 2, 1)
+        # if not silent:
+        #     plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image),
+        #             ('Stencil', stencil), ('Eroded Stencil', er_stencil), ('Eroded Stencil 1', er1_stencil)], region=(100,100,300,300))
+
         #############
         # advanced image operations
         # first step is to skeletonize the stencil
@@ -241,12 +276,15 @@ class Analyzer(object):
         self.contours = detect_fragments(skeleton, config)
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
 
+        if splinters_only:
+            return
+
         #############
         # filter dark spots and delete fragments
         if not config.skip_darkspot_removal:
             update_main(4, 'Filter spots...')
-            dark_spot_task = progress.add_task("Filtering dark spots...")
-            self.__filter_dark_spots(config, progress, dark_spot_task)
+            dark_spot_task = progress.add_task("Filtering dark spots...") if not silent else None
+            self.__filter_dark_spots(config, progress, dark_spot_task, silent)
         else:
             update_main(4, 'Filter spots... (SKIPPED)')
 
@@ -262,28 +300,29 @@ class Analyzer(object):
         #############
         # create images
         update_main(6, 'Save images...')
-        self.image_contours = self.original_image.copy()
-        self.image_filled = self.original_image.copy()
-        for c in self.contours:
-            cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)
-        for c in self.contours:
-            cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
-        # filled splinters
-        cv2.imwrite(self.__get_out_file(f"img_filled.{general.image_extension}"),
-                    self.image_filled)
-        # contoured splinters
-        cv2.imwrite(self.__get_out_file(f"img_contours.{general.image_extension}"),
-                    self.image_contours)
-        # preprocessed image
-        cv2.imwrite(self.__get_out_file(f"img_debug_preprocessed.{general.image_extension}"),
-                    self.preprocessed_image)
-        # skeleton
-        cv2.imwrite(self.__get_out_file(f"img_debug_skeleton.{general.image_extension}"),
-                    self.image_skeleton_rgb)
-        # contours with filled combined
-        combined = cv2.addWeighted(self.image_contours, 1.0, self.image_filled, 0.3, 0.0)
-        cv2.imwrite(self.__get_out_file(f"img_contours_filled_combined.{general.image_extension}"),
-                    combined)
+        if not no_save:
+            self.image_contours = self.original_image.copy()
+            self.image_filled = self.original_image.copy()
+            for c in self.contours:
+                cv2.drawContours(self.image_contours, [c], -1, rand_col(), 1)
+            for c in self.contours:
+                cv2.drawContours(self.image_filled, [c], -1, rand_col(), -1)
+            # filled splinters
+            cv2.imwrite(self.__get_out_file(f"img_filled.{general.image_extension}"),
+                        self.image_filled)
+            # contoured splinters
+            cv2.imwrite(self.__get_out_file(f"img_contours.{general.image_extension}"),
+                        self.image_contours)
+            # preprocessed image
+            cv2.imwrite(self.__get_out_file(f"img_debug_preprocessed.{general.image_extension}"),
+                        self.preprocessed_image)
+            # skeleton
+            cv2.imwrite(self.__get_out_file(f"img_debug_skeleton.{general.image_extension}"),
+                        self.image_skeleton_rgb)
+            # contours with filled combined
+            combined = cv2.addWeighted(self.image_contours, 1.0, self.image_filled, 0.3, 0.0)
+            cv2.imwrite(self.__get_out_file(f"img_contours_filled_combined.{general.image_extension}"),
+                        combined)
 
         #############
         # Orientational analysis
@@ -296,11 +335,12 @@ class Analyzer(object):
             s.measure_orientation(position)
 
         update_main(8, 'Save data...')
-        self.__save_data(config)
-        self.save_object()
+        if not no_save:
+            self.__save_data(config)
+            self.save_object()
 
 
-        self.__plot_backend(display=config.displayplots)
+        self.__plot_backend(display=config.displayplots, region=config.interest_region)
         # #############
         # # Stochastic analysis
         # updater(6, 'Stochastic analysis')
@@ -318,7 +358,7 @@ class Analyzer(object):
             json.dump(data, f, indent=4)
 
 
-        if no_progress:
+        if no_progress and not silent:
             progress.stop()
         # self.__create_splintersize_filled_image(config)
 
@@ -376,6 +416,7 @@ class Analyzer(object):
                             config: AnalyzerConfig,
                             progress: Progress,
                             task: Task = None,
+                            silent: bool = False
                         ):
         """Filter contours, that contain only dark spots in the original image.
 
@@ -392,16 +433,18 @@ class Analyzer(object):
         i_del = []
         removed_splinters: list[Splinter] = []
 
-        if task is None:
+        if task is None and not silent:
             task = progress.add_task("Filtering dark spots...",
-                                     total=5)
+                                     total=len(self.splinters)+2)
 
-        progress.update(task, advance=1)
-        splint_task = progress.add_task("Finding...",
-                                        total=len(self.splinters))
+        def update_task(task, advance=1, add_total=0):
+            if silent:
+                return
+            progress.update(task, advance=advance, total=len(self.splinters)+2+add_total)
+
+        update_task(task, advance=1)
         for i,s in enumerate(self.splinters):
-            progress.update (splint_task, advance=1)
-
+            update_task(task, advance=1)
             x, y, w, h = cv2.boundingRect(s.contour)
             roi_orig = img[y:y+h, x:x+w]
 
@@ -417,26 +460,20 @@ class Analyzer(object):
                 i_del.append(i)
             elif config.debug:
                 cv2.drawContours(cimg, [s.contour], -1, rand_col(), 1)
-        progress.remove_task(splint_task)
 
-        progress.update(task, advance=1)
-        rem_task = progress.add_task("Removing spots...", total=len(i_del))
+        update_task(task, advance=1)
         # remove splinters starting from the back
         for i in sorted(i_del, reverse=True):
-            progress.update(rem_task, advance=1)
             removed_splinters.append(self.splinters[i])
             del self.splinters[i]
 
-        progress.remove_task(rem_task)
         if config.debug:
             print(f"Removed {len(removed_splinters)} Splinters")
 
         skel_mask = self.image_skeleton.copy()
 
-        progress.update(task, advance=1)
-        fill_task = progress.add_task("Filling spots...", total=len(removed_splinters))
+        update_task(task, advance=1, add_total=len(removed_splinters))
         for s in removed_splinters:
-            progress.update(fill_task, advance=1)
 
             c = s.centroid_px
 
@@ -496,8 +533,8 @@ class Analyzer(object):
 
         del skel_mask
 
-        progress.remove_task(fill_task)
-        progress.remove_task(task)
+        if not silent:
+            progress.remove_task(task)
 
 
     def __get_out_file(self, file_name: str, file_ext: str = None) -> str:
@@ -565,24 +602,24 @@ class Analyzer(object):
         self.ax2.imshow(img)
 
         if region is not None:
-            (x1, y2, x2, y1) = region
-            self.ax1.set_xlim(x1, x2)
-            self.ax1.set_ylim(y1, y2)
-            self.ax2.set_xlim(x1, x2)
-            self.ax2.set_ylim(y1, y2)
-            self.ax3.set_xlim(x1, x2)
-            self.ax3.set_ylim(y1, y2)
+            (x, y, w, h) = region
+            self.ax1.set_xlim(x-w//2, x+w//2)
+            self.ax1.set_ylim(y-h//2, y+h//2)
+            self.ax2.set_xlim(x-w//2, x+w//2)
+            self.ax2.set_ylim(y-h//2, y+h//2)
+            self.ax3.set_xlim(x-w//2, x+w//2)
+            self.ax3.set_ylim(y-h//2, y+h//2)
         else:
             # zoom into the image so that 25% of the image width is visible
-            x0, x1 = self.original_image.shape[0] * 0.25, self.original_image.shape[0] * 0.40
-            y0, y1 = self.original_image.shape[1] * 0.25, self.original_image.shape[1] * 0.40
+            x0, x = self.original_image.shape[0] * 0.35, self.original_image.shape[0] * 0.40
+            y0, h = self.original_image.shape[1] * 0.35, self.original_image.shape[1] * 0.40
 
-            self.ax1.set_xlim(x0, x1)
-            self.ax1.set_ylim(y0, y1)
-            self.ax2.set_xlim(x0, x1)
-            self.ax2.set_ylim(y0, y1)
-            self.ax3.set_xlim(x0, x1)
-            self.ax3.set_ylim(y0, y1)
+            self.ax1.set_xlim(x0, x)
+            self.ax1.set_ylim(y0, h)
+            self.ax2.set_xlim(x0, x)
+            self.ax2.set_ylim(y0, h)
+            self.ax3.set_xlim(x0, x)
+            self.ax3.set_ylim(y0, h)
 
 
 

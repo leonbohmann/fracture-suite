@@ -4,6 +4,8 @@ import numpy as np
 from rich.progress import track
 from torch import pdist
 
+from fracsuite.core.image import split_image, SplitImage
+
 def csintkern(events, region, h):
     n, d = events.shape
 
@@ -114,6 +116,62 @@ def csintkern_objects(region,
     #         Z[i,j] = z_action(x,y)
 
     pass
+
+def csintkern_image(image,
+                    grid,
+                    z_value: Callable[[Any], float]):
+    """
+    Performs an intensity calculation on an image by splitting it into a grid
+    and calling z_value on each grid element.
+
+    Args:
+        image (np.array): The image to perform the calculation on.
+        grid (int): The grid size.
+        z_value (Callable[[Any], float]): The function to call on each grid element.
+
+    Returns:
+        X,Y,Z: The meshgrid and the intensity values.
+    """
+    px_w, px_h = (image.shape[1], image.shape[0])
+
+    # Get the ranges for x and y
+    minx = 0
+    maxx = px_w
+    miny = 0
+    maxy = px_h
+
+    split = split_image(image, grid)
+
+    # Get 50 linearly spaced points
+    xd = np.linspace(minx, maxx, split.rows)
+    yd = np.linspace(miny, maxy, split.cols)
+    X, Y = np.meshgrid(xd, yd)
+
+    # perform the action on every area element
+    if z_value is None:
+        def z_value(x: Any):
+            return 1
+
+    result = np.empty(X.shape)
+    # print(result.shape)
+    # print(len(xd))
+    # print(len(yd))
+    skip_i = int(len(xd)*0.1)
+    # Iterate over all points and find splinters in the area of X, Y and intensity_h
+    for i in track(range(skip_i,len(xd)-skip_i), transient=True,
+                   description="Calculating intensity..."):
+        for j in range(skip_i,len(yd)-skip_i):
+            part = split.get_part(i,j)
+
+            value = z_value(part)
+
+            # Apply z_action to collected splinters
+            result[j, i] = value
+
+    Z = result.reshape(X.shape)
+
+    return X,Y,Z
+
 
 def csintkern_optimized_distances(events, region, r=500):
     n, d = events.shape

@@ -14,13 +14,14 @@ from rich import print
 from rich.progress import Progress, SpinnerColumn, track
 from scipy.optimize import curve_fit
 
-from fracsuite.core.plotting import plot_splinter_kernel_contours
+from fracsuite.core.plotting import plot_image_kernel_contours, plot_splinter_kernel_contours
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.progress import get_progress
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+from fracsuite.splinters.processing import preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image_cbar, bin_data, get_color, write_image
+from fracsuite.tools.helpers import annotate_image, bin_data, get_color, write_image
 from fracsuite.tools.specimen import Specimen
 
 app = typer.Typer()
@@ -171,8 +172,8 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     #     clr = get_color(i, 0, out_img.shape[0])
     #     colorbar[i] = clr
     # out_img = np.concatenate((out_img, colorbar), axis=1)
-    out_img = annotate_image_cbar(out_img, "Roughness", min_value=min_r, max_value=max_r)
-    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"roughness.{general.plot_extension}")
+    out_img = annotate_image(out_img, "Roughness", min_value=min_r, max_value=max_r)
+    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"roughness.{general.image_extension}")
 
     write_image(out_img, out_path)
 
@@ -206,8 +207,14 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
-    out_img = annotate_image_cbar(out_img, "Roundness", min_value=min_r, max_value=max_r)
-    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"roundness.{general.plot_extension}")
+    out_img = annotate_image(out_img,
+                                  "Roundness",
+                                  cv2.COLORMAP_TURBO,
+                                  min_value=min_r,
+                                  max_value=max_r,
+                                  unit="[-]",
+                                  background='white')
+    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"roundness.{general.image_extension}")
     cv2.imwrite(out_path, out_img)
 
     finalize(out_path)
@@ -642,6 +649,36 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
                           cfg.size_factor)
     finalize(out_name)
 
+@app.command()
+def fracture_intensity_im(specimen_name: str, grid: int = 100):
+    """
+    Plot the intensity of the fracture image.
+
+    Basically the same as fracture-intensity, but performs operations on the image
+    instead of the splinters.
+
+    Intensity here is the mean value of the image part (defined by grid).
+    Higher Intensity => Darker image part (more cracks)
+    Lower Intensity => Brighter image part (less crack)
+
+    Args:
+        specimen_name (str): Name of specimen to load.
+        grid (int, optional): Grid size. Defaults to 100.
+    """
+    specimen = Specimen.get(specimen_name)
+
+    def intensity(img_part):
+        return 255-np.mean(img_part)
+
+    img = specimen.get_fracture_image()
+    img = preprocess_image(img, specimen.splinter_config)
+
+    fig = plot_image_kernel_contours(img, grid, intensity, clr_label="Amnt Black")
+
+    out_path = os.path.join(specimen.splinters_path, f"fig_img_intensity.{general.image_extension}")
+    fig.savefig(out_path, dpi=500)
+    del fig
+    finalize(out_path)
 @app.command()
 def fracture_intensity(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],

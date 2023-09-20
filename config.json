@@ -1,8 +1,14 @@
 {
     "base_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Proben\\",
-    "plot_extension": "pdf",
+    "plot_extension": "png",
     "default_image_size_px": [
         4000,
         4000
+    ],
+    "interest_region": [
+        440,
+        440,
+        120,
+        120
     ]
 }

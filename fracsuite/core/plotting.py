@@ -8,25 +8,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import numpy as np
 from fracsuite.core.image import to_rgb
-from fracsuite.core.stochastics import csintkern_objects
+from fracsuite.core.stochastics import csintkern_image, csintkern_objects
 from fracsuite.splinters.splinter import Splinter
 
 
-def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] = None):
-    if color:
-        img = to_rgb(img)
-
-    fig, axs = plt.subplots()
-    axs.imshow(img)
-    axs.set_title(title)
-
-    if region is not None:
-        (x1, y1, x2, y2) = region
-        axs.set_xlim((x1,x2))
-        axs.set_ylim((y1,y2))
-
-    plt.show()
-    plt.close(fig)
 
 def plot_splinter_kernel_contours(original_image: np.ndarray,
                    splinters: list[Splinter],
@@ -72,6 +57,47 @@ def plot_splinter_kernel_contours(original_image: np.ndarray,
     fig.tight_layout()
     return fig
 
+def plot_image_kernel_contours(image: np.ndarray,
+                   kernel_width: float,
+                    z_action: Callable[[list[Splinter]], float] = None,
+                    clr_label="Z-Value [?]",
+                    fig_title="Title",
+                    xlabel="Pixels",
+                    ylabel="Pixels",
+                    plot_vertices: bool = False):
+    """Create an intensity plot of the fracture.
+
+    Args:
+        intensity_h (float): Size of the analyzed regions.
+        z_action (def(list[Specimen])): The action that is called for every region.
+        clr_label (str, optional): Colorbar title. Defaults to "Intensity [Splinters / Area]".
+
+    Returns:
+        Figure: A figure showing the intensity plot.
+    """
+
+    # print(f'Creating intensity plot with region={region}...')
+
+    X, Y, Z = csintkern_image(image,
+                                kernel_width,
+                                z_action)
+
+    fig,axs = plt.subplots()
+    axs.imshow(image)
+
+    if plot_vertices:
+        axs.scatter(X, Y, marker='o', c='red')
+
+    axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
+    fig.colorbar(axim, label=clr_label)
+    axs.xaxis.tick_top()
+    axs.xaxis.set_label_position('top')
+    axs.set_xlabel(xlabel)
+    axs.set_ylabel(ylabel)
+    axs.set_title(f'{fig_title} (h={kernel_width:.2f})')
+
+    fig.tight_layout()
+    return fig
 
 
 T2 = TypeVar('T2')
@@ -86,3 +112,37 @@ def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tup
     for i,x in enumerate(values):
         values_func(x, axs[i])
     return fig,axs
+
+def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] = None):
+    if color:
+        img = to_rgb(img)
+
+    fig, axs = plt.subplots()
+    axs.imshow(img)
+    axs.set_title(title)
+
+    if region is not None:
+        (x1, y1, x2, y2) = region
+        axs.set_xlim((x1,x2))
+        axs.set_ylim((y1,y2))
+
+    plt.show()
+    plt.close(fig)
+
+
+def plotImages(imgs: list[(str, Any)], region = None):
+    """Plots several images side-by-side in a subplot.
+
+    Args:
+        imgs (list[tuple[str,Any]]): List of tuples containing the title and the image to plot.
+        region (x,y,w,h, optional): A specific region to draw. Defaults to None.
+    """
+    fig,axs  = plt.subplots(1,len(imgs))
+    for i, (title, img) in enumerate(imgs):
+        axs[i].imshow(img)
+        axs[i].set_title(title)
+        if region is not None:
+            (x1, y1, w, h) = region
+            axs[i].set_xlim((x1-w//2,x1+w//2))
+            axs[i].set_ylim((y1-h//2,y1+h//2))
+    plt.show()

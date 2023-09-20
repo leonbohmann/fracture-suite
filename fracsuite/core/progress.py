@@ -34,9 +34,10 @@ class ProgSpinner():
         return self.progress.__exit__(exc_type, exc_val, exc_tb)
 
 
-def get_specimen_loader(description: str = "Loading specimens...") -> ProgSpinner:
+def get_spinner(description: str = "Loading specimens...", with_bar: bool = False) -> ProgSpinner:
     prog = Progress(
                 TaskProgressColumn(),
+                BarColumn(bar_width=10) if with_bar else SpinnerColumn(),
                 TextColumn("[progress.description]{task.description:<50}"),
                 TimeElapsedColumn(),
             transient=True)

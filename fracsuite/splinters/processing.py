@@ -17,12 +17,7 @@ def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
 
         Args:
             image (nd.array): The input image.
-            gauss_sz (size-tuple, optional): The size of the gaussian filter.
-                                            Defaults to (5,5).
-            gauss_sig (int, optional): The sigma for gaussian filter. Defaults to 3.
-            block_size (int, opt): Block size of adaptive threshold. Defaults to 11.
-            C (int, optional): Sensitivity of adaptive threshold. Defaults to 6.
-            rsz (int, optional): Resize factor for the image. Defaults to 1.
+            config (AnalyzerConfig): The configuration to use.
 
         Returns:
             np.array: Preprocessed image.
@@ -31,6 +26,7 @@ def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
         rsz_fac = config.prep.resize_factor # x times smaller
 
         image = to_gray(image)
+        # image = np.clip(image - np.mean(image), 0, 255).astype(np.uint8)
 
         # Apply Gaussian blur to reduce noise and enhance edge detection
         image = cv2.GaussianBlur(image, config.prep.gauss_size, config.prep.gauss_sigma)
@@ -41,8 +37,8 @@ def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
             plotImage(image, 'PREP: GaussianBlur -> Resize', region=config.interest_region)
 
         # Use adaptive thresholding
-        image = cv2.adaptiveThreshold(image, 255, config.prep.thresh_adapt_mode, \
-            cv2.THRESH_BINARY, config.prep.thresh_block_size, config.prep.thresh_sensitivity)
+        image = 255-cv2.adaptiveThreshold(image, 255, config.prep.thresh_adapt_mode, \
+            cv2.THRESH_BINARY_INV, config.prep.thresh_block_size, config.prep.thresh_c)
 
         if config.debug:
             plotImage(image, 'PREP: ... -> Adaptive Thresh', region=config.interest_region)
@@ -321,5 +317,13 @@ def detect_fragments(binary_image, config: AnalyzerConfig) -> list[nptyp.ArrayLi
         raise ValueError(f"Error in fragment detection: {e}")
 
 def closeImg(image, sz = 3, it=1):
-    kernel_closing = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (sz, sz))
+    kernel_closing = cv2.getStructuringElement(cv2.MORPH_RECT, (sz, sz))
     return cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel_closing, iterations=it)
+
+def openImg(image, sz = 3, it=1):
+    kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (sz, sz))
+    return cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel_opening, iterations=it)
+
+def erodeImg(image, sz=3, it=1):
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (sz, sz))
+    return cv2.erode(image, kernel, iterations=it)

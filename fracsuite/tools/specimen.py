@@ -13,7 +13,7 @@ import typer
 from pathos.pools import ProcessPool
 from rich import print
 from rich.progress import Progress, track, SpinnerColumn, TextColumn, TimeElapsedColumn
-from fracsuite.core.progress import get_specimen_loader, ProgSpinner
+from fracsuite.core.progress import get_spinner, ProgSpinner
 
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen
 from fracsuite.splinters.analyzer import Analyzer
@@ -143,6 +143,7 @@ class Specimen:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
         self.loaded = True
+        print(f"Loaded '{self.name}'.")
 
     def __init__(self, path: str, log_missing = True, lazy = False):
         """Create a new specimen.
@@ -220,8 +221,15 @@ class Specimen:
         with open(self.__cfg_path, "w") as f:
             json.dump(self.settings, f, indent=4)
 
-    def get_analyzer(self, cfg: AnalyzerConfig = None, progress: Progress = None, task = None):
-        return Analyzer(cfg if cfg is not None else self.splinter_config, progress = progress, main_task=task)
+    def get_analyzer(self,
+                     cfg: AnalyzerConfig = None,
+                     progress: Progress = None,
+                     task = None,
+                     silent: bool = False):
+        return Analyzer(cfg if cfg is not None else self.splinter_config,
+                        progress = progress,
+                        main_task=task,
+                        silent=silent)
 
     def get_filled_image(self):
         filled_file = find_file(self.splinters_path, "img_filled.png")
@@ -301,16 +309,24 @@ class Specimen:
 
         if names is None:
             return Specimen.get_all_by(lambda x: True, load=load)
-        elif isinstance(names, str) or (names is not None and len(names) == 1 and "*" in names[0]):
+        elif isinstance(names, str) and "*" in names:
             name_filter = names.replace(".", "\.").replace("*", ".*")
             filter = re.compile(name_filter)
             return Specimen.get_all_by(
                 lambda x: filter.search(x.name) is not None,
                 load=load
             )
+        elif isinstance(names, str):
+            names = [names]
+        elif isinstance(names, list) and (len(names) == 1 and "*" in names[0]):
+            name_filter = names[0].replace(".", "\.").replace("*", ".*")
+            filter = re.compile(name_filter)
+            return Specimen.get_all_by(
+                lambda x: filter.search(x.name) is not None,
+                load=load
+            )
 
-
-        for name in track(names, description="Loading specimens...", transient=False):
+        for name in track(names, description="Loading specimens...", transient=True):
             dir = os.path.join(general.base_path, name)
             specimen = Specimen.get(dir, load)
             specimens.append(specimen)
@@ -371,7 +387,7 @@ class Specimen:
 
         max_iter = len(directories)
 
-        with get_specimen_loader('Loading specimens...') as p:
+        with get_spinner('Loading specimens...') as p:
             p.set_total(max_iter)
 
             for dir in directories:

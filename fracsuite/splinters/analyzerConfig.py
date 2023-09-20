@@ -21,40 +21,42 @@ class PreprocessorConfig:
 
     thresh_block_size: int = 11
     "adaptive threshold block size"
-    thresh_sensitivity: float = 5.0
-    "adaptive threshold sensitivity"
+    thresh_c: float = 5.0
+    "adaptive threshold c value"
     thresh_adapt_mode: int = cv2.ADAPTIVE_THRESH_MEAN_C
     "adaptive threshold mode"
 
     def __init__(self,
                  name="",
                  block: int = 11,
-                 sens: float = 0.6,
+                 c: float = 0.6,
                  gauss_size: tuple[int,int] = (5,5),
                  gauss_sigma: float = 5.0,
                  resize_factor: float = 1.0,
                  adapt_mode: str = "mean"):
         self.name = name
         self.threshold_block_size = block
-        self.threshold_sensitivity = sens
+        self.threshold_c = c
         self.gauss_size = gauss_size
         self.gauss_sigma = gauss_sigma
         self.resize_factor = resize_factor
         self.thresh_adapt_mode = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
             if adapt_mode == "gaussian" else cv2.ADAPTIVE_THRESH_MEAN_C
-        pass
 
     def print(self):
         print(self.__dict__)
 
 defaultPrepConfig = PreprocessorConfig("default")
-softgaussPrepConfig = PreprocessorConfig("softgauss",adapt_mode="gaussian", block=5, sens=1)
-softmeanPrepConfig = PreprocessorConfig("softmean", adapt_mode="mean", block=5, sens=1)
-aggressivegaussPrepConfig = PreprocessorConfig("aggressivegauss", adapt_mode="gaussian", block=11, sens=0.6)
-aggressivemeanPrepConfig = PreprocessorConfig("aggressivemean", adapt_mode="mean", block=11, sens=0.6)
+softgaussPrepConfig = PreprocessorConfig("softgauss",adapt_mode="gaussian", block=5, c=1)
+softmeanPrepConfig = PreprocessorConfig("softmean", adapt_mode="mean", block=5, c=1)
+aggressivegaussPrepConfig = PreprocessorConfig("aggressivegauss", adapt_mode="gaussian", block=11, c=0.6)
+aggressivemeanPrepConfig = PreprocessorConfig("aggressivemean", adapt_mode="mean", block=11, c=0.6)
+ultrameanPrepConfig = PreprocessorConfig("ultramean", adapt_mode="mean",
+                                         block=7, c=0.5,
+                                         gauss_sigma=0.3, gauss_size=(3,3))
 
 class AnalyzerConfig:
-    prep: PreprocessorConfig = defaultPrepConfig
+    prep: PreprocessorConfig = None
     "Preprocessor configuration"
 
     skelclose_size: int = 3
@@ -144,7 +146,7 @@ class AnalyzerConfig:
             type=int, default=5)
         prep.add_argument('-gauss-sigma', help='Gaussian filter sigma',\
             type=float, default=5)
-        prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
+        prep.add_argument('-thresh-c', help='Adaptive threshold c value',\
             type=float, default=5)
         prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
             type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
@@ -204,7 +206,7 @@ class AnalyzerConfig:
             cfg.prep.gauss_size = (args.gauss_size,args.gauss_size)
             cfg.prep.gauss_sigma = args.gauss_sigma
             cfg.prep.thresh_block_size = args.thresh_block
-            cfg.prep.thresh_sensitivity = args.thresh_sens
+            cfg.prep.thresh_c = args.thresh_sens
             cfg.prep.resize_factor = args.resize_fac
 
         cfg.skip_darkspot_removal = args.skip_spot_elim
@@ -262,3 +264,5 @@ class AnalyzerConfig:
 
     def print(self):
         print(self.__dict__)
+        print('Preprocessor Configuration:')
+        print(self.prep.__dict__)

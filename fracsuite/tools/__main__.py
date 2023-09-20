@@ -129,7 +129,7 @@ def crop_fracture_morph(
         if not  os.path.exists(path):
             continue
 
-        imgs = [(x,cv2.imread(x, cv2.IMREAD_GRAYSCALE)) for x in find_files(path, 'bmp')]
+        imgs = [(x,cv2.imread(x, cv2.IMREAD_GRAYSCALE)) for x in find_files(path, '*.bmp')]
 
         if len(imgs) == 0:
             continue
