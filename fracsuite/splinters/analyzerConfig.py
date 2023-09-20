@@ -28,11 +28,11 @@ class PreprocessorConfig:
 
     def __init__(self,
                  name="",
-                 block: int = 11,
-                 c: float = 0.6,
+                 block: int = 13,
+                 c: float = 8,
                  gauss_size: tuple[int,int] = (5,5),
-                 gauss_sigma: float = 5.0,
-                 resize_factor: float = 1.0,
+                 gauss_sigma: float = 8,
+                 resize_factor: float = 1,
                  adapt_mode: str = "mean"):
         self.name = name
         self.threshold_block_size = block
@@ -143,13 +143,13 @@ class AnalyzerConfig:
         prep.add_argument('-prepconfig', help='Preprocessor config mode.', default=None,
                           choices=[str(x.removesuffix("PrepConfig")) for x in globals().keys() if x.endswith("PrepConfig")])
         prep.add_argument('-gauss-size', help='Gaussian filter size',\
-            type=int, default=5)
+            type=int, default=3)
         prep.add_argument('-gauss-sigma', help='Gaussian filter sigma',\
-            type=float, default=5)
+            type=float, default=0.3)
         prep.add_argument('-thresh-c', help='Adaptive threshold c value',\
-            type=float, default=5)
+            type=float, default=8)
         prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
-            type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
+            type=int, default=13, choices=[1,3,5,7,9,11,13,15,17,19,21])
         prep.add_argument('-resize-fac', help='Image resize factor before adaptive th.',\
             type=float, default=1.0)
         prep.add_argument('-min-area', help='Minimum fragment area threshold [px²]',\
@@ -206,7 +206,7 @@ class AnalyzerConfig:
             cfg.prep.gauss_size = (args.gauss_size,args.gauss_size)
             cfg.prep.gauss_sigma = args.gauss_sigma
             cfg.prep.thresh_block_size = args.thresh_block
-            cfg.prep.thresh_c = args.thresh_sens
+            cfg.prep.thresh_c = args.thresh_c
             cfg.prep.resize_factor = args.resize_fac
 
         cfg.skip_darkspot_removal = args.skip_spot_elim

@@ -496,7 +496,7 @@ def export():
 
 
 @app.command()
-def list(setting: str = None, value: str = None):
+def list_all(setting: str = None, value: str = None):
     all = Specimen.get_all(load=False)
     print("Name\tSetting\tValue")
     for spec in all:

@@ -25,7 +25,9 @@ from fracsuite.splinters.processing import (
     closeImg,
     crop_perspective,
     detect_fragments,
+    dilateImg,
     erodeImg,
+    openImg,
     preprocess_image,
     preprocess_spot_detect,
 )
@@ -193,11 +195,22 @@ class Analyzer(object):
 
         self.preprocessed_image = preprocess_image(self.original_image, config)
 
+        pipeline = []
+        pipelined = []
 
-        prep1 = closeImg(self.preprocessed_image, sz=2, it=2)
-        # if not silent:
-        #     plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image),
-        #             ('Prep1', prep1)], region=(2500,2500,100,100))
+        pipeline.append(closeImg)
+        pipeline.append(erodeImg)
+        pipeline.append(erodeImg)
+
+        img = self.preprocessed_image
+        for i in range(len(pipeline)):
+            img = pipeline[i](img, sz=2, it=2)
+            pipelined.append((f'Pipe{i}', img))
+
+
+        if not silent:
+            plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image)]
+                       + pipelined, region=(500,500,100,100))
 
         #############
         # calculate scale factors to make measurements in real units
@@ -238,10 +251,12 @@ class Analyzer(object):
         # erode stencil
         er_stencil = erodeImg(stencil)
         er1_stencil = erodeImg(er_stencil, 2, 1)
-        # if not silent:
-        #     plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image),
-        #             ('Stencil', stencil), ('Eroded Stencil', er_stencil), ('Eroded Stencil 1', er1_stencil)], region=(100,100,300,300))
+        er1_stencil = erodeImg(er1_stencil, 1, 1)
+        if not silent:
+            plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image),
+                    ('Stencil', stencil), ('Eroded Stencil', er_stencil), ('Eroded Stencil 1', er1_stencil)], region=(300,500,300,300))
 
+        stencil = er1_stencil
         #############
         # advanced image operations
         # first step is to skeletonize the stencil
@@ -340,7 +355,7 @@ class Analyzer(object):
             self.save_object()
 
 
-        self.__plot_backend(display=config.displayplots, region=config.interest_region)
+        self.__plot_backend(display=True, region=config.interest_region)
         # #############
         # # Stochastic analysis
         # updater(6, 'Stochastic analysis')
@@ -429,7 +444,7 @@ class Analyzer(object):
         # create normal threshold of original image to get dark spots
         img = preprocess_spot_detect(self.original_image)
         if config.debug:
-            cimg = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
+            cimg = to_rgb(self.original_image)
         i_del = []
         removed_splinters: list[Splinter] = []
 
@@ -456,7 +471,7 @@ class Analyzer(object):
             result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
 
             # Check if all pixels in the contour area are black
-            if np.mean(result) < 0.25:
+            if np.mean(result) < 50:
                 i_del.append(i)
             elif config.debug:
                 cv2.drawContours(cimg, [s.contour], -1, rand_col(), 1)
