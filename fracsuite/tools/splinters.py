@@ -330,42 +330,61 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
 @app.command(name="log2dhist")
 def log_2d_histograms(
-    sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')],
+    names: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
+    sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
     boundary: Annotated[str, typer.Option(help='Allowed boundaries.')] = ["ABZ"],
     exclude: Annotated[str, typer.Option(help='Exclude specimen names matching this.')] = None,
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
     maxspecimen: Annotated[int, typer.Option(help='Maximum amount of specimens.')] = 50,
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
     """Plot a 2D histogram of splinter sizes and stress."""
-    if "-" in sigmas:
-        sigmas = [float(s) for s in sigmas.split("-")]
-    elif sigmas == "all":
-        sigmas = [0,1000]
+    if names is None:
+        assert sigmas is not None, "Either names or sigmas must be specified."
+    elif "," in names:
+        names = names.split(",")
+    elif " " in names:
+        names = names.split(" ")
     else:
-        sigmas = [float(sigmas), float(sigmas)]
-        sigmas[0] = max(0, sigmas[0] - delta)
-        sigmas[1] += delta
+        names = [names]
 
-    print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
+    if sigmas is None:
+        assert names is not None, "Either names or sigmas must be specified."
 
-    def in_sigma_range(specimen: Specimen):
-        if not specimen.has_scalp:
-            return False
-        if not specimen.has_splinters:
-            return False
-        if specimen.boundary not in boundary:
-            return False
-        if exclude is not None and re.match(exclude.replace(".","\.").replace("*",".*"), specimen.name):
-            return False
+    if sigmas is not None:
+        if "-" in sigmas:
+            sigmas = [float(s) for s in sigmas.split("-")]
+        elif sigmas == "all":
+            sigmas = [0,1000]
+        else:
+            sigmas = [float(sigmas), float(sigmas)]
+            sigmas[0] = max(0, sigmas[0] - delta)
+            sigmas[1] += delta
 
-        return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+        print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
 
-    specimens: list[Specimen] = Specimen.get_all_by(in_sigma_range, max_n=maxspecimen)
+        def in_sigma_range(specimen: Specimen):
+            if not specimen.has_scalp:
+                return False
+            if not specimen.has_splinters:
+                return False
+            if specimen.boundary not in boundary:
+                return False
+            if exclude is not None and re.match(exclude.replace(".","\.").replace("*",".*"), specimen.name):
+                return False
+
+            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+
+        specimens: list[Specimen] = Specimen.get_all_by(in_sigma_range, max_n=maxspecimen)
+    elif names is not None:
+        specimens: list[Specimen] = Specimen.get_all(names)
 
 
-    if len(specimens) == 0 or any([x.splinters is None for x in specimens]):
+    if len(specimens) == 0 :
         print("[red]No specimens loaded.[/red]")
         return
+    elif any([x.splinters is None for x in specimens]):
+        print("[red]Some specimens have no splinters.[/red]")
+        specimens = [x for x in specimens if x.splinters is not None]
 
     binrange = np.linspace(0,2,n_bins)
     fig, axs = plt.subplots(figsize=(8, 5))
@@ -382,6 +401,9 @@ def log_2d_histograms(
             areas.sort()
 
             hist, edges = bin_data(areas, binrange)
+
+            hist = np.array(hist)/np.max(hist)
+
             data.append((hist, specimen.name))
             stress.append(specimen.get_energy())
             progress.update(an_task, advance=1)
@@ -410,7 +432,10 @@ def log_2d_histograms(
 
     disp_mean_sizes(specimens)
 
-    out_name = os.path.join(general.base_path, f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
+    if sigmas is not None:
+        out_name = os.path.join(general.base_path, f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
+    elif names is not None:
+        out_name = os.path.join(general.base_path, f"loghist2d_{names[0]}.{general.plot_extension}")
     fig.savefig(out_name)
     finalize(out_name)
 

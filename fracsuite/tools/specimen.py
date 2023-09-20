@@ -311,9 +311,8 @@ class Specimen:
             return Specimen.get_all_by(lambda x: True, load=load)
         elif isinstance(names, str) and "*" in names:
             name_filter = names.replace(".", "\.").replace("*", ".*")
-            filter = re.compile(name_filter)
             return Specimen.get_all_by(
-                lambda x: filter.search(x.name) is not None,
+                lambda x: re.match(name_filter, x.name) is not None,
                 load=load
             )
         elif isinstance(names, str):
