@@ -157,11 +157,14 @@ def disp_mean(specimen_name: str,):
 def test_splinter_count(specimen_name: str, load: bool = False, calibrated: int = 301):
     specimen = Specimen.get(specimen_name)
 
-    mean_value = np.mean(specimen.get_fracture_image())
-    print(mean_value)
+    # mean_value = np.mean(specimen.get_fracture_image())
+    # print(mean_value)
 
-    plt.imshow(specimen.get_fracture_image()-mean_value)
-    plt.show()
+    # im = (to_gray(specimen.get_fracture_image())).astype(np.uint8)
+    # im = cv2.adaptiveThreshold(im, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 13, 8)
+    # im = cv2.floodFill(im, None, (0,0), 0)[1]
+    # plt.imshow(im)
+    # plt.show()
 
     steps = np.linspace(0, 8, 20)
     stepsy = np.array([3,5,7,11,13])
