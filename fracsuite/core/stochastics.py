@@ -82,11 +82,11 @@ def csintkern_objects(region,
     # print(result.shape)
     # print(len(xd))
     # print(len(yd))
-
+    skip_i = int(len(xd)*0.1)
     # Iterate over all points and find splinters in the area of X, Y and intensity_h
-    for i in track(range(1,len(xd) - 1), transient=True,
+    for i in track(range(skip_i,len(xd) - skip_i), transient=True,
                    description="Calculating intensity..."):
-        for j in range(1,len(yd) - 1):
+        for j in range(skip_i,len(yd) - skip_i):
             x1,y1=xd[i]-h//2,yd[j]-h//2
             x2,y2=xd[i]+h//2,yd[j]+h//2
 

@@ -650,39 +650,44 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
     finalize(out_name)
 
 @app.command()
-def fracture_intensity_im(specimen_name: str, grid: int = 100):
+def fracture_intensity_img(specimen_name: str,
+                           kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 100):
     """
     Plot the intensity of the fracture image.
 
     Basically the same as fracture-intensity, but performs operations on the image
     instead of the splinters.
 
-    Intensity here is the mean value of the image part (defined by grid).
+    Intensity here is the mean value of the image part (defined by kernel_width).
     Higher Intensity => Darker image part (more cracks)
     Lower Intensity => Brighter image part (less crack)
 
     Args:
         specimen_name (str): Name of specimen to load.
-        grid (int, optional): Grid size. Defaults to 100.
+        kernel_width (int, optional): Grid size. Defaults to 100.
     """
     specimen = Specimen.get(specimen_name)
 
-    def intensity(img_part):
+    def mean_img_value(img_part):
         return 255-np.mean(img_part)
 
     img = specimen.get_fracture_image()
     img = preprocess_image(img, specimen.splinter_config)
 
-    fig = plot_image_kernel_contours(img, grid, intensity, clr_label="Amnt Black")
+    fig = plot_image_kernel_contours(img, kernel_width,
+                                     mean_img_value,
+                                     clr_label="Amnt Black",
+                                     fig_title="Fracture Intensity (Based on image mean values)")
 
     out_path = os.path.join(specimen.splinters_path, f"fig_img_intensity.{general.image_extension}")
     fig.savefig(out_path, dpi=500)
     del fig
     finalize(out_path)
+
 @app.command()
 def fracture_intensity(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
-        kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 5,
+        kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 200,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False):
     """Plot the intensity of the fracture image."""
 
