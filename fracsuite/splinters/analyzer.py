@@ -471,6 +471,7 @@ class Analyzer(object):
             result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
 
             # Check if all pixels in the contour area are black
+            #TODO! this value is crucial to the quality of histograms!
             if np.mean(result) < 50:
                 i_del.append(i)
             elif config.debug:
