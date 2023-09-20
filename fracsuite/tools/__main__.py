@@ -31,7 +31,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
 app.add_typer(acc_app, name="acc")
 app.add_typer(test_prep_app, name="test-prep")
-app.add_typer(nominals_app, name="stress")
+app.add_typer(nominals_app, name="nominals")
 
 @app.command()
 def test(parallel:bool = False):

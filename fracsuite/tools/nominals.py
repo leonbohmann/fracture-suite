@@ -30,11 +30,6 @@ def stress():
     for spec in specimens:
         thicknesses[spec.thickness][spec.nom_stress].append(np.abs(spec.scalp.sig_h))
 
-
-    # 4mm specs
-
-
-
     fig, axs = plt.subplots(figsize=(4,4))
     # axs.scatter(nominal_4, scalped_4, marker='x', color='orange', label="4mm")
     # axs.scatter(nominal_8+5, scalped_8, marker='o', color='blue', label="8mm")
