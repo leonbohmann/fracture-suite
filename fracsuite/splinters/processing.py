@@ -327,3 +327,7 @@ def openImg(image, sz = 3, it=1):
 def erodeImg(image, sz=3, it=1):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (sz, sz))
     return cv2.erode(image, kernel, iterations=it)
+
+def dilateImg(image, sz=3, it=1):
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (sz, sz))
+    return cv2.dilate(image, kernel, iterations=it)
