@@ -220,7 +220,7 @@ class Specimen:
 
         # scalp requisites
         scalp_path = os.path.join(self.path, "scalp")
-        self.__scalp_file = find_file(scalp_path, "*.pkl")
+        self.__scalp_file = find_file(scalp_path, "scalp_data.pkl")
         self.has_scalp = self.__scalp_file is not None
 
         # splinters requisites

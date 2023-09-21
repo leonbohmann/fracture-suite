@@ -183,7 +183,7 @@ class ScalpSpecimen:
         Args:
             dir (str): Directory to save to.
         """
-        with open(os.path.join(dir, f"{self.name}.pkl"), "wb") as file:
+        with open(os.path.join(dir, f"scalp_data.pkl"), "wb") as file:
             pickle.dump(self, file)
 
     def load(file_path) -> ScalpSpecimen:
