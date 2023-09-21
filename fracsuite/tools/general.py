@@ -100,5 +100,20 @@ class GeneralSettings:
         self.plot_extension = pe
         self.save()
 
-    def get_output_file(self, *name):
+    def get_output_file(self, *name, **kwargs):
+        """Gets an output file path.
+
+        Kwargs:
+            is_plot (bool): If true, the plot extension is appended.
+            is_image (bool): If true, the image extension is appended.
+        Returns:
+            str: path
+        """
+        name = list(name)
+        if 'is_plot' in kwargs and kwargs['is_plot']:
+            name[-1] = f'{name[-1]}.{general.plot_extension}'
+        if 'is_image' in kwargs and kwargs['is_image']:
+            name[-1] = f'{name[-1]}.{general.image_extension}'
+
+
         return os.path.join(self.out_path, *name)

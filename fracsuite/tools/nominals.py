@@ -8,6 +8,7 @@ from fracsuite.tools.specimen import Specimen
 from fracsuite.tools.splinters import finalize
 
 nominals_app = typer.Typer()
+general = GeneralSettings.get()
 
 @nominals_app.command()
 def stress():
@@ -19,6 +20,7 @@ def stress():
 
     specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec)
 
+        
     thicknesses = {
             4: {}, 8: {}, 12: {}
         }
@@ -57,8 +59,7 @@ def stress():
     axs.legend(bars, lbs, loc='lower right')
 
 
-    out_name = os.path.join(GeneralSettings.get().base_path,
-                            f"compare_nominal_stress_to_real_stress.{GeneralSettings.get().plot_extension}")
+    out_name = general.get_output_file("compare_nominal_stress_to_real_stress", is_plot=True)
     fig.savefig(out_name, dpi=300)
     finalize(out_name)
 

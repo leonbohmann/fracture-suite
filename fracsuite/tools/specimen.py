@@ -484,7 +484,7 @@ def sync():
     # iterate over all splinters
     for name in track(os.listdir(general.base_path), description="Syncing specimen configs...", transient=False):
 
-        spec_path = os.path.join(general.base_path, name)
+        spec_path = general.get_output_file(name)
         if not os.path.isdir(spec_path):
             continue
 
@@ -497,7 +497,7 @@ def export():
     """Export all specimen configs to a single excel file."""
     import xlsxwriter
 
-    workbook_path = os.path.join(general.base_path, "summary1.xlsx")
+    workbook_path = general.get_output_file("summary1.xlsx")
 
     workbook = xlsxwriter.Workbook(workbook_path)
 
