@@ -97,7 +97,8 @@ if args.all:
             project_path = os.path.join(project_dir, file) + "\\"
 
             if os.path.exists(project_path) and os.path.isdir(project_path):
-                spec = Specimen(project_path, log_missing=False, lazy=True)
+                spec = Specimen(project_path, log_missing=False)
+
 
                 if spec.settings['break_pos'] == "center":
                     config.impact_position = (250,250)

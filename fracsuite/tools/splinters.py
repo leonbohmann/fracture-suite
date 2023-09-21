@@ -328,7 +328,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
 @app.command(name="log2dhist")
 def log_2d_histograms(
-    names: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
+    names: Annotated[str, typer.Option(help='Name filter. Can use wildcards.', metavar='*')] = None,
     sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
     boundary: Annotated[str, typer.Option(help='Allowed boundaries.')] = ["ABZ"],
     exclude: Annotated[str, typer.Option(help='Exclude specimen names matching this.')] = None,
@@ -339,15 +339,22 @@ def log_2d_histograms(
     """Plot a 2D histogram of splinter sizes and stress."""
     if names is None:
         assert sigmas is not None, "Either names or sigmas must be specified."
-    elif "," in names:
-        names = names.split(",")
-    elif " " in names:
-        names = names.split(" ")
-    else:
-        names = [names]
-
     if sigmas is None:
         assert names is not None, "Either names or sigmas must be specified."
+
+    if names is not None and "," in names:
+        names = names.split(",")
+        print(f"Searching for specimen whose name is in: '{names}'")
+    elif names is not None and " " in names:
+        names = names.split(" ")
+        print(f"Searching for specimen whose name is in: '{names}'")
+    elif names is not None and "*" not in names:
+        names = [names]
+        print(f"Searching for specimen whose name is in: '{names}'")
+    elif names is not None and "*" in names:
+        print(f"Searching for specimen whose name matches: '{names}'")
+        names = names.replace(".","\.").replace("*", ".*")
+
 
     if sigmas is not None:
         if "-" in sigmas:
@@ -361,22 +368,23 @@ def log_2d_histograms(
 
         print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
 
-        def in_sigma_range(specimen: Specimen):
-            if not specimen.has_scalp:
-                return False
-            if not specimen.has_splinters:
-                return False
-            if specimen.boundary not in boundary:
-                return False
-            if exclude is not None and re.match(exclude.replace(".","\.").replace("*",".*"), specimen.name):
-                return False
+    def filter_specimens(specimen: Specimen):
+        if not specimen.has_scalp:
+            return False
+        elif not specimen.has_splinters:
+            return False
+        elif specimen.boundary not in boundary:
+            return False
+        elif exclude is not None and re.match(exclude.replace(".","\.").replace("*",".*"), specimen.name):
+            return False
+        elif isinstance(names, str) and not re.match(names, specimen.name):
+            return False
+        elif isinstance(names, list) and specimen.name not in names:
+            return False
 
-            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+        return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
 
-        specimens: list[Specimen] = Specimen.get_all_by(in_sigma_range, max_n=maxspecimen)
-    elif names is not None:
-        specimens: list[Specimen] = Specimen.get_all(names)
-
+    specimens: list[Specimen] = Specimen.get_all_by(filter_specimens, max_n=maxspecimen, lazyload=False)
 
     if len(specimens) == 0 :
         print("[red]No specimens loaded.[/red]")

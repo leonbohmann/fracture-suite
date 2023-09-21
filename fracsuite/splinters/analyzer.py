@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import csv
+from ctypes import sizeof
 import json
 import os
 import pickle
 import shutil
+import time
 
 import cv2
 import numpy as np
@@ -15,6 +17,8 @@ from matplotlib.widgets import RectangleSelector
 from rich import print
 from rich.progress import Progress, Task
 from skimage.morphology import skeletonize
+from pathos.multiprocessing import ProcessPool
+from multiprocessing import Pool, shared_memory as sm
 
 from fracsuite.core.coloring import rand_col
 from fracsuite.core.image import to_rgb
@@ -45,6 +49,33 @@ plt.rcParams.update({'font.size': 12}) # font size
 
 general = GeneralSettings.get()
 
+SM_IMAGE = 'image_41jfnn1fh'
+
+def check_splinter(kv):
+    """Check if a splinter is valid.
+
+    kv: tuple(int, splinter)
+    """
+    i,s = kv
+
+    shm = sm.SharedMemory(name=SM_IMAGE)
+    img = np.ndarray((4000,4000), dtype=np.uint8, buffer=shm.buf)
+    x, y, w, h = cv2.boundingRect(s.contour)
+    roi_orig = img[y:y+h, x:x+w]
+
+    mask = np.zeros_like(img)
+    cv2.drawContours(mask, [s.contour], -1, 255, thickness=cv2.FILLED)
+
+    roi = mask[y:y+h, x:x+w]
+    # Apply the mask to the original image
+    result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
+
+    # Check if all pixels in the contour area are black
+    #TODO! this value is crucial to the quality of histograms!
+    if np.mean(result) < 50:
+        return i
+    else:
+        return -1
 class Analyzer(object):
     """
     Analyzer class that can handle an input image.
@@ -208,7 +239,7 @@ class Analyzer(object):
             pipelined.append((f'Pipe{i}', img))
 
 
-        if not silent:
+        if config.debug:
             plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image)]
                        + pipelined, region=(500,500,100,100))
 
@@ -218,17 +249,20 @@ class Analyzer(object):
         "size factor for mm/px"
         if config.real_image_size is not None:
             if config.cropped_image_size is None:
-                config.cropped_image_size = self.preprocessed_image.shape[:2]
+                cmpSize = self.preprocessed_image.shape[:2]
+            else:
+                cmpSize = config.cropped_image_size
 
             # fx: mm/px
-            fx = config.real_image_size[0] / config.cropped_image_size[0]
-            fy = config.real_image_size[1] / config.cropped_image_size[1]
+            fx = config.real_image_size[0] / cmpSize[0]
+            fy = config.real_image_size[1] / cmpSize[1]
 
             # the factors must match because pixels are always squared
             # for landscape image, the img_real_size's aspect ratio must match
             if fx != fy:
                 raise Exception("The scale factors for x and y must match!" + \
-                    "Check the input image and also the img_real_size parameter.")
+                    "Check the input image and also the img_real_size parameter."
+                    f"Factors: {fx} and {fy}")
 
             # f: mm/px
             size_f = fx
@@ -252,7 +286,7 @@ class Analyzer(object):
         er_stencil = erodeImg(stencil)
         er1_stencil = erodeImg(er_stencil, 2, 1)
         er1_stencil = erodeImg(er1_stencil, 1, 1)
-        if not silent:
+        if config.debug:
             plotImages([('Original', self.original_image),('Preprocessed', self.preprocessed_image),
                     ('Stencil', stencil), ('Eroded Stencil', er_stencil), ('Eroded Stencil 1', er1_stencil)], region=(300,500,300,300))
 
@@ -355,7 +389,7 @@ class Analyzer(object):
             self.save_object()
 
 
-        self.__plot_backend(display=True, region=config.interest_region)
+        self.__plot_backend(display=config.displayplots, region=config.interest_region)
         # #############
         # # Stochastic analysis
         # updater(6, 'Stochastic analysis')
@@ -452,30 +486,23 @@ class Analyzer(object):
             task = progress.add_task("Filtering dark spots...",
                                      total=len(self.splinters)+2)
 
-        def update_task(task, advance=1, add_total=0):
+        def update_task(task, advance=1, add_total=0, descr="Filtering dark spots..."):
             if silent:
                 return
-            progress.update(task, advance=advance, total=len(self.splinters)+2+add_total)
+            progress.update(task, description=descr, advance=advance, total=len(self.splinters)+2+add_total)
 
-        update_task(task, advance=1)
-        for i,s in enumerate(self.splinters):
-            update_task(task, advance=1)
-            x, y, w, h = cv2.boundingRect(s.contour)
-            roi_orig = img[y:y+h, x:x+w]
+        update_task(task, advance=1, descr='Finding dark spots...')
 
-            mask = np.zeros_like(img)
-            cv2.drawContours(mask, [s.contour], -1, 255, thickness=cv2.FILLED)
+        shm = sm.SharedMemory(create=True, size=img.nbytes, name=SM_IMAGE)
+        shm_img = np.ndarray(img.shape, dtype=img.dtype, buffer=shm.buf)
+        shm_img[:] = img[:]
+        with Pool() as pool:
+            results = np.ones(len(self.splinters), dtype=np.uint8) * -1
+            for i,result in enumerate(pool.imap_unordered(check_splinter, enumerate(self.splinters))):
+                results[i] = result
+                update_task(task, advance=1)
 
-            roi = mask[y:y+h, x:x+w]
-            # Apply the mask to the original image
-            result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
-
-            # Check if all pixels in the contour area are black
-            #TODO! this value is crucial to the quality of histograms!
-            if np.mean(result) < 50:
-                i_del.append(i)
-            elif config.debug:
-                cv2.drawContours(cimg, [s.contour], -1, rand_col(), 1)
+        i_del = (x for x in results if x != -1)
 
         update_task(task, advance=1)
         # remove splinters starting from the back
@@ -488,7 +515,10 @@ class Analyzer(object):
 
         skel_mask = self.image_skeleton.copy()
 
-        update_task(task, advance=1, add_total=len(removed_splinters))
+        update_task(task, advance=1, add_total=len(removed_splinters), descr="Fill dark spots...")
+
+
+
         for s in removed_splinters:
 
             c = s.centroid_px

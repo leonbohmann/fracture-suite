@@ -192,11 +192,12 @@ class Specimen:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
         self.loaded = True
+
+    def print_loaded(self):
         name = f"'{self.name}'"
         print(f"Loaded {name:>30} ({checkmark(self.has_scalp)}, "
                 f"{checkmark(self.has_splinters)}, "
                 f"{checkmark(False)}).")
-
 
 
     def __init__(self, path: str, log_missing = True, lazy = False):
@@ -411,6 +412,7 @@ class Specimen:
     def get_all_by( decider: Callable[[Specimen], bool],
                     value: Callable[[Specimen], _T1 | Specimen] = None,
                     max_n: int = 1000,
+                    lazyload: bool = True,
                     sortby: Callable[[Specimen], Any] = None) -> list[_T1]:
         """
         Loads specimens with a decider function.
@@ -437,7 +439,7 @@ class Specimen:
             if value is None:
                 value = Specimen.__default_value
 
-            specimen = Specimen(spec_path, log_missing=False, lazy=True)
+            specimen = Specimen(spec_path, log_missing=False, lazy=lazyload)
 
             if not decider(specimen):
                 return None
@@ -465,7 +467,7 @@ class Specimen:
                 if spec is not None:
                     data.append(spec)
                     prog.set_description(f'Loaded {len(data)} specimens...')
-                    spec.load()
+                    spec.print_loaded()
                 if len(data) >= max_n:
                     break
 
