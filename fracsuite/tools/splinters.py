@@ -1,23 +1,20 @@
 import os
 from itertools import groupby
 import re
-from typing import Annotated, List
+from typing import Annotated
 
-import altair as alt
 import cv2
-from matplotlib.ticker import FuncFormatter, LinearLocator
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import typer
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from rich import print
-from rich.progress import Progress, SpinnerColumn, track
-from scipy.optimize import curve_fit
+from rich.progress import track
 
 from fracsuite.core.plotting import plot_image_kernel_contours, plot_splinter_kernel_contours
-from fracsuite.core.image import to_gray, to_rgb
+from fracsuite.core.image import to_rgb
 from fracsuite.core.progress import get_progress
-from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.processing import preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings

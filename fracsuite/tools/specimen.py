@@ -294,7 +294,8 @@ class Specimen:
 
         return Specimen(path, lazy=not load)
 
-    def get_all(names: list[str] = None, load: bool = True) -> List[Specimen]:
+    def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None) \
+        -> List[Specimen]:
         """
         Get a list of specimens by name. Raises exception, if any is not found.
 
@@ -302,18 +303,20 @@ class Specimen:
 
         Args:
             names(list[str]): List of specimen names.
-            load(bool): States, if the specimens should be loaded or not.
             name_filter(str): Filter for the specimen names.
         """
         specimens: list[Specimen] = []
 
         if names is None:
-            return Specimen.get_all_by(lambda x: True, load=load)
+            return Specimen.get_all_by(lambda x: True)
+        elif isinstance(names, Specimen):
+            return [names]
+        elif isinstance(names, list) and len(names) > 0 and isinstance(names[0], Specimen):
+            return names
         elif isinstance(names, str) and "*" in names:
             name_filter = names.replace(".", "\.").replace("*", ".*")
             return Specimen.get_all_by(
                 lambda x: re.match(name_filter, x.name) is not None,
-                load=load
             )
         elif isinstance(names, str):
             names = [names]
@@ -321,13 +324,13 @@ class Specimen:
             name_filter = names[0].replace(".", "\.").replace("*", ".*")
             filter = re.compile(name_filter)
             return Specimen.get_all_by(
-                lambda x: filter.search(x.name) is not None,
-                load=load
+                lambda x: filter.search(x.name) is not None
             )
 
+        # this is quicker than to call get_all_by because only the names are loaded
         for name in track(names, description="Loading specimens...", transient=True):
             dir = os.path.join(general.base_path, name)
-            specimen = Specimen.get(dir, load)
+            specimen = Specimen.get(dir, load=True)
             specimens.append(specimen)
 
         if len(specimens) == 0:
@@ -342,14 +345,13 @@ class Specimen:
     def get_all_by( decider: Callable[[Specimen], bool],
                     value: Callable[[Specimen], _T1 | Specimen] = None,
                     max_n: int = 1000,
-                    sortby: Callable[[Specimen], Any] = None,
-                    load: bool = True) -> list[_T1]:
+                    sortby: Callable[[Specimen], Any] = None) -> list[_T1]:
         """
         Loads specimens with a decider function.
         Iterates over all specimens in the base path.
         """
 
-        def load_specimen(spec_path, load, decider, value) -> Specimen | None:
+        def load_specimen(spec_path, decider, value) -> Specimen | None:
             """Load a single specimen.
 
             Args:
@@ -369,7 +371,7 @@ class Specimen:
             if value is None:
                 value = Specimen.__default_value
 
-            specimen = Specimen(spec_path, log_missing=False, lazy=not load)
+            specimen = Specimen(spec_path, log_missing=False, lazy=True)
             if not decider(specimen):
                 return None
 
@@ -386,16 +388,17 @@ class Specimen:
 
         max_iter = len(directories)
 
-        with get_spinner('Loading specimens...') as p:
-            p.set_total(max_iter)
+        with get_spinner('Loading specimens...') as prog:
+            prog.set_total(max_iter)
 
             for dir in directories:
-                spec = load_specimen(dir, load, decider, value)
-                p.advance()
+                spec = load_specimen(dir, decider, value)
+                prog.advance()
 
                 if spec is not None:
                     data.append(spec)
-                    p.set_description(f'Loaded {len(data)} specimens...')
+                    prog.set_description(f'Loaded {len(data)} specimens...')
+                    spec.load()
                 if len(data) >= max_n:
                     break
 
@@ -477,7 +480,7 @@ def export():
             worksheet.write(row, 8, s.scalp.sig_h)
             worksheet.write(row, 9, s.scalp.sig_h_dev)
         if s.has_splinters:
-            worksheet.write(row, 10, s.splinters.get_mean_splinter_size())
+            worksheet.write(row, 10, np.mean([x.area for x in s.splinters]))
 
 
 
@@ -512,3 +515,7 @@ def list_all(setting: str = None, value: str = None):
             print(f"\t{k}", end="")
 
         print()
+
+@app.command()
+def disp(filter: str = None):
+    data = Specimen.get_all(filter)

@@ -12,3 +12,10 @@ def sync():
     for specimen in specimens:
         specimen.scalp.calc()
         specimen.scalp.save(specimen.scalp_dir)
+
+def fill(path: str):
+    specimens = Specimen.get_all()
+
+    for specimen in specimens:
+        specimen.scalp.calc()
+        specimen.scalp.save(specimen.scalp_dir)
