@@ -338,7 +338,7 @@ class Analyzer(object):
             update_main(4, 'Filter spots... (SKIPPED)')
 
         #############
-        # detect fragments on the closed skeleton
+        # detect fragments on the closed and possibly filtered skeleton
         update_main(5, 'Final contour analysis')
         self.contours = detect_fragments(self.image_skeleton, config)
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
