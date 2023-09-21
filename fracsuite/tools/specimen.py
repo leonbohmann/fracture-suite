@@ -145,6 +145,7 @@ class Specimen:
         "Measured pre-stress of the specimen."
         assert self.loaded, "Specimen not loaded."
         return self.__sigma_h
+
     @property
     def measured_thickness(self):
         "Measured thickness of the specimen."
@@ -163,8 +164,8 @@ class Specimen:
         assert self.loaded, "Specimen not loaded."
         return self.__U
 
-    __sigma_h: ScalpStress = None
-    __measured_thickness: float = 0
+    __sigma_h: ScalpStress = ScalpStress.default()
+    __measured_thickness: float = np.nan
     __U_d: float = np.nan
     __U: float = np.nan
 

@@ -71,7 +71,7 @@ class ScalpStress(float):
     def n_points(self):
         return self.__n_points
 
-    def __new__(self, value):
+    def __new__(self, value, *args):
         return float.__new__(self, value)
 
     def __init__(self, value, deviation, n_points):
@@ -81,7 +81,7 @@ class ScalpStress(float):
 
     @classmethod
     def default(cls):
-        return cls(np.nan, np.nan, 0)
+        return cls(np.nan, np.nan, np.nan)
 
 class ScalpSpecimen:
     """ Object, that contains information about a specimen. """

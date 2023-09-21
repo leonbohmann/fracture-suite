@@ -3,15 +3,25 @@ Plotting helper functions
 """
 
 from typing import Any, Callable, TypeVar
+import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import numpy as np
 from fracsuite.core.image import to_rgb
+
 from fracsuite.core.stochastics import csintkern_image, csintkern_objects
 from fracsuite.splinters.splinter import Splinter
 
 
+
+new_colormap  = mpl.colormaps['turbo'].resampled(7)
+
+# make the first color white
+new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
+
+# Erstellt eine lineare Übergangs-Colormap von Weiß zu den ursprünglichen Farben
+modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', new_colormap.colors, 256,)
 
 def plot_splinter_kernel_contours(original_image: np.ndarray,
                    splinters: list[Splinter],

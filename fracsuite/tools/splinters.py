@@ -15,6 +15,7 @@ from rich.progress import track
 from fracsuite.core.plotting import plot_image_kernel_contours, plot_splinter_kernel_contours
 from fracsuite.core.image import to_rgb
 from fracsuite.core.progress import get_progress
+from fracsuite.core.plotting import modified_turbo
 from fracsuite.splinters.processing import preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
@@ -332,6 +333,7 @@ def log_2d_histograms(
     boundary: Annotated[str, typer.Option(help='Allowed boundaries.')] = ["ABZ"],
     exclude: Annotated[str, typer.Option(help='Exclude specimen names matching this.')] = None,
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
+    y_stress: Annotated[bool, typer.Option(help='Show stress on y axis instead of energy.')] = False,
     maxspecimen: Annotated[int, typer.Option(help='Maximum amount of specimens.')] = 50,
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
     """Plot a 2D histogram of splinter sizes and stress."""
@@ -380,7 +382,7 @@ def log_2d_histograms(
         print("[red]No specimens loaded.[/red]")
         return
     elif any([x.splinters is None for x in specimens]):
-        print("[red]Some specimens have no splinters.[/red]")
+        print("[yellow]Warning:[/yellow] Some specimens have no splinters.")
         specimens = [x for x in specimens if x.splinters is not None]
 
     binrange = np.linspace(0,2,n_bins)
@@ -402,7 +404,11 @@ def log_2d_histograms(
             hist = np.array(hist)/np.max(hist)
 
             data.append((hist, specimen.name))
-            stress.append(specimen.U_d)
+            if not y_stress:
+                stress.append(specimen.U_d)
+            else:
+                stress.append(specimen.sig_h)
+
             progress.update(an_task, advance=1)
 
     # sort data and names for ascending stress
@@ -410,7 +416,11 @@ def log_2d_histograms(
     names = [x[1] for x in data]
     data = [x[0] for x in data]
     axs.set_xlabel("Splinter Area [mm²]")
-    axs.set_ylabel("Strain Energy [J/m²]")
+    if not y_stress:
+        axs.set_ylabel("Strain Energy [J/m²]")
+    else:
+        axs.set_ylabel("Surface Stress [MPa]")
+
     axs.set_xticks(np.arange(0, n_bins, 5), [f'{10**edges[x]:.2f}' for x in np.arange(1, n_bins + 1, 5)])
     axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' if i % 5 == 0 else "" for i,x in enumerate(stress)])
 
@@ -418,16 +428,13 @@ def log_2d_histograms(
     axy.set_yticks(axs.get_yticks(), [x  for i,x in enumerate(names)])
 
     dt = np.array(data)
-    axs.imshow(dt, cmap='Blues', aspect='auto', interpolation='none')
+    axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
 
-    fig2 = plot_histograms((0,2), specimens, plot_mean=True)
-    plt.show()
+    # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
+    # plt.show()
 
     axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
     fig.tight_layout()
-
-
-    disp_mean_sizes(specimens)
 
     if sigmas is not None:
         out_name = general.get_output_file(f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
