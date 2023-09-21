@@ -73,8 +73,6 @@ def split_image(img, grid_size) -> SplitImage:
     # Eine leere Liste für die Teile des Bildes erstellen
     parts = []
 
-    os.makedirs("parts", exist_ok=True)
-    os.makedirs("parts_masked", exist_ok=True)
     for i in range(rows):
         for j in range(cols):
             left = j * grid_size

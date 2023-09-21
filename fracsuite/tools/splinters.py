@@ -402,7 +402,7 @@ def log_2d_histograms(
             hist = np.array(hist)/np.max(hist)
 
             data.append((hist, specimen.name))
-            stress.append(specimen.get_energy())
+            stress.append(specimen.U_d)
             progress.update(an_task, advance=1)
 
     # sort data and names for ascending stress

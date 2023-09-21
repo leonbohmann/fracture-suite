@@ -1,5 +1,6 @@
 {
     "base_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Proben\\",
+    "out_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Auswertung\\",
     "plot_extension": "png",
     "default_image_size_px": [
         4000,

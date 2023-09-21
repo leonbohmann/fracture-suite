@@ -11,6 +11,7 @@ class GeneralSettings:
     __create_key = object()
 
     base_path: str = ""
+    out_path: str = ""
     plot_extension: str = "pdf"
     image_extension: str = "png"
     default_image_size_px: tuple[int,int] = (4000, 4000)
@@ -37,7 +38,13 @@ class GeneralSettings:
         self.load()
         # print(f"[green]OK[/green] (Thread: {threading.get_ident()})")
 
-        assert os.path.isdir(self.base_path), "Base path does not exist!"
+        if not os.path.exists(self.base_path):
+            print(f"Base path {self.base_path} does not exist. Creating it...")
+            os.makedirs(self.base_path)
+        if not os.path.exists(self.out_path):
+            print(f"Output path {self.out_path} does not exist. Creating it...")
+            os.makedirs(self.out_path)
+
         if self.plot_extension.startswith("."):
             self.plot_extension = self.plot_extension[1:]
         if self.image_extension.startswith("."):
@@ -56,6 +63,9 @@ class GeneralSettings:
                 conf = json.load(f)
                 for key in conf:
                     setattr(self, key, conf[key])
+        else:
+            # create config file
+            self.save()
 
     def save(self) -> None:
         # save members to json

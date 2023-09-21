@@ -304,27 +304,30 @@ class Specimen:
 
         raise Exception("Invalid break position.")
 
-    def get_energy(self):
-        t0 = (self.scalp.measured_thickness * 1e-3)
-        return self.get_energy_density() * t0
+    def __get_energy(self):
+        t0 = (self.__scalp.measured_thickness * 1e-3)
+        return self.__get_energy_density() * t0
 
-    def get_energy_density(self):
+    def __get_energy_density(self):
         nue = 0.23
-        E = 70e9
-        return 1e6/5 * (1-nue)/E * self.scalp.sig_h ** 2
+        E = 70e6
+        return 1e6/5 * (1-nue)/E * self.__scalp.sig_h ** 2
 
     def __load_scalp(self, file = None):
+        """Loads scalp data. Make sure to access self.__scalp until the load method returns. """
         if not self.has_scalp:
             return
         if file is None:
             file = self.__scalp_file
 
+        # load the scalp
         self.__scalp = ScalpSpecimen.load(file)
 
+        # then perform calculations
         self.__measured_thickness = self.__scalp.measured_thickness
         self.__sigma_h = self.__scalp.sig_h
-        self.__U_d = self.get_energy_density()
-        self.__U = self.get_energy()
+        self.__U_d = self.__get_energy_density()
+        self.__U = self.__get_energy()
 
     def __load_splinters(self, file = None):
         if not self.has_splinters:
