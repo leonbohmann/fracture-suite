@@ -85,6 +85,8 @@ def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo_r'):
 
     return tuple(int(255 * channel) for channel in rgb_color)
 
+def checkmark(value: bool) -> str:
+        return "[green]✔[/green]" if value else "[red]✗[/red]"
 
 __backgrounds = ['black', 'white']
 def annotate_image(image,

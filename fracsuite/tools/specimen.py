@@ -4,23 +4,21 @@ import json
 import os
 import pickle
 import re
-import time
 from typing import Any, Callable, List, TypeVar
 
 import cv2
 import numpy as np
 import typer
-from pathos.pools import ProcessPool
 from rich import print
-from rich.progress import Progress, track, SpinnerColumn, TextColumn, TimeElapsedColumn
-from fracsuite.core.progress import get_spinner, ProgSpinner
+from rich.progress import Progress, track
 
-from fracsuite.scalper.scalpSpecimen import ScalpSpecimen
+from fracsuite.core.progress import get_spinner
+from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import find_file
+from fracsuite.tools.helpers import checkmark, find_file
 
 app = typer.Typer()
 
@@ -79,12 +77,27 @@ class SpecimenException(Exception):
 class Specimen:
     """ Container class for a specimen. """
 
-    splinters: list[Splinter] = None
-    "Splinters on the glass ply."
-    splinter_config: AnalyzerConfig = None
-    "Splinter analysis configuration that can be used to rerun it."
-    scalp: ScalpSpecimen = None
-    "Scalp analysis."
+    @property
+    def splinters(self) -> list[Splinter]:
+        "Splinters on the glass ply."
+        assert self.loaded, "Specimen not loaded."
+        return self.__splinters
+
+    @property
+    def splinter_config(self) -> AnalyzerConfig:
+        "Splinter analysis configuration that can be used to rerun it."
+        assert self.loaded, "Specimen not loaded."
+        return self.__splinter_config
+
+    @property
+    def scalp(self) -> ScalpSpecimen:
+        "Scalp analysis."
+        assert self.loaded, "Specimen not loaded."
+        return self.__scalp
+
+    __splinters: list[Splinter] = None
+    __splinter_config: AnalyzerConfig = None
+    __scalp: ScalpSpecimen = None
 
     settings: dict[str, str] = \
     {
@@ -132,6 +145,11 @@ class Specimen:
         "Measured pre-stress of the specimen."
         assert self.loaded, "Specimen not loaded."
         return self.__sigma_h
+    @property
+    def measured_thickness(self):
+        "Measured thickness of the specimen."
+        assert self.loaded, "Specimen not loaded."
+        return self.__measured_thickness
 
     @property
     def U_d(self):
@@ -145,10 +163,8 @@ class Specimen:
         assert self.loaded, "Specimen not loaded."
         return self.__U
 
-    __sigma_h: float = np.nan
-    sigma_h_dev: float = np.nan
-    "Standard deviation of the measured pre-stress."
-
+    __sigma_h: ScalpStress = None
+    __measured_thickness: float = 0
     __U_d: float = np.nan
     __U: float = np.nan
 
@@ -175,7 +191,12 @@ class Specimen:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
         self.loaded = True
-        print(f"Loaded '{self.name}'.")
+        name = f"'{self.name}'"
+        print(f"Loaded {name:>30} ({checkmark(self.has_scalp)}, "
+                f"{checkmark(self.has_splinters)}, "
+                f"{checkmark(False)}).")
+
+
 
     def __init__(self, path: str, log_missing = True, lazy = False):
         """Create a new specimen.
@@ -285,7 +306,7 @@ class Specimen:
 
     def get_energy(self):
         t0 = (self.scalp.measured_thickness * 1e-3)
-        return self.scalp.U_d * t0
+        return self.get_energy_density() * t0
 
     def get_energy_density(self):
         nue = 0.23
@@ -298,9 +319,10 @@ class Specimen:
         if file is None:
             file = self.__scalp_file
 
-        self.scalp = ScalpSpecimen.load(file)
+        self.__scalp = ScalpSpecimen.load(file)
 
-        self.__sigma_h = self.scalp.sig_h
+        self.__measured_thickness = self.__scalp.measured_thickness
+        self.__sigma_h = self.__scalp.sig_h
         self.__U_d = self.get_energy_density()
         self.__U = self.get_energy()
 
@@ -312,7 +334,7 @@ class Specimen:
             file = self.__splinters_file
 
         with open(file, "rb") as f:
-            self.splinters = pickle.load(f)
+            self.__splinters = pickle.load(f)
 
     def __load_splinter_config(self, file = None):
         if not self.has_splinter_config:
@@ -321,7 +343,7 @@ class Specimen:
         if file is None:
             file = self.__config_file
 
-        self.splinter_config = AnalyzerConfig.load(file)
+        self.__splinter_config = AnalyzerConfig.load(file)
 
     def get(name: str | Specimen, load: bool = True) -> Specimen:
         """Gets a specimen by name. Raises exception, if not found."""
@@ -559,3 +581,7 @@ def list_all(setting: str = None, value: str = None):
 @app.command()
 def disp(filter: str = None):
     data = Specimen.get_all(filter)
+
+    for s in data:
+        if s.has_scalp:
+            print(f"{s.name}: {s.sig_h:.2f} (+- {s.sig_h.deviation:.2f})MPa")

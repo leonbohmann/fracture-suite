@@ -71,7 +71,7 @@ class ScalpStress(float):
     def n_points(self):
         return self.__n_points
 
-    def __new__(self, value: float, deviation: float, n_points: int):
+    def __new__(self, value):
         return float.__new__(self, value)
 
     def __init__(self, value, deviation, n_points):
@@ -183,7 +183,7 @@ class ScalpSpecimen:
         Args:
             dir (str): Directory to save to.
         """
-        with open(os.path.join(dir, f"scalp_data.pkl"), "wb") as file:
+        with open(os.path.join(dir, "scalp_data.pkl"), "wb") as file:
             pickle.dump(self, file)
 
     def load(file_path) -> ScalpSpecimen:

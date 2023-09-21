@@ -28,7 +28,7 @@ def stress():
             thicknesses[t][i] = []
 
     for spec in specimens:
-        thicknesses[spec.thickness][spec.nom_stress].append(np.abs(spec.scalp.sig_h))
+        thicknesses[spec.thickness][spec.nom_stress].append(np.abs(spec.sig_h))
 
     fig, axs = plt.subplots(figsize=(4,4))
     # axs.scatter(nominal_4, scalped_4, marker='x', color='orange', label="4mm")
@@ -66,7 +66,7 @@ def stress():
 def thickness():
     """Compares all nominal stresses with real scalped stresses."""
     def has_stress(specimen: Specimen):
-        return specimen.has_scalp and specimen.scalp.measured_thickness != 0 \
+        return specimen.has_scalp and specimen.measured_thickness != 0 \
             and specimen.thickness != 0
     def get_spec(specimen: Specimen) -> Specimen:
         return specimen
@@ -78,7 +78,7 @@ def thickness():
         }
 
     for spec in specimens:
-        thicknesses[spec.thickness].append(np.abs(spec.scalp.measured_thickness))
+        thicknesses[spec.thickness].append(np.abs(spec.measured_thickness))
 
 
     # 4mm specs
