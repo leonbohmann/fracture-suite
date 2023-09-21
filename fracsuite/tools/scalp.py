@@ -10,14 +10,6 @@ scalp_app = typer.Typer()
 general = GeneralSettings.get()
 
 @scalp_app.command()
-def sync():
-    specimens = Specimen.get_all()
-
-    for specimen in specimens:
-        specimen.__scalp.calc()
-        specimen.__scalp.save(specimen.scalp_dir)
-
-@scalp_app.command()
 def fill():
     from openpyxl import load_workbook
     from openpyxl.worksheet.worksheet import Worksheet
