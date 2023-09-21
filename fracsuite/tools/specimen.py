@@ -437,6 +437,7 @@ class Specimen:
                 value = Specimen.__default_value
 
             specimen = Specimen(spec_path, log_missing=False, lazy=True)
+
             if not decider(specimen):
                 return None
 

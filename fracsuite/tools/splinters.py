@@ -130,7 +130,7 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         clr_label='Mean roughness',
                                         fig_title='Splinter Roughness')
 
-    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"fig_roundintensity.{general.plot_extension}")
+    out_path = general.get_output_file( specimen_name, "fracture", "splinter", f"fig_roundintensity.{general.plot_extension}")
     fig.savefig(out_path, dpi=500)
     del fig
     finalize(out_path)
@@ -170,7 +170,7 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     #     colorbar[i] = clr
     # out_img = np.concatenate((out_img, colorbar), axis=1)
     out_img = annotate_image(out_img, "Roughness", min_value=min_r, max_value=max_r)
-    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"roughness.{general.image_extension}")
+    out_path = general.get_output_file( specimen_name, "fracture", "splinter", f"roughness.{general.image_extension}")
 
     write_image(out_img, out_path)
 
@@ -211,7 +211,7 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
                                   max_value=max_r,
                                   unit="[-]",
                                   background='white')
-    out_path = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"roundness.{general.image_extension}")
+    out_path = general.get_output_file( specimen_name, "fracture", "splinter", f"roundness.{general.image_extension}")
     cv2.imwrite(out_path, out_img)
 
     finalize(out_path)
@@ -319,7 +319,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
         ax.legend(loc='best')
     ax.grid(True, which='both', axis='both')
     fig.tight_layout()
-    out_name = os.path.join(general.base_path, f"stress_vs_size.png")
+    out_name = general.get_output_file( f"stress_vs_size.png")
     fig.savefig(out_name)
 
     finalize(out_name)
@@ -430,9 +430,9 @@ def log_2d_histograms(
     disp_mean_sizes(specimens)
 
     if sigmas is not None:
-        out_name = os.path.join(general.base_path, f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
+        out_name = general.get_output_file(f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
     elif names is not None:
-        out_name = os.path.join(general.base_path, f"loghist2d_{names[0]}.{general.plot_extension}")
+        out_name = general.get_output_file( f"loghist2d_{names[0]}.{general.plot_extension}")
     fig.savefig(out_name)
     finalize(out_name)
 
@@ -549,7 +549,7 @@ def plot_stress_size(specimens: list[Specimen]):
         if file.startswith("stress_vs_size"):
             count += 1
 
-    out_name = os.path.join(general.base_path, f"stress_vs_size.png")
+    out_name = general.get_output_file( f"stress_vs_size.png")
     fig.savefig(out_name)
     finalize(out_name)
 
@@ -588,7 +588,7 @@ def loghist_sigma(sigmas: Annotated[str, typer.Argument(help='Stress range. Eith
     specimens: list[Specimen] = Specimen.get_all_by(in_sigma_range, max_n=maxspecimen)
 
 
-    out_path = os.path.join(general.base_path, f"{sigmas[0]}-{sigmas[1]}_log_histograms.png")
+    out_path = general.get_output_file( f"{sigmas[0]}-{sigmas[1]}_log_histograms.png")
     fig = plot_histograms(xlim, specimens, lambda x: f"{x.name}_{abs(x.scalp.sig_h):.2f}", has_legend=not nolegend)
     fig.savefig(out_path)
     plt.close(fig)
@@ -603,7 +603,7 @@ def loghist_sigma(sigmas: Annotated[str, typer.Argument(help='Stress range. Eith
 # def plot_all_accumulations():
 #     """Plot histograms for all specimens in the base path."""
 #     for dir in (pbar := track(os.listdir(general.base_path))):
-#         spec_path = os.path.join(general.base_path, dir)
+#         spec_path = general.get_output_file( dir)
 #         if not os.path.isdir(spec_path):
 #             continue
 
@@ -621,7 +621,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 
     cfg = specimen.splinter_config
     cfg.impact_position = (50,50)
-    out_name = os.path.join(general.base_path, specimen_name, "fracture", "splinter", f"splinter_orientation.{general.plot_extension}")
+    out_name = general.get_output_file( specimen_name, "fracture", "splinter", f"splinter_orientation.{general.plot_extension}")
 
     def plot_impact_influence(size, splinters: list[Splinter], out_file, impact_pos, size_fac,  updater = None):
         """Creates a 2D Image of the splinter orientation towards an impact point.

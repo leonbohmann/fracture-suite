@@ -99,3 +99,6 @@ class GeneralSettings:
         self.base_path = p
         self.plot_extension = pe
         self.save()
+
+    def get_output_file(self, *name):
+        return os.path.join(self.out_path, *name)
