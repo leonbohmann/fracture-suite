@@ -2,6 +2,7 @@ import typer
 from rich import print
 
 from fracsuite.tools.specimen import Specimen
+from fracsuite.scalper.scalpSpecimen import ScalpSpecimen
 
 scalp_app = typer.Typer()
 

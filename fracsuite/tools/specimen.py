@@ -121,6 +121,38 @@ class Specimen:
     acc_file: str = ""
     "Path to the acceleration file."
 
+
+    nue: float = 0.23
+    "Poisson's ratio of the specimen."
+    E: float = 70e9
+    "Young's modulus of the specimen."
+
+    @property
+    def sig_h(self):
+        "Measured pre-stress of the specimen."
+        assert self.loaded, "Specimen not loaded."
+        return self.__sigma_h
+
+    @property
+    def U_d(self):
+        "Strain energy density of the specimen."
+        assert self.loaded, "Specimen not loaded."
+        return self.__U_d
+
+    @property
+    def U(self):
+        "Strain Energy of the specimen."
+        assert self.loaded, "Specimen not loaded."
+        return self.__U
+
+    __sigma_h: float = np.nan
+    sigma_h_dev: float = np.nan
+    "Standard deviation of the measured pre-stress."
+
+    __U_d: float = np.nan
+    __U: float = np.nan
+
+
     def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
 
@@ -160,7 +192,6 @@ class Specimen:
         else:
             with open(self.__cfg_path, "r") as f:
                 self.settings = json.load(f)
-
 
         # get name from path
         self.name = os.path.basename(os.path.normpath(path))
@@ -256,6 +287,11 @@ class Specimen:
         t0 = (self.scalp.measured_thickness * 1e-3)
         return self.scalp.U_d * t0
 
+    def get_energy_density(self):
+        nue = 0.23
+        E = 70e9
+        return 1e6/5 * (1-nue)/E * self.scalp.sig_h ** 2
+
     def __load_scalp(self, file = None):
         if not self.has_scalp:
             return
@@ -263,6 +299,10 @@ class Specimen:
             file = self.__scalp_file
 
         self.scalp = ScalpSpecimen.load(file)
+
+        self.__sigma_h = self.scalp.sig_h
+        self.__U_d = self.get_energy_density()
+        self.__U = self.get_energy()
 
     def __load_splinters(self, file = None):
         if not self.has_splinters:

@@ -53,11 +53,40 @@ class ScalpProject:
         self.specimens = [ScalpSpecimen(name, measurements) for name, measurements in specimen_measurements.items()]
 
 
+class ScalpStress(float):
+    """ Object, that contains information about the stress state of a specimen. """
+    __value: float
+    __deviation: float
+    __n_points: int
 
+    @property
+    def value(self):
+        return self.__value
+
+    @property
+    def deviation(self):
+        return self.__deviation
+
+    @property
+    def n_points(self):
+        return self.__n_points
+
+    def __new__(self, value: float, deviation: float, n_points: int):
+        return float.__new__(self, value)
+
+    def __init__(self, value, deviation, n_points):
+        self.__value = value
+        self.__deviation = deviation
+        self.__n_points = n_points
+
+    @classmethod
+    def default(cls):
+        return cls(np.nan, np.nan, 0)
 
 class ScalpSpecimen:
     """ Object, that contains information about a specimen. """
     name: str
+    "Name of the specimen."
     measurementlocations: list[MeasurementLocation]
     "List of all measurement locations on this specimen."
     measurements: list[Measurement]
@@ -67,10 +96,8 @@ class ScalpSpecimen:
 
     measured_thickness: float
     "Measured thickness of the specimen."
-    sig_h: float
-    "Homogenous pre-stress value of the specimen."
-    sig_h_dev: float
-    "Standard deviation of the homogenous pre-stress value of the specimen."
+    sig_h: ScalpStress
+    "Stress state of the specimen."
 
     nue: float = 0.23
     "Poisson's ratio of the glass."
@@ -82,7 +109,6 @@ class ScalpSpecimen:
         self.measurements = measurements
 
         self.name = name
-        self.sig_h = 0.0
 
         # print(f"Extracting info for specimen {name}")
 
@@ -117,8 +143,6 @@ class ScalpSpecimen:
 
         self.measured_thickness = thickness
 
-        # calculate strain energy density
-        self.U_d = 1e6/5 * (1-self.nue)/self.E * self.sig_h ** 2
 
     def __calc_homogenous_princ_stress(self):
         """
@@ -143,13 +167,15 @@ class ScalpSpecimen:
         # if no valid location is found, the specimen is invalid
         if len(stresses) == 0:
             print(f"[yellow]WARNING[/yellow]: No valid locations in specimen {self.name}.")
-            self.sig_h = np.nan
-            self.sig_h_dev = np.nan
+            self.sig_h = ScalpStress.default()
             self.invalid = True
             return
 
-        self.sig_h = np.mean(stresses1 + stresses2)
-        self.sig_h_dev = np.std(stresses1 + stresses2)
+        sig_h = np.mean(stresses1 + stresses2)
+        sig_h_dev = np.std(stresses1 + stresses2)
+        n_points = len(self.measurementlocations)
+
+        self.sig_h = ScalpStress(sig_h, sig_h_dev, n_points)
 
     def save(self, dir):
         """Saves the specimen to a directory.
@@ -166,9 +192,8 @@ class ScalpSpecimen:
 
     def to_file(self, file):
         file.write(f'{self.measured_thickness:<35}\t# thickness [mm]\n')
-        file.write(f'{self.sig_h:<35}\t# homogenous stress [MPa]\n')
-        file.write(f'{self.sig_h_dev:<35}\t# hom stress std-dev [-]\n')
-        file.write(f'{self.U_d:<35}\t# energy density [J/m³]\n')
+        file.write(f'{self.sig_h:<35} ({self.sig_h.n_points})\t# homogenous stress [MPa]\n')
+        file.write(f'{self.sig_h.deviation:<35}\t# hom stress std-dev [-]\n')
         file.write('\n')
 
         file.write(f'# {"name":18}\t{"sig_1":<20}\t{"sig_2":<20}\n')

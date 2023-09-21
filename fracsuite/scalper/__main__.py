@@ -14,16 +14,16 @@ from fracsuite.scalper.scalpSpecimen import ScalpProject, ScalpSpecimen
 from fracsuite.scalper.scalp_stress import calculate_simple
 
 descr = """
-███████╗ ██████╗ █████╗ ██╗     ██████╗ ███████╗██████╗ 
+███████╗ ██████╗ █████╗ ██╗     ██████╗ ███████╗██████╗
 ██╔════╝██╔════╝██╔══██╗██║     ██╔══██╗██╔════╝██╔══██╗
 ███████╗██║     ███████║██║     ██████╔╝█████╗  ██████╔╝
 ╚════██║██║     ██╔══██║██║     ██╔═══╝ ██╔══╝  ██╔══██╗
 ███████║╚██████╗██║  ██║███████╗██║     ███████╗██║  ██║
 ╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝
 Leon Bohmann     TUD - ISMD - GCC        www.tu-darmstadt.de/glass-cc
-                                                      
-                                                        
-ScalpProject:           Create with project file. This will split all measurements into 
+
+
+ScalpProject:           Create with project file. This will split all measurements into
                         specimens and then into locations.
 Specimen:               All measurements on a single specimen.
 MeasurementLocation:    One point on the ply that has been measured (3+ Measurements)
@@ -57,9 +57,9 @@ def remove_duplicates(my_list, my_lambda):
 
         if exists:
             continue
-                
+
         new_list.append(item)
-        
+
     return new_list
 
 
@@ -75,7 +75,7 @@ def get_specimens_from_projects(projects: list[ScalpProject]) -> list[ScalpSpeci
     specimens = flatten_and_sort([x.specimens for x in projects], lambda s: s.name)
     specimens = [x for x in specimens if not x.invalid]
     specimens = remove_duplicates(specimens, lambda t: t.name)
-    
+
     return specimens
 
 ########################################################################################
@@ -86,9 +86,9 @@ def get_specimens_from_projects(projects: list[ScalpProject]) -> list[ScalpSpeci
 
 # implement parse to make this script callable from outside
 parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument('-project', nargs="?", help='The project to be processed.', default=None)  
-parser.add_argument('-output', nargs="?", help='Output directory.')  
-parser.add_argument('-folder', nargs="?", help='If this is passed, analyzes all scalp projects in a folder.', default=None)  
+parser.add_argument('-project', nargs="?", help='The project to be processed.', default=None)
+parser.add_argument('-output', nargs="?", help='Output directory.')
+parser.add_argument('-folder', nargs="?", help='If this is passed, analyzes all scalp projects in a folder.', default=None)
 parser.add_argument('--mohr', action='store_true', help='Display mohr"sche circle for stress states.')
 args = parser.parse_args()
 
@@ -123,7 +123,7 @@ if args.folder is not None:
     project_folder = args.folder
     extension = '.scp'
     files = glob.glob(os.path.join(project_folder, '**', f'*{extension}'), recursive=True)
-    
+
     for file in files:
         print(f'[green]Analyze[/green] file: {file.replace(project_folder, "")}')
         project = ScalpProject(file)
@@ -134,37 +134,37 @@ if args.folder is not None:
 else:
     project = ScalpProject(project_file)
     projects.append(project)
-    
-    
-# write a summary    
+
+
+# write a summary
 project_len = len(projects)
 measurements_len = np.sum([len(x.measurements) for x in projects])
 
 print(f'Projects       : {project_len}')
 print(f'Measurements   : {measurements_len}')
 
-# output all specimens independently from their project    
+# output all specimens independently from their project
 specimens = get_specimens_from_projects(projects)
 for specimen in specimens:
-    
+
     pre = ""
     if not all(not t.invalid for t in specimen.measurementlocations):
         pre = "!!!"
-        
+
     print(f'\t{pre}\t{specimen.name:10}: {len(specimen.measurementlocations)} Locations ({[(x.location_name, [l.orientation for l in x.measurements]) for x in specimen.measurementlocations]})')
-    
-    
+
+
 # calculate stresses for specimens
 for specimen in specimens:
 
-    print(f'\t{specimen.name:10}: sig_h={specimen.sig_h:.2f} (+- {specimen.sig_h_dev:.2f})MPa')
+    print(f'\t{specimen.name:10}: sig_h={specimen.sig_h:.2f} (+- {specimen.sig_h.deviation:.2f})MPa')
     print('\t\t', end="")
-    
+
     for loc in specimen.measurementlocations:
         print(f'\t{loc.location_name}={loc.stress[0]:.2f}/{loc.stress[1]:.2f}', end = "")
-        
+
     print()
-    
+
 # write specimen
 for specimen in specimens:
     specimen.write_measurements(output_directory, output_extension)
