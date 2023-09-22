@@ -76,6 +76,7 @@ def check_splinter(kv):
         return i
     else:
         return -1
+
 class Analyzer(object):
     """
     Analyzer class that can handle an input image.
@@ -122,6 +123,7 @@ class Analyzer(object):
                  silent: bool = False,
                  no_save: bool = False,
                  splinters_only: bool = False):
+
         """Create a new analyzer object.
 
         Args:
@@ -256,6 +258,7 @@ class Analyzer(object):
             # fx: mm/px
             fx = config.real_image_size[0] / cmpSize[0]
             fy = config.real_image_size[1] / cmpSize[1]
+
 
             # the factors must match because pixels are always squared
             # for landscape image, the img_real_size's aspect ratio must match
@@ -449,6 +452,7 @@ class Analyzer(object):
         # check percentage of detected splinters
         total_area = np.sum([x.area for x in self.splinters])
 
+
         if config.real_image_size is not None:
             total_img_size = config.real_image_size[0] * config.real_image_size[1]
         else:
@@ -585,6 +589,7 @@ class Analyzer(object):
 
 
     def __get_out_file(self, file_name: str, file_ext: str = None) -> str:
+
         """Returns an absolute file path to the output directory.
 
         Args:
@@ -598,12 +603,12 @@ class Analyzer(object):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return path
 
+
     def __onselect(self,eclick, erelease):
         """ Private function, internal use only. """
         x1, y1 = eclick.xdata, eclick.ydata
         x2, y2 = erelease.xdata, erelease.ydata
         selected_region = (x1, y1, x2, y2)
-
         if x1 > x2:
             x1,x2 = x2,x1
         if y1 > y2:
@@ -619,9 +624,8 @@ class Analyzer(object):
         # print(selected_region)
         return selected_region
 
-
-
     def __plot_backend(self, region = None, display = False) -> None:
+
         """
         Plots the analyzer backend.
         Displays the original img, preprocessed img, and an overlay of the found cracks
@@ -629,6 +633,7 @@ class Analyzer(object):
         """
         self.fig_comparison, (self.ax3, self.ax1, self.ax2) = \
             plt.subplots(1, 3, figsize=(12, 6))
+
 
         # Display the result from Canny edge detection
         self.ax3.imshow(self.original_image)
@@ -677,6 +682,7 @@ class Analyzer(object):
             button=[1], spancoords='pixels', )
         rs2 = RectangleSelector(self.ax3, self.__onselect, useblit=True, \
             button=[1], spancoords='pixels', )
+
         rs.add_state('square')
 
         rs1.add_state('square')
@@ -730,6 +736,7 @@ class Analyzer(object):
         return s_count
 
     def plot_splintersize_accumulation(self, display = False) -> Figure:
+
         """Plots a graph of accumulated share of area for splinter sizes.
 
         Returns:
@@ -737,6 +744,7 @@ class Analyzer(object):
         """
         areas = [x.area for x in self.splinters]
         total_area = np.sum(areas)
+
 
         # ascending sort, smallest to largest
         areas.sort()
@@ -746,6 +754,7 @@ class Analyzer(object):
         area_i = 0
         for area in areas:
             area_i += area
+
 
             p = area_i / total_area
             data.append((area, p))
@@ -759,11 +768,13 @@ class Analyzer(object):
         ax.set_title('Splinter Size Accumulation')
         ax.set_xlabel(f"$Area_i [{'mm' if self.config.cropped_image_size is not None else 'px'}²]$")
         ax.set_ylabel(r"$\frac{\sum (Area_i)}{Area_t} [-]$")
+
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
         # plt.axvline(5000**2, c='r', label='Image Area')
         if display:
             plt.show()
+
 
         ax.grid(True, which='both', axis='both')
         fig.tight_layout()
@@ -771,6 +782,7 @@ class Analyzer(object):
         plt.close(fig)
 
     def __plot_splintersize_distribution(self, display = False) -> Figure:
+
         """Plots a graph of Splinter Size Distribution.
 
         Returns:
@@ -781,7 +793,6 @@ class Analyzer(object):
         # ascending sort, smallest to largest
         areas.sort()
 
-        data = []
         for area in np.linspace(np.min(areas),np.max(areas),50):
             index = next((i for i, value in enumerate(areas) if value > area), None)
             p = index
@@ -795,6 +806,7 @@ class Analyzer(object):
         ax.set_title('Splinter Size Distribution')
         ax.set_xlabel(f"Splinter Area [{'mm' if self.config.cropped_image_size is not None else 'px'}²]")
         ax.set_ylabel(r"Amount of Splinters [-]")
+
         # plt.axvline(np.average(areas),c='b', label = "Area avg")
         # plt.axvline(np.sum(areas), c='g', label='Found Area')
         # plt.axvline(5000**2, c='r', label='Image Area')
@@ -884,3 +896,4 @@ class Analyzer(object):
 
         plt.close(fig)
 '''
+

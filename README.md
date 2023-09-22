@@ -10,8 +10,6 @@
    It performs several operations on the input image to enhance the visibility of scanned cracks and analyzes contours in the image. Filtering then helps to remove unwanted artifacts like dust speckles or glue residue. The remaining contours are then used to calculate the size (in px) as well as the round- and rough-ness of the splinter.
    </p>
 </div>
-
-
 [![DOI](https://zenodo.org/badge/675402888.svg)](https://zenodo.org/badge/latestdoi/675402888)
 
 > For citation please use:
@@ -29,10 +27,7 @@
 > ```
 
 
-
 ![Backend plot of analyzer, displaying original and preprocessed image and detected cracks](.content/backend.png)
-
-![Fracture Intensity](.content/intensity.png)
 
 ## How it works
 
@@ -93,6 +88,23 @@ Use "base_path" to specify a base folder for specimens. After that, you can use 
 py -m fracsuite.splinters "path/to/image"
 ```
 
+For details see: [API Docs](fracsuite.md)
+
+### Use the module directly
+
+```bat
+py -m fracsuite.splinters -image "path/to/image" [--crop]
+```
+
+#### `-image`
+
+The path to the image
+
+#### `--crop`
+
+If the image contains unfiltered area around the ply, use this to crop the image to the ply.
+
+
 ### Create a script
 
 ```python
@@ -109,6 +121,7 @@ analyzer = Analyzer(image, config)
 analyzer.plot()
 analyzer.plot_area()
 analyzer.plot_area_2()
+
 ```
 
 ### CLI

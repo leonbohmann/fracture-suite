@@ -31,6 +31,7 @@ class Splinter:
     has_centroid: bool
     "True if the centroid could be calculated."
 
+
     def __init__(self, contour, index, mm_px: float):
         """Create a splinter from a contour.
 
@@ -49,6 +50,7 @@ class Splinter:
         self.roundness = self.calculate_roundness()
         # roughness
         self.roughness = self.calculate_roughness()
+
 
         # centroid
         try:

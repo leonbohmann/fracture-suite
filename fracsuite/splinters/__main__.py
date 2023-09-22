@@ -8,6 +8,7 @@
 
 Leon Bohmann     TUD - ISMD - GCC        www.tu-darmstadt.de/glass-cc
 
+
 Description:
 -------------------------
 This module helps with the automated detection of fragments on fractured glass plys. It
@@ -21,13 +22,16 @@ Used packages:
 - opencv-python
 - matplotlib
 - numpy
+
 - tqdm
 
 Usage:
 -------------------------
+
 Command line usage is shown below. For further information visit:
 https://github.com/leonbohmann/fracture-suite
 """
+
 
 import os
 import shutil
