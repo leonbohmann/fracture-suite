@@ -75,15 +75,15 @@ A couple of outputs are saved to a directory next to the input image. These are:
 pip install fracsuite
 ```
 
-## Usage
-
+## Usage (:warning: 0.1.7 only!)
+<!--
 ### Settings
 
 ```bat
 py -m fracsuite.tools config "key" "value"
 ```
 
-Use `base_path` to specify a base folder for specimens. After that, you can use a specimen ID as a path for other modules. There are a lot of other configs, you can list them using the `list` subcommand.
+Use `base_path` to specify a base folder for specimens. After that, you can use a specimen ID as a path for other modules. There are a lot of other configs, you can list them using the `list` subcommand. -->
 
 ### Use the module directly
 
@@ -105,62 +105,4 @@ config = AnalyzerConfig()
 config.cropsize = (4000,4000)
 
 analyzer = Analyzer(image, config)
-
-analyzer.plot()
-analyzer.plot_area()
-analyzer.plot_area_2()
-
-```
-
-### CLI
-
-```
-positional arguments:
-  path
-         The path of the image to be processed or a folder that containsa file in subfolder "[path]/fracture/morph/...Transmission.bmp". Instead of a folder, you can also specify the base_path in tools.settings and then use the specimen ID only "1.1.A.1".
-
-options:
-  -h, --help            show this help message and exit
-  --all                 Instruct the analyzer to run the analysis on every subfolder.
-  --all-exclude ALL_EXCLUDE [ALL_EXCLUDE ...]
-  --clear-splinters
-  --update-plots
-
-General:
-  --displayplots        Instruct the analyzer to display output plots.
-  --debug               Sets a debug flag to display verbose output.
-  --printconfig         Print the config before starting the script.
-
-Image operations:
-  -realsize [WIDTH [HEIGHT ...]]
-                        Real size of the input image. If only one dim is provided, a square geometry is used.
-  -cropsize [WIDTH [HEIGHT ...]]
-                        Crop image size in pixels. If only one dim is provided, a square geometry is used.
-
-Preprocessor:
-  -adapt-mode {gaussian,mean}
-                        Adaptive threshold mode
-  -prepconfig {default,softgauss,softmean,aggressivegauss,aggressivemean,ultramean}
-                        Preprocessor config mode.
-  -gauss-size GAUSS_SIZE
-                        Gaussian filter size
-  -gauss-sigma GAUSS_SIGMA
-                        Gaussian filter sigma
-  -thresh-c THRESH_C    Adaptive threshold c value
-  -thresh-block {1,3,5,7,9,11,13,15,17,19,21}
-                        Adaptive threshold block size
-  -resize-fac RESIZE_FAC
-                        Image resize factor before adaptive th.
-  -min-area MIN_AREA    Minimum fragment area threshold [px²]
-  -max-area MAX_AREA    Maximum fragment area threshold [px²]
-
-Postprocessor:
-  -skelclose-sz SKELCLOSE_SZ
-                        Size for final skeleton close kernel.
-  -skelclose-amnt SKELCLOSE_AMNT
-                        Iterations for final skeleton close kernel.
-  --skip-spot-elim      Instruct the postprocessor to skip "dark-spot" removal.
-
-Output:
-  -out [OUT]            Output directory path.
 ```
