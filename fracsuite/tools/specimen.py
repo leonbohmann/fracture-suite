@@ -80,19 +80,19 @@ class Specimen:
     @property
     def splinters(self) -> list[Splinter]:
         "Splinters on the glass ply."
-        assert self.loaded, "Specimen not loaded."
+        assert self.__splinters is not None, "Splinters are empty. Specimen not loaded?"
         return self.__splinters
 
     @property
     def splinter_config(self) -> AnalyzerConfig:
         "Splinter analysis configuration that can be used to rerun it."
-        assert self.loaded, "Specimen not loaded."
+        assert self.__splinter_config is not None, "Config is empty. Specimen not loaded?"
         return self.__splinter_config
 
     @property
     def scalp(self) -> ScalpSpecimen:
         "Scalp analysis."
-        assert self.loaded, "Specimen not loaded."
+        assert self.__scalp is not None, "Scalp is empty. Specimen not loaded?"
         return self.__scalp
 
     __splinters: list[Splinter] = None
@@ -307,13 +307,13 @@ class Specimen:
         raise Exception("Invalid break position.")
 
     def __get_energy(self):
-        t0 = (self.__scalp.measured_thickness * 1e-3)
+        t0 = self.scalp.measured_thickness
         return self.__get_energy_density() * t0
 
     def __get_energy_density(self):
         nue = 0.23
         E = 70e6
-        return 1e6/5 * (1-nue)/E * self.__scalp.sig_h ** 2
+        return 1e6/5 * (1-nue)/E * self.scalp.sig_h ** 2
 
     def __load_scalp(self, file = None):
         """Loads scalp data. Make sure to access self.__scalp until the load method returns. """

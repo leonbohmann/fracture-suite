@@ -491,27 +491,33 @@ class Analyzer(object):
             task = progress.add_task("Filtering dark spots...",
                                      total=len(self.splinters)+2)
 
-        def update_task(task, advance=1, add_total=0, descr="Filtering dark spots..."):
+        def update_task(task, advance=1, total=None, descr=None):
             if silent:
                 return
-            progress.update(task, description=descr, advance=advance)
+            if total is not None:
+                progress.update(task, total=total)
+            if descr is not None:
+                progress.update(task, description=descr)
 
-        update_task(task, advance=1, descr='Finding dark spots...')
+            progress.update(task, advance=advance)
+
 
         shm = sm.SharedMemory(create=True, size=img.nbytes, name=SM_IMAGE)
         shm_img = np.ndarray(img.shape, dtype=img.dtype, buffer=shm.buf)
         shm_img[:] = img[:]
-        with Pool() as pool:
-            results = np.ones(len(self.splinters), dtype=np.uint8) * -1
+        i_del = []
+        update_task(task, advance=1, descr='Finding dark spots...', total = len(self.splinters))
+        with Pool(processes=4) as pool:
             for i,result in enumerate(pool.imap_unordered(check_splinter, enumerate(self.splinters))):
-                results[i] = result
+                if result != -1:
+                    i_del.append(result)
                 update_task(task, advance=1)
 
-        i_del = (x for x in results if x != -1)
 
-        update_task(task, advance=1)
+        update_task(task, advance=1, total=len(i_del), descr="Remove splinters...")
         # remove splinters starting from the back
         for i in sorted(i_del, reverse=True):
+            update_task(task, advance=1)
             removed_splinters.append(self.splinters[i])
             del self.splinters[i]
 
@@ -520,10 +526,7 @@ class Analyzer(object):
 
         skel_mask = self.image_skeleton.copy()
 
-        update_task(task, advance=1, add_total=len(removed_splinters), descr="Fill dark spots...")
-
-
-
+        update_task(task, advance=1, total=len(removed_splinters), descr="Fill dark spots...")
         for s in removed_splinters:
 
             c = s.centroid_px
@@ -576,6 +579,7 @@ class Analyzer(object):
                     if config.debug:
                         cv2.line(cimg, (int(x), int(y)), (int(c[0]), int(c[1])), (255,0,0))
 
+            update_task(task, advance=1)
 
         if config.debug:
             cv2.imwrite(self.__get_out_file("spots_filled.png"), cimg)
@@ -896,4 +900,3 @@ class Analyzer(object):
 
         plt.close(fig)
 '''
-

@@ -1,7 +1,7 @@
 import os
 from itertools import groupby
 import re
-from typing import Annotated
+from typing import Annotated, Any
 
 import cv2
 from matplotlib.ticker import FuncFormatter
@@ -259,10 +259,12 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
         return True
 
     def specimen_value(spec: Specimen):
-        return (spec.boundary, np.mean([x.area for x in spec.splinters]), np.abs(spec.get_energy()))
+        return (spec.boundary, np.mean([x.area for x in spec.splinters]), np.abs(spec.U))
 
-    specimens = Specimen.get_all_by(decider, specimen_value, sortby=lambda x: x[0])
+    specimens = Specimen.get_all_by(decider, lazyload=False)
 
+    specimens = [specimen_value(x) for x in specimens]
+    specimens = sorted(specimens, key=lambda x: x[0])
     # group specimens by boundary conditions
     t = groupby(specimens, lambda x: x[0])
 
@@ -337,36 +339,8 @@ def log_2d_histograms(
     maxspecimen: Annotated[int, typer.Option(help='Maximum amount of specimens.')] = 50,
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
     """Plot a 2D histogram of splinter sizes and stress."""
-    if names is None:
-        assert sigmas is not None, "Either names or sigmas must be specified."
-    if sigmas is None:
-        assert names is not None, "Either names or sigmas must be specified."
 
-    if names is not None and "," in names:
-        names = names.split(",")
-        print(f"Searching for specimen whose name is in: '{names}'")
-    elif names is not None and " " in names:
-        names = names.split(" ")
-        print(f"Searching for specimen whose name is in: '{names}'")
-    elif names is not None and "*" not in names:
-        names = [names]
-        print(f"Searching for specimen whose name is in: '{names}'")
-    elif names is not None and "*" in names:
-        print(f"Searching for specimen whose name matches: '{names}'")
-        names = names.replace(".","\.").replace("*", ".*")
-
-
-    if sigmas is not None:
-        if "-" in sigmas:
-            sigmas = [float(s) for s in sigmas.split("-")]
-        elif sigmas == "all":
-            sigmas = [0,1000]
-        else:
-            sigmas = [float(sigmas), float(sigmas)]
-            sigmas[0] = max(0, sigmas[0] - delta)
-            sigmas[1] += delta
-
-        print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
+    names, sigmas = modify_filters(names, sigmas, delta)
 
     def filter_specimens(specimen: Specimen):
         if not specimen.has_scalp:
@@ -452,6 +426,40 @@ def log_2d_histograms(
         out_name = general.get_output_file( f"loghist2d_{names[0]}.{general.plot_extension}")
     fig.savefig(out_name)
     finalize(out_name)
+
+def modify_filters(names, sigmas, delta) -> tuple[Any, Any]:
+    if names is None:
+        assert sigmas is not None, "Either names or sigmas must be specified."
+    if sigmas is None:
+        assert names is not None, "Either names or sigmas must be specified."
+
+    if names is not None and "," in names:
+        names = names.split(",")
+        print(f"Searching for specimen whose name is in: '{names}'")
+    elif names is not None and " " in names:
+        names = names.split(" ")
+        print(f"Searching for specimen whose name is in: '{names}'")
+    elif names is not None and "*" not in names:
+        names = [names]
+        print(f"Searching for specimen whose name is in: '{names}'")
+    elif names is not None and "*" in names:
+        print(f"Searching for specimen whose name matches: '{names}'")
+        names = names.replace(".","\.").replace("*", ".*")
+
+
+    if sigmas is not None:
+        if "-" in sigmas:
+            sigmas = [float(s) for s in sigmas.split("-")]
+        elif sigmas == "all":
+            sigmas = [0,1000]
+        else:
+            sigmas = [float(sigmas), float(sigmas)]
+            sigmas[0] = max(0, sigmas[0] - delta)
+            sigmas[1] += delta
+
+        print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
+
+    return names,sigmas
 
 @app.command()
 def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],

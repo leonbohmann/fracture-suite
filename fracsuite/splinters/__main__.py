@@ -47,6 +47,7 @@ from rich import print
 import matplotlib
 
 from fracsuite.tools.general import GeneralSettings
+from fracsuite.tools.helpers import print_exc_to_log, print_to_log
 from fracsuite.tools.specimen import Specimen
 
 matplotlib.rcParams['figure.figsize'] = (6, 4)
@@ -121,9 +122,9 @@ if args.all:
                     analyzer = Analyzer(config, progress, file_task)
                     plt.close()
                 except Exception as e:
-                    print(f'[bold red]Error[/bold red] while analyzing specimen: {file}')
-                    print(e.__dict__)
-                    traceback.print_exc()
+                    print_to_log(f'[bold red]Error[/bold red] while analyzing specimen: {file}')
+                    print_to_log(e.__dict__)
+                    print_exc_to_log()
                     progress.remove_task(file_task)
                     continue
 

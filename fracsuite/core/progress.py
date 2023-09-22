@@ -10,7 +10,7 @@ def get_progress():
                 TaskProgressColumn(justify="right"),
                 TimeRemainingColumn(),
                 TimeElapsedColumn(),
-            transient=True)
+            transient=True, refresh_per_second=3)
 
 class ProgSpinner():
 

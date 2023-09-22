@@ -1,4 +1,5 @@
 import os
+import traceback
 import cv2
 import re
 
@@ -8,6 +9,12 @@ import numpy as np
 from fracsuite.tools.general import GeneralSettings
 
 general = GeneralSettings.get()
+def print_to_log(message: str):
+    with open("log.txt", "a") as file:
+        file.write(f"{message}\n")
+
+def print_exc_to_log():
+    print_to_log(traceback.format_exc())
 
 def get_specimenname_from_path(path: os.PathLike) -> str | None:
     # find specimen pattern
