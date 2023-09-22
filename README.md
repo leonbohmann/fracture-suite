@@ -1,4 +1,4 @@
-<div align="center">   
+<div align="center">
    <img src=".content/logo_light.svg#gh-light-mode-only" height="400">
    <img src=".content/logo_dark.svg#gh-dark-mode-only" height="400">
 </div>
@@ -10,17 +10,20 @@
    It performs several operations on the input image to enhance the visibility of scanned cracks and analyzes contours in the image. Filtering then helps to remove unwanted artifacts like dust speckles or glue residue. The remaining contours are then used to calculate the size (in px) as well as the round- and rough-ness of the splinter.
    </p>
 </div>
+
+[![Version](https://badgen.net/pypi/v/fracsuite?label=Version&icon=pypi)](https://pepy.tech/project/fracsuite)
+[![Total Downloads](https://static.pepy.tech/badge/fracsuite)](https://pepy.tech/project/fracsuite)
 [![DOI](https://zenodo.org/badge/675402888.svg)](https://zenodo.org/badge/latestdoi/675402888)
 
 > For citation please use:
 > ```
 > @software{fracture-suite,
 >   author       = {Leon Bohmann},
->   title        = {leonbohmann/fracture-suite: latest},
+>   title        = {leonbohmann/fracture-suite: 0.1.7},
 >   month        = sep,
 >   year         = 2023,
 >   publisher    = {Zenodo},
->   version      = {latest},
+>   version      = {0.1.7},
 >   doi          = {10.5281/zenodo.8369155},
 >   url          = {https://doi.org/10.5281/zenodo.8369156}
 > }
