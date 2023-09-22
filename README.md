@@ -1,4 +1,16 @@
-# Fracture Suite
+<div align="center">   
+   <img src=".content/logo_light.svg#gh-light-mode-only" height="400">
+   <img src=".content/logo_dark.svg#gh-dark-mode-only" height="400">
+</div>
+
+<div align="center>
+   <p>
+   This package helps identifying splinters on broken glass plys.
+
+   It performs several operations on the input image to enhance the visibility of scanned cracks and analyzes contours in the image. Filtering then helps to remove unwanted artifacts like dust speckles or glue residue. The remaining contours are then used to calculate the size (in px) as well as the round- and rough-ness of the splinter.
+   </p>
+</div>
+
 
 [![DOI](https://zenodo.org/badge/675402888.svg)](https://zenodo.org/badge/latestdoi/675402888)
 
@@ -16,9 +28,7 @@
 > }
 > ```
 
-This package helps identifying splinters on broken glass plys.
 
-It performs several operations on the input image to enhance the visibility of scanned cracks and analyzes contours in the image. Filtering then helps to remove unwanted artifacts like dust speckles or glue residue. The remaining contours are then used to calculate the size (in px) as well as the round- and rough-ness of the splinter.
 
 ![Backend plot of analyzer, displaying original and preprocessed image and detected cracks](.content/backend.png)
 
