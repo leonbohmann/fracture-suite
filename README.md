@@ -24,7 +24,7 @@
 >   year         = 2023,
 >   publisher    = {Zenodo},
 >   version      = {0.1.7},
->   doi          = {10.5281/zenodo.8369155},
+>   doi          = {10.5281/zenodo.8369156},
 >   url          = {https://doi.org/10.5281/zenodo.8369156}
 > }
 > ```
