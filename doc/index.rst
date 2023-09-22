@@ -1,3 +1,0 @@
-.. autoclass::
-.. autofunction::
-.. autoexception::
