@@ -1,16 +1,13 @@
-import argparse
-from argparse import RawDescriptionHelpFormatter
-from fracsuite.splinters.analyzer import Analyzer, AnalyzerConfig
-
-descr=\
 """
-███████╗██████╗  █████╗  ██████╗████████╗██╗   ██╗██████╗ ███████╗      ███████╗██╗   ██╗██╗████████╗███████╗
-██╔════╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██║   ██║██╔══██╗██╔════╝      ██╔════╝██║   ██║██║╚══██╔══╝██╔════╝
-█████╗  ██████╔╝███████║██║        ██║   ██║   ██║██████╔╝█████╗  █████╗███████╗██║   ██║██║   ██║   █████╗  
-██╔══╝  ██╔══██╗██╔══██║██║        ██║   ██║   ██║██╔══██╗██╔══╝  ╚════╝╚════██║██║   ██║██║   ██║   ██╔══╝  
-██║     ██║  ██║██║  ██║╚██████╗   ██║   ╚██████╔╝██║  ██║███████╗      ███████║╚██████╔╝██║   ██║   ███████╗
-╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝      ╚══════╝ ╚═════╝ ╚═╝   ╚═╝   ╚══════╝
-Leon Bohmann            Technical University Darmstadt - ISMD - GCC              www.tu-darmstadt.de/glass-cc
+███████╗██████╗ ██╗     ██╗███╗   ██╗████████╗███████╗██████╗ ███████╗
+██╔════╝██╔══██╗██║     ██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██╔════╝
+███████╗██████╔╝██║     ██║██╔██╗ ██║   ██║   █████╗  ██████╔╝███████╗
+╚════██║██╔═══╝ ██║     ██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗╚════██║
+███████║██║     ███████╗██║██║ ╚████║   ██║   ███████╗██║  ██║███████║
+╚══════╝╚═╝     ╚══════╝╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚══════╝
+
+Leon Bohmann     TUD - ISMD - GCC        www.tu-darmstadt.de/glass-cc
+
 
 Description:
 -------------------------
@@ -25,86 +22,116 @@ Used packages:
 - opencv-python
 - matplotlib
 - numpy
-- tqdm    
+
+- tqdm
 
 Usage:
--------------------------                       
+-------------------------
+
 Command line usage is shown below. For further information visit:
 https://github.com/leonbohmann/fracture-suite
 """
 
-# implement parse to make this script callable from outside
-parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
 
-gnrl_group = parser.add_argument_group("General")
-gnrl_group.add_argument('--displayplots', action='store_true', \
-    help='Instruct the analyzer to display output plots.', default=False)
-gnrl_group.add_argument('--debug', action='store_true', \
-    help='Sets a debug flag to display verbose output.', default=False)
-gnrl_group.add_argument('-display-region', nargs=4, help='Region to display in debug outputs.',\
-    type=int, default=None)
+import os
+import shutil
+import time
+from matplotlib import pyplot as plt
+# import module
+import traceback
+from fracsuite.core.progress import get_progress
+from fracsuite.splinters.analyzer import Analyzer
+from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+from rich import print
 
-imgroup = parser.add_argument_group("Image operations")
-imgroup.add_argument('image', nargs="?", help='The image to be processed.')
-imgroup.add_argument('-realsize', nargs=2, help='Real size of the input image.',\
-    type=int, default=[500,500])
-imgroup.add_argument('-cropsize', nargs=2, help='Crop image size in pixels.',\
-    type=int, default=None)
+import matplotlib
 
-prep = parser.add_argument_group("Preprocessor")
-# image preprocessing arguments
-prep.add_argument('-gauss-size', help='Gaussian filter size',\
-    type=int, default=5)
-prep.add_argument('-gauss-sigma', help='Gaussian filter sigma',\
-    type=float, default=5)
-prep.add_argument('-min-area', help='Minimum fragment area threshold [px²]',\
-    type=float, default=20)
-prep.add_argument('-max-area', help='Maximum fragment area threshold [px²]',\
-    type=float, default=25000)
-prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
-    type=float, default=6)
-prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
-    type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
-prep.add_argument('-resize-fac', help='Image resize factor between gauss and adaptive th.',\
-    type=float, default=1.0)
+from fracsuite.tools.general import GeneralSettings
+from fracsuite.tools.specimen import Specimen
 
-post = parser.add_argument_group("Postprocessor")
-post.add_argument('-skelclose-sz', help='Size for final skeleton close kernel.',\
-    type=int, default=3)
-post.add_argument('-skelclose-amnt', help='Iterations for final skeleton close kernel.',\
-    type=int, default=5)
+matplotlib.rcParams['figure.figsize'] = (6, 4)
+matplotlib.rc('axes', axisbelow=True) # to get grid into background
+matplotlib.rc('grid', linestyle="--") # line style
+matplotlib.rcParams.update({'font.size': 12}) # font size
 
-output_group = parser.add_argument_group("Output")
-output_group.add_argument('-out', nargs="?", help='Output directory path.', \
-    default="fracsuite-output")
-output_group.add_argument('-plot-ext', nargs="?", help='Plot file extension. Default: png.', \
-    default="png", choices=['png', 'pdf', 'jpg', 'bmp'])
-output_group.add_argument('-image-ext', nargs="?", help='Image file extension. Default: png.',\
-    default="png", choices=['png', 'jpg', 'bmp'])
+general_settings = GeneralSettings.get()
 
-args = parser.parse_args()    
+parser = AnalyzerConfig.get_parser(__doc__)
 
-if args.debug is True:
-    args.displayplots = True
+parser.add_argument("--all", default=False,
+                    help="Instruct the analyzer to run the analysis on every subfolder.",
+                    action='store_true')
+parser.add_argument("--all-exclude", default=[], nargs="+")
+parser.add_argument("--clear-splinters", action='store_true', default=False)
+parser.add_argument("--update-plots", action='store_true', default=False)
+# parser.add_argument("--open", action='store_true', default=False)
 
-do_crop = args.cropsize is not None
+args = parser.parse_args()
 
-if args.realsize is not None:
-    args.realsize = tuple(args.realsize)
-    
-config = AnalyzerConfig(gauss_sz=args.gauss_size, gauss_sig=args.gauss_sigma, \
-    fragment_min_area_px=args.min_area, fragment_max_area_px=args.max_area, \
-        real_img_size=args.realsize, crop=do_crop, thresh_block_size=args.thresh_block,\
-            thresh_sensitivity=args.thresh_sens, rsz_fac=args.resize_fac, cropped_img_size=args.cropsize,\
-            debug=args.debug, display_region=args.display_region, skel_close_sz=args.skelclose_sz,\
-                skel_close_amnt=args.skelclose_amnt)
-config.print()
 
-analyzer = Analyzer(args.image, config)
+config = AnalyzerConfig.from_args(args)
 
-analyzer.plot(display=args.displayplots, region=config.display_region)
-analyzer.plot_area(display=args.displayplots)
-analyzer.plot_area_2(display=args.displayplots)
+if args.all or config.path[1] != ":":
+    print(f"[bold][green]Using base path '{general_settings.base_path}'.[/green][/bold]")
+    config.path = os.path.join(general_settings.base_path, config.path) + "\\"
 
-analyzer.save_images(extension=args.image_ext)
-analyzer.save_plots(extension=args.plot_ext)
+
+if args.all:
+    print(f"Running analysis on all subfolders of '{config.path}'.")
+    project_dir = config.path
+    matplotlib.use('Agg')
+
+    if os.path.exists("log.txt"):
+        os.remove("log.txt")
+
+    with get_progress() as progress:
+
+        all_task = progress.add_task("[green]Analyzing...", total=len(os.listdir(project_dir)))
+        for file in os.listdir(project_dir):
+            progress.update(all_task, description=f"'{file}'...", total=len(os.listdir(project_dir)))
+            file_task = progress.add_task(f"Analyzing '{file}'...", total=1.0)
+
+            def update_file_task(val, title, total = 1.0):
+                progress.update(file_task, completed=val, description=title, total=total)
+
+            if any([x in file for x in args.all_exclude]):
+                progress.remove_task(file_task)
+                continue
+
+            project_path = os.path.join(project_dir, file) + "\\"
+
+            if os.path.exists(project_path) and os.path.isdir(project_path):
+                spec = Specimen(project_path, log_missing=False)
+
+
+                if spec.settings['break_pos'] == "center":
+                    config.impact_position = (250,250)
+                else:
+                    config.impact_position = (50,50)
+
+                if args.clear_splinters:
+                    shutil.rmtree(spec.splinters_path, ignore_errors=True)
+
+                if not spec.has_fracture_scans:
+                    progress.remove_task(file_task)
+                    continue
+
+                try:
+                    config.path = project_path
+                    analyzer = Analyzer(config, progress, file_task)
+                    plt.close()
+                except Exception as e:
+                    print(f'[bold red]Error[/bold red] while analyzing specimen: {file}')
+                    print(e.__dict__)
+                    traceback.print_exc()
+                    progress.remove_task(file_task)
+                    continue
+
+            progress.remove_task(file_task)
+            progress.update(all_task, advance=1, refresh=True)
+            progress.refresh()
+            time.sleep(0.1)
+
+        print("[green]Finished.")
+else:
+    analyzer = Analyzer(config, clear_splinters = args.clear_splinters)

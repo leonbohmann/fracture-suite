@@ -11,6 +11,22 @@
             "program": "tests/preprocess.py",
             "console": "integratedTerminal",
             "justMyCode": true
-        }
+        },
+        {
+            "name": "fracsuite.splinters",
+            "type": "python",
+            "request": "launch",
+            "module": "fracsuite.splinters",
+            "console": "integratedTerminal",
+            "args": [
+                "C:\\Users\\leonb\\Documents\\Beschleunigungsdaten\\8.110.Z.02\\",
+                "-cropsize", "4000",
+                "-realsize", "500",
+                "-impactposition", "50","50",
+                "--skip-spot-elim",
+                "-normregioncenter", "250", "250",
+            ],
+            "justMyCode": true
+        },
     ]
 }
