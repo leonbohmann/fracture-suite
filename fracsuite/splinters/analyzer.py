@@ -72,7 +72,7 @@ def check_splinter(kv):
 
     # Check if all pixels in the contour area are black
     #TODO! this value is crucial to the quality of histograms!
-    if np.mean(result) < 50:
+    if np.mean(result) < 25:
         return i
     else:
         return -1
@@ -401,7 +401,8 @@ class Analyzer(object):
         data['detection_rate'] = self.__check_detection_ratio(config)
         data['realsize'] = config.real_image_size
         data['size_factor'] = config.size_factor
-        data['cropsize'] = config.cropped_image_size
+        data['cropsize'] = config.cropped_image_size \
+            if config.cropped_image_size is not None else self.original_image.shape[:2]
 
         with open(self.__get_out_file('splinters_data.json'), 'w') as f:
             json.dump(data, f, indent=4)
@@ -489,7 +490,7 @@ class Analyzer(object):
         def update_task(task, advance=1, add_total=0, descr="Filtering dark spots..."):
             if silent:
                 return
-            progress.update(task, description=descr, advance=advance, total=len(self.splinters)+2+add_total)
+            progress.update(task, description=descr, advance=advance)
 
         update_task(task, advance=1, descr='Finding dark spots...')
 

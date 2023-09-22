@@ -381,8 +381,10 @@ def log_2d_histograms(
             return False
         elif isinstance(names, list) and specimen.name not in names:
             return False
+        elif sigmas is not None:
+            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
 
-        return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+        return True
 
     specimens: list[Specimen] = Specimen.get_all_by(filter_specimens, max_n=maxspecimen, lazyload=False)
 
