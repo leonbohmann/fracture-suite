@@ -330,7 +330,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
 @app.command(name="log2dhist")
 def log_2d_histograms(
-    names: Annotated[str, typer.Option(help='Name filter. Can use wildcards.', metavar='*')] = None,
+    names: Annotated[str, typer.Option(help='Name filter. Can use wildcards.', metavar='*')] = "*",
     sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
     boundary: Annotated[str, typer.Option(help='Allowed boundaries.')] = ["ABZ"],
     exclude: Annotated[str, typer.Option(help='Exclude specimen names matching this.')] = None,
@@ -428,11 +428,6 @@ def log_2d_histograms(
     finalize(out_name)
 
 def modify_filters(names, sigmas, delta) -> tuple[Any, Any]:
-    if names is None:
-        assert sigmas is not None, "Either names or sigmas must be specified."
-    if sigmas is None:
-        assert names is not None, "Either names or sigmas must be specified."
-
     if names is not None and "," in names:
         names = names.split(",")
         print(f"Searching for specimen whose name is in: '{names}'")
@@ -445,7 +440,9 @@ def modify_filters(names, sigmas, delta) -> tuple[Any, Any]:
     elif names is not None and "*" in names:
         print(f"Searching for specimen whose name matches: '{names}'")
         names = names.replace(".","\.").replace("*", ".*")
-
+    elif names is None:
+        names = ".*"
+        print("[green]All[/green] specimen names included!")
 
     if sigmas is not None:
         if "-" in sigmas:

@@ -72,7 +72,7 @@ def check_splinter(kv):
 
     # Check if all pixels in the contour area are black
     #TODO! this value is crucial to the quality of histograms!
-    if np.mean(result) < 25:
+    if np.mean(result) < 5:
         return i
     else:
         return -1
