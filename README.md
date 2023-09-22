@@ -75,15 +75,15 @@ A couple of outputs are saved to a directory next to the input image. These are:
 pip install fracsuite
 ```
 
-## Usage
-
+## Usage (:warning: 0.1.7 only!)
+<!--
 ### Settings
 
 ```bat
 py -m fracsuite.tools config "key" "value"
 ```
 
-Use `base_path` to specify a base folder for specimens. After that, you can use a specimen ID as a path for other modules. There are a lot of other configs, you can list them using the `list` subcommand.
+Use `base_path` to specify a base folder for specimens. After that, you can use a specimen ID as a path for other modules. There are a lot of other configs, you can list them using the `list` subcommand. -->
 
 ### Use the module directly
 
@@ -105,60 +105,4 @@ config = AnalyzerConfig()
 config.cropsize = (4000,4000)
 
 analyzer = Analyzer(image, config)
-
-analyzer.plot()
-analyzer.plot_area()
-analyzer.plot_area_2()
-
-```
-
-### CLI
-
-```bat
-options:
-  -h, --help            show this help message and exit
-
-General:
-  --displayplots        Instruct the analyzer to display output plots.
-  --debug               Sets a debug flag to display verbose output.
-  --exp-debug           Sets an experimental debug flag to display verbose output.
-  -display-region DISPLAY_REGION DISPLAY_REGION DISPLAY_REGION DISPLAY_REGION
-                        Region to display in debug outputs.
-
-Image operations:
-  image                 The image to be processed.
-  -realsize REALSIZE REALSIZE
-                        Real size of the input image.
-  -cropsize CROPSIZE CROPSIZE
-                        Crop image size in pixels.
-
-Preprocessor:
-  -gauss-size GAUSS_SIZE
-                        Gaussian filter size
-  -gauss-sigma GAUSS_SIGMA
-                        Gaussian filter sigma
-  -min-area MIN_AREA    Minimum fragment area threshold [px²]
-  -max-area MAX_AREA    Maximum fragment area threshold [px²]
-  -thresh-sens THRESH_SENS
-                        Adaptive threshold sensitivity
-  -thresh-block {1,3,5,7,9,11,13,15,17,19,21}
-                        Adaptive threshold block size
-  -resize-fac RESIZE_FAC
-                        Image resize factor before adaptive th.
-
-Postprocessor:
-  -skelclose-sz SKELCLOSE_SZ
-                        Size for final skeleton close kernel.
-  -skelclose-amnt SKELCLOSE_AMNT
-                        Iterations for final skeleton close kernel.
-  --skip-spot-elim      Instruct the postprocessor to skip "dark-spot" removal.
-  -intensity-width INTENSITY_WIDTH
-                        Pixel width for intensity calculation.
-
-Output:
-  -out [OUT]            Output directory path.
-  -plot-ext [{png,pdf,jpg,bmp}]
-                        Plot file extension. Default: png.
-  -image-ext [{png,jpg,bmp}]
-                        Image file extension. Default: png.
 ```
