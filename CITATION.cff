@@ -3,8 +3,8 @@ message: "If you use this software, please cite it as below."
 authors:
   - family-names: "Bohmann"
     given-names: "Leon"
-doi: 10.5281/zenodo.8369155
+doi: 10.5281/zenodo.8369156
 title: "leonbohmann/fracsuite"
-version: latest
+version: 0.1.7
 date-released: 2023-09-22
 url: "https://github.com/leonbohmann/fracture-suite"
