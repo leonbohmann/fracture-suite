@@ -1,39 +1,27 @@
-# -*- coding: utf-8 -*-
+# Configuration file for the Sphinx documentation builder.
+#
+# For the full list of built-in configuration values, see the documentation:
+# https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import sys, os
+# -- Project information -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-sys.path.insert(0, os.path.abspath('extensions'))
+project = 'fracture-suite'
+copyright = '2023, Leon Bohmann'
+author = 'Leon Bohmann'
 
-extensions = [
-    'sphinx.ext.duration',
-    'sphinx.ext.doctest',
-    'sphinx.ext.autodoc',
-]
+# -- General configuration ---------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-todo_include_todos = True
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon']
+
 templates_path = ['_templates']
-master_doc = 'index'
-exclude_patterns = []
-add_function_parentheses = True
-#add_module_names = True
-# A list of ignored prefixes for module index sorting.
-#modindex_common_prefix = []
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
-project = u'fracture-suite'
-copyright = u'2023, Leon Bohmann'
 
-version = '0.1.6'
-release = ''
 
-# -- Options for HTML output ---------------------------------------------------
+# -- Options for HTML output -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_title = "Fracture Suite"
-#html_short_title = None
-#html_logo = None
-#html_favicon = None
+html_theme = 'alabaster'
 html_static_path = ['_static']
-html_domain_indices = False
-html_use_index = False
-html_show_sphinx = False
-htmlhelp_basename = 'MusicforGeeksandNerdsdoc'
-html_show_sourcelink = False

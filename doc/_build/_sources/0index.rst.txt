@@ -1,0 +1,19 @@
+.. Your Project Name Documentation
+.. ===============================
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+
+   fracsuite   # Replace with the name of your main Python module
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+
+.. autoclass::
+.. autofunction::
+.. autoexception::
