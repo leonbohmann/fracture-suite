@@ -80,10 +80,10 @@ pip install fracsuite
 ### Settings
 
 ```bat
-py -m fracsuite.tools settings "key" "value"
+py -m fracsuite.tools config "key" "value"
 ```
 
-Use "base_path" to specify a base folder for specimens. After that, you can use a specimen ID as a path for other modules.
+Use `base_path` to specify a base folder for specimens. After that, you can use a specimen ID as a path for other modules. There are a lot of other configs, you can list them using the `list` subcommand.
 
 ### Use the module directly
 
@@ -92,21 +92,6 @@ py -m fracsuite.splinters "path/to/image"
 ```
 
 For details see: [API Docs](fracsuite.md)
-
-### Use the module directly
-
-```bat
-py -m fracsuite.splinters -image "path/to/image" [--crop]
-```
-
-#### `-image`
-
-The path to the image
-
-#### `--crop`
-
-If the image contains unfiltered area around the ply, use this to crop the image to the ply.
-
 
 ### Create a script
 
