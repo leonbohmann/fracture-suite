@@ -11,11 +11,13 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from rich import print
 from rich.progress import track
+from fracsuite.core.calculate import pooled
 
 from fracsuite.core.plotting import plot_image_kernel_contours, plot_splinter_kernel_contours
 from fracsuite.core.image import to_rgb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
+from fracsuite.core.stochastics import csintkern_objects, csintkern_objects_diagonal
 from fracsuite.splinters.processing import preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
@@ -327,31 +329,92 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
     finalize(out_name)
 
+def diag_dist_specimen_intensity_func(specimen: Specimen) -> tuple[float, Specimen]:
+    """used in diag_dist to calculate the intensity of a specimen"""
+    # calculate intensities
+    img = specimen.get_fracture_image()
+    intensity = csintkern_objects_diagonal(
+        img.shape[:2],
+        specimen.splinters,
+        lambda x,r: x.in_region_px(r),
+        kernel_width=100,
+        )
+
+    intensity = np.array(intensity)
+    intensity = intensity / np.max(intensity)
+
+    return intensity, specimen
+
 @app.command()
 def diag_dist(
     names: Annotated[str, typer.Option(help='Name filter. Can use wildcards.', metavar='*')] = "*",
     sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
     out: Annotated[str, typer.Option(help='Output file.')] = None,
+    kernel_width: Annotated[int, typer.Option(help='Intensity kernel width.')] = 200,
+    y_stress: Annotated[bool, typer.Option(help='Plot sigma instead of energy on y-axis.')] = False,
 ):
 
-    def in_range(s: Splinter) -> bool:
-        if np.abs(1-s.centroid_px[1] / s.centroid_px[0]) > 0.1:
-            return False
+    filter = create_filter_function(names, sigmas, sigma_delta=delta)
 
-        return True
+    specimens: list[Specimen] = Specimen.get_all_by(filter, lazyload=False)
 
-    def dist(s: Splinter) -> float:
-        return np.sqrt(s.centroid_px[0]**2+s.centroid_px[1]**2)
+    fig, axs = plt.subplots(figsize=(8, 5))
+
+    # check that all specimens have the same size
+    size0 = specimens[0].splinters_data['cropsize']
+    specs0 = []
+    for s in specimens:
+        if s.splinters_data['cropsize'] != size0:
+            print(f"Specimen '{s.name}' has different size than others. Skipping.")
+        else:
+            specs0.append(s)
+    specimens = specs0
+
+    data = []
+    stress = []
+    with get_progress() as progress:
+        an_task = progress.add_task("Loading splinters...", total=len(specimens))
 
 
 
-    names, sigmas = modify_filters(names, sigmas, 10)
+        for intensity, specimen in pooled(specimens, diag_dist_specimen_intensity_func,
+                                          advance = lambda: progress.advance(an_task)):
+            data.append((intensity, specimen.name))
+            if not y_stress:
+                stress.append(specimen.U_d)
+            else:
+                stress.append(specimen.sig_h)
 
+    # sort data and names for ascending stress
+    stress, data = sort_two_arrays(stress, data, True)
+    names = [x[1] for x in data]
+    data = [x[0] for x in data]
+    axs.set_xlabel("Diagnonal Distance [px]")
 
+    if not y_stress:
+        axs.set_ylabel("Strain Energy [J/m²]")
+    else:
+        axs.set_ylabel("Surface Stress [MPa]")
 
+    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' if i % 5 == 0 else "" for i,x in enumerate(stress)])
+
+    axy = axs.secondary_yaxis('right')
+    axy.set_yticks(axs.get_yticks(), [x  for i,x in enumerate(names)])
+
+    dt = np.array(data)
+    axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
+
+    # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
+    # plt.show()
+
+    axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
+    fig.tight_layout()
 
     out_name = general.get_output_file("diag_dist.png" if out is None else out)
+    fig.savefig(out_name)
+    finalize(out_name)
+
 
 
 @app.command(name="log2dhist")
@@ -365,7 +428,7 @@ def log_2d_histograms(
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
     """Plot a 2D histogram of splinter sizes and stress."""
 
-    filter = modify_filters(names, sigmas, delta,
+    filter = create_filter_function(names, sigmas, delta,
                                            exclude=exclude,
                                            needs_scalp=False,
                                            needs_splinters=True)
@@ -432,7 +495,7 @@ def log_2d_histograms(
     fig.savefig(out_name)
     finalize(out_name)
 
-def modify_filters(names,
+def create_filter_function(name_filter,
                    sigmas,
                    sigma_delta = 10,
                    exclude: str = None,
@@ -452,21 +515,37 @@ def modify_filters(names,
     Returns:
         Callable[[Specimen], bool]: Modified names, sigmas and filter function.
     """
-    if names is not None and "," in names:
-        names = names.split(",")
-        print(f"Searching for specimen whose name is in: '{names}'")
-    elif names is not None and " " in names:
-        names = names.split(" ")
-        print(f"Searching for specimen whose name is in: '{names}'")
-    elif names is not None and "*" not in names:
-        names = [names]
-        print(f"Searching for specimen whose name is in: '{names}'")
-    elif names is not None and "*" in names:
-        print(f"Searching for specimen whose name matches: '{names}'")
-        names = names.replace(".","\.").replace("*", ".*")
-    elif names is None:
-        names = ".*"
+
+    def in_names_wildcard(s: Specimen, filter: str) -> bool:
+        return re.match(filter, s.name) is not None
+    def in_names_list(s: Specimen, filter: list[str]) -> bool:
+        return s.name in filter
+    def all_names(s, filter) -> bool:
+        return True
+
+    name_filter_function: Callable[[Specimen, Any], bool] = None
+
+    # create name_filter_function based on name_filter
+    if name_filter is not None and "," in name_filter:
+        name_filter = name_filter.split(",")
+        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        name_filter_function = in_names_list
+    elif name_filter is not None and " " in name_filter:
+        name_filter = name_filter.split(" ")
+        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        name_filter_function = in_names_list
+    elif name_filter is not None and "*" not in name_filter:
+        name_filter = [name_filter]
+        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        name_filter_function = in_names_list
+    elif name_filter is not None and "*" in name_filter:
+        print(f"Searching for specimen whose name matches: '{name_filter}'")
+        name_filter = name_filter.replace(".","\.").replace("*", ".*")
+        name_filter_function = in_names_wildcard
+    elif name_filter is None:
+        name_filter = ".*"
         print("[green]All[/green] specimen names included!")
+        name_filter_function = all_names
 
     if sigmas is not None:
         if "-" in sigmas:
@@ -487,16 +566,14 @@ def modify_filters(names,
             return False
         elif exclude is not None and re.match(exclude, specimen.name):
             return False
-        elif isinstance(names, str) and not re.match(names, specimen.name):
-            return False
-        elif isinstance(names, list) and specimen.name not in names:
+        elif not name_filter_function(specimen, name_filter):
             return False
         elif sigmas is not None:
             return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
 
         return True
 
-    return names,sigmas, filter_specimens
+    return filter_specimens
 
 @app.command()
 def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
@@ -773,7 +850,7 @@ def fracture_intensity(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
         kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 200,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False):
-    """Plot the intensity of the fracture image."""
+    """Plot the intensity of the fracture morphology."""
 
     specimen = Specimen.get(specimen_name)
 

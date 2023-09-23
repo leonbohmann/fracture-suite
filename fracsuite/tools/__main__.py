@@ -6,7 +6,10 @@ import typer
 from matplotlib import pyplot as plt
 from rich import print
 from rich.progress import track
+from rich.panel import Panel
+
 from typing_extensions import Annotated
+from fracsuite.core.progress import get_progress
 from fracsuite.splinters.processing import crop_matrix, crop_perspective
 
 from fracsuite.tools.config import app as config_app
@@ -25,8 +28,21 @@ plt.rc('grid', linestyle="--") # line style
 plt.rcParams.update({'font.size': 12}) # font size
 
 general = GeneralSettings.get()
+state = {}
 
-app = typer.Typer(pretty_exceptions_short=False)
+def main_callback(ctx: typer.Context, debug: bool = None):
+    """Fracsuite tools"""
+    # print(Panel.fit(f"# Running [bold]{ctx.invoked_subcommand}[/bold]", title="Fracsuite tools", border_style="green"))
+    # print(ctx.protected_args)
+    state['start_time'] = time.time()
+    state['progress'] = get_progress()
+    state['debug'] = debug
+
+def end_callback(*a, **k):
+    d = time.time() - state['start_time']
+    print(f"Finished in {d:.2f}s.")
+
+app = typer.Typer(pretty_exceptions_short=False, result_callback=end_callback, callback=main_callback)
 app.add_typer(splinter_app, name="splinters")
 app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
@@ -34,6 +50,10 @@ app.add_typer(acc_app, name="acc")
 app.add_typer(scalp_app, name="scalp")
 app.add_typer(test_prep_app, name="test-prep")
 app.add_typer(nominals_app, name="nominals")
+
+@app.command()
+def nothing():
+    pass
 
 @app.command()
 def test(parallel:bool = False):

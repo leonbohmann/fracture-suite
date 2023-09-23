@@ -46,16 +46,19 @@ def csintkern_objects(region,
                     objects: list[T],
                     object_in_region: Callable[[T, tuple[int,int,int,int]], bool],
                     h=200,
-                    z_value: Callable[[T], Any] = None,):
+                    z_value: Callable[[T], Any] = None,
+                    no_track=False):
     """Calculate an intensity based on splinters in a region with size h and use z_action
     to perform calculations on the splinters in that region.
 
     Args:
-        region (tuple): _description_
-        splinters (list[Splinter]): _description_
+        region (tuple): The region to scan.
+        objects (list[Splinter]): The objects to check for every region.
+        object_in_region (Callable[[Splinter, tuple[x1,y1,x2,y2]], bool]): Determines if the object is in a region.
         h (int, optional): Scan region size in px. Defaults to 200px.
-        z_action (def(list[Specimen]), optional): Gets called for every region. Defaults to None, which
+        z_value (def(list[Specimen]), optional): Gets called for every region. Defaults to None, which
             will return the length of the specimen..
+        no_track(bool): If true, will not use the progress bar.
 
     Returns:
         X,Y,Z: The meshgrid and the intensity values.
@@ -83,9 +86,13 @@ def csintkern_objects(region,
     # print(len(xd))
     # print(len(yd))
     skip_i = int(len(xd)*0.1)
+    if no_track:
+        d = range(skip_i,len(xd) - skip_i)
+    else:
+        d = track(range(skip_i,len(xd) - skip_i), transient=True,
+                   description="Calculating intensity...")
     # Iterate over all points and find splinters in the area of X, Y and intensity_h
-    for i in track(range(skip_i,len(xd) - skip_i), transient=True,
-                   description="Calculating intensity..."):
+    for i in d:
         for j in range(skip_i,len(yd) - skip_i):
             x1,y1=xd[i]-h//2,yd[j]-h//2
             x2,y2=xd[i]+h//2,yd[j]+h//2
@@ -103,19 +110,63 @@ def csintkern_objects(region,
     Z = result.reshape(X.shape)
 
     return X,Y,Z
-    # Z = np.zeros(X.shape)
-    # for i in track(range(X.shape[0]), leave=False):
-    #     for j in range(X.shape[1]):
-    #         # find splinters in the area
-    #         splinters_in_area = []
-    #         for splinter in splinters:
-    #             if splinter.in_region((X[i,j], Y[i,j])):
-    #                 splinters_in_area.append(splinter)
-    #         x = X[i,j]
-    #         y = Y[i,j]
-    #         Z[i,j] = z_action(x,y)
+def csintkern_objects_diagonal(region: tuple[int,int],
+                    objects: list[T],
+                    object_in_region: Callable[[T, tuple[int,int,int,int]], bool],
+                    kernel_width=200,
+                    n_points:int = 50,
+                    z_value: Callable[[T], Any] = None,
+                ):
+    """Calculate the intensity on a diagonal kernel inside a region.
 
-    pass
+    Args:
+        region (tuple): The region to scan.
+        objects (list[Splinter]): The objects to check for every region.
+        object_in_region (Callable[[Splinter, tuple[x1,y1,x2,y2]], bool]): Determines if the object is in a region.
+        kernel_width (int, optional): Scan region size in px. Defaults to 200px.
+        n_points (int, optional): Amount of points on the diagonal to be evaluated.
+        z_value (def(list[Specimen]), optional): Gets called for every region. Defaults to None, which
+            will return the length of the specimen..
+
+    Returns:
+        results (list[float]): The intensity values on the diagonal.
+    """
+    if z_value is None:
+        def z_value(x: list[T]):
+            return len(x)
+
+    px_w, px_h = region
+
+    assert kernel_width < px_w, "Kernel width must be smaller than the region width."
+    assert kernel_width < px_h, "Kernel width must be smaller than the region height."
+    assert kernel_width > 10, "Kernel width must be greater than 10."
+    assert len(objects) > 0, "There must be at least one object in the list."
+    assert isinstance(object_in_region(objects[0], (-100,-100, -100, -100)), bool), "object_in_region must return a bool."
+    assert n_points > 0, "n_points must be greater than 0."
+    # Get the ranges for x and y
+    i_w = n_points
+    i_h = n_points
+
+    results = []
+    for w in range(i_w):
+        for h in range(i_h):
+            # get diagonal only
+            if w != h:
+                continue
+
+            x1 = (w/n_points) * px_w - kernel_width // 2
+            y1 = (h/n_points) * px_h - kernel_width // 2
+            x2 = x1 + kernel_width
+            y2 = y1 + kernel_width
+
+            objects_in_region = [obj for obj in objects if object_in_region(obj, (x1, y1, x2, y2))]
+
+            result = z_value(objects_in_region)
+
+            results.append(result)
+
+    return results
+
 
 def csintkern_image(image,
                     grid,

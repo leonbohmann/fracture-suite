@@ -1,6 +1,16 @@
 from rich.progress import Progress, SpinnerColumn, \
     TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
 
+def default_progress(start = False):
+    global state
+    if state is not None:
+        if start:
+            state['progress'].start()
+        return state['progress']
+
+    prog = get_progress()
+    prog.start()
+    return prog
 
 
 def get_progress():
