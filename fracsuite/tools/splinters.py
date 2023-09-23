@@ -1,7 +1,7 @@
 import os
 from itertools import groupby
 import re
-from typing import Annotated, Any
+from typing import Annotated, Any, Callable
 
 import cv2
 from matplotlib.ticker import FuncFormatter
@@ -327,12 +327,37 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
     finalize(out_name)
 
+@app.command()
+def diag_dist(
+    names: Annotated[str, typer.Option(help='Name filter. Can use wildcards.', metavar='*')] = "*",
+    sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
+    delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
+    out: Annotated[str, typer.Option(help='Output file.')] = None,
+):
+
+    def in_range(s: Splinter) -> bool:
+        if np.abs(1-s.centroid_px[1] / s.centroid_px[0]) > 0.1:
+            return False
+
+        return True
+
+    def dist(s: Splinter) -> float:
+        return np.sqrt(s.centroid_px[0]**2+s.centroid_px[1]**2)
+
+
+
+    names, sigmas = modify_filters(names, sigmas, 10)
+
+
+
+
+    out_name = general.get_output_file("diag_dist.png" if out is None else out)
+
 
 @app.command(name="log2dhist")
 def log_2d_histograms(
     names: Annotated[str, typer.Option(help='Name filter. Can use wildcards.', metavar='*')] = "*",
     sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
-    boundary: Annotated[str, typer.Option(help='Allowed boundaries.')] = ["ABZ"],
     exclude: Annotated[str, typer.Option(help='Exclude specimen names matching this.')] = None,
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
     y_stress: Annotated[bool, typer.Option(help='Show stress on y axis instead of energy.')] = False,
@@ -340,34 +365,14 @@ def log_2d_histograms(
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
     """Plot a 2D histogram of splinter sizes and stress."""
 
-    names, sigmas = modify_filters(names, sigmas, delta)
+    filter = modify_filters(names, sigmas, delta,
+                                           exclude=exclude,
+                                           needs_scalp=False,
+                                           needs_splinters=True)
 
-    def filter_specimens(specimen: Specimen):
-        if not specimen.has_scalp:
-            return False
-        elif not specimen.has_splinters:
-            return False
-        elif specimen.boundary not in boundary:
-            return False
-        elif exclude is not None and re.match(exclude.replace(".","\.").replace("*",".*"), specimen.name):
-            return False
-        elif isinstance(names, str) and not re.match(names, specimen.name):
-            return False
-        elif isinstance(names, list) and specimen.name not in names:
-            return False
-        elif sigmas is not None:
-            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+    specimens: list[Specimen] = Specimen.get_all_by(filter, max_n=maxspecimen, lazyload=False)
 
-        return True
-
-    specimens: list[Specimen] = Specimen.get_all_by(filter_specimens, max_n=maxspecimen, lazyload=False)
-
-    if len(specimens) == 0 :
-        print("[red]No specimens loaded.[/red]")
-        return
-    elif any([x.splinters is None for x in specimens]):
-        print("[yellow]Warning:[/yellow] Some specimens have no splinters.")
-        specimens = [x for x in specimens if x.splinters is not None]
+    assert len(specimens) > 0, "[red]No specimens loaded.[/red]"
 
     binrange = np.linspace(0,2,n_bins)
     fig, axs = plt.subplots(figsize=(8, 5))
@@ -427,7 +432,26 @@ def log_2d_histograms(
     fig.savefig(out_name)
     finalize(out_name)
 
-def modify_filters(names, sigmas, delta) -> tuple[Any, Any]:
+def modify_filters(names,
+                   sigmas,
+                   sigma_delta = 10,
+                   exclude: str = None,
+                   needs_scalp = True,
+                   needs_splinters = True
+) -> Callable[[Specimen], bool]:
+    """Creates a filter function for specimens.
+
+    Args:
+        names (str): String wildcard to match specimen names.
+        sigmas (str): String with sigma range.
+        sigma_delta (int, optional): If a single sigma value is passed, this range is added around the value. Defaults to 10.
+        exclude (str, optional): Name filter to exclude. Defaults to None.
+        needs_scalp (bool, optional): The specimen needs valid scalp data. Defaults to True.
+        needs_splinters (bool, optional): The specimen needs valid splinter data. Defaults to True.
+
+    Returns:
+        Callable[[Specimen], bool]: Modified names, sigmas and filter function.
+    """
     if names is not None and "," in names:
         names = names.split(",")
         print(f"Searching for specimen whose name is in: '{names}'")
@@ -451,12 +475,28 @@ def modify_filters(names, sigmas, delta) -> tuple[Any, Any]:
             sigmas = [0,1000]
         else:
             sigmas = [float(sigmas), float(sigmas)]
-            sigmas[0] = max(0, sigmas[0] - delta)
-            sigmas[1] += delta
+            sigmas[0] = max(0, sigmas[0] - sigma_delta)
+            sigmas[1] += sigma_delta
 
         print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
 
-    return names,sigmas
+    def filter_specimens(specimen: Specimen):
+        if needs_scalp and not specimen.has_scalp:
+            return False
+        elif needs_splinters and not specimen.has_splinters:
+            return False
+        elif exclude is not None and re.match(exclude, specimen.name):
+            return False
+        elif isinstance(names, str) and not re.match(names, specimen.name):
+            return False
+        elif isinstance(names, list) and specimen.name not in names:
+            return False
+        elif sigmas is not None:
+            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+
+        return True
+
+    return names,sigmas, filter_specimens
 
 @app.command()
 def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
