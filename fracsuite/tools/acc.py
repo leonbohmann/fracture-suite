@@ -100,12 +100,17 @@ def plot_impact(
     impact_time = np.mean(peaks)
     print(impact_time)
     # get 0.5s before and 3 seconds after the impact from all channels
-    before = impact_time - 0.003
-    after = impact_time + 00.003
 
     # get the channels
-    g_channels = reader.collectChannels(['Acc_1', 'Acc_2', 'Acc_3', 'Acc_4', 'Acc_5', 'Acc_6'])
+    g_channels = reader.collectChannels(['Acc1', 'Acc2', 'Acc3', 'Acc4', 'Acc5', 'Acc6'])
     drop_channels = reader.collectChannels(['Fall_g1', 'Fall_g2'])
+
+    xx1 = np.abs(drop_channels[0].data/5)**10
+    impact_time_i = np.argwhere(xx1 >= 1)[0]
+    impact_time = drop_channels[0].Time.data[impact_time_i]
+
+    before = impact_time - 0.003
+    after = impact_time + 00.003
 
     g_data = []
     # collect channel data and their times
