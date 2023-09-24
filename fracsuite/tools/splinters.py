@@ -1,3 +1,4 @@
+from functools import partial
 import os
 from itertools import groupby
 import re
@@ -329,7 +330,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
     finalize(out_name)
 
-def diag_dist_specimen_intensity_func(specimen: Specimen) -> tuple[float, Specimen]:
+def diag_dist_specimen_intensity_func(specimen: Specimen, kernel_width=100, n_points=100) -> tuple[float, Specimen]:
     """used in diag_dist to calculate the intensity of a specimen"""
     # calculate intensities
     img = specimen.get_fracture_image()
@@ -337,11 +338,12 @@ def diag_dist_specimen_intensity_func(specimen: Specimen) -> tuple[float, Specim
         img.shape[:2],
         specimen.splinters,
         lambda x,r: x.in_region_px(r),
-        kernel_width=100,
+        kernel_width=kernel_width,
+        n_points=n_points
         )
 
     intensity = np.array(intensity)
-    intensity = intensity / np.max(intensity)
+    # intensity = intensity / np.max(intensity)
 
     return intensity, specimen
 
@@ -352,8 +354,10 @@ def diag_dist(
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
     out: Annotated[str, typer.Option(help='Output file.')] = None,
     kernel_width: Annotated[int, typer.Option(help='Intensity kernel width.')] = 200,
+    n_points: Annotated[int, typer.Option(help='Amount of points on the diagonal to evaluate.')] = 100,
     y_stress: Annotated[bool, typer.Option(help='Plot sigma instead of energy on y-axis.')] = False,
 ):
+
 
     filter = create_filter_function(names, sigmas, sigma_delta=delta)
 
@@ -379,7 +383,9 @@ def diag_dist(
 
 
         for intensity, specimen in pooled(specimens, diag_dist_specimen_intensity_func,
-                                          advance = lambda: progress.advance(an_task)):
+                                          advance = lambda: progress.advance(an_task),
+                                          kernel_width=kernel_width,
+                                          n_points=n_points):
             data.append((intensity, specimen.name))
             if not y_stress:
                 stress.append(specimen.U_d)
@@ -390,7 +396,7 @@ def diag_dist(
     stress, data = sort_two_arrays(stress, data, True)
     names = [x[1] for x in data]
     data = [x[0] for x in data]
-    axs.set_xlabel("Diagnonal Distance [px]")
+    axs.set_xlabel(r"Diagonal Distance $\xi \cdot 100$ [-]")
 
     if not y_stress:
         axs.set_ylabel("Strain Energy [J/m²]")
