@@ -16,12 +16,9 @@ from fracsuite.splinters.splinter import Splinter
 
 
 new_colormap  = mpl.colormaps['turbo'].resampled(7)
-
-# make the first color white
 new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
-
-# Erstellt eine lineare Übergangs-Colormap von Weiß zu den ursprünglichen Farben
 modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', new_colormap.colors, 256,)
+"Turbo but with starting color white."
 
 def plot_splinter_kernel_contours(original_image: np.ndarray,
                    splinters: list[Splinter],
