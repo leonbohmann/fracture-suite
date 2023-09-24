@@ -47,7 +47,9 @@ def csintkern_objects(region,
                     object_in_region: Callable[[T, tuple[int,int,int,int]], bool],
                     h=200,
                     z_value: Callable[[T], Any] = None,
-                    no_track=False):
+                    no_track=False,
+                    skip_edge=False
+                ):
     """Calculate an intensity based on splinters in a region with size h and use z_action
     to perform calculations on the splinters in that region.
 
@@ -85,7 +87,7 @@ def csintkern_objects(region,
     # print(result.shape)
     # print(len(xd))
     # print(len(yd))
-    skip_i = int(len(xd)*0.1)
+    skip_i = int(len(xd)*0.1) if skip_edge else 0
     if no_track:
         d = range(skip_i,len(xd) - skip_i)
     else:
@@ -170,7 +172,8 @@ def csintkern_objects_diagonal(region: tuple[int,int],
 
 def csintkern_image(image,
                     grid,
-                    z_value: Callable[[Any], float]):
+                    z_value: Callable[[Any], float],
+                    skip_edge=False):
     """
     Performs an intensity calculation on an image by splitting it into a grid
     and calling z_value on each grid element.
@@ -207,7 +210,7 @@ def csintkern_image(image,
     # print(result.shape)
     # print(len(xd))
     # print(len(yd))
-    skip_i = int(len(xd)*0.1)
+    skip_i = int(len(xd)*0.1) if skip_edge else 0
     # Iterate over all points and find splinters in the area of X, Y and intensity_h
     for i in track(range(skip_i,len(xd)-skip_i), transient=True,
                    description="Calculating intensity..."):

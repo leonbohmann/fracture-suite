@@ -7,6 +7,7 @@ from typing import Annotated, Any, Callable
 import cv2
 from matplotlib.ticker import FuncFormatter
 import numpy as np
+import numpy.typing as npt
 import typer
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
@@ -246,6 +247,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
                   nolegend: Annotated[bool, typer.Option('--nolegend', help='Dont display the legend on the plot.')] = False,):
     """Plot the mean splinter size against the stress."""
     thickness = thickness[0]
+    from scipy.optimize import curve_fit
 
     def decider(spec: Specimen):
         if not spec.has_splinters:
@@ -310,10 +312,10 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
             # return a*np.exp(-b*x) + c
             # return a * x ** 2 + b*x + c
 
-        # params = curve_fit(func, stresses, sizes, bounds=([-np.inf, 0, -np.inf], [np.inf, np.inf, np.inf]))
+        params = curve_fit(func, stresses, sizes, bounds=([0, 0, 0], [np.min(sizes), np.inf, np.inf]))
 
-        # s_inter = np.linspace(min_sig, max_sig, 50)
-        # ax.plot(s_inter, func(s_inter, *params[0]), '--', color=ps.get_facecolor()[0], linewidth=0.5)
+        s_inter = np.linspace(min_sig, max_sig, 50)
+        ax.plot(s_inter, func(s_inter, *params[0]), '--', color=ps.get_facecolor()[0], linewidth=0.5)
 
         # p = np.polyfit(stresses, sizes, 4)
         # s_inter = np.linspace(stresses[0], stresses[-1], 100)
@@ -330,7 +332,11 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
 
     finalize(out_name)
 
-def diag_dist_specimen_intensity_func(specimen: Specimen, kernel_width=100, n_points=100) -> tuple[float, Specimen]:
+def diag_dist_specimen_intensity_func(
+    specimen: Specimen,
+    kernel_width=100,
+    n_points=100
+) -> tuple[npt.ArrayLike, Specimen]:
     """used in diag_dist to calculate the intensity of a specimen"""
     # calculate intensities
     img = specimen.get_fracture_image()
@@ -363,7 +369,7 @@ def diag_dist(
 
     specimens: list[Specimen] = Specimen.get_all_by(filter, lazyload=False)
 
-    fig, axs = plt.subplots(figsize=(8, 5))
+    fig, axs = plt.subplots(figsize=(9, 3))
 
     # check that all specimens have the same size
     size0 = specimens[0].splinters_data['cropsize']
@@ -386,6 +392,8 @@ def diag_dist(
                                           advance = lambda: progress.advance(an_task),
                                           kernel_width=kernel_width,
                                           n_points=n_points):
+            intensity = intensity / np.max(intensity)
+
             data.append((intensity, specimen.name))
             if not y_stress:
                 stress.append(specimen.U_d)
@@ -396,25 +404,31 @@ def diag_dist(
     stress, data = sort_two_arrays(stress, data, True)
     names = [x[1] for x in data]
     data = [x[0] for x in data]
-    axs.set_xlabel(r"Diagonal Distance $\xi \cdot 100$ [-]")
+    axs.set_xlabel(r"Diagonal Distance $\xi$ [-]")
 
     if not y_stress:
-        axs.set_ylabel("Strain Energy [J/m²]")
+        axs.set_ylabel("Strain Energy Density [J/m³]")
     else:
         axs.set_ylabel("Surface Stress [MPa]")
 
-    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' if i % 5 == 0 else "" for i,x in enumerate(stress)])
+    str_mod = 5 if len(stress) > 15 else 1
+    x_ticks = np.linspace(0, n_points, 11)
+    print(x_ticks)
+    axs.set_xticks(x_ticks, [f'{x/n_points:.2f}' for i,x in enumerate(x_ticks)])
+    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' if i % str_mod == 0 else "" for i,x in enumerate(stress)])
 
     axy = axs.secondary_yaxis('right')
     axy.set_yticks(axs.get_yticks(), [x  for i,x in enumerate(names)])
 
     dt = np.array(data)
-    axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
+    axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
+    cbar = fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative Intensity', pad=0.2)
 
+    axs.set_xlim((-0.01, n_points+0.01))
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
-    axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
+    # axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
     fig.tight_layout()
 
     out_name = general.get_output_file("diag_dist.png" if out is None else out)
@@ -444,7 +458,7 @@ def log_2d_histograms(
     assert len(specimens) > 0, "[red]No specimens loaded.[/red]"
 
     binrange = np.linspace(0,2,n_bins)
-    fig, axs = plt.subplots(figsize=(8, 5))
+    fig, axs = plt.subplots(figsize=(9, 3))
 
     data = []
     stress = []
@@ -479,15 +493,19 @@ def log_2d_histograms(
     else:
         axs.set_ylabel("Surface Stress [MPa]")
 
-    axs.set_xticks(np.arange(0, n_bins, 5), [f'{10**edges[x]:.2f}' for x in np.arange(1, n_bins + 1, 5)])
-    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' if i % 5 == 0 else "" for i,x in enumerate(stress)])
+
+    str_mod = 5 if len(stress) > 15 else 1
+    x_ticks = np.arange(0, n_bins, 5)
+    siz_mod = 2 if len(x_ticks) > 10 else 1
+    axs.set_xticks(x_ticks, [f'{10**edges[x]:.2f}' if i % siz_mod == 0 else "" for i,x in enumerate(x_ticks)])
+    axs.set_yticks(np.arange(0, len(stress), 1), [f'{np.abs(x):.2f}' if i % str_mod == 0 else "" for i,x in enumerate(stress)])
 
     axy = axs.secondary_yaxis('right')
     axy.set_yticks(axs.get_yticks(), [x  for i,x in enumerate(names)])
 
     dt = np.array(data)
-    axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-
+    axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
+    cbar = fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative Intensity', pad=0.2)
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
@@ -670,7 +688,7 @@ def plot_histograms(xlim: tuple[float,float],
 
     # ax.xaxis.set_major_formatter(ScalarFormatter())
     ax.set_xlabel('Splinter Area [mm²]')
-    ax.set_ylabel('Probability (Area) [-]')
+    ax.set_ylabel('Probability Density (Area) [-]')
     ax.grid(True, which='both', axis='both')
     fig.tight_layout()
     return fig
@@ -817,8 +835,11 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
     finalize(out_name)
 
 @app.command()
-def fracture_intensity_img(specimen_name: str,
-                           kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 100):
+def fracture_intensity_img(
+    specimen_name: str,
+    kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 100,
+    skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
+):
     """
     Plot the intensity of the fracture image.
 
@@ -844,7 +865,8 @@ def fracture_intensity_img(specimen_name: str,
     fig = plot_image_kernel_contours(img, kernel_width,
                                      mean_img_value,
                                      clr_label="Amnt Black",
-                                     fig_title="Fracture Intensity (Based on image mean values)")
+                                     fig_title="Fracture Intensity (Based on image mean values)",
+                                     skip_edge=skip_edges)
 
     out_path = os.path.join(specimen.splinters_path, f"fig_img_intensity.{general.image_extension}")
     fig.savefig(out_path, dpi=500)
@@ -855,7 +877,9 @@ def fracture_intensity_img(specimen_name: str,
 def fracture_intensity(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
         kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 200,
-        plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False):
+        plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
+        skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
+        ):
     """Plot the intensity of the fracture morphology."""
 
     specimen = Specimen.get(specimen_name)
@@ -866,7 +890,8 @@ def fracture_intensity(
     fig = plot_splinter_kernel_contours(original_image,
                                         specimen.splinters,
                                         kernel_width,
-                                        plot_vertices=plot_vertices,)
+                                        plot_vertices=plot_vertices,
+                                        skip_edge=skip_edges)
 
     out_name = specimen.get_splinter_outfile(f"fig_fracture_intensity.{general.plot_extension}")
     fig.savefig(out_name, dpi=500)

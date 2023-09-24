@@ -7,6 +7,8 @@ from multiprocessing import Pool
 # from pathos.multiprocessing import ProcessingPool as Pool
 from typing import Callable, TypeVar
 
+import numpy as np
+
 T1 = TypeVar('T1')
 T2 = TypeVar('T2')
 def pooled(objects: list[T1],
@@ -34,3 +36,16 @@ def pooled(objects: list[T1],
             if advance is not None:
                 advance()
     return results
+
+
+def floor_to_10(x: float) -> float:
+    """
+    Round a number to the floor 10.
+
+    Args:
+        x (float): The number to round.
+
+    Returns:
+        float: The rounded number.
+    """
+    return np.floor(x / 10) * 10

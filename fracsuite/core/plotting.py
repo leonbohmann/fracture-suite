@@ -31,7 +31,9 @@ def plot_splinter_kernel_contours(original_image: np.ndarray,
                     fig_title="Fracture Intensity",
                     xlabel="Pixels",
                     ylabel="Pixels",
-                    plot_vertices: bool = False):
+                    plot_vertices: bool = False,
+                    skip_edge: bool = False,
+                    ):
     """Create an intensity plot of the fracture.
 
     Args:
@@ -49,7 +51,8 @@ def plot_splinter_kernel_contours(original_image: np.ndarray,
                                 splinters,
                                 lambda x,r: x.in_region_px(r),
                                 kernel_width,
-                                z_action)
+                                z_action,
+                                skip_edge=skip_edge)
     fig,axs = plt.subplots()
     axs.imshow(original_image)
 
@@ -74,7 +77,9 @@ def plot_image_kernel_contours(image: np.ndarray,
                     fig_title="Title",
                     xlabel="Pixels",
                     ylabel="Pixels",
-                    plot_vertices: bool = False):
+                    plot_vertices: bool = False,
+                    skip_edge: bool = False,
+                    ):
     """Create an intensity plot of the fracture.
 
     Args:
@@ -90,7 +95,8 @@ def plot_image_kernel_contours(image: np.ndarray,
 
     X, Y, Z = csintkern_image(image,
                                 kernel_width,
-                                z_action)
+                                z_action,
+                                skip_edge=skip_edge)
 
     fig,axs = plt.subplots()
     axs.imshow(image)
