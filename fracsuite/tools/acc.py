@@ -2,6 +2,7 @@ import os
 from typing import Annotated
 from matplotlib import pyplot as plt
 
+from scipy.signal import savgol_filter
 import numpy as np
 import typer
 from apread import APReader
@@ -72,12 +73,19 @@ def reader_to_csv(reader: APReader, out_dir, dot: str = "."):
 @app.command()
 def plot_impact(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
+    time_unit: Annotated[str, typer.Option(help="The unit to show on the x-axis.", )] = "s",
+    normalize_time: Annotated[bool, typer.Option('--normalize-time', help="Move 0-time to impact.", )] = False,
+    file: Annotated[str, typer.Option(help="The file to plot.", )] = None,
+    fig_title: Annotated[str, typer.Option(help="Title of the figure.", )] = None,
+    apply_filter: Annotated[bool, typer.Option(help="Apply filter function.", )] = False
 ):
     """Plots the impact of the given specimen."""
+    if file is None:
+        specimen = Specimen.get(specimen_name)
 
-    specimen = Specimen.get(specimen_name)
-
-    reader = APReader(specimen.acc_file)
+        reader = APReader(specimen.acc_file)
+    else:
+        reader = APReader(file)
 
     reader.printSummary()
 
@@ -102,20 +110,26 @@ def plot_impact(
     # get 0.5s before and 3 seconds after the impact from all channels
 
     # get the channels
-    g_channels = reader.collectChannels(['Acc1', 'Acc2', 'Acc3', 'Acc4', 'Acc5', 'Acc6'])
+    g_channels = reader.collectChannels(['Acc_?1', 'Acc_?2', 'Acc_?3', 'Acc_?4', 'Acc_?5', 'Acc_?6'])
     drop_channels = reader.collectChannels(['Fall_g1', 'Fall_g2'])
 
     xx1 = np.abs(drop_channels[0].data/5)**10
     impact_time_i = np.argwhere(xx1 >= 1)[0]
     impact_time = drop_channels[0].Time.data[impact_time_i]
 
+    dtime = impact_time if normalize_time else 0
+
     before = impact_time - 0.003
-    after = impact_time + 00.003
+    after = impact_time + 0.003
 
     g_data = []
     # collect channel data and their times
     for chan in g_channels:
-        g_data.append((chan, chan.Time.data, chan.data))
+        data = chan.data
+        if apply_filter:
+            # apply a filter to chan.data
+            data = savgol_filter(data, 51, 3)
+        g_data.append((chan, chan.Time.data, data))
 
     drop_data = []
     # collect channel data and their times
@@ -124,26 +138,41 @@ def plot_impact(
 
     # plot the data
     fig = plt.figure()
-    fig.suptitle(f"Impact of specimen '{specimen_name}'")
+    fig.suptitle(fig_title or f"Impact of specimen '{specimen_name}'")
     ax = fig.add_subplot(111)
-    ax.set_xlabel("Time [s]")
+    ax.set_xlabel(f"Time [{time_unit}]")
     ax.set_ylabel("Acceleration [g]")
     ax.grid()
 
+    time_f = 1
+    if time_unit == "ns":
+        time_f = 1000000000
+    elif time_unit == "us":
+        time_f = 1000000
+    elif time_unit == "ms":
+        time_f = 1000
+    elif time_unit == "s":
+        time_f = 1
+    else:
+        print(f"Unknown time unit '{time_unit}'.")
+        return
+
     # plot the g channels
     for chan, time, data in g_data:
+        time = time * time_f - dtime * time_f
         ax.plot(time, data, label=chan.Name)
 
 
     # plot the impact time
-    ax.axvline(impact_time, color="red", label="Impact Time")
+    ax.axvline(impact_time * time_f- dtime * time_f, color="red", label="Impact Time")
 
     # plot the 0.5s before and 3 seconds after the impact
-    ax.set_xlim(before, after)
+    ax.set_xlim(before * time_f- dtime * time_f, after * time_f- dtime * time_f)
 
     ax1 = ax.twinx()
     # plot the drop channels
     for chan, time, data in drop_data:
+        time = time * time_f - dtime * time_f
         ax1.plot(time, data, "--", label=chan.Name)
 
     plt.legend(loc="upper right")
