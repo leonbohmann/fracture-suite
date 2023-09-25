@@ -69,6 +69,22 @@ def reader_to_csv(reader: APReader, out_dir, dot: str = "."):
     with open(csv_file, 'w') as f:
         f.write(content)
 
+@app.command()
+def wave_runtime(velocity_mps: float,
+                 distance_mm: float,
+                 unit: str = "s"
+                ):
+    """Calculates the runtime of a wave."""
+    t = distance_mm/velocity_mps/1e3
+
+    if unit == "ns":
+        t *= 1000000000
+    elif unit == "us":
+        t *= 1000000
+    elif unit == "ms":
+        t *= 1000
+
+    print(f"Runtime: {t:.2f} {unit}")
 
 @app.command()
 def plot_impact(
