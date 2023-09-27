@@ -3,6 +3,7 @@ from typing import Annotated
 from matplotlib import pyplot as plt
 
 from scipy.signal import savgol_filter
+from scipy.integrate import cumulative_trapezoid
 import numpy as np
 import typer
 from apread import APReader
@@ -16,6 +17,34 @@ from fracsuite.tools.specimen import Specimen
 app = typer.Typer()
 general = GeneralSettings.get()
 
+def fft(data, time, plot=False, title=""):
+    """Calculates the fft of the given data."""
+    # calculate the fft
+    fft = np.fft.fft(data)
+    fft = np.abs(fft)
+    fft = fft[:int(len(fft)/2)]
+
+    # calculate the frequencies
+    freq = np.fft.fftfreq(len(fft), time[1]-time[0])
+    freq = np.abs(freq)
+
+
+    # plot the fft
+    if plot:
+        plt.plot(freq, fft)
+        # plt.hist(fft, bins=np.linspace(freq[0], freq[-1], 100), density=True)
+        plt.title(title)
+        plt.show()
+
+    return freq, fft
+
+def find_impact_time(data, time):
+    mean_drop_g = np.max(np.abs(data[:18000]))*1.001
+    xx1 = np.abs(data/mean_drop_g)**10
+    impact_time_i: int = np.argwhere(xx1 >= 1)[0]-2
+    impact_time = time.data[int(impact_time_i)]
+
+    return impact_time_i, impact_time
 
 def reader_to_csv(reader: APReader, out_dir, dot: str = "."):
     """Writes the reader data to a csv file."""
@@ -69,6 +98,16 @@ def reader_to_csv(reader: APReader, out_dir, dot: str = "."):
     with open(csv_file, 'w') as f:
         f.write(content)
 
+def convert_time(t, unit):
+    if unit == "ns":
+        t *= 1000000000
+    elif unit == "us":
+        t *= 1000000
+    elif unit == "ms":
+        t *= 1000
+
+    return t
+
 @app.command()
 def wave_runtime(velocity_mps: float,
                  distance_mm: float,
@@ -77,23 +116,30 @@ def wave_runtime(velocity_mps: float,
     """Calculates the runtime of a wave."""
     t = distance_mm/velocity_mps/1e3
 
-    if unit == "ns":
-        t *= 1000000000
-    elif unit == "us":
-        t *= 1000000
-    elif unit == "ms":
-        t *= 1000
+    t = convert_time(t, unit)
 
     print(f"Runtime: {t:.2f} {unit}")
 
 @app.command()
-def plot_impact(
+def freq_calc(
+    frequency: float,
+    unit: str = "s"
+):
+    """Calculates the runtime of a wave."""
+    t = 1/frequency
+
+    t = convert_time(t, unit)
+
+    print(f"Runtime: {t:.2f} {unit}")
+
+@app.command()
+def integrate_fall(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
     time_unit: Annotated[str, typer.Option(help="The unit to show on the x-axis.", )] = "s",
     normalize_time: Annotated[bool, typer.Option('--normalize-time', help="Move 0-time to impact.", )] = False,
     file: Annotated[str, typer.Option(help="The file to plot.", )] = None,
     fig_title: Annotated[str, typer.Option(help="Title of the figure.", )] = None,
-    apply_filter: Annotated[bool, typer.Option(help="Apply filter function.", )] = False
+    apply_filter: Annotated[bool, typer.Option(help="Apply filter function.", )] = False,
 ):
     """Plots the impact of the given specimen."""
     if file is None:
@@ -105,32 +151,67 @@ def plot_impact(
 
     reader.printSummary()
 
-    time_peak = -np.inf
-    peaks = []
-    for group in reader.Groups:
-        print(f"Group '{group.Name}'")
 
-        time = group.ChannelX
+    g_channels = reader.collectChannelsLike('Acc')
+    drop_channels = reader.collectChannelsLike('Fall_g')
 
-        drops = [x for x in group.ChannelsY if "fall" in x.Name.lower()]
+    imp_time, imp_time_i = find_impact_time(drop_channels[0].data, drop_channels[0].Time.data)
 
-        if len(drops) >= 0:
-            for drop in drops:
-                max_i = np.argmax(drop.data)
-                time_peak = time.data[max_i]
-                peaks.append(time_peak)
+    g = 9.81
+    drop_acc = drop_channels[0]
+    drop_avg = np.average(drop_acc.data[-60000:])
+    drop_data = drop_acc.data - drop_avg
+    drop_data = drop_data * g
 
-    print(peaks)
-    impact_time = np.mean(peaks)
-    print(impact_time)
-    # get 0.5s before and 3 seconds after the impact from all channels
+    a = drop_data # savgol_filter(drop_data, 51, 5)
+    v = cumulative_trapezoid(a, drop_acc.Time.data, initial=0)
+    s = cumulative_trapezoid(v, drop_acc.Time.data, initial=0)
+
+    fig, axs = plt.subplots()
+    axa = axs
+    axv = axs.twinx()
+    axss = axs.twinx()
+
+    axs.set_xlabel(f"Time [{time_unit}]")
+    axa.set_ylabel("Acceleration [g]")
+    axv.set_ylabel("Velocity [m/s]")
+    axss.set_ylabel("Distance [m]")
+
+    axa.plot(drop_channels[0].Time.data, a, 'r-',  label='Acceleration')
+    axv.plot(drop_channels[0].Time.data, v, 'g-', label='Velocity')
+    axss.plot(drop_channels[0].Time.data, s, 'k-', label='Distance')
+    plt.legend()
+    plt.show()
+
+@app.command()
+def plot_impact(
+    specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
+    time_unit: Annotated[str, typer.Option(help="The unit to show on the x-axis.", )] = "s",
+    normalize_time: Annotated[bool, typer.Option('--normalize-time', help="Move 0-time to impact.", )] = False,
+    file: Annotated[str, typer.Option(help="The file to plot.", )] = None,
+    fig_title: Annotated[str, typer.Option(help="Title of the figure.", )] = None,
+    apply_filter: Annotated[bool, typer.Option(help="Apply filter function.", )] = False,
+    plot_filtered_sep: Annotated[bool, typer.Option('--plot-sep', help="Draw the filtered function seperately.", )] = False
+):
+    """Plots the impact of the given specimen."""
+    if file is None:
+        specimen = Specimen.get(specimen_name)
+
+        reader = APReader(specimen.acc_file)
+    else:
+        reader = APReader(file)
+
+    reader.printSummary()
 
     # get the channels
-    g_channels = reader.collectChannels(['Acc_?1', 'Acc_?2', 'Acc_?3', 'Acc_?4', 'Acc_?5', 'Acc_?6'])
-    drop_channels = reader.collectChannels(['Fall_g1', 'Fall_g2'])
+    g_channels = reader.collectChannelsLike('Acc')
+    drop_channels = reader.collectChannelsLike('Fall_g')
+    # g_channels = reader.collectChannelsLike('shock')
+    # drop_channels = reader.collectChannelsLike('Force')
 
-    xx1 = np.abs(drop_channels[0].data/5)**10
-    impact_time_i = np.argwhere(xx1 >= 1)[0]
+    mean_drop_g = np.max(np.abs(drop_channels[0].data[:18000]))*1.001
+    xx1 = np.abs(drop_channels[0].data/mean_drop_g)**10
+    impact_time_i: int = np.argwhere(xx1 >= 1)[0]-2
     impact_time = drop_channels[0].Time.data[impact_time_i]
 
     dtime = impact_time if normalize_time else 0
@@ -142,14 +223,18 @@ def plot_impact(
     # collect channel data and their times
     for chan in g_channels:
         data = chan.data
-        if apply_filter:
-            # apply a filter to chan.data
-            data = savgol_filter(data, 51, 3)
-        g_data.append((chan, chan.Time.data, data))
+        fdata = None
+        # apply a filter to chan.data
+        fdata = savgol_filter(data, 9, 3)
+        # freq, dfft = fft(data, chan.Time.data)
+        imp_data = data[int(impact_time_i+1000):] # int(impact_time_i+3000)
+        freq, dfft = fft(imp_data, chan.Time.data, plot=True,title=chan.Name)
+        g_data.append((chan, chan.Time.data, data, fdata, freq))
 
     drop_data = []
     # collect channel data and their times
     for chan in drop_channels:
+
         drop_data.append((chan, chan.Time.data, chan.data))
 
     # plot the data
@@ -174,9 +259,12 @@ def plot_impact(
         return
 
     # plot the g channels
-    for chan, time, data in g_data:
+    for chan, time, data, fdata, freq in g_data:
         time = time * time_f - dtime * time_f
-        ax.plot(time, data, label=chan.Name)
+        line = ax.plot(time, data, label=chan.Name)
+
+        if plot_filtered_sep and not apply_filter:
+            ax.plot(time, fdata, "--", color = line[0].get_color(), label=chan.Name + " (filtered)")
 
 
     # plot the impact time
@@ -185,11 +273,10 @@ def plot_impact(
     # plot the 0.5s before and 3 seconds after the impact
     ax.set_xlim(before * time_f- dtime * time_f, after * time_f- dtime * time_f)
 
-    ax1 = ax.twinx()
     # plot the drop channels
     for chan, time, data in drop_data:
         time = time * time_f - dtime * time_f
-        ax1.plot(time, data, "--", label=chan.Name)
+        ax.plot(time, data, "--", label=chan.Name)
 
     plt.legend(loc="upper right")
     plt.show()
