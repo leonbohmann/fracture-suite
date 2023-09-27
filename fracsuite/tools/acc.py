@@ -1,6 +1,7 @@
 import os
 from typing import Annotated
 from matplotlib import pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 from scipy.signal import savgol_filter
 from scipy.integrate import cumulative_trapezoid
@@ -16,6 +17,40 @@ from fracsuite.tools.specimen import Specimen
 
 app = typer.Typer()
 general = GeneralSettings.get()
+
+ns = 1e-9
+us = 1e-6
+ms = 1e-3
+
+def mod_unit(unit):
+    """
+    Calculate the factor to convert the given unit to seconds.
+    Also modifies the global ns, us, ms variables.
+    """
+    global ns, us, ms
+
+    time_f = 1
+    if unit == "ns":
+        time_f = 1000000000
+        # ns = 1
+        # us = 1e3
+        # ms = 1e6
+    elif unit == "us":
+        time_f = 1000000
+        # ns = 1e-3
+        # us = 1
+        # ms = 1e3
+    elif unit == "ms":
+        time_f = 1000
+        # ms = 1
+        # us = 1e-3
+        # ns = 1e-6
+    elif unit == "s":
+        time_f = 1
+    else:
+        raise Exception(f"Unknown time unit '{unit}'.")
+
+    return time_f
 
 def fft(data, time, plot=False, title=""):
     """Calculates the fft of the given data."""
@@ -183,6 +218,9 @@ def integrate_fall(
     plt.legend()
     plt.show()
 
+def tti(t, time):
+    return np.argmin(np.abs(time - t))
+
 @app.command()
 def plot_impact(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
@@ -194,6 +232,8 @@ def plot_impact(
     plot_filtered_sep: Annotated[bool, typer.Option('--plot-sep', help="Draw the filtered function seperately.", )] = False
 ):
     """Plots the impact of the given specimen."""
+    time_f = mod_unit(time_unit)
+
     if file is None:
         specimen = Specimen.get(specimen_name)
 
@@ -209,15 +249,15 @@ def plot_impact(
     # g_channels = reader.collectChannelsLike('shock')
     # drop_channels = reader.collectChannelsLike('Force')
 
-    mean_drop_g = np.max(np.abs(drop_channels[0].data[:18000]))*1.001
+    mean_drop_g = np.max(np.abs(drop_channels[0].data[:10000]))*1.5
     xx1 = np.abs(drop_channels[0].data/mean_drop_g)**10
     impact_time_i: int = np.argwhere(xx1 >= 1)[0]-2
     impact_time = drop_channels[0].Time.data[impact_time_i]
-
+    time0 = drop_channels[0].Time.data
     dtime = impact_time if normalize_time else 0
 
-    before = impact_time - 0.003
-    after = impact_time + 0.003
+    before = impact_time - 30 * us
+    after = impact_time + 350 * us
 
     g_data = []
     # collect channel data and their times
@@ -228,7 +268,7 @@ def plot_impact(
         fdata = savgol_filter(data, 9, 3)
         # freq, dfft = fft(data, chan.Time.data)
         imp_data = data[int(impact_time_i+1000):] # int(impact_time_i+3000)
-        freq, dfft = fft(imp_data, chan.Time.data, plot=True,title=chan.Name)
+        freq, dfft = fft(imp_data, chan.Time.data, plot=False,title=chan.Name)
         g_data.append((chan, chan.Time.data, data, fdata, freq))
 
     drop_data = []
@@ -245,39 +285,40 @@ def plot_impact(
     ax.set_ylabel("Acceleration [g]")
     ax.grid()
 
-    time_f = 1
-    if time_unit == "ns":
-        time_f = 1000000000
-    elif time_unit == "us":
-        time_f = 1000000
-    elif time_unit == "ms":
-        time_f = 1000
-    elif time_unit == "s":
-        time_f = 1
-    else:
-        print(f"Unknown time unit '{time_unit}'.")
-        return
 
     # plot the g channels
     for chan, time, data, fdata, freq in g_data:
-        time = time * time_f - dtime * time_f
+        time = time - dtime
         line = ax.plot(time, data, label=chan.Name)
 
         if plot_filtered_sep and not apply_filter:
             ax.plot(time, fdata, "--", color = line[0].get_color(), label=chan.Name + " (filtered)")
 
-
+    impact_time = impact_time - dtime
     # plot the impact time
-    ax.axvline(impact_time * time_f- dtime * time_f, color="red", label="Impact Time")
+    ax.axvline(impact_time, color="red", label="Impact Time")
+    ax.axvline(impact_time + 121.21 * us, color='g', linestyle='--')
+    ax.text(impact_time + 121.21 * us, 0.01, 'Secondary Wave',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+    ax.axvline(impact_time + 81.82 * us, color='m', linestyle='--')
+    ax.text(impact_time + 81.82 * us, 0.01, 'Secondary Wave',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+    ax.axvline(impact_time + 300 * us, color='m', linestyle='--')
+    ax.text(impact_time + 300 * us, 0.01, 'Crackfront',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
 
-    # plot the 0.5s before and 3 seconds after the impact
-    ax.set_xlim(before * time_f- dtime * time_f, after * time_f- dtime * time_f)
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x*time_f:.2f}"))
 
     # plot the drop channels
     for chan, time, data in drop_data:
-        time = time * time_f - dtime * time_f
+        time = time - dtime
         ax.plot(time, data, "--", label=chan.Name)
 
+    # plot the 0.5s before and 3 seconds after the impact
+    ax.set_xlim(before - dtime, after - dtime)
+    ib = tti(before, time0)
+    ia = tti(after, time0)
+
+    y_max= [np.max(x[ib:ia]) for _, _, x, _, _ in g_data]
+    y_max = np.max(y_max) * 1.3
+    ax.set_ylim((-y_max, y_max))
     plt.legend(loc="upper right")
     plt.show()
 
