@@ -125,7 +125,7 @@ def freq_calc(
     frequency: float,
     unit: str = "s"
 ):
-    """Calculates the runtime of a wave."""
+    """Calculates the period time of a frequency."""
     t = 1/frequency
 
     t = convert_time(t, unit)
@@ -141,7 +141,7 @@ def integrate_fall(
     fig_title: Annotated[str, typer.Option(help="Title of the figure.", )] = None,
     apply_filter: Annotated[bool, typer.Option(help="Apply filter function.", )] = False,
 ):
-    """Plots the impact of the given specimen."""
+    """Integrate the weight acceleration twice to get velocity and displacement."""
     if file is None:
         specimen = Specimen.get(specimen_name)
 
