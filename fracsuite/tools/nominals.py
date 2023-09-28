@@ -1,3 +1,7 @@
+"""
+Nominal comparisons between real and nominal values.
+"""
+
 import os
 from matplotlib import pyplot as plt
 import numpy as np
@@ -7,7 +11,7 @@ from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.specimen import Specimen
 from fracsuite.tools.splinters import finalize
 
-nominals_app = typer.Typer()
+nominals_app = typer.Typer(help=__doc__)
 general = GeneralSettings.get()
 
 @nominals_app.command()
@@ -20,7 +24,7 @@ def stress():
 
     specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec)
 
-        
+
     thicknesses = {
             4: {}, 8: {}, 12: {}
         }

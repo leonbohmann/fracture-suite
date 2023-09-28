@@ -27,7 +27,7 @@ from fracsuite.tools.splinters import finalize
 
 general = GeneralSettings.get()
 
-test_prep_app = typer.Typer()
+test_prep_app = typer.Typer(help=__doc__)
 
 @test_prep_app.command()
 def test_configs(specimen_name: str):

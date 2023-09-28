@@ -1,3 +1,6 @@
+"""
+Organisation module. Contains the Specimen class and some helpful tools to export specimens.
+"""
 from __future__ import annotations
 
 import json
@@ -20,7 +23,7 @@ from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import checkmark, find_file
 
-app = typer.Typer()
+app = typer.Typer(help=__doc__)
 
 general = GeneralSettings.get()
 
@@ -98,6 +101,16 @@ class Specimen:
     __splinters: list[Splinter] = None
     __splinter_config: AnalyzerConfig = None
     __scalp: ScalpSpecimen = None
+
+    @property
+    def break_pos(self):
+        assert "break_pos" in self.settings, "break_pos not in settings."
+        return self.settings["break_pos"]
+
+    @property
+    def break_mode(self):
+        assert "break_mode" in self.settings, "break_mode not in settings."
+        return self.settings["break_mode"]
 
     settings: dict[str, str] = \
     {
@@ -294,6 +307,9 @@ class Specimen:
         transmission_file = find_file(self.fracture_morph_dir, "*Transmission*")
         if transmission_file is not None:
             return cv2.imread(transmission_file)
+
+    def get_acc_outfile(self, name: str) -> str:
+        return os.path.join(self.path, 'fracture', 'acceleration', name)
 
     def get_splinter_outfile(self, name: str) -> str:
         return os.path.join(self.splinters_path, name)

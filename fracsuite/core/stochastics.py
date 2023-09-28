@@ -2,44 +2,9 @@ from __future__ import annotations
 from typing import Any, Callable, TypeVar
 import numpy as np
 from rich.progress import track
-from torch import pdist
 
 from fracsuite.core.image import split_image, SplitImage
 
-def csintkern(events, region, h):
-    n, d = events.shape
-
-    # Get the ranges for x and y
-    minx = np.min(region[:][0])
-    maxx = np.max(region[:][0])
-    miny = np.min(region[:][1])
-    maxy = np.max(region[:][1])
-
-    # Get 50 linearly spaced points
-    xd = np.linspace(minx, maxx, 50)
-    yd = np.linspace(miny, maxy, 50)
-    X, Y = np.meshgrid(xd, yd)
-    st = np.column_stack((X.ravel(), Y.ravel()))
-    ns = len(st)
-    xt = np.vstack(([0, 0], events))
-    z = np.zeros(X.ravel().shape)
-
-    for i in track(range(ns), leave=False):
-        # for each point location, s, find the distances
-        # that are less than h.
-        xt[0] = st[i]
-        # find the distances. First n points in dist
-        # are the distances between the point s and the
-        # n event locations.
-        dist = pdist(xt)
-        ind = np.where(dist[:n] <= h)[0]
-        t = (1 - dist[ind]**2 / h**2)**2
-        z[i] = np.sum(t)
-
-    z = z * 3 / (np.pi * h)
-    Z = z.reshape(X.shape)
-
-    return X, Y, Z
 
 T=TypeVar('T')
 def csintkern_objects(region,

@@ -1,3 +1,7 @@
+"""
+Splinter analyzation tools.
+"""
+
 from functools import partial
 import os
 from itertools import groupby
@@ -20,13 +24,13 @@ from fracsuite.core.image import to_rgb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.stochastics import csintkern_objects, csintkern_objects_diagonal
-from fracsuite.splinters.processing import preprocess_image
+from fracsuite.splinters.processing import crop_matrix, crop_perspective, preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image, bin_data, get_color, write_image
+from fracsuite.tools.helpers import annotate_image, bin_data, find_files, get_color, write_image
 from fracsuite.tools.specimen import Specimen
 
-app = typer.Typer()
+app = typer.Typer(help=__doc__)
 
 general = GeneralSettings.get()
 
@@ -944,3 +948,68 @@ def get_detection_rate(splinters: list[Splinter], real_size: tuple[float,float])
     p = total_area / total_img_size * 100
 
     return p
+
+
+
+@app.command(name='crop-frac')
+def crop_fracture_morph(
+    specimen_name: Annotated[str, typer.Option(help='Name of specimen to load')] = "",
+    all: Annotated[bool, typer.Option('--all', help='Perform this action on all specimen.')] = False,
+    rotate: Annotated[bool, typer.Option('--rotate', help='Rotate image by 90°.')] = False,
+    crop: Annotated[bool, typer.Option('--crop', help='Crop the image.')] = True,
+    size: Annotated[tuple[int,int], typer.Option(help='Image size.', metavar='Y X')] = general.default_image_size_px,
+    rotate_only: Annotated[bool, typer.Option('--rotate-only', help='Only rotate image by 90°, skip cropping.')] = False,
+    resize_only: Annotated[bool, typer.Option('--resize_only', help='Only resize the image to 4000px².')] = False,
+):
+    f"""Crop and resize fracture morphology images. Can run on all specimens, several or just one single one.
+
+    Args:
+        specimen_name (Annotated[str, typer.Option, optional): The specimen names. Defaults to 'Name of specimen to load')]
+        all (bool, optional): Run the method on all specimens. Defaults to False.
+        rotate (bool, optional): Rotate the input image 90° CCW. Defaults to False.
+        crop (bool, optional): Crop the input image to ply bounds. Defaults to True.
+        size (tuple[int,int], optional): Size of the image. Defaults to {general.default_image_size_px}.
+        rotate_only (bool, optional): Only rotate the images. Defaults to False.
+        resize_only (bool, optional): Only resizes the images. Defaults to False.
+    """
+    from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE
+    if all:
+        specimens = Specimen.get_all()
+    elif isinstance(specimen_name, Specimen):
+        specimens = [specimen_name]
+    else:
+        specimens = Specimen.get_all(specimen_name)
+
+
+    for specimen in track(specimens):
+        path = specimen.fracture_morph_dir
+        if not  os.path.exists(path):
+            continue
+
+        imgs = [(x,cv2.imread(x, cv2.IMREAD_GRAYSCALE)) for x in find_files(path, '*.bmp')]
+
+        if len(imgs) == 0:
+            continue
+
+        img0 = [y for x,y in imgs if "Transmission" in x][0]
+        _, M0 = crop_perspective(img0, size, False, True)
+
+        for file,img in imgs:
+            if not os.access(file, os.W_OK):
+                print(f"Skipping '{os.path.basename(file)}', no write access.")
+                continue
+
+            if resize_only:
+                img = cv2.resize(img, size)
+
+            if not rotate_only and crop and not resize_only:
+                img = crop_matrix(img, M0, size)
+
+            if (rotate or rotate_only) and not resize_only:
+                img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+            cv2.imwrite(file, img)
+            os.chmod(os.path.join(path, file), S_IREAD|S_IRGRP|S_IROTH)
+
+        # elif file.endswith(".bmp") and not os.access(os.path.join(path, file), os.W_OK):
+        #     os.chmod(os.path.join(path, file), S_IWRITE)
