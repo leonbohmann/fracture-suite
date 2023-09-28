@@ -524,7 +524,7 @@ def log_2d_histograms(
     finalize(out_name)
 
 def create_filter_function(name_filter,
-                   sigmas,
+                   sigmas = None,
                    sigma_delta = 10,
                    exclude: str = None,
                    needs_scalp = True,

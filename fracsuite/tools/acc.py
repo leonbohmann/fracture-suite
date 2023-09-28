@@ -5,26 +5,75 @@ Acceleration tools.
 import os
 from typing import Annotated
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib.ticker import FuncFormatter
 
 from scipy.signal import savgol_filter
 from scipy.integrate import cumulative_trapezoid
 import numpy as np
 import typer
-from apread import APReader
+from apread import APReader, Channel
 from rich import print
 from rich.progress import track
 
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_file
 from fracsuite.tools.specimen import Specimen
+from fracsuite.tools.splinters import create_filter_function
 
 app = typer.Typer(help=__doc__)
 general = GeneralSettings.get()
 
-ns = 1e-9
-us = 1e-6
-ms = 1e-3
+ns = 1e-9       # nanoseconds factor
+us = 1e-6       # microseconds factor
+ms = 1e-3       # milliseconds factor
+
+prim_sensors = ['2', '6']           # sensor nbr that measure the primary wave
+sec_sensors = ['1', '3', '4', '5']  # sensor nbr that measure the secondary wave
+
+drop_ls = (0, (3, 1, 1, 1))     # linestyle for drop sensors
+prim_ls = (0, (5, 1))           # linestyle for primary wave
+sec_ls = '-'                    # linestyle for secondary wave
+
+def set_prim_sec_sensors(specimen: Specimen):
+    """Sets the primary and secondary sensors for the given specimen."""
+    global prim_sensors, sec_sensors
+    if specimen.break_pos == "center":
+        prim_sensors, sec_sensors = ['2', '4'], ['1', '3', '6', '5']
+    else:
+        prim_sensors, sec_sensors = ['2', '6'], ['1', '3', '4', '5']
+
+def annotate_runtimes(specimen: Specimen, ax: Axes) -> tuple[float, float, float]:
+    # wave and crackfront velocities
+    v_p = 5500 * 1e3
+    v_s = 3500 * 1e3
+    v_c = 1500 * 1e3
+
+    # distances
+    d_p = 450   # primary wave first registered on 2nd sensor
+    d_s = 400   # secondary wave first registered on 1st sensor
+    d_c = np.sqrt(450**2 + 450**2) # diagonal distance when crack is finished
+
+    if specimen.break_pos == "center":
+        d_p = 250
+        d_s = 200
+        d_c = np.sqrt(250**2 + 250**2)
+
+    prim_runtime = (d_p / v_p)
+    sec_runtime = (d_s / v_s)
+    crackfront_runtime = (d_c / v_c)
+
+    ax.axvline(0, color="red", linestyle=drop_ls)
+    ax.text(0, 0.01, 'Impact',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+    ax.axvline(prim_runtime, linestyle=prim_ls)
+    ax.text(prim_runtime, 0.01, 'P-Wave',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+    ax.axvline(sec_runtime, linestyle =sec_ls)
+    ax.text(sec_runtime, 0.01, 'S-Wave',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+    ax.axvline(crackfront_runtime, color='k', linestyle='-')
+    ax.text(crackfront_runtime, 0.01, 'Glass broken',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+
+    return prim_runtime, sec_runtime, crackfront_runtime
+
 
 def mod_unit(unit):
     """
@@ -41,6 +90,7 @@ def mod_unit(unit):
         # ms = 1e6
     elif unit == "us":
         time_f = 1000000
+        unit = "µs"
         # ns = 1e-3
         # us = 1
         # ms = 1e3
@@ -54,7 +104,7 @@ def mod_unit(unit):
     else:
         raise Exception(f"Unknown time unit '{unit}'.")
 
-    return time_f
+    return time_f, unit
 
 def fft(data, time, plot=False, title=""):
     """Calculates the fft of the given data."""
@@ -226,10 +276,65 @@ def tti(t, time):
     return np.argmin(np.abs(time - t))
 
 @app.command()
+def primary_waves(
+    name_filter: Annotated[str, typer.Argument(help="The name filter to use.")],
+    time_unit: Annotated[str, typer.Option(help="The unit to show on the x-axis.", )] = "s",
+    sensor_nr: Annotated[str, typer.Option(help="The sensors to plot.", )] = "2",
+    sensor_filter: Annotated[str, typer.Option(help="The sensor filter. When set, sensor-nr is ignored!", )] = None,
+):
+    tf, tunit = mod_unit(time_unit)
+
+    filter_func = create_filter_function(name_filter)
+    specimens: list[Specimen] = Specimen.get_all_by(filter_func, lazyload=False)
+
+    fig,axs = plt.subplots(len(specimens), 1, figsize=general.figure_size, sharey='all', sharex='all')
+
+    specimens = sorted(specimens, key=lambda x: x.sig_h)
+
+    for i,specimen in enumerate(specimens):
+        ax = axs[i]
+
+        set_prim_sec_sensors(specimen)
+
+        reader = APReader(specimen.acc_file)
+
+        drop = reader.collectChannels('Fall_g1')[0]
+
+        if sensor_filter is None:
+            channels = reader.collectChannelsLike(f'Acc*{sensor_nr}')
+        else:
+            channels = reader.collectChannelsLike(sensor_filter.replace("!", "|"))
+
+
+        prim_runtime, sec_runtime, crack_runtime = annotate_runtimes(specimen, ax)
+
+
+        imp_i, imp_time = get_impact_time(drop)
+
+        time = drop.Time.data - imp_time
+        for chan in channels:
+            ax.plot(time, chan.data)
+
+        ax.grid()
+        ax.set_xlim((-1*ms, +3*ms))
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x*tf:.2f}"))
+
+        # print sig_h to the right
+        ax.text(0.99, 0.95, f"{specimen.sig_h:.2f} MPa", ha='right', va='top', transform=ax.transAxes)
+        ax.text(0.01, 0.95, f"'{specimen.name}'", ha='left', va='top', transform=ax.transAxes)
+
+    axs[-1].set_xlabel(f"Time [{tunit}]")
+    axs[len(specimens)//2].set_ylabel(f"Acceleration [g]")
+
+    plt.show()
+
+
+
+
+@app.command()
 def plot_impact(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
     time_unit: Annotated[str, typer.Option(help="The unit to show on the x-axis.", )] = "s",
-    normalize_time: Annotated[bool, typer.Option('--normalize-time', help="Move 0-time to impact.", )] = False,
     file: Annotated[str, typer.Option(help="The file to plot.", )] = None,
     fig_title: Annotated[str, typer.Option(help="Title of the figure.", )] = None,
     apply_filter: Annotated[bool, typer.Option(help="Apply filter function.", )] = False,
@@ -240,41 +345,17 @@ def plot_impact(
     plot_filtered_sep: Annotated[bool, typer.Option('--plot-sep', help="Draw the filtered function seperately.", )] = False
 ):
     """Plots the impact of the given specimen."""
-    time_f = mod_unit(time_unit)
+    time_f, readable_unit = mod_unit(time_unit)
 
     g = 9.81
-    prim_sensors = ['2', '6']
-    sec_sensors = ['1', '3', '4', '5']
+
 
     if file is None:
         specimen = Specimen.get(specimen_name)
 
-        # wave and crackfront velocities
-        v_p = 5500 * 1e3
-        v_s = 3500 * 1e3
-        v_c = 1500 * 1e3
-
-        # distances
-        d_p = 450   # primary wave first registered on 2nd sensor
-        d_s = 400   # secondary wave first registered on 1st sensor
-        d_c = np.sqrt(450**2 + 450**2) # diagonal distance when crack is finished
-
-        if specimen.break_pos == "center":
-            d_p = 250
-            d_s = 200
-            d_c = np.sqrt(250**2 + 250**2)
-
-
-
-        prim_runtime = (d_p / v_p)
-        sec_runtime = (d_s / v_s)
-        crackfront_runtime = (d_c / v_c)
-
+        set_prim_sec_sensors(specimen)
         reader = APReader(specimen.acc_file)
     else:
-        prim_runtime = 0
-        sec_runtime = 0
-        crackfront_runtime = 0
         reader = APReader(file)
 
     reader.printSummary()
@@ -285,15 +366,8 @@ def plot_impact(
     # g_channels = reader.collectChannelsLike('shock')
     # drop_channels = reader.collectChannelsLike('Force')
 
-    mean_drop_g = np.max(np.abs(drop_channels[0].data[:10000]))*1.5
-    xx1 = np.abs(drop_channels[0].data/mean_drop_g)**10
-    impact_time_i: int = np.argwhere(xx1 >= 1)[0]-2
-    impact_time = drop_channels[0].Time.data[impact_time_i]
+    impact_time_i, impact_time = get_impact_time(drop_channels[0])
     time0 = drop_channels[0].Time.data
-    dtime = impact_time if normalize_time else 0
-
-    before = impact_time - 30 * us
-    after = impact_time + crackfront_runtime + 100 * us
 
     g_data = []
     # collect channel data and their times
@@ -321,47 +395,40 @@ def plot_impact(
     fig, ax = plt.subplots(figsize=figsize)
     if show_title:
         fig.suptitle(fig_title or f"Impact of specimen '{specimen_name}'")
-    ax.set_xlabel(f"Time [{time_unit}]")
+    ax.set_xlabel(f"Time [{readable_unit}]")
     ax.set_ylabel(f"Acceleration [{'g' if not mpss else 'm/s²'}]")
     ax.grid()
 
 
     # plot the g channels
     for chan, time, data, fdata, freq in g_data:
-        time = time - dtime
+        time = time - impact_time
         linestyle = '-'
 
         if any([x in chan.Name for x in prim_sensors]):
-            linestyle = (0, (5, 1))
+            linestyle = prim_ls
 
         line = ax.plot(time, data, linestyle=linestyle, label=chan.Name)
         if plot_filtered_sep and not apply_filter:
             ax.plot(time, fdata, "--", color = line[0].get_color(), label=chan.Name + " (filtered)")
 
-    impact_time = impact_time - dtime
     # plot the impact time
-    ax.axvline(impact_time, color="red")
-    ax.text(impact_time, 0.01, 'Impact',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
-    ax.axvline(impact_time + prim_runtime, color='k', linestyle='--')
-    ax.text(impact_time + prim_runtime, 0.01, 'P-Wave',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
-    ax.axvline(impact_time + sec_runtime, color='k', linestyle='--')
-    ax.text(impact_time + sec_runtime, 0.01, 'S-Wave',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
-    ax.axvline(impact_time + crackfront_runtime, color='k', linestyle='--')
-    ax.text(impact_time + crackfront_runtime, 0.01, 'Glass broken',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+    if file is None:
+        _,_,crack_runtime = annotate_runtimes(specimen, ax)
 
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x*time_f:.2f}"))
 
     # plot the drop channels
     for chan, time, data in drop_data:
-        time = time - dtime
-        ax.plot(time, data, linestyle=(0, (3, 1, 1, 1)), label=chan.Name)
+        time = time - impact_time
+        ax.plot(time, data, linestyle=drop_ls, label=chan.Name)
 
-    # plot the 0.5s before and 3 seconds after the impact
-
-    if zoom_in:
-        ax.set_xlim(before - dtime, after - dtime)
-        ib = tti(before, time0)
-        ia = tti(after, time0)
+    if zoom_in and file is None:
+        before = -30*us
+        after = crack_runtime + 200*us
+        ax.set_xlim(before, after)
+        ib = tti(before, time0 - impact_time)
+        ia = tti(after, time0 - impact_time)
 
         y_max= [np.max(x[ib:ia]) for _, _, x, _, _ in g_data]
         y_max = np.max(y_max) * 1.3
@@ -388,6 +455,13 @@ def plot_impact(
 
 
     fig = plt.figure()
+
+def get_impact_time(channel: Channel):
+    mean_drop_g = np.max(np.abs(channel.data[:10000]))*1.5
+    xx1 = np.abs(channel.data/mean_drop_g)**10
+    impact_time_i: int = np.argwhere(xx1 >= 1)[0]-2
+    impact_time = channel.Time.data[impact_time_i]
+    return impact_time_i,impact_time
 
 
 
