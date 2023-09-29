@@ -7,7 +7,7 @@ import json
 import os
 import pickle
 import re
-from typing import Any, Callable, List, TypeVar
+from typing import Any, Callable, ClassVar, List, TypeVar
 
 import cv2
 import numpy as np
@@ -60,8 +60,7 @@ general = GeneralSettings.get()
 #         specimen = Specimen(spec_path, lazy=True)
 
 #         specimen.lazy_load()
-#         specimens.append(specimen)
-#         print(f"Loaded '{name}'.")
+#         specimens.append(specimen)#         print(f"Loaded '{name}'.")
 
 #     if len(specimens) > 1 and not single_specimen:
 #         return specimens
@@ -98,59 +97,39 @@ class Specimen:
         assert self.__scalp is not None, "Scalp is empty. Specimen not loaded?"
         return self.__scalp
 
-    __splinters: list[Splinter] = None
-    __splinter_config: AnalyzerConfig = None
-    __scalp: ScalpSpecimen = None
-
     @property
     def break_pos(self):
+        "Break position of the specimen."
         assert "break_pos" in self.settings, "break_pos not in settings."
         return self.settings["break_pos"]
 
     @property
     def break_mode(self):
+        "Break mode of the specimen."
         assert "break_mode" in self.settings, "break_mode not in settings."
         return self.settings["break_mode"]
 
-    settings: dict[str, str] = \
-    {
-        "break_mode": "punch",
-        "break_pos": "corner"
-    }
-    "Settings for the specimen."
+    @property
+    def fall_height_m(self):
+        "Fall height in meters."
+        assert "fall_height_m" in self.settings, "fall_height_m not in settings."
+        return self.settings["fall_height_m"]
+
+    @property
+    def settings(self):
+        return self.__settings
+
 
     path: str
     "Specimen folder."
     name: str
     "Specimen name."
+    __settings: dict[str, Any]
+    "Settings of the specimen."
 
-    loaded: bool = False
-    "Whether the specimen is loaded or not."
-
-    has_splinters: bool = False
-    "Whether the specimen can load splinters or not."
-
-    has_scalp: bool = False
-    "Whether the specimen can load a scalp or not."
-
-    boundary: str = ""
-    "Boundary condition of the specimen."
-    nom_stress: int = 0
-    "Nominal stress of the specimen."
-    thickness: int = 0
-    "Thickness of the specimen."
-    nbr: int = 0
-    "Number of the specimen."
-    comment: str = ""
-    "Comment of the specimen."
-
-    acc_file: str = ""
-    "Path to the acceleration file."
-
-
-    nue: float = 0.23
+    nue: ClassVar[float] = 0.23
     "Poisson's ratio of the specimen."
-    E: float = 70e9
+    E: ClassVar[float] = 70e9
     "Young's modulus of the specimen."
 
     @property
@@ -177,10 +156,7 @@ class Specimen:
         assert self.loaded, "Specimen not loaded."
         return self.__U
 
-    __sigma_h: ScalpStress = ScalpStress.default()
-    __measured_thickness: float = np.nan
-    __U_d: float = np.nan
-    __U: float = np.nan
+
 
 
     def load(self, log_missing_data: bool = False):
@@ -219,15 +195,51 @@ class Specimen:
         Args:
             path (str): Path of the specimen.
         """
+
+        self.__splinters: list[Splinter] = None
+        self.__splinter_config: AnalyzerConfig = None
+        self.__scalp: ScalpSpecimen = None
+        self.__sigma_h: ScalpStress = ScalpStress.default()
+        self.__measured_thickness: float = np.nan
+        self.__U_d: float = np.nan
+        self.__U: float = np.nan
+
+        self.loaded: bool = False
+        "Whether the specimen is loaded or not."
+        self.has_splinters: bool = False
+        "Whether the specimen can load splinters or not."
+        self.has_scalp: bool = False
+        "Whether the specimen can load a scalp or not."
+        self.boundary: str = ""
+        "Boundary condition of the specimen."
+        self.nom_stress: int = 0
+        "Nominal stress of the specimen."
+        self.thickness: int = 0
+        "Thickness of the specimen."
+        self.nbr: int = 0
+        "Number of the specimen."
+        self.comment: str = ""
+        "Comment of the specimen."
+
+        self.acc_file: str = ""
+        "Path to the acceleration file."
+
         self.path = path
+        self.__settings = {
+            "break_mode": "punch",
+            "break_pos": "corner",
+            "fall_height_m": 0.07
+        }
 
         self.__cfg_path = os.path.join(path, "config.json")
         if not os.path.exists(self.__cfg_path):
             with open(self.__cfg_path, "w") as f:
-                json.dump(self.settings, f, indent=4)
+                json.dump(self.__settings, f, indent=4)
         else:
             with open(self.__cfg_path, "r") as f:
-                self.settings = json.load(f)
+                sets = json.load(f)
+                for k,v in sets.items():
+                    self.__settings[k] = v
 
         # get name from path
         self.name = os.path.basename(os.path.normpath(path))
@@ -250,6 +262,7 @@ class Specimen:
                 last_sec = vars[3].split("-")
                 self.nbr = int(last_sec[0])
                 self.comment = last_sec[1]
+
         # load acceleration
         acc_path = os.path.join(self.path, "fracture", "acceleration")
         self.acc_file = find_file(acc_path, "*.bin")
