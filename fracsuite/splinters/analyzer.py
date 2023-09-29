@@ -104,7 +104,6 @@ class Analyzer(object):
     splinters: list[Splinter]
     "List of all splinters."
 
-    axs: list[plt.Axes]
     "List of all axes."
     fig_comparison: Figure
     fig_area_distr: Figure
@@ -607,27 +606,6 @@ class Analyzer(object):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return path
 
-
-    def __onselect(self,eclick, erelease):
-        """ Private function, internal use only. """
-        x1, y1 = eclick.xdata, eclick.ydata
-        x2, y2 = erelease.xdata, erelease.ydata
-        selected_region = (x1, y1, x2, y2)
-        if x1 > x2:
-            x1,x2 = x2,x1
-        if y1 > y2:
-            y1,y2 = y2,y1
-
-        self.ax1.set_xlim(x1, x2)
-        self.ax1.set_ylim(y1, y2)
-        self.ax2.set_xlim(x1, x2)
-        self.ax2.set_ylim(y1, y2)
-        self.ax3.set_xlim(x1, x2)
-        self.ax3.set_ylim(y1, y2)
-        plt.draw()
-        # print(selected_region)
-        return selected_region
-
     def __plot_backend(self, region = None, display = False) -> None:
 
         """
@@ -635,62 +613,48 @@ class Analyzer(object):
         Displays the original img, preprocessed img, and an overlay of the found cracks
         side by side in a synchronized plot.
         """
-        self.fig_comparison, (self.ax3, self.ax1, self.ax2) = \
-            plt.subplots(1, 3, figsize=(12, 6))
+        self.fig_comparison, (ax3, ax1, ax2) = \
+            plt.subplots(1, 3, figsize=(12, 6), sharex='all', sharey='all')
 
 
         # Display the result from Canny edge detection
-        self.ax3.imshow(self.original_image)
-        self.ax3.set_title("Original")
-        self.ax3.axis('off')
+        ax3.imshow(self.original_image)
+        ax3.set_title("Original")
+        ax3.axis('off')
 
         # Display the result from Canny edge detection
-        self.ax1.imshow(self.preprocessed_image, cmap='gray')
-        self.ax1.set_title("Preprocessed image")
-        self.ax1.axis('off')
+        ax1.imshow(self.preprocessed_image, cmap='gray')
+        ax1.set_title("Preprocessed image")
+        ax1.axis('off')
 
         # Overlay found contours on the original image
-        self.ax2.set_title("Detected Cracks")
-        self.ax2.axis('off')
+        ax2.set_title("Detected Cracks")
+        ax2.axis('off')
         img = self.image_contours
         for c in self.contours:
             cv2.drawContours(img, [c], -1, (255,0,0), 1)
-        self.ax2.imshow(img)
+        ax2.imshow(img)
 
         if region is not None:
             (x, y, w, h) = region
-            self.ax1.set_xlim(x-w//2, x+w//2)
-            self.ax1.set_ylim(y-h//2, y+h//2)
-            self.ax2.set_xlim(x-w//2, x+w//2)
-            self.ax2.set_ylim(y-h//2, y+h//2)
-            self.ax3.set_xlim(x-w//2, x+w//2)
-            self.ax3.set_ylim(y-h//2, y+h//2)
+            ax1.set_xlim(x-w//2, x+w//2)
+            ax1.set_ylim(y-h//2, y+h//2)
+            ax2.set_xlim(x-w//2, x+w//2)
+            ax2.set_ylim(y-h//2, y+h//2)
+            ax3.set_xlim(x-w//2, x+w//2)
+            ax3.set_ylim(y-h//2, y+h//2)
         else:
             # zoom into the image so that 25% of the image width is visible
             x0, x = self.original_image.shape[0] * 0.35, self.original_image.shape[0] * 0.40
             y0, h = self.original_image.shape[1] * 0.35, self.original_image.shape[1] * 0.40
 
-            self.ax1.set_xlim(x0, x)
-            self.ax1.set_ylim(y0, h)
-            self.ax2.set_xlim(x0, x)
-            self.ax2.set_ylim(y0, h)
-            self.ax3.set_xlim(x0, x)
-            self.ax3.set_ylim(y0, h)
+            ax1.set_xlim(x0, x)
+            ax1.set_ylim(y0, h)
+            ax2.set_xlim(x0, x)
+            ax2.set_ylim(y0, h)
+            ax3.set_xlim(x0, x)
+            ax3.set_ylim(y0, h)
 
-
-
-        # Connect the rectangle selector to synchronize zooming
-        rs = RectangleSelector(self.ax1, self.__onselect, useblit=True, \
-            button=[1], spancoords='pixels', )
-        rs1 = RectangleSelector(self.ax2, self.__onselect, useblit=True, \
-            button=[1], spancoords='pixels', )
-        rs2 = RectangleSelector(self.ax3, self.__onselect, useblit=True, \
-            button=[1], spancoords='pixels', )
-
-        rs.add_state('square')
-
-        rs1.add_state('square')
-        rs2.add_state('square')
         plt.tight_layout()
 
         if display:

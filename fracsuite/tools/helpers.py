@@ -4,6 +4,7 @@ import cv2
 import re
 
 from matplotlib import colors, pyplot as plt
+from matplotlib.axes import Axes
 import numpy as np
 
 from fracsuite.tools.general import GeneralSettings
@@ -187,3 +188,23 @@ def dispImage(roi, title = ""):
     plt.imshow(roi)
     plt.title(title)
     plt.show()
+
+
+
+def align_axis(ax0: Axes, ax: Axes):
+    # Get the y-limits of the first axis
+    ylim0 = ax0.get_ylim()
+    # Calculate the scaling factor for the first axis
+    fy0 = (ylim0[1] - ylim0[0]) / (ax0.get_ylim()[1] - ax0.get_ylim()[0])
+
+    # Get the y-limits of the second axis
+    ylim = ax.get_ylim()
+    # Calculate the scaling factor for the second axis
+    fy = (ylim[1] - ylim[0]) / (ax.get_ylim()[1] - ax.get_ylim()[0])
+
+    # Calculate the new y-limits for the second axis based on the scaling factor
+    ny0 = ylim[0] + (ylim0[0] - ax0.get_ylim()[0])/fy0 * fy
+    ny1 = ny0 + (ylim0[1] - ylim0[0]) / fy0 * fy
+
+    # Set the new y-limits for the second axis
+    ax.set_ylim(ny0, ny1)

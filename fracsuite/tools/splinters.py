@@ -568,7 +568,7 @@ def create_filter_function(name_filter,
         name_filter_function = in_names_list
     elif name_filter is not None and "*" in name_filter:
         print(f"Searching for specimen whose name matches: '{name_filter}'")
-        name_filter = name_filter.replace(".","\.").replace("*", ".*")
+        name_filter = name_filter.replace(".","\.").replace("*", ".*").replace('!', '|')
         name_filter_function = in_names_wildcard
     elif name_filter is None:
         name_filter = ".*"
