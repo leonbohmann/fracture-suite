@@ -12,7 +12,6 @@ from matplotlib.ticker import FuncFormatter
 from scipy.signal import savgol_filter, order_filter, butter
 from scipy.integrate import cumulative_trapezoid
 from scipy import signal
-
 import numpy as np
 import typer
 from apread import APReader, Channel
@@ -37,6 +36,7 @@ sec_sensors = ['1', '3', '4', '5']  # sensor nbr that measure the secondary wave
 drop_ls = (0, (3, 1, 1, 1))     # linestyle for drop sensors
 prim_ls = (0, (5, 1))           # linestyle for primary wave
 sec_ls = '-'                    # linestyle for secondary wave
+
 
 def set_prim_sec_sensors(specimen: Specimen):
     """Sets the primary and secondary sensors for the given specimen."""
@@ -340,6 +340,9 @@ def wave_compare(
         ax.text(0.99, 0.95, f"{specimen.sig_h:.0f} MPa", ha='right', va='top', transform=ax.transAxes)
         ax.text(0.01, 0.95, f"'{specimen.name}'", ha='left', va='top', transform=ax.transAxes)
 
+    for ax in axs:
+        ax.axhline(0, color='k', linestyle='-')
+
     axs[-1].set_xlabel(f"Time [{tunit}]")
     axs[len(specimens)//2].set_ylabel(f"Acceleration [g]")
 
@@ -350,7 +353,7 @@ def wave_compare(
     plt.show()
 
     outname = general.get_output_file(f'wave_compare_{specimens[0].name}-{specimens[-1].name}.{general.image_extension}')
-    if out  is not None:
+    if out is not None:
         outname = general.get_output_file(f'{out}.{general.image_extension}')
 
     fig.savefig(outname, bbox_inches="tight")

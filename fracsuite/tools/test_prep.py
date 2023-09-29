@@ -31,7 +31,11 @@ test_prep_app = typer.Typer(help=__doc__)
 
 @test_prep_app.command()
 def test_configs(specimen_name: str):
+    """Test the different preprocessing configs.
 
+    Args:
+        specimen_name (str): Name of specimen to perform tests on.
+    """
     specimen = Specimen.get(specimen_name)
 
     configs = [defaultPrepConfig, softgaussPrepConfig, softmeanPrepConfig, aggressivegaussPrepConfig, aggressivemeanPrepConfig]
@@ -56,12 +60,13 @@ def test_configs(specimen_name: str):
             progress.update(an_task, advance=1)
 
 
-        plot_values(configs, plot_config)
+        fig, axs = plot_values(configs, plot_config)
+        plt.show()
 
 
 @test_prep_app.command()
 def test_configs_hists(specimen_name: str):
-
+    """Test the different preprocessing configs and plot a histogram."""
     specimen = Specimen.get(specimen_name)
 
     configs = [defaultPrepConfig, softgaussPrepConfig, softmeanPrepConfig, aggressivegaussPrepConfig, aggressivemeanPrepConfig]
@@ -113,6 +118,7 @@ def test_configs_hists(specimen_name: str):
 
 @test_prep_app.command()
 def test_prep_2d(specimen_name: str):
+    """Test the different preprocessing configs and plot a histogram in 2D."""
     specimen = Specimen.get(specimen_name)
 
     configs = [defaultPrepConfig, softgaussPrepConfig, softmeanPrepConfig, aggressivegaussPrepConfig, aggressivemeanPrepConfig]
@@ -143,6 +149,7 @@ def test_prep_2d(specimen_name: str):
 
 @test_prep_app.command()
 def disp_mean(specimen_name: str,):
+    """Display the mean value of a fracture image."""
     specimen = Specimen.get(specimen_name)
     mean_value = np.mean(specimen.get_fracture_image())
     print(mean_value)
@@ -155,6 +162,13 @@ def disp_mean(specimen_name: str,):
 
 @test_prep_app.command()
 def test_splinter_count(specimen_name: str, load: bool = False, calibrated: int = 301):
+    """Test the splinter count for different preprocessing configs.
+
+    Args:
+        specimen_name (str): Specimen name
+        load (bool, optional): Loads previous results. Defaults to False.
+        calibrated (int, optional): The calibrated splinter count value for the area. Defaults to 301.
+    """
     specimen = Specimen.get(specimen_name)
 
     # mean_value = np.mean(specimen.get_fracture_image())
