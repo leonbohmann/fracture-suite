@@ -1094,9 +1094,9 @@ def watershed(
 
     if not size_img_file:
         size_img_file = specimen.get_splinter_outfile("img_splintersizes.png")
-        create_splinter_sizes_image(specimen.splinters, image.shape[:2], size_img_file)
+        create_splinter_sizes_image(specimen.splinters, image.shape, size_img_file)
 
-    sz_img = cv2.imread(size_img_file)
+    sz_img = cv2.imread(size_img_file, cv2.IMREAD_COLOR)
     # plotImages((("Splinter Image", sp_img), ("Watershed", img)))
     plotImages((("Splinter Image", sp_img), ("Watershed", img), ("Splinter Sizes", sz_img)))
 

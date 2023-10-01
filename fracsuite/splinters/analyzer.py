@@ -347,7 +347,7 @@ class Analyzer(object):
         if not no_save:
 
             size_file = self.__get_out_file("img_splintersizes", general.image_extension)
-            create_splinter_sizes_image(self.splinters, self.image_skeleton.shape, size_file)
+            create_splinter_sizes_image(self.splinters, self.image_skeleton_rgb.shape, size_file)
 
             self.image_contours = self.original_image.copy()
             self.image_filled = self.original_image.copy()

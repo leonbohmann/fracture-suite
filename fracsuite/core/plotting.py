@@ -163,7 +163,7 @@ def plotImages(imgs: list[(str, Any)], region = None ):
     plt.show()
 
 
-def create_splinter_sizes_image(splinters: list[Splinter], shape: tuple[int,int], out_file: str = None):
+def create_splinter_sizes_image(splinters: list[Splinter], shape: tuple[int,int, int], out_file: str = None):
         img = np.zeros(shape, dtype=np.uint8)
         areas = [x.area for x in splinters]
 
