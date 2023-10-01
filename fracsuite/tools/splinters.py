@@ -24,7 +24,7 @@ from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.stochastics import csintkern_objects, csintkern_objects_diagonal
-from fracsuite.splinters.processing import crop_matrix, crop_perspective, preprocess_image
+from fracsuite.splinters.processing import crop_matrix, crop_perspective, erodeImg, preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, get_color, write_image
@@ -1026,7 +1026,7 @@ def watershed(
 
     assert image is not None, "No fracture image found."
 
-
+    # thresh: black is crack, white is splinter
     gray = to_gray(image)
     ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if debug:
@@ -1036,24 +1036,26 @@ def watershed(
     kernel = np.ones((3,3),np.uint8)
     opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 1)
 
-    # sure background area
-    sure_bg = cv2.dilate(opening,kernel,iterations=1)
+    # sure background: white is splinter, black is crack
+    sure_bg = cv2.dilate(opening,kernel,iterations=2)
 
     if debug:
         plotImage(sure_bg, "Sure Background")
 
     # Finding sure foreground area
-    dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3)
-    ret, sure_fg = cv2.threshold(dist_transform,0.3*dist_transform.max(),255,0)
+    dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3,)
+    cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
+    ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
+    # sure_fg = erodeImg(sure_fg, it=2)
+
     if debug:
         plotImages([("Distance Transform", dist_transform),("Sure Foreground", sure_fg)])
+
 
     # Finding unknown region
     sure_fg = np.uint8(sure_fg)
     unknown = cv2.subtract(sure_bg,sure_fg)
 
-    if debug:
-        plotImage(unknown, "Unknown")
 
     # Marker labelling
     ret, markers = cv2.connectedComponents(sure_fg)
@@ -1061,6 +1063,14 @@ def watershed(
     markers = markers+1
     # Now, mark the region of unknown with zero
     markers[unknown==255] = 0
+
+    if debug:
+        plotImages([
+            ("Sure Background", sure_bg),
+            ("Sure Foreground", sure_fg),
+            ("Back - Foreground", unknown),
+            ("Markers", np.abs(markers).astype(np.uint8)),
+        ])
 
     img = image.copy()
     markers = cv2.watershed(img,markers)
