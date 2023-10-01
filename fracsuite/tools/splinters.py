@@ -1020,6 +1020,16 @@ def watershed(
     name: Annotated[str, typer.Argument(help='Name of the specimen.', metavar='*.*.*.*')],
     debug: Annotated[bool, typer.Option(help='Show debug plots.')] = False,
 ):
+    #TODO: Check the individual steps of the watershed algorithm
+    #   1. Check Background identification, this should be 0 so that all available space
+    #       is used for the watershed algorithm and the markers
+    #   2. Check the distance transform, this should identify all splinters and not
+    #       create any false positives or miss small splinters
+    #
+    #   Once this works, validate the detection of dark spots and compare them
+    #   to the original algorithm!
+
+
     specimen = Specimen.get(name)
 
     image = specimen.get_fracture_image()
