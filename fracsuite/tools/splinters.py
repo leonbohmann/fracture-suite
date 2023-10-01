@@ -1058,7 +1058,7 @@ def watershed(
     dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3,)
     cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
     ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
-    # sure_fg = erodeImg(sure_fg, it=2)
+    sure_fg = erodeImg(sure_fg, it=4)
 
     if debug:
         plotImages([("Distance Transform", dist_transform),("Sure Foreground", sure_fg)])
