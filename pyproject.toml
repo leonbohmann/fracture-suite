@@ -3,12 +3,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-dependencies = ["matplotlib", "opencv-python", "numpy", 
-        "tqdm", "scikit-image", "rich", "scikit-learn", 
+dependencies = ["matplotlib", "opencv-python", "numpy",
+        "tqdm", "scikit-image", "rich", "scikit-learn",
         "scipy", "apread==1.1.2a9", "Pillow", "reportlab",
         "pylibdmtx", "pyzbar"]
 name = "fracsuite"
-version = "0.1.6"
+version = "0.1.8"
 authors = [
   { name="Leon Bohmann", email="mail@leonbohmann.de" },
 ]
