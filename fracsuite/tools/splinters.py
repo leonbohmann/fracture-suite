@@ -1038,16 +1038,18 @@ def watershed(
 
     # thresh: black is crack, white is splinter
     gray = to_gray(image)
-    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if debug:
-        plotImage(thresh, "Thresholded Image")
+    # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 21, 14)
+    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
     # noise removal
     kernel = np.ones((3,3),np.uint8)
-    opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 1)
+    opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
+
+    if debug:
+        plotImage(thresh, "Thresholded Image")
 
     # sure background: white is splinter, black is crack
-    sure_bg = cv2.dilate(opening,kernel,iterations=2)
+    sure_bg = cv2.dilate(opening,kernel,iterations=3)
 
     if debug:
         plotImage(sure_bg, "Sure Background")
