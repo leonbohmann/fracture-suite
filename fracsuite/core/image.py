@@ -13,6 +13,10 @@ def is_gray(img):
 def is_rgb(img):
     return len(img.shape) == 3
 
+def is_rgba(img):
+    return len(img.shape) == 4
+
+
 def to_gray(img):
     if is_gray(img):
         return img
@@ -22,6 +26,12 @@ def to_rgb(img):
     if is_rgb(img):
         return img
     return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+def to_rgba(img):
+    if is_rgba(img):
+        return img
+    return cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
+
 
 class SplitImage:
     grid_size: int
