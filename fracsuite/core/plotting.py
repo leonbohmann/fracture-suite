@@ -3,11 +3,13 @@ Plotting helper functions
 """
 
 from typing import Any, Callable, TypeVar
+import cv2
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import numpy as np
+from fracsuite.core.coloring import get_color
 from fracsuite.core.image import to_rgb
 
 from fracsuite.core.stochastics import csintkern_image, csintkern_objects
@@ -126,8 +128,8 @@ def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tup
         values_func(x, axs[i])
     return fig,axs
 
-def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] = None):
-    if color:
+def plotImage(img,title:str, cvt_to_rgb: bool = True, region: tuple[int,int,int,int] = None):
+    if cvt_to_rgb:
         img = to_rgb(img)
 
     fig, axs = plt.subplots()
@@ -143,14 +145,14 @@ def plotImage(img,title:str, color: bool = True, region: tuple[int,int,int,int] 
     plt.close(fig)
 
 
-def plotImages(imgs: list[(str, Any)], region = None):
+def plotImages(imgs: list[(str, Any)], region = None ):
     """Plots several images side-by-side in a subplot.
 
     Args:
         imgs (list[tuple[str,Any]]): List of tuples containing the title and the image to plot.
         region (x,y,w,h, optional): A specific region to draw. Defaults to None.
     """
-    fig,axs  = plt.subplots(1,len(imgs))
+    fig,axs  = plt.subplots(1,len(imgs), sharex='all', sharey='all')
     for i, (title, img) in enumerate(imgs):
         axs[i].imshow(img)
         axs[i].set_title(title)
@@ -159,3 +161,17 @@ def plotImages(imgs: list[(str, Any)], region = None):
             axs[i].set_xlim((x1-w//2,x1+w//2))
             axs[i].set_ylim((y1-h//2,y1+h//2))
     plt.show()
+
+
+def create_splinter_sizes_image(splinters: list[Splinter], shape: tuple[int,int], out_file: str = None):
+        img = np.zeros(shape, dtype=np.uint8)
+        areas = [x.area for x in splinters]
+
+        min_area = np.min(areas)
+        max_area = np.max(areas)
+
+        for s in splinters:
+            clr = get_color(s.area, min_value=min_area, max_value=max_area, colormap_name='turbo')
+            cv2.drawContours(img, [s.contour], -1, clr, -1)
+
+        cv2.imwrite(out_file, img)
