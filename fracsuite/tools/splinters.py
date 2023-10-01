@@ -1082,5 +1082,5 @@ def watershed(
 
     m_img = np.zeros_like(img)
     m_img[markers == -1] = (255,0,0)
-    cmp_image = cv2.addWeighted(sp_img, 1, m_img, 1, 0)
-    plotImage(cmp_image, "Comparison")
+    cmp_image = cv2.addWeighted(sp_img, 0.5, m_img, 1, 0)
+    plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
