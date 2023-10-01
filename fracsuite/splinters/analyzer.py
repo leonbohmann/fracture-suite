@@ -1,44 +1,37 @@
 from __future__ import annotations
 
 import csv
-from ctypes import sizeof
 import json
 import os
 import pickle
 import shutil
-import time
 
 import cv2
 import numpy as np
 import numpy.typing as nptyp
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
-from matplotlib.widgets import RectangleSelector
 from rich import print
 from rich.progress import Progress, Task
 from skimage.morphology import skeletonize
-from pathos.multiprocessing import ProcessPool
 from multiprocessing import Pool, shared_memory as sm
 
 from fracsuite.core.coloring import rand_col
 from fracsuite.core.image import to_rgb
-from fracsuite.core.plotting import plotImage, plotImages
+from fracsuite.core.plotting import create_splinter_sizes_image, plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.processing import (
     closeImg,
     crop_perspective,
     detect_fragments,
-    dilateImg,
     erodeImg,
-    openImg,
     preprocess_image,
     preprocess_spot_detect,
 )
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import (
-    dispImage,
     get_specimen_path,
 )
 
@@ -352,6 +345,10 @@ class Analyzer(object):
         # create images
         update_main(6, 'Save images...')
         if not no_save:
+
+            size_file = self.__get_out_file("img_splintersizes", general.image_extension)
+            create_splinter_sizes_image(self.splinters, self.image_skeleton.shape, size_file)
+
             self.image_contours = self.original_image.copy()
             self.image_filled = self.original_image.copy()
             for c in self.contours:
