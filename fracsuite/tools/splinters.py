@@ -19,12 +19,13 @@ from rich import print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
 
-from fracsuite.core.plotting import plot_image_kernel_contours, plot_splinter_kernel_contours, create_splinter_sizes_image, plotImage, plotImages
+from fracsuite.core.plotting import datahist_plot, plot_image_kernel_contours, plot_splinter_kernel_contours, create_splinter_sizes_image, plotImage, plotImages, datahist_to_ax
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.stochastics import csintkern_objects, csintkern_objects_diagonal
-from fracsuite.splinters.processing import crop_matrix, crop_perspective, erodeImg, preprocess_image
+from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+from fracsuite.splinters.processing import crop_matrix, crop_perspective, detect_fragments, erodeImg, preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, get_color, write_image
@@ -656,44 +657,16 @@ def plot_histograms(xlim: tuple[float,float],
                     plot_mean = False,
                     n: int = 50,
                     has_legend: bool = True) -> Figure:
-    fig, ax = plt.subplots()
+    fig, ax = datahist_plot(xlim=xlim, has_legend=has_legend)
 
     if legend is None:
         def legend(x):
             return f'{x.name}'
 
     for specimen in specimens:
-        # fetch areas from splinters
-        areas = [np.log10(x.area) for x in specimen.splinters if x.area > 0]
-        # ascending sort, smallest to largest
-        areas.sort()
+        areas = [x.area for x in specimen.splinters]
+        datahist_to_ax(ax, areas, n_bins=n, plot_mean=plot_mean, label=legend(specimen))
 
-        # density: normalize the bins data count to the total amount of data
-        _,_,container = ax.hist(areas, bins=int(n),
-                density=True, label=legend(specimen),
-                alpha=0.5)
-
-        if plot_mean:
-            mean = np.mean([x.area for x in specimen.splinters])
-            ax.axvline(np.log10(mean), linestyle='--', label=f"Ø={mean:.2f}mm²")
-
-    if xlim is not None:
-        ax.set_xlim(xlim)
-
-
-    if has_legend:
-        ax.legend(loc='best')
-
-    # ax.set_xscale('log')
-    ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(10**x))
-    ticksy = FuncFormatter(lambda x, pos: '{0:.2f}'.format(x))
-    ax.xaxis.set_major_formatter(ticks)
-    ax.yaxis.set_major_formatter(ticksy)
-
-    # ax.xaxis.set_major_formatter(ScalarFormatter())
-    ax.set_xlabel('Splinter Area [mm²]')
-    ax.set_ylabel('Probability Density (Area) [-]')
-    ax.grid(True, which='both', axis='both')
     fig.tight_layout()
     return fig
 
@@ -1074,7 +1047,7 @@ def watershed(
     # Add one to all labels so that sure background is not 0, but 1
     markers = markers+1
     # Now, mark the region of unknown with zero
-    markers[unknown==255] = 0
+    markers[sure_fg!=255] = 0
 
     if debug:
         plotImages([
@@ -1085,10 +1058,10 @@ def watershed(
         ])
 
     img = image.copy()
-    markers = cv2.watershed(img,markers)
+    markers = cv2.watershed(np.zeros_like(img),markers)
     img[markers == -1] = [255,0,0]
 
-    plotImage(img, "Result")
+    # plotImage(img, "Result")
     # compare to original splinter output
     sp_img = cv2.imread(specimen.get_splinter_outfile("img_filled.png"))
 
@@ -1100,9 +1073,43 @@ def watershed(
 
     sz_img = cv2.imread(size_img_file, cv2.IMREAD_COLOR)
     # plotImages((("Splinter Image", sp_img), ("Watershed", img)))
-    plotImages((("Splinter Image", sp_img), ("Watershed", img), ("Splinter Sizes", sz_img)))
-
-    m_img = np.zeros_like(img)
-    m_img[markers == -1] = (255,0,0)
-    cmp_image = cv2.addWeighted(sp_img, 0.5, m_img, 1, 0)
+    # plotImages((("Splinter Image", sp_img), ("Watershed", img), ("Splinter Sizes", sz_img)))
+    cv2.Laplacian()
+    m_img = np.zeros_like(img, dtype=np.uint8)
+    m_img[markers == -1] = 255
+    cmp_image = cv2.addWeighted(img, 1.0, sp_img, 0.2, 0)
+    cmp_image = cv2.addWeighted(cmp_image, 1, m_img, 1, 0)
     plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
+
+    size_factor = specimen.splinters_data['size_factor']
+    # perform contour analyses on m_img
+    m_img = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
+    m_img[markers == -1] = 255
+    contours = detect_fragments(m_img, AnalyzerConfig())
+    orig_img = image.copy()
+    splinters = [Splinter(i, c, size_factor) for c,i in enumerate(contours)]
+    splinters = sorted(splinters, key=lambda x: x.area)
+    sz_image2 = create_splinter_sizes_image(splinters, orig_img.shape, specimen.get_splinter_outfile("img_splintersizes_watershed.png"))
+    sz_image2 = annotate_image(sz_image2, title="Splinter Sizes Watershed", cbar = cv2.COLORMAP_TURBO)
+    plotImages([("Splinter Sizes", sz_img), ("Splinter Sizes Watershed", sz_image2)])
+
+
+
+    # plot splinter histograms
+    fig, axs = plt.subplots(1,2)
+    fig.set_size_inches(12,6)
+    fig.suptitle("Splinter Sizes")
+    axs[0].set_title("Original")
+    axs[1].set_title("Watershed")
+    axs[0].set_xlabel("Splinter Size [mm²]")
+    axs[1].set_xlabel("Splinter Size [mm²]")
+    axs[0].set_ylabel("Amount of Splinters [-]")
+    axs[1].set_ylabel("Amount of Splinters [-]")
+    axs[0].grid(True)
+    axs[1].grid(True)
+    datahist_to_ax(axs[0], [x.area for x in specimen.splinters], 20, as_log=False)
+    datahist_to_ax(axs[1], [x.area for x in splinters], 20, as_log=False)
+# ax.set_xscale('log')
+
+    fig.tight_layout()
+    plt.show()
