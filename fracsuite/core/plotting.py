@@ -8,6 +8,7 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 from fracsuite.core.coloring import get_color
 from fracsuite.core.image import to_rgb
@@ -175,3 +176,65 @@ def create_splinter_sizes_image(splinters: list[Splinter], shape: tuple[int,int,
             cv2.drawContours(img, [s.contour], -1, clr, -1)
 
         cv2.imwrite(out_file, img)
+
+        return img
+
+def datahist_plot(xlim:bool = None, has_legend:bool = True) -> tuple[Figure, Axes]:
+    fig, ax = plt.subplots()
+
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    else:
+        ax.set_xlim((0, 2))
+
+    if has_legend:
+        ax.legend(loc='best')
+
+    ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(10**x))
+    ticksy = FuncFormatter(lambda x, pos: '{0:.2f}'.format(x))
+    ax.xaxis.set_major_formatter(ticks)
+    ax.yaxis.set_major_formatter(ticksy)
+
+    # ax.xaxis.set_major_formatter(ScalarFormatter())
+    ax.set_xlabel('Splinter Area [mm²]')
+    ax.set_ylabel('Probability Density (Area) [-]')
+    ax.grid(True, which='both', axis='both')
+
+    return fig, ax
+
+def datahist_to_ax(
+    ax: Axes,
+    data: list[float],
+    n_bins: int = 20,
+    plot_mean: bool = True,
+    label: str = None,
+    as_log:bool = True
+):
+    """Plot a histogram of the data to axes ax."""
+
+    def cvt(x):
+        return np.log10(x) if as_log else x
+
+    if not as_log:
+        ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(x))
+        ax.xaxis.set_major_formatter(ticks)
+
+    # fetch areas from splinters
+    data = [cvt(x) for x in data if x > 0]
+    # ascending sort, smallest to largest
+    data.sort()
+
+    max_data = cvt(50)
+    binrange = np.linspace(0, max_data, n_bins)
+
+    # density: normalize the bins data count to the total amount of data
+    _,_,container = ax.hist(data, bins=binrange,
+            density=True,
+            label=label,
+            alpha=0.5)
+
+    if plot_mean:
+        mean = np.mean(data)
+        ax.axvline(mean, linestyle='--', label=f"Ø={mean:.2f}mm²")
+
+    return container
