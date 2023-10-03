@@ -37,6 +37,9 @@ def main_callback(ctx: typer.Context, debug: bool = None):
     state['start_time'] = time.time()
     state['progress'] = get_progress()
     state['debug'] = debug
+    GeneralSettings.sub_outpath = ctx.invoked_subcommand
+
+    os.makedirs(os.path.join(general.out_path, GeneralSettings.sub_outpath), exist_ok=True)
 
 def end_callback(*a, **k):
     d = time.time() - state['start_time']

@@ -10,14 +10,7 @@ from rich.pretty import pretty_repr
 class GeneralSettings:
     __create_key = object()
 
-    base_path: str = ""
-    out_path: str = ""
-    plot_extension: str = "pdf"
-    image_extension: str = "png"
-    default_image_size_px: tuple[int,int] = (4000, 4000)
-    interest_region: str = (250,250,50,50)
-    "x,y,w,h of the interest region in mm"
-    figure_size: tuple[int,int] = (6,4)
+    sub_outpath: str = ""
 
     def get() -> GeneralSettings:
         """Creates a new instance of GeneralSettings or returns the existing one and returns it."""
@@ -33,6 +26,17 @@ class GeneralSettings:
     def __init__(self, key) -> None:
         assert key == self.__create_key, \
             "GeneralSettings must be created using GeneralSettings.get()."
+
+        self.base_path: str = ""
+        self.out_path: str = ""
+        self.plot_extension: str = "pdf"
+        self.image_extension: str = "png"
+        self.default_image_size_px: tuple[int,int] = (4000, 4000)
+        self.interest_region: str = (250,250,50,50)
+        "x,y,w,h of the interest region in mm"
+        self.figure_size: tuple[int,int] = (6,4)
+
+        GeneralSettings.sub_outpath: str = ""
 
         # print("Loading general settings...", end="")
         self.load()
@@ -116,4 +120,4 @@ class GeneralSettings:
             name[-1] = f'{name[-1]}.{general.image_extension}'
 
 
-        return os.path.join(self.out_path, *name)
+        return os.path.join(self.out_path, GeneralSettings.sub_outpath, *name)

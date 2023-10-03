@@ -1089,9 +1089,12 @@ def watershed(
     contours = detect_fragments(m_img, AnalyzerConfig(), filter=False)
     orig_img = image.copy()
     splinters = [Splinter(i, c, size_factor) for c,i in enumerate(contours)]
+    splinters = sorted(splinters, key=lambda x: x.area)
+
+    mean_area = np.mean([x.area for x in splinters])
+    splinters = [x for x in splinters if x.area < mean_area * 2]
 
     ## create splinter size image
-    splinters = sorted(splinters, key=lambda x: x.area)
     sz_image2 = create_splinter_sizes_image(
         splinters,
         orig_img.shape,
@@ -1130,3 +1133,5 @@ def watershed(
 
     fig.tight_layout()
     plt.show()
+
+    fig.savefig(general.get_output_file("legacy_vs_watershed_histograms", is_plot=True))
