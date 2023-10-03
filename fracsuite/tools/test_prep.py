@@ -15,6 +15,7 @@ from fracsuite.core.progress import get_progress, get_spinner
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig, PreprocessorConfig
 from fracsuite.splinters.processing import preprocess_image
+from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import bin_data, img_part
 from fracsuite.tools.specimen import Specimen
@@ -251,3 +252,26 @@ def test_splinter_count(specimen_name: str, load: bool = False, calibrated: int 
     with open('counts.pkl', "wb") as f:
         import pickle
         pickle.dump(counts, f)
+
+
+@test_prep_app.command()
+def test_watershed_count():
+    specimen = Specimen.get('.test01')
+
+    splinters = Splinter.from_image(specimen.get_fracture_image())
+
+    im0 = specimen.get_fracture_image()
+    cv2.drawContours(im0, [x.contour for x in splinters], -1, (255,0,0), 1)
+    cv2.imwrite(general.get_output_file('watershed_count', is_image=True), im0)
+    print(len(splinters))
+
+@test_prep_app.command()
+def test_legacy_count():
+    specimen = Specimen.get('.test01')
+
+    splinters = specimen.splinters
+
+    im0 = specimen.get_fracture_image()
+    cv2.drawContours(im0, [x.contour for x in splinters], -1, (255,0,0), 1)
+    cv2.imwrite(general.get_output_file('legacy_count', is_image=True), im0)
+    print(len(splinters))

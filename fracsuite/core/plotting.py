@@ -135,7 +135,8 @@ def create_splinter_sizes_image(
     shape: tuple[int,int, int],
     out_file: str = None,
     annotate: bool = True,
-    annotate_title: str = ""
+    annotate_title: str = "",
+    with_contours: bool = False
 ):
     """Create an image with the splinter sizes colored in a colormap."""
     img = np.zeros(shape, dtype=np.uint8)
@@ -148,6 +149,9 @@ def create_splinter_sizes_image(
         clr = get_color(s.area, min_value=min_area, max_value=max_area)
         cv2.drawContours(img, [s.contour], -1, clr, -1)
 
+    if with_contours:
+        cv2.drawContours(img, [s.contour for s in splinters], -1, (255,255,255), 1)
+
     if annotate:
         img = annotate_image(
             img,
@@ -156,6 +160,7 @@ def create_splinter_sizes_image(
             min_value=min_area,
             max_value=max_area,
             unit="mm^2",)
+
 
     if out_file is not None:
         cv2.imwrite(out_file, img)

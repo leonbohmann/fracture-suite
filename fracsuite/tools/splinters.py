@@ -1045,9 +1045,10 @@ def watershed(
     sz_image2 = create_splinter_sizes_image(
         splinters,
         image.shape,
-        general.get_output_file(f"{specimen.name}_img_splintersizes_watershed.png"),
+        out_file=general.get_output_file(f"{specimen.name}_img_splintersizes_watershed.png"),
         annotate = True,
-        annotate_title="Watershed")
+        annotate_title="Watershed",
+        with_contours=True)
 
     rnd_splinters = create_colored_splinter_image(
         splinters,
