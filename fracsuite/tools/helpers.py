@@ -133,7 +133,7 @@ def annotate_image(image,
 
     if cbar is not None:
         # add colorbar to the background
-        scale_x0 = int(width * 0.2)
+        scale_x0 = int(width * 0.3)
         scale_width = int(width - 2 * scale_x0)  # Adjust the width as needed
         cbar_height = int(colorbar_height * 0.6)
         cbar_y0 = int(np.ceil(colorbar_height * 0.2))

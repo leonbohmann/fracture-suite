@@ -30,7 +30,13 @@ from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, write_image
 from fracsuite.tools.specimen import Specimen
 
-app = typer.Typer(help=__doc__)
+def main_callback(ctx: typer.Context, debug: bool = None):
+    """Splinter analyzation tools."""
+    GeneralSettings.sub_outpath = os.path.join(GeneralSettings.sub_outpath, ctx.invoked_subcommand)
+
+    os.makedirs(os.path.join(general.out_path, GeneralSettings.sub_outpath), exist_ok=True)
+
+app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
 
@@ -1079,6 +1085,7 @@ def watershed(
     cmp_image = cv2.addWeighted(img, 1.0, sp_img, 0.2, 0)
     cmp_image = cv2.addWeighted(cmp_image, 1, m_img, 1, 0)
     plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
+    cv2.imwrite(general.get_output_file("legacy_vs_watershed_contours", is_image=True), cmp_image)
 
     size_factor = specimen.splinters_data['size_factor']
     # perform contour analyses on m_img
@@ -1091,14 +1098,14 @@ def watershed(
     splinters = [Splinter(i, c, size_factor) for c,i in enumerate(contours)]
     splinters = sorted(splinters, key=lambda x: x.area)
 
-    mean_area = np.mean([x.area for x in splinters])
-    splinters = [x for x in splinters if x.area < mean_area * 2]
+    # mean_area = np.mean([x.area for x in splinters])
+    # splinters = [x for x in splinters if x.area < mean_area * 2]
 
     ## create splinter size image
     sz_image2 = create_splinter_sizes_image(
         splinters,
         orig_img.shape,
-        specimen.get_splinter_outfile("img_splintersizes_watershed.png"),
+        general.get_output_file(f"{specimen.name}_img_splintersizes_watershed.png"),
         annotate = True,
         annotate_title="Watershed")
 
@@ -1116,20 +1123,17 @@ def watershed(
     plotImage(rnd_splinters, "Splinters Watershed")
 
     # plot splinter histograms
-    fig, axs = plt.subplots(1,2)
+    fig, axs = datahist_plot(1,2)
     fig.set_size_inches(12,6)
     fig.suptitle("Splinter Sizes")
     axs[0].set_title("Original")
     axs[1].set_title("Watershed")
     axs[0].set_xlabel("Splinter Size [mm²]")
     axs[1].set_xlabel("Splinter Size [mm²]")
-    axs[0].set_ylabel("Amount of Splinters [-]")
-    axs[1].set_ylabel("Amount of Splinters [-]")
-    axs[0].grid(True)
-    axs[1].grid(True)
-    datahist_to_ax(axs[0], [x.area for x in specimen.splinters], 20, as_log=False)
-    datahist_to_ax(axs[1], [x.area for x in splinters], 20, as_log=False)
-# ax.set_xscale('log')
+    axs[0].set_ylabel("PDF [-]")
+    axs[1].set_ylabel("PDF [-]")
+    datahist_to_ax(axs[0], [x.area for x in specimen.splinters], 20, as_log=True)
+    datahist_to_ax(axs[1], [x.area for x in splinters], 20, as_log=True)
 
     fig.tight_layout()
     plt.show()

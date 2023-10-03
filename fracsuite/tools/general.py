@@ -11,6 +11,7 @@ class GeneralSettings:
     __create_key = object()
 
     sub_outpath: str = ""
+    sub_specimen: str = ""
 
     def get() -> GeneralSettings:
         """Creates a new instance of GeneralSettings or returns the existing one and returns it."""
@@ -115,9 +116,9 @@ class GeneralSettings:
         """
         name = list(name)
         if 'is_plot' in kwargs and kwargs['is_plot']:
-            name[-1] = f'{name[-1]}.{general.plot_extension}'
+            name[-1] = f'{GeneralSettings.sub_specimen}{name[-1]}.{general.plot_extension}'
         if 'is_image' in kwargs and kwargs['is_image']:
-            name[-1] = f'{name[-1]}.{general.image_extension}'
+            name[-1] = f'{GeneralSettings.sub_specimen}{name[-1]}.{general.image_extension}'
 
 
         return os.path.join(self.out_path, GeneralSettings.sub_outpath, *name)

@@ -190,7 +190,7 @@ def create_splinter_sizes_image(
             cbar=cv2.COLORMAP_TURBO,
             min_value=min_area,
             max_value=max_area,
-            unit="mm²",)
+            unit="mm^2",)
 
     if out_file is not None:
         cv2.imwrite(out_file, img)
@@ -216,30 +216,37 @@ def create_colored_splinter_image(
     return img
 
 
-def datahist_plot(xlim:bool = None, has_legend:bool = True) -> tuple[Figure, Axes]:
+def datahist_plot(nrows:int = 1, ncols:int = 1, xlim:bool = None, has_legend:bool = True) -> tuple[Figure, Axes]:
     """Create a figure and axes for a data histogram."""
 
-    fig, ax = plt.subplots()
+    fig, axs = plt.subplots(ncols, nrows)
+
+    if nrows == 1 and ncols == 1:
+        axs = [axs]
 
     if xlim is not None:
-        ax.set_xlim(xlim)
+        for ax in axs:
+            ax.set_xlim(xlim)
     else:
-        ax.set_xlim((0, 2))
+        for ax in axs:
+            ax.set_xlim((0, 2))
 
     if has_legend:
-        ax.legend(loc='best')
+        for ax in axs:
+            ax.legend(loc='best')
 
     ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(10**x))
     ticksy = FuncFormatter(lambda x, pos: '{0:.2f}'.format(x))
-    ax.xaxis.set_major_formatter(ticks)
-    ax.yaxis.set_major_formatter(ticksy)
+    for ax in axs:
+        ax.xaxis.set_major_formatter(ticks)
+        ax.yaxis.set_major_formatter(ticksy)
 
-    # ax.xaxis.set_major_formatter(ScalarFormatter())
-    ax.set_xlabel('Splinter Area [mm²]')
-    ax.set_ylabel('Probability Density (Area) [-]')
-    ax.grid(True, which='both', axis='both')
+        # ax.xaxis.set_major_formatter(ScalarFormatter())
+        ax.set_xlabel('Splinter Area [mm²]')
+        ax.set_ylabel('Probability Density (Area) [-]')
+        ax.grid(True, which='both', axis='both')
 
-    return fig, ax
+    return fig, axs
 
 def datahist_to_ax(
     ax: Axes,
