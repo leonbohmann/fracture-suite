@@ -1,6 +1,11 @@
 import numpy as np
 import cv2
 
+from fracsuite.core.image import to_gray
+from fracsuite.core.imageplotting import plotImage, plotImages
+from fracsuite.core.detection import detect_fragments
+from fracsuite.splinters.processing import dilateImg, erodeImg
+
 
 class Splinter:
 
@@ -196,3 +201,65 @@ class Splinter:
         # calculate the angle between the centroid and the impact point
 
         return self.__calculate_orientation_score(impact_position)
+
+    @staticmethod
+    def from_image(image, debug: bool = False, px_per_mm: float = 1.0):
+        # thresh: black is crack, white is splinter
+        gray = to_gray(image)
+        # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 21, 14)
+        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+
+        # noise removal
+        kernel = np.ones((3,3),np.uint8)
+        opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
+
+        if debug:
+            plotImage(thresh, "Thresholded Image")
+
+        # sure background: white is splinter, black is crack
+        sure_bg = cv2.dilate(opening,kernel,iterations=3)
+
+        if debug:
+            plotImage(sure_bg, "Sure Background")
+
+        # Finding sure foreground area
+        dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3,)
+        cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
+        ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
+        sure_fg = erodeImg(sure_fg, it=4)
+
+        if debug:
+            plotImages([("Distance Transform", dist_transform),("Sure Foreground", sure_fg)])
+
+
+        # Finding unknown region
+        sure_fg = np.uint8(sure_fg)
+        unknown = cv2.subtract(sure_bg,sure_fg)
+
+
+        # Marker labelling
+        ret, markers = cv2.connectedComponents(sure_fg)
+        # Add one to all labels so that sure background is not 0, but 1
+        markers = markers+1
+        # Now, mark the region of unknown with zero
+        markers[sure_fg!=255] = 0
+
+        if debug:
+            plotImages([
+                ("Sure Background", sure_bg),
+                ("Sure Foreground", sure_fg),
+                ("Back - Foreground", unknown),
+                ("Markers", np.abs(markers).astype(np.uint8)),
+            ])
+
+        markers = cv2.watershed(np.zeros_like(image),markers)
+
+        m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+        m_img[markers == -1] = 255
+        m_img = dilateImg(m_img)
+        ## find contours on watershed markered image
+        contours = detect_fragments(m_img, min_area=5, max_area=2000, filter=False)
+
+        splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
+
+        return splinters

@@ -18,13 +18,14 @@ from multiprocessing import Pool, shared_memory as sm
 
 from fracsuite.core.coloring import rand_col
 from fracsuite.core.image import to_rgb
-from fracsuite.core.plotting import create_splinter_sizes_image, plotImage, plotImages
+from fracsuite.core.plotting import create_splinter_sizes_image
+from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
+from fracsuite.core.detection import detect_fragments
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.processing import (
     closeImg,
     crop_perspective,
-    detect_fragments,
     erodeImg,
     preprocess_image,
     preprocess_spot_detect,
@@ -268,7 +269,10 @@ class Analyzer(object):
         #############
         # initial contour operations
         update_main(2, 'Analyzing contours...')
-        all_contours = detect_fragments(self.preprocessed_image, config)
+        all_contours = detect_fragments(self.preprocessed_image,
+                                        min_area=config.fragment_min_area_px,
+                                        max_area=config.fragment_max_area_px,
+                                    )
         stencil = np.zeros((self.preprocessed_image.shape[0], \
             self.preprocessed_image.shape[1]), dtype=np.uint8)
 

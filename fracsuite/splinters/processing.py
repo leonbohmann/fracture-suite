@@ -3,7 +3,7 @@ import numpy as np
 import numpy.typing as nptyp
 
 from fracsuite.core.image import to_gray, to_rgb
-from fracsuite.core.plotting import plotImage
+from fracsuite.core.imageplotting import plotImage
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 def preprocess_spot_detect(img):
@@ -207,115 +207,6 @@ def crop_matrix(img, M, size):
     """
     return cv2.warpPerspective(img, M, size)
 
-
-def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
-    -> list[nptyp.ArrayLike]:
-    """
-    This function filters a list of contours.
-
-    kwargs:
-        debug: bool
-            If True, debug output is printed.
-        min_area_px: int
-            Minimum area of a contour in pixels.
-        max_area_px: int
-            Maximum area of a contour in pixels.
-    """
-    if config.debug:
-        len_0 = len(contours)
-    # Sort the contours by area (desc)
-    contours, hierarchy = zip(*sorted(zip(contours, hierarchy[0]), \
-        key=lambda x: cv2.contourArea(x[0]), reverse=True))
-
-    contours = list(contours)
-    contours_areas = [cv2.contourArea(x) for x in contours]
-    # contour_area_avg = np.average(contours_areas)
-    # contour_area_med = np.average(contours_areas)
-    # contour_area_std = np.std(contours_areas)
-
-    # Create a list to store the indices of the contours to be deleted
-    to_delete: list[int] = []
-    As = []
-    ks = []
-    # Iterate over all contours
-    for i in range(len(contours)):
-        contour_area = contours_areas[i]
-        contour_perim = cv2.arcLength(contours[i], False)
-
-
-        if contour_area > 0:
-            As.append(contour_area)
-            ks.append(contour_perim / contour_area)
-
-        if contour_area == 0:
-            contour_area = 0.00001
-
-        # small size
-        if contour_perim < config.fragment_min_area_px:
-            to_delete.append(i)
-
-    # def reject_outliers(data, m = 2.):
-    #     return data[abs(data - np.mean(data)) < m * np.std(data)]
-
-        # filter outliers
-        elif contour_area > config.fragment_max_area_px:
-            to_delete.append(i)
-
-        # # more line shaped contour
-        # elif contour_perim / contour_area > 1:
-        #     contours[i] = cv2.convexHull(contours[i])
-
-        # # Check if the contour has a parent
-        # elif hierarchy[i][1] != -1:
-        #     # If so, mark the contour for deletion
-        #     to_delete.append(i)
-
-        # # all other cases
-        # else:
-        #     contours[i] = connect_closest_hard_angles(contours[i], 140)
-        #     contours[i] = cv2.approxPolyDP(contours[i], 0.1, True)
-
-    # Delete the marked contours
-    for index in sorted(to_delete, reverse=True):
-        del contours[index]
-
-    if config.debug:
-        len_1 = len(contours)
-        print(f'FILT: Contours before: {len_0}, vs after: {len_1}')
-
-    return contours
-
-
-def detect_fragments(binary_image, config: AnalyzerConfig, filter = True) -> list[nptyp.ArrayLike]:
-    """Detects fragments in a binary image.
-
-    Args:
-        binary_image (img): The source image to detect.
-
-    kwargs:
-        debug: bool
-            If True, debug output is printed.
-        min_area_px: int
-            Minimum area of a contour in pixels.
-        max_area_px: int
-            Maximum area of a contour in pixels.
-
-    Raises:
-        ValueError: Something went wrong.
-
-    Returns:
-        list[nptyp.ArrayLike]: The found contours.
-    """
-    try:
-        # Find contours of objects in the binary image
-        contours, hierar = \
-            cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours = list(contours)[1:]
-        if filter:
-            contours = filter_contours(contours, hierar, config)
-        return contours
-    except Exception as e:
-        raise ValueError(f"Error in fragment detection: {e}")
 
 def closeImg(image, sz = 3, it=1):
     kernel_closing = cv2.getStructuringElement(cv2.MORPH_RECT, (sz, sz))

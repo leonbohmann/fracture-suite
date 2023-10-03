@@ -17,14 +17,22 @@ from rich import print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
 
-from fracsuite.core.plotting import create_colored_splinter_image, datahist_plot, plot_image_kernel_contours, plot_splinter_kernel_contours, create_splinter_sizes_image, plotImage, plotImages, datahist_to_ax
-from fracsuite.core.image import to_gray, to_rgb
+from fracsuite.core.plotting import (
+    create_colored_splinter_image,
+    datahist_plot,
+    plot_image_kernel_contours,
+    plot_splinter_kernel_contours,
+    create_splinter_sizes_image,
+    datahist_to_ax
+)
+
+from fracsuite.core.image import to_rgb
+from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.stochastics import csintkern_objects_diagonal
 from fracsuite.core.coloring import get_color
-from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.processing import crop_matrix, crop_perspective, detect_fragments, dilateImg, erodeImg, preprocess_image
+from fracsuite.splinters.processing import crop_matrix, crop_perspective, preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, write_image
@@ -1014,104 +1022,35 @@ def watershed(
 
     assert image is not None, "No fracture image found."
 
-    # thresh: black is crack, white is splinter
-    gray = to_gray(image)
-    # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 21, 14)
-    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    size_factor = specimen.splinters_data['size_factor']
+    splinters = Splinter.from_image(image, debug=debug, px_per_mm=size_factor)
 
-    # noise removal
-    kernel = np.ones((3,3),np.uint8)
-    opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
-
-    if debug:
-        plotImage(thresh, "Thresholded Image")
-
-    # sure background: white is splinter, black is crack
-    sure_bg = cv2.dilate(opening,kernel,iterations=3)
-
-    if debug:
-        plotImage(sure_bg, "Sure Background")
-
-    # Finding sure foreground area
-    dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3,)
-    cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
-    ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
-    sure_fg = erodeImg(sure_fg, it=4)
-
-    if debug:
-        plotImages([("Distance Transform", dist_transform),("Sure Foreground", sure_fg)])
-
-
-    # Finding unknown region
-    sure_fg = np.uint8(sure_fg)
-    unknown = cv2.subtract(sure_bg,sure_fg)
-
-
-    # Marker labelling
-    ret, markers = cv2.connectedComponents(sure_fg)
-    # Add one to all labels so that sure background is not 0, but 1
-    markers = markers+1
-    # Now, mark the region of unknown with zero
-    markers[sure_fg!=255] = 0
-
-    if debug:
-        plotImages([
-            ("Sure Background", sure_bg),
-            ("Sure Foreground", sure_fg),
-            ("Back - Foreground", unknown),
-            ("Markers", np.abs(markers).astype(np.uint8)),
-        ])
-
-    img = image.copy()
-    markers = cv2.watershed(np.zeros_like(img),markers)
-    img[markers == -1] = [255,0,0]
-
-    # plotImage(img, "Result")
-    # compare to original splinter output
+    # ORIGINAL output
     sp_img = cv2.imread(specimen.get_splinter_outfile("img_filled.png"))
-
     size_img_file = find_file(specimen.get_splinter_outfile(""), "img_splintersizes")
-
     if not size_img_file:
         size_img_file = specimen.get_splinter_outfile("img_splintersizes.png")
         create_splinter_sizes_image(specimen.splinters, image.shape, size_img_file)
-
     sz_img = cv2.imread(size_img_file, cv2.IMREAD_COLOR)
-    # plotImages((("Splinter Image", sp_img), ("Watershed", img)))
-    # plotImages((("Splinter Image", sp_img), ("Watershed", img), ("Splinter Sizes", sz_img)))
 
-    m_img = np.zeros_like(img, dtype=np.uint8)
-    m_img[markers == -1] = 255
-    cmp_image = cv2.addWeighted(img, 1.0, sp_img, 0.2, 0)
+
+    m_img = np.zeros_like(image, dtype=np.uint8)
+    cmp_image = cv2.addWeighted(image, 1.0, sp_img, 0.2, 0)
     cmp_image = cv2.addWeighted(cmp_image, 1, m_img, 1, 0)
     plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
     cv2.imwrite(general.get_output_file("legacy_vs_watershed_contours", is_image=True), cmp_image)
 
-    size_factor = specimen.splinters_data['size_factor']
-    # perform contour analyses on m_img
-    m_img = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-    m_img[markers == -1] = 255
-    m_img = dilateImg(m_img)
-    ## find contours on watershed markered image
-    contours = detect_fragments(m_img, AnalyzerConfig(), filter=False)
-    orig_img = image.copy()
-    splinters = [Splinter(i, c, size_factor) for c,i in enumerate(contours)]
-    splinters = sorted(splinters, key=lambda x: x.area)
-
-    # mean_area = np.mean([x.area for x in splinters])
-    # splinters = [x for x in splinters if x.area < mean_area * 2]
-
     ## create splinter size image
     sz_image2 = create_splinter_sizes_image(
         splinters,
-        orig_img.shape,
+        image.shape,
         general.get_output_file(f"{specimen.name}_img_splintersizes_watershed.png"),
         annotate = True,
         annotate_title="Watershed")
 
     rnd_splinters = create_colored_splinter_image(
         splinters,
-        orig_img.shape,
+        image.shape,
         specimen.get_splinter_outfile("img_filled_watershed.png"),
     )
 
