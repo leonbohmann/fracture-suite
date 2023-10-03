@@ -206,7 +206,9 @@ class Splinter:
     def analyze_image(image, debug: bool = False, px_per_mm: float = 1.0):
         # thresh: black is crack, white is splinter
         gray = to_gray(image)
-        # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 21, 14)
+
+        # gray = cv2.GaussianBlur(gray, (5, 5), 1)
+        # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 75, 35)
         thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
         # noise removal
