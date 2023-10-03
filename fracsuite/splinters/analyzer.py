@@ -53,7 +53,7 @@ def check_splinter(kv):
     i,s = kv
 
     shm = sm.SharedMemory(name=SM_IMAGE)
-    img = np.ndarray((4000,4000), dtype=np.uint8, buffer=shm.buf)
+    img = np.ndarray((702, 648), dtype=np.uint8, buffer=shm.buf)
     x, y, w, h = cv2.boundingRect(s.contour)
     roi_orig = img[y:y+h, x:x+w]
 
@@ -321,7 +321,9 @@ class Analyzer(object):
         #############
         # detect fragments on the closed skeleton
         update_main(3, 'Preliminary contour analysis...')
-        self.contours = detect_fragments(skeleton, config)
+        self.contours = detect_fragments(skeleton,
+                                         min_area=config.fragment_min_area_px,
+                                        max_area=config.fragment_max_area_px,)
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
 
         if splinters_only:
@@ -339,7 +341,9 @@ class Analyzer(object):
         #############
         # detect fragments on the closed and possibly filtered skeleton
         update_main(5, 'Final contour analysis')
-        self.contours = detect_fragments(self.image_skeleton, config)
+        self.contours = detect_fragments(self.image_skeleton,
+                                         min_area=config.fragment_min_area_px,
+                                        max_area=config.fragment_max_area_px,)
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
 
         self.image_skeleton_rgb = to_rgb(self.image_skeleton)
@@ -501,7 +505,7 @@ class Analyzer(object):
 
             progress.update(task, advance=advance)
 
-
+        print(img.shape)
         shm = sm.SharedMemory(create=True, size=img.nbytes, name=SM_IMAGE)
         shm_img = np.ndarray(img.shape, dtype=img.dtype, buffer=shm.buf)
         shm_img[:] = img[:]
