@@ -5,6 +5,7 @@ Coloring functions.
 import random
 
 from matplotlib import colors, pyplot as plt
+import matplotlib as mpl
 
 
 def rand_col():
@@ -15,12 +16,12 @@ def rand_col():
     """
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
-def get_color(value, min_value = 0, max_value = 1, colormap_name='viridis'):
+def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo_r'):
     # Normalize the value to be in the range [0, 1]
     normalized_value = (value - min_value) / (max_value - min_value)
 
     # Choose the colormap
-    colormap = plt.get_cmap(colormap_name)
+    colormap = mpl.colormaps[colormap_name]
 
     # Map the normalized value to a color
     color = colormap(normalized_value)

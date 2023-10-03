@@ -2,14 +2,12 @@
 Splinter analyzation tools.
 """
 
-from functools import partial
 import os
 from itertools import groupby
 import re
 from typing import Annotated, Any, Callable
 
 import cv2
-from matplotlib.ticker import FuncFormatter
 import numpy as np
 import numpy.typing as npt
 import typer
@@ -19,16 +17,17 @@ from rich import print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
 
-from fracsuite.core.plotting import datahist_plot, plot_image_kernel_contours, plot_splinter_kernel_contours, create_splinter_sizes_image, plotImage, plotImages, datahist_to_ax
+from fracsuite.core.plotting import create_colored_splinter_image, datahist_plot, plot_image_kernel_contours, plot_splinter_kernel_contours, create_splinter_sizes_image, plotImage, plotImages, datahist_to_ax
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
-from fracsuite.core.stochastics import csintkern_objects, csintkern_objects_diagonal
+from fracsuite.core.stochastics import csintkern_objects_diagonal
+from fracsuite.core.coloring import get_color
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.processing import crop_matrix, crop_perspective, detect_fragments, erodeImg, preprocess_image
+from fracsuite.splinters.processing import crop_matrix, crop_perspective, detect_fragments, dilateImg, erodeImg, preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, get_color, write_image
+from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, write_image
 from fracsuite.tools.specimen import Specimen
 
 app = typer.Typer(help=__doc__)
@@ -1074,7 +1073,7 @@ def watershed(
     sz_img = cv2.imread(size_img_file, cv2.IMREAD_COLOR)
     # plotImages((("Splinter Image", sp_img), ("Watershed", img)))
     # plotImages((("Splinter Image", sp_img), ("Watershed", img), ("Splinter Sizes", sz_img)))
-    cv2.Laplacian()
+
     m_img = np.zeros_like(img, dtype=np.uint8)
     m_img[markers == -1] = 255
     cmp_image = cv2.addWeighted(img, 1.0, sp_img, 0.2, 0)
@@ -1085,15 +1084,33 @@ def watershed(
     # perform contour analyses on m_img
     m_img = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
     m_img[markers == -1] = 255
-    contours = detect_fragments(m_img, AnalyzerConfig())
+    m_img = dilateImg(m_img)
+    ## find contours on watershed markered image
+    contours = detect_fragments(m_img, AnalyzerConfig(), filter=False)
     orig_img = image.copy()
     splinters = [Splinter(i, c, size_factor) for c,i in enumerate(contours)]
+
+    ## create splinter size image
     splinters = sorted(splinters, key=lambda x: x.area)
-    sz_image2 = create_splinter_sizes_image(splinters, orig_img.shape, specimen.get_splinter_outfile("img_splintersizes_watershed.png"))
-    sz_image2 = annotate_image(sz_image2, title="Splinter Sizes Watershed", cbar = cv2.COLORMAP_TURBO)
+    sz_image2 = create_splinter_sizes_image(
+        splinters,
+        orig_img.shape,
+        specimen.get_splinter_outfile("img_splintersizes_watershed.png"),
+        annotate = True,
+        annotate_title="Watershed")
+
+    rnd_splinters = create_colored_splinter_image(
+        splinters,
+        orig_img.shape,
+        specimen.get_splinter_outfile("img_filled_watershed.png"),
+    )
+
     plotImages([("Splinter Sizes", sz_img), ("Splinter Sizes Watershed", sz_image2)])
 
 
+    # overlay contours over rnd splinters
+    rnd_splinters = cv2.addWeighted(rnd_splinters, 1.0, to_rgb(m_img), 1.0, 0)
+    plotImage(rnd_splinters, "Splinters Watershed")
 
     # plot splinter histograms
     fig, axs = plt.subplots(1,2)

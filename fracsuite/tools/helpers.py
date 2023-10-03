@@ -78,21 +78,6 @@ def find_files(path: os.PathLike, filter: str) -> list[str]:
 def write_image(out_img, out_path):
     cv2.imwrite(out_path, out_img)
 
-def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo_r'):
-    # Normalize the value to be in the range [0, 1]
-    normalized_value = (value - min_value) / (max_value - min_value)
-
-    # Choose the colormap
-    colormap = plt.get_cmap(colormap_name, )
-
-    # Map the normalized value to a color
-    color = colormap(normalized_value)
-
-    # Convert the RGBA color to RGB
-    rgb_color = colors.to_rgba(color)[:3]
-
-    return tuple(int(255 * channel) for channel in rgb_color)
-
 def checkmark(value: bool) -> str:
         return "[green]✔[/green]" if value else "[red]✗[/red]"
 

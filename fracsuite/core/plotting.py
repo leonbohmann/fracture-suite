@@ -10,11 +10,12 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import numpy as np
-from fracsuite.core.coloring import get_color
+from fracsuite.core.coloring import get_color, rand_col
 from fracsuite.core.image import to_rgb
 
 from fracsuite.core.stochastics import csintkern_image, csintkern_objects
 from fracsuite.splinters.splinter import Splinter
+from fracsuite.tools.helpers import annotate_image
 
 
 
@@ -164,22 +165,60 @@ def plotImages(imgs: list[(str, Any)], region = None ):
     plt.show()
 
 
-def create_splinter_sizes_image(splinters: list[Splinter], shape: tuple[int,int, int], out_file: str = None):
-        img = np.zeros(shape, dtype=np.uint8)
-        areas = [x.area for x in splinters]
+def create_splinter_sizes_image(
+    splinters: list[Splinter],
+    shape: tuple[int,int, int],
+    out_file: str = None,
+    annotate: bool = True,
+    annotate_title: str = ""
+):
+    """Create an image with the splinter sizes colored in a colormap."""
+    img = np.zeros(shape, dtype=np.uint8)
+    areas = [x.area for x in splinters]
 
-        min_area = np.min(areas)
-        max_area = np.max(areas)
+    min_area = np.min(areas)
+    max_area = np.max(areas)
 
-        for s in splinters:
-            clr = get_color(s.area, min_value=min_area, max_value=max_area, colormap_name='turbo')
-            cv2.drawContours(img, [s.contour], -1, clr, -1)
+    for s in splinters:
+        clr = get_color(s.area, min_value=min_area, max_value=max_area)
+        cv2.drawContours(img, [s.contour], -1, clr, -1)
 
+    if annotate:
+        img = annotate_image(
+            img,
+            title=annotate_title,
+            cbar=cv2.COLORMAP_TURBO,
+            min_value=min_area,
+            max_value=max_area,
+            unit="mm²",)
+
+    if out_file is not None:
         cv2.imwrite(out_file, img)
 
-        return img
+    return img
+
+def create_colored_splinter_image(
+    splinters: list[Splinter],
+    shape: tuple[int,int, int],
+    out_file: str = None
+):
+    """Create an image with the splinters colored randomly."""
+    img = np.zeros(shape, dtype=np.uint8)
+
+
+    for s in splinters:
+        clr = rand_col()
+        cv2.drawContours(img, [s.contour], -1, clr, -1)
+
+    if out_file is not None:
+        cv2.imwrite(out_file, img)
+
+    return img
+
 
 def datahist_plot(xlim:bool = None, has_legend:bool = True) -> tuple[Figure, Axes]:
+    """Create a figure and axes for a data histogram."""
+
     fig, ax = plt.subplots()
 
     if xlim is not None:

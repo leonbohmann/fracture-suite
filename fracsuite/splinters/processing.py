@@ -286,7 +286,7 @@ def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
     return contours
 
 
-def detect_fragments(binary_image, config: AnalyzerConfig) -> list[nptyp.ArrayLike]:
+def detect_fragments(binary_image, config: AnalyzerConfig, filter = True) -> list[nptyp.ArrayLike]:
     """Detects fragments in a binary image.
 
     Args:
@@ -310,8 +310,9 @@ def detect_fragments(binary_image, config: AnalyzerConfig) -> list[nptyp.ArrayLi
         # Find contours of objects in the binary image
         contours, hierar = \
             cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours = list(contours)
-        contours = filter_contours(contours, hierar, config)
+        contours = list(contours)[1:]
+        if filter:
+            contours = filter_contours(contours, hierar, config)
         return contours
     except Exception as e:
         raise ValueError(f"Error in fragment detection: {e}")
