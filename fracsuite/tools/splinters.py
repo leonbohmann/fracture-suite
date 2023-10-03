@@ -1023,7 +1023,7 @@ def watershed(
     assert image is not None, "No fracture image found."
 
     size_factor = specimen.splinters_data['size_factor']
-    splinters = Splinter.from_image(image, debug=debug, px_per_mm=size_factor)
+    splinters = Splinter.analyze_image(image, debug=debug, px_per_mm=size_factor)
 
     # ORIGINAL output
     sp_img = cv2.imread(specimen.get_splinter_outfile("img_filled.png"))

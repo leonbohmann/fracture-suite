@@ -258,7 +258,7 @@ def test_splinter_count(specimen_name: str, load: bool = False, calibrated: int 
 def test_watershed_count():
     specimen = Specimen.get('.test01')
 
-    splinters = Splinter.from_image(specimen.get_fracture_image())
+    splinters = Splinter.analyze_image(specimen.get_fracture_image())
 
     im0 = specimen.get_fracture_image()
     cv2.drawContours(im0, [x.contour for x in splinters], -1, (255,0,0), 1)

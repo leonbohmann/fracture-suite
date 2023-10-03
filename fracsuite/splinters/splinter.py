@@ -203,7 +203,7 @@ class Splinter:
         return self.__calculate_orientation_score(impact_position)
 
     @staticmethod
-    def from_image(image, debug: bool = False, px_per_mm: float = 1.0):
+    def analyze_image(image, debug: bool = False, px_per_mm: float = 1.0):
         # thresh: black is crack, white is splinter
         gray = to_gray(image)
         # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 21, 14)
