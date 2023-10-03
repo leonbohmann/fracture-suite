@@ -670,7 +670,7 @@ def plot_histograms(xlim: tuple[float,float],
                     plot_mean = False,
                     n: int = 50,
                     has_legend: bool = True) -> Figure:
-    fig, ax = datahist_plot(xlim=xlim, has_legend=has_legend)
+    fig, axs = datahist_plot(xlim=xlim, has_legend=has_legend)
 
     if legend is None:
         def legend(x):
@@ -678,7 +678,7 @@ def plot_histograms(xlim: tuple[float,float],
 
     for specimen in specimens:
         areas = [x.area for x in specimen.splinters]
-        datahist_to_ax(ax, areas, n_bins=n, plot_mean=plot_mean, label=legend(specimen))
+        datahist_to_ax(axs[0], areas, n_bins=n, plot_mean=plot_mean, label=legend(specimen))
 
     fig.tight_layout()
     return fig
@@ -1035,6 +1035,7 @@ def watershed(
 
 
     m_img = np.zeros_like(image, dtype=np.uint8)
+    cv2.drawContours(m_img, [x.contour for x in splinters], -1, (255,255,255), 1)
     cmp_image = cv2.addWeighted(image, 1.0, sp_img, 0.2, 0)
     cmp_image = cv2.addWeighted(cmp_image, 1, m_img, 1, 0)
     plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))

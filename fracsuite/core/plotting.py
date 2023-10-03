@@ -181,7 +181,11 @@ def create_colored_splinter_image(
     return img
 
 
-def datahist_plot(nrows:int = 1, ncols:int = 1, xlim:bool = None, has_legend:bool = True) -> tuple[Figure, Axes]:
+def datahist_plot(
+    ncols:int = 1,
+    nrows:int = 1,
+    xlim:bool = None,
+) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
 
     fig, axs = plt.subplots(ncols, nrows)
@@ -195,10 +199,6 @@ def datahist_plot(nrows:int = 1, ncols:int = 1, xlim:bool = None, has_legend:boo
     else:
         for ax in axs:
             ax.set_xlim((0, 2))
-
-    if has_legend:
-        for ax in axs:
-            ax.legend(loc='best')
 
     ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(10**x))
     ticksy = FuncFormatter(lambda x, pos: '{0:.2f}'.format(x))

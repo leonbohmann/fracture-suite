@@ -256,7 +256,8 @@ class Splinter:
 
         m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         m_img[markers == -1] = 255
-        m_img = dilateImg(m_img)
+        # m_img = dilateImg(m_img)
+
         ## find contours on watershed markered image
         contours = detect_fragments(m_img, min_area=5, max_area=2000, filter=False)
 
