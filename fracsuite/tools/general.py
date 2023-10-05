@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import cv2
+import numpy as np
 
 from rich import print
 from rich.pretty import pretty_repr
@@ -36,6 +38,9 @@ class GeneralSettings:
         self.interest_region: str = (250,250,50,50)
         "x,y,w,h of the interest region in mm"
         self.figure_size: tuple[int,int] = (6,4)
+        self.output_image_maxsize: int = 2000
+
+        self.output_paths: dict[str,str] = {}
 
         GeneralSettings.sub_outpath: str = ""
 
@@ -77,6 +82,16 @@ class GeneralSettings:
         cfg_path = self.__get_cfg_file()
         with open(cfg_path, "w") as f:
             json.dump(self.__dict__, f, indent=4)
+
+    def save_image(self, out_name, image):
+        f = np.max(image.shape[:2]) / general.output_image_maxsize
+
+        h,w = image.shape[:2] / f
+        w = int(w)
+        h = int(h)
+
+        image = cv2.resize(image, (w,h))
+        cv2.imwrite(out_name, image)
 
     def update_setting(self, key: str, value: str) -> None:
         setattr(self, key, value)

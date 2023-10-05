@@ -156,10 +156,8 @@ def create_splinter_sizes_image(
         img = annotate_image(
             img,
             title=annotate_title,
-            cbar=cv2.COLORMAP_TURBO,
             min_value=min_area,
-            max_value=max_area,
-            unit="mm^2",)
+            max_value=max_area)
 
 
     if out_file is not None:

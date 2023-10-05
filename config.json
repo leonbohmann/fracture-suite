@@ -1,7 +1,8 @@
 {
     "base_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Proben\\",
     "out_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Auswertung\\",
-    "plot_extension": "png",
+    "plot_extension": "pdf",
+    "image_extension": "png",
     "default_image_size_px": [
         4000,
         4000
@@ -11,5 +12,15 @@
         440,
         120,
         120
-    ]
+    ],
+    "figure_size": [
+        6,
+        4
+    ],
+    "output_image_maxsize": 2000,
+    "output_paths": {
+        "test-prep/test-watershed-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
+        "test-prep/test-legacy-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
+        "splinters/splinter-orientation": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\orientation"
+    }
 }

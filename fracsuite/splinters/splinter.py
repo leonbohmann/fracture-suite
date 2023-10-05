@@ -173,15 +173,29 @@ class Splinter:
             A value from [0,1] indicating, how much the splinter points into the direction of the given vector.
         """
         centroid = self.centroid_mm
-        dx = origin[0] - centroid[0]
-        dy = origin[1] - centroid[1]
+        Ax = origin[0] - centroid[0]
+        Ay = origin[1] - centroid[1]
+        A = np.array((Ax, Ay))
 
-        angle_radians = np.deg2rad(self.angle)
-        line_direction = np.array([dx, dy])
-        angle_vector = np.array([np.cos(angle_radians), np.sin(angle_radians)])
-        dot_product = np.dot(line_direction, angle_vector)
-        magnitude_line = np.linalg.norm(line_direction)
-        self.alignment_score = np.abs(dot_product) / magnitude_line
+        ellipse = cv2.fitEllipse(self.contour)
+
+        # Get the major axis angle in degrees
+        major_axis_angle = ellipse[2]
+
+        # Convert the angle to radians
+        major_axis_angle_rad = np.deg2rad(major_axis_angle)
+
+        # Calculate the major axis vector
+        major_axis_vector = (np.cos(major_axis_angle_rad), np.sin(major_axis_angle_rad))
+        # get main axis of ellipse
+        B = np.array(major_axis_vector)
+
+
+        dot = np.dot(A, B)
+        magA = np.linalg.norm(A)
+        magB = np.linalg.norm(B)
+
+        self.alignment_score = np.abs(dot / (magA * magB))
         return self.alignment_score
 
 

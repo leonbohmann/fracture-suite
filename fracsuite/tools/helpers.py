@@ -82,84 +82,91 @@ def checkmark(value: bool) -> str:
         return "[green]✔[/green]" if value else "[red]✗[/red]"
 
 __backgrounds = ['black', 'white']
-def annotate_image(image,
-                        title = None,
-                        cbar = None,
-                        min_value = 0,
-                        max_value = 1,
-                        unit = None,
-                        background = 'white'):
+def annotate_image(
+    image,
+    title = None,
+    cbar_title = None,
+    min_value = 0,
+    max_value = 1,
+    figsize_cm=(10, 8),
+):
     """Put a header in white text on top of the image.
 
     Args:
         image (Image): cv2.imread
         title (str): The title of the image.
     """
-    assert background in __backgrounds, f"Background must be one of {__backgrounds}."
     assert max_value > min_value, "Max value must be greater than min value."
+    cm = 1/2.54
+    fig, ax = plt.subplots(figsize=(figsize_cm[0]*cm, figsize_cm[1]*cm))
 
+    ax.tick_params(
+        axis='both',          # changes apply to the x-axis
+        which='both',      # both major and minor ticks are affected
+        bottom=False,      # ticks along the bottom edge are off
+        top=False,
+        left=False,
+        right=False,
+        labelbottom=False,
+        labelleft=False # labels along the bottom edge are off
+    )
 
-    stack = []
-    # Get the dimensions of the input image
-    height, width, _ = image.shape
-    font_scale = min(width, height) // 500
-    value_font_scale = font_scale * 0.4
-    title_thickness = int(max(5, value_font_scale // 2))
-    value_thickness = title_thickness // 2
-
-    title_height = int(0.05 * height)
-    colorbar_height = int(0.05 * height)
-
-    if background == 'white':
-        title_background = np.ones((title_height, width, 3), dtype=np.uint8) * 255
-        colorbar_background = np.ones((colorbar_height, width, 3), dtype=np.uint8) * 255
-    elif background == 'black':
-        title_background = np.zeros((title_height, width, 3), dtype=np.uint8)
-        colorbar_background = np.zeros((colorbar_height, width, 3), dtype=np.uint8)
-
-
-
-    foreground_color = (255,255,255) if background == 'black' else (0,0,0)
-    # Add title text above the original image
     if title is not None:
-        title_font = cv2.FONT_HERSHEY_SIMPLEX
-        title_size = cv2.getTextSize(title, title_font, font_scale, title_thickness)[0]
-        title_x = (width - title_size[0]) // 2
-        title_y = int(title_height // 2 + title_size[1] * 0.5)
-        cv2.putText(title_background, title, (title_x, title_y), title_font, font_scale, foreground_color, title_thickness)
-        stack.append(title_background)
+        ax.set_title(title)
 
-    stack.append(image)
+    im = ax.imshow(image, cmap='turbo', vmin=min_value, vmax=max_value, aspect='equal')
+    if cbar_title is not None:
+        fig.colorbar(mappable=im, ax=ax, label=cbar_title)
 
-    if cbar is not None:
-        # add colorbar to the background
-        scale_x0 = int(width * 0.3)
-        scale_width = int(width - 2 * scale_x0)  # Adjust the width as needed
-        cbar_height = int(colorbar_height * 0.6)
-        cbar_y0 = int(np.ceil(colorbar_height * 0.2))
+    fig.tight_layout()
+    temp_file = general.get_output_file("TEMP.png")
+    fig.savefig(temp_file, dpi=300)
 
-        colormap = cv2.applyColorMap(np.arange(256, dtype=np.uint8).reshape(1, 256), cbar)
-        scaled_colormap = cv2.resize(colormap, (scale_width, cbar_height))
-        colorbar_background[cbar_y0:-cbar_y0, scale_x0:scale_x0 + scale_width] = scaled_colormap
+    return cv2.imread(temp_file)
 
-        min_text= f"{min_value:.2f} {unit if unit is not None else ''}"
-        max_text= f"{max_value:.2f} {unit if unit is not None else ''}"
-        # Add min and max value labels with adjusted font size and thickness
-        value_font = cv2.FONT_HERSHEY_SIMPLEX
-        value_size = cv2.getTextSize(min_text, value_font, value_font_scale, value_thickness)[0]
-        value_x = int(0.05 * width)
-        value_y = int(colorbar_height // 2 + value_size[1] * 0.5)
-        cv2.putText(colorbar_background, min_text, (value_x, value_y), value_font, value_font_scale, foreground_color, value_thickness)
+def annotate_images(
+    images,
+    title = None,
+    cbar_title = None,
+    min_value = 0,
+    max_value = 1,
+    figsize_cm=(12, 8),
+):
+    """Put a header in white text on top of the image.
 
-        value_size = cv2.getTextSize(max_text, value_font, value_font_scale, value_thickness)[0]
-        value_x = int(width - value_size[0] - 0.05 * width)
-        cv2.putText(colorbar_background, max_text, (value_x, value_y), value_font, value_font_scale, foreground_color, value_thickness)
-        stack.append(colorbar_background)
+    Args:
+        image (Image): cv2.imread
+        title (str): The title of the image.
+    """
+    assert max_value > min_value, "Max value must be greater than min value."
+    cm = 1/2.54
+    fig, axs = plt.subplots(1,len(images), figsize=(figsize_cm[0]*cm * len(images), figsize_cm[1]*cm))
+    for ax in axs:
+        ax.tick_params(
+            axis='both',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False,
+            left=False,
+            right=False,
+            labelbottom=False,
+            labelleft=False # labels along the bottom edge are off
+        )
 
-    # Combine the original image and the colorbar with title
-    final_image = np.vstack(stack)
+    if title is not None:
+        fig.suptitle(title)
 
-    return final_image
+    for ax,image in zip(axs, images):
+        im = ax.imshow(image, cmap='turbo', vmin=min_value, vmax=max_value, aspect='equal')
+
+    if cbar_title is not None:
+        fig.colorbar(mappable=im, ax=axs[:-1], label=cbar_title)
+
+    fig.tight_layout()
+    temp_file = general.get_output_file("TEMP.png")
+    fig.savefig(temp_file, dpi=300)
+
+    return cv2.imread(temp_file)
 
 
 def img_part(im, x, y, w, h):

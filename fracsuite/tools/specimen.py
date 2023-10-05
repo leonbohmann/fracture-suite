@@ -228,7 +228,8 @@ class Specimen:
         self.__settings = {
             "break_mode": "punch",
             "break_pos": "corner",
-            "fall_height_m": 0.07
+            "fall_height_m": 0.07,
+            "real_size_mm": (500,500)
         }
 
         self.__cfg_path = os.path.join(path, "config.json")
@@ -328,12 +329,20 @@ class Specimen:
         return os.path.join(self.splinters_path, name)
 
     def get_impact_position(self):
+        """Returns the impact position of the specimen. Depends on the setting break_pos."""
         if self.settings['break_pos'] == "center":
             return (250,250)
         elif self.settings['break_pos'] == "corner":
             return (50,50)
 
         raise Exception("Invalid break position.")
+
+    def get_size_factor(self):
+        """Returns the size factor of the specimen. mm/px."""
+        realsize = self.settings['real_size_mm']
+        frac_img = self.get_fracture_image()
+        assert frac_img is not None, "Fracture image not found."
+        return realsize[0] / frac_img.shape[0]
 
     def __get_energy(self):
         t0 = self.scalp.measured_thickness

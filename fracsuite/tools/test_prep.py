@@ -18,6 +18,7 @@ from fracsuite.splinters.processing import preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import bin_data, img_part
+from fracsuite.tools.maincallback import main_callback
 from fracsuite.tools.specimen import Specimen
 from pathos.multiprocessing import ProcessPool
 
@@ -28,7 +29,7 @@ from fracsuite.tools.splinters import finalize
 
 general = GeneralSettings.get()
 
-test_prep_app = typer.Typer(help=__doc__)
+test_prep_app = typer.Typer(help=__doc__, callback=main_callback)
 
 @test_prep_app.command()
 def test_configs(specimen_name: str):
@@ -254,6 +255,8 @@ def test_splinter_count(specimen_name: str, load: bool = False, calibrated: int 
         pickle.dump(counts, f)
 
 
+region = (200,100, 250, 250)
+
 @test_prep_app.command()
 def test_watershed_count():
     specimen = Specimen.get('.test01')
@@ -261,7 +264,10 @@ def test_watershed_count():
     splinters = Splinter.analyze_image(specimen.get_fracture_image())
 
     im0 = specimen.get_fracture_image()
-    cv2.drawContours(im0, [x.contour for x in splinters], -1, (255,0,0), 1)
+    cv2.drawContours(im0, [x.contour for x in splinters], -1, (0,0,255), 2)
+
+    im0 = img_part(im0, *region)
+
     cv2.imwrite(general.get_output_file('watershed_count', is_image=True), im0)
     print(len(splinters))
 
@@ -272,6 +278,9 @@ def test_legacy_count():
     splinters = specimen.splinters
 
     im0 = specimen.get_fracture_image()
-    cv2.drawContours(im0, [x.contour for x in splinters], -1, (255,0,0), 1)
+    cv2.drawContours(im0, [x.contour for x in splinters], -1, (0,255,255), 2)
+
+    im0 = img_part(im0, *region)
+
     cv2.imwrite(general.get_output_file('legacy_count', is_image=True), im0)
     print(len(splinters))

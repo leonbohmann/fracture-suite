@@ -5,6 +5,7 @@ Splinter analyzation tools.
 import os
 from itertools import groupby
 import re
+import subprocess
 from typing import Annotated, Any, Callable
 
 import cv2
@@ -36,13 +37,10 @@ from fracsuite.splinters.processing import crop_matrix, crop_perspective, prepro
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, write_image
+from fracsuite.tools.maincallback import main_callback
 from fracsuite.tools.specimen import Specimen
 
-def main_callback(ctx: typer.Context, debug: bool = None):
-    """Splinter analyzation tools."""
-    GeneralSettings.sub_outpath = os.path.join(GeneralSettings.sub_outpath, ctx.invoked_subcommand)
 
-    os.makedirs(os.path.join(general.out_path, GeneralSettings.sub_outpath), exist_ok=True)
 
 app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -50,8 +48,7 @@ general = GeneralSettings.get()
 
 def finalize(out_name: str):
     print(f"Saved to '{out_name}'.")
-    os.system(f"start {out_name}")
-
+    subprocess.Popen(['start', '', '/b', out_name], shell=True)
 @app.command(name='norm')
 def count_splinters_in_norm_region(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
@@ -192,9 +189,8 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     #     clr = get_color(i, 0, out_img.shape[0])
     #     colorbar[i] = clr
     # out_img = np.concatenate((out_img, colorbar), axis=1)
-    out_img = annotate_image(out_img, "Roughness", min_value=min_r, max_value=max_r)
-    out_path = general.get_output_file( specimen_name, "fracture", "splinter", f"roughness.{general.image_extension}")
-
+    out_img = annotate_image(out_img, cbar_title="Roughness", min_value=min_r, max_value=max_r)
+    out_path = general.get_output_file(f"{specimen.name}.{general.image_extension}")
     write_image(out_img, out_path)
 
     finalize(out_path)
@@ -228,13 +224,10 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
     out_img = annotate_image(out_img,
-                                  "Roundness",
-                                  cv2.COLORMAP_TURBO,
+                                  cbar_title="Roundness",
                                   min_value=min_r,
-                                  max_value=max_r,
-                                  unit="[-]",
-                                  background='white')
-    out_path = general.get_output_file( specimen_name, "fracture", "splinter", f"roundness.{general.image_extension}")
+                                  max_value=max_r,)
+    out_path = general.get_output_file(f"{specimen.name}.{general.image_extension}")
     cv2.imwrite(out_path, out_img)
 
     finalize(out_path)
@@ -771,57 +764,44 @@ def loghist_sigma(sigmas: Annotated[str, typer.Argument(help='Stress range. Eith
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
     """Plot the orientation of splinters."""
     specimen = Specimen.get(specimen_name)
+    out_name = general.get_output_file(f"{specimen_name}.png")
 
-    cfg = specimen.splinter_config
-    cfg.impact_position = (50,50)
-    out_name = general.get_output_file( specimen_name, "fracture", "splinter", f"splinter_orientation.{general.plot_extension}")
+    impact_pos = specimen.get_impact_position()
+    splinters = specimen.splinters
+    size_fac = specimen.get_size_factor()
 
-    def plot_impact_influence(size, splinters: list[Splinter], out_file, impact_pos, size_fac,  updater = None):
-        """Creates a 2D Image of the splinter orientation towards an impact point.
+    # analyze splinter orientations
+    orientation_image = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
+    orients = []
+    for s in track(splinters):
+        orientation = s.measure_orientation(impact_pos)
+        orients.append(orientation)
+        color = get_color(orientation)
+        cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
 
-        Args:
-            img0 (Image): Source image to plot the orientations on.
-            splinters (list[Splinter]): List with splinters.
-            out_file (str): Output figure file.
-            config (AnalyzerConfig): Configuration
-            size_f (float): _description_
-            updater (_type_, optional): _description_. Defaults to None.
-        """
-        # analyze splinter orientations
-        orientation_image = np.zeros((size[1], size[0], 3), dtype=np.uint8)
-        orients = []
-        for s in splinters:
-            if updater is not None:
-                updater(0, 'Analyzing splinter orientation', len(splinters))
-            orientation = s.measure_orientation(impact_pos)
-            orients.append(orientation)
-            color = get_color(orientation, colormap_name='turbo')
-            cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
-            # p2 = (s.centroid_px + s.angle_vector * 15).astype(np.int32)
-            # cv2.line(orientation_image, s.centroid_px, p2, (255,255,255), 3)
-        cv2.circle(orientation_image, (np.array(impact_pos) / size_fac).astype(np.uint32),
-                    np.min(orientation_image.shape[:2]) // 50, (255,0,0), -1)
+    # draw splinter contour lines
+    cv2.drawContours(orientation_image, [x.contour for x in splinters], -1, (0,0,0), 1)
 
-        # save plot
-        fig, axs = plt.subplots()
-        axim = axs.imshow(orientation_image, cmap='turbo', vmin=0, vmax=1)
-        fig.colorbar(axim, label='Strength  [-]')
-        axs.xaxis.tick_top()
-        axs.xaxis.set_label_position('top')
-        axs.set_xlabel('Pixels')
-        axs.set_ylabel('Pixels')
-        axs.set_title('Splinter orientation towards impact point')
-        # create a contour plot of the orientations, that is overlayed onto the original image
+    cv2.circle(orientation_image,
+                (np.array(impact_pos) / size_fac).astype(np.uint32),
+                np.min(orientation_image.shape[:2]) // 50,
+                (255,0,0),
+                -1)
 
-        fig.tight_layout()
-        fig.savefig(out_file)
-        plt.close(fig)
+    cv2.circle(orientation_image,
+                (np.array(impact_pos) / size_fac).astype(np.uint32),
+                np.min(orientation_image.shape[:2]) // 50,
+                (255,255,255),
+                5)
 
-    plot_impact_influence(general.default_image_size_px,
-                          specimen.splinters,
-                          out_name,
-                          specimen.get_impact_position(),
-                          cfg.size_factor)
+    orientation_image = annotate_image(
+        orientation_image,
+        cbar_title='Orientation Strength',
+        min_value=0,
+        max_value=1
+    )
+
+    general.save_image(out_name, orientation_image)
     finalize(out_name)
 
 @app.command()
