@@ -17,26 +17,27 @@ from matplotlib.figure import Figure
 from rich import print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
+from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
-    create_colored_splinter_image,
+    create_splinter_colored_image,
     datahist_plot,
     plot_image_kernel_contours,
     plot_splinter_kernel_contours,
     create_splinter_sizes_image,
-    datahist_to_ax
+    datahist_to_ax,
 )
 
-from fracsuite.core.image import to_rgb
+from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
-from fracsuite.core.stochastics import csintkern_objects_diagonal
 from fracsuite.core.coloring import get_color
 from fracsuite.splinters.processing import crop_matrix, crop_perspective, preprocess_image
 from fracsuite.splinters.splinter import Splinter
+from fracsuite.tools.GlobalState import GlobalState
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, write_image
+from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files
 from fracsuite.tools.maincallback import main_callback
 from fracsuite.tools.specimen import Specimen
 
@@ -46,9 +47,6 @@ app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
 
-def finalize(out_name: str):
-    print(f"Saved to '{out_name}'.")
-    subprocess.Popen(['start', '', '/b', out_name], shell=True)
 @app.command(name='norm')
 def count_splinters_in_norm_region(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
@@ -94,12 +92,12 @@ def count_splinters_in_norm_region(
     normed_image = cv2.addWeighted(normed_image, 0.3, normed_image_surr, 1.0, 0)
     cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)
     cv2.putText(normed_image, f'{s_count}', (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0,0,255), 20)
-    outname = os.path.join(specimen.splinters_path, f"norm_count.{general.image_extension}")
-    cv2.imwrite(outname, cv2.resize(normed_image, (0,0), fx=0.5, fy=0.5))
 
+    output_image = cv2.resize(normed_image, (0,0), fx=0.5, fy=0.5)
     specimen.set_setting('esg_count', s_count)
 
-    finalize(outname)
+    specimen.put_splinter_output(output_image, 'norm_region')
+    GlobalState.finalize(output_image, specimen.name)
 
 @app.command()
 def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
@@ -123,10 +121,8 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         clr_label='Mean roughness',
                                         fig_title='Splinter Roughness')
 
-    out_path = os.path.join(specimen.splinters_path, f"fig_roughintensity.{general.image_extension}")
-    fig.savefig(out_path, dpi=500)
-    del fig
-    finalize(out_path)
+    specimen.put_splinter_output(fig)
+    GlobalState.finalize(fig, specimen.name)
 
 @app.command()
 def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
@@ -150,10 +146,8 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         clr_label='Mean roughness',
                                         fig_title='Splinter Roughness')
 
-    out_path = general.get_output_file( specimen_name, "fracture", "splinter", f"fig_roundintensity.{general.plot_extension}")
-    fig.savefig(out_path, dpi=500)
-    del fig
-    finalize(out_path)
+    specimen.put_splinter_output(fig)
+    GlobalState.finalize(fig, specimen.name)
 
 @app.command()
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
@@ -183,17 +177,9 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
-    # plot an overlay of the colorbar into the image on the right side
-    # colorbar = np.zeros((out_img.shape[0], 50, 3), dtype=np.uint8)
-    # for i in range(out_img.shape[0]):
-    #     clr = get_color(i, 0, out_img.shape[0])
-    #     colorbar[i] = clr
-    # out_img = np.concatenate((out_img, colorbar), axis=1)
     out_img = annotate_image(out_img, cbar_title="Roughness", min_value=min_r, max_value=max_r)
-    out_path = general.get_output_file(f"{specimen.name}.{general.image_extension}")
-    write_image(out_img, out_path)
-
-    finalize(out_path)
+    specimen.put_splinter_output(out_img)
+    GlobalState.finalize(out_img, specimen.name)
 
 
 @app.command()
@@ -227,10 +213,9 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
                                   cbar_title="Roundness",
                                   min_value=min_r,
                                   max_value=max_r,)
-    out_path = general.get_output_file(f"{specimen.name}.{general.image_extension}")
-    cv2.imwrite(out_path, out_img)
 
-    finalize(out_path)
+    specimen.put_splinter_output(out_img, 'roundness')
+    GlobalState.finalize(out_img, specimen.name)
 
 
 def str_to_intlist(input: str) -> list[int]:
@@ -338,10 +323,8 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
         ax.legend(loc='best')
     ax.grid(True, which='both', axis='both')
     fig.tight_layout()
-    out_name = general.get_output_file( f"stress_vs_size.png")
-    fig.savefig(out_name)
 
-    finalize(out_name)
+    GlobalState.finalize(fig, 'stress_vs_size')
 
 def diag_dist_specimen_intensity_func(
     specimen: Specimen,
@@ -351,13 +334,15 @@ def diag_dist_specimen_intensity_func(
     """used in diag_dist to calculate the intensity of a specimen"""
     # calculate intensities
     img = specimen.get_fracture_image()
-    intensity = csintkern_objects_diagonal(
+    kernel = ObjectKerneler(
         img.shape[:2],
         specimen.splinters,
         lambda x,r: x.in_region_px(r),
         kernel_width=kernel_width,
-        n_points=n_points
-        )
+        skip_edge=True,
+    )
+
+    intensity = kernel.run(lambda x: len(x), n_points=n_points, mode='diag')
 
     intensity = np.array(intensity)
     # intensity = intensity / np.max(intensity)
@@ -365,7 +350,7 @@ def diag_dist_specimen_intensity_func(
     return intensity, specimen
 
 @app.command()
-def diag_dist(
+def log2dhist_diag(
     names: Annotated[str, typer.Option(help='Name filter. Can use wildcards.', metavar='*')] = "*",
     sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
@@ -374,7 +359,9 @@ def diag_dist(
     n_points: Annotated[int, typer.Option(help='Amount of points on the diagonal to evaluate.')] = 100,
     y_stress: Annotated[bool, typer.Option(help='Plot sigma instead of energy on y-axis.')] = False,
 ):
-
+    """
+    Same as log2dhist but with a kernel running on the diagonal.
+    """
 
     filter = create_filter_function(names, sigmas, sigma_delta=delta)
 
@@ -442,9 +429,7 @@ def diag_dist(
     # axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
     fig.tight_layout()
 
-    out_name = general.get_output_file("diag_dist.png" if out is None else out)
-    fig.savefig(out_name)
-    finalize(out_name)
+    GlobalState.finalize(fig)
 
 
 
@@ -456,6 +441,7 @@ def log_2d_histograms(
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
     y_stress: Annotated[bool, typer.Option(help='Show stress on y axis instead of energy.')] = False,
     maxspecimen: Annotated[int, typer.Option(help='Maximum amount of specimens.')] = 50,
+    normalize: Annotated[bool, typer.Option(help='Normalize histograms.')] = False,
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
     """Plot a 2D histogram of splinter sizes and stress."""
 
@@ -484,7 +470,10 @@ def log_2d_histograms(
 
             hist, edges = bin_data(areas, binrange)
 
-            hist = np.array(hist)/np.max(hist)
+
+            hist = np.array(hist)
+            if normalize:
+                hist = hist/np.max(hist)
 
             data.append((hist, specimen.name))
             if not y_stress:
@@ -516,7 +505,7 @@ def log_2d_histograms(
 
     dt = np.array(data)
     axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-    cbar = fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative Intensity', pad=0.2)
+    cbar = fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative PDF', pad=0.2)
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
@@ -524,11 +513,11 @@ def log_2d_histograms(
     fig.tight_layout()
 
     if sigmas is not None:
-        out_name = general.get_output_file(f"loghist2d_{sigmas[0]}_{sigmas[1]}.{general.plot_extension}")
+        out_name = f"{sigmas[0]}_{sigmas[1]}"
     elif names is not None:
-        out_name = general.get_output_file( f"loghist2d_{names[0]}.{general.plot_extension}")
-    fig.savefig(out_name)
-    finalize(out_name)
+        out_name =  f"{names[0]}"
+
+    GlobalState.finalize(fig, out_name)
 
 def create_filter_function(name_filter,
                    sigmas = None,
@@ -611,14 +600,16 @@ def create_filter_function(name_filter,
     return filter_specimens
 
 @app.command()
-def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
+def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens to load')],
+                   sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')] = None,
                    xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
                    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
                    nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
                    n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 50):
     """Plot logaritmic histograms of splinter sizes for specimens."""
     path = general.base_path
-    specimens = Specimen.get_all(specimen_names)
+    filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
+    specimens = Specimen.get_all_by(filter, lazyload=False)
 
     if len(specimens)==0:
         print("[red]No specimens loaded.[/red]")
@@ -626,7 +617,7 @@ def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Nam
 
 
     def legend_none(x: Specimen):
-        return f'{x.name}'
+        return f'{x.sig_h:.0f} MPa'
 
     legend = legend_none
 
@@ -636,14 +627,10 @@ def log_histograms(specimen_names: Annotated[list[str], typer.Argument(help='Nam
         legend = legend_f
 
     fig = plot_histograms(xlim, specimens, legend=legend, n=n_bins, has_legend=not nolegend)
-    out_name = f"{specimens[0].name.replace('.','_')}_log_histograms"
-    c = len([x for x in os.listdir(path) if x.startswith(out_name)])
-    out_name = os.path.join(path, f"{out_name}_{c}.png")
-    fig.savefig(out_name)
 
     disp_mean_sizes(specimens)
 
-    finalize(out_name)
+    GlobalState.finalize(fig, specimens[0].name)
 
 
 def disp_mean_sizes(specimens: list[Specimen]):
@@ -663,7 +650,7 @@ def plot_histograms(xlim: tuple[float,float],
                     plot_mean = False,
                     n: int = 50,
                     has_legend: bool = True) -> Figure:
-    fig, axs = datahist_plot(xlim=xlim, has_legend=has_legend)
+    fig, axs = datahist_plot(xlim=xlim)
 
     if legend is None:
         def legend(x):
@@ -673,98 +660,38 @@ def plot_histograms(xlim: tuple[float,float],
         areas = [x.area for x in specimen.splinters]
         datahist_to_ax(axs[0], areas, n_bins=n, plot_mean=plot_mean, label=legend(specimen))
 
+    if has_legend:
+        fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)
+
     fig.tight_layout()
     return fig
 
-def plot_stress_size(specimens: list[Specimen]):
-    fig,ax = plt.subplots()
 
-    sizes = [x.splinters.get_mean_splinter_size() for x in specimens]
-    stresses = [x.scalp.sig_h for x in specimens]
+@app.command()
+def splinter_orientation_f(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]
+):
+    specimen = Specimen.get(specimen_name)
+    impact_pos = specimen.get_impact_position()
 
-    # sort by stress
-    sorted_x, sorted_y = sort_two_arrays(stresses, sizes)
-    ax.plot(sorted_x, sorted_y, 'b-')
-    ax.set_xlabel("Stress [MPa]")
-    ax.set_ylabel("Mean splinter size [mm²]")
-    fig.tight_layout()
+    def mean_orientations(splinters):
+        orientations = [x.measure_orientation(impact_pos) for x in splinters]
+        return np.mean(orientations)
 
-    # count amount of files whose name is stress_vs_size
-    count = 0
-    for file in os.listdir(general.base_path):
-        if file.startswith("stress_vs_size"):
-            count += 1
+    fig, axs = plot_splinter_kernel_contours(
+        specimen.get_fracture_image(),
+        specimen.splinters,
+        kernel_width=200,
+        z_action=mean_orientations,
+        clr_label="Mean Orientation Score",
+    )
 
-    out_name = general.get_output_file( f"stress_vs_size.png")
-    fig.savefig(out_name)
-    finalize(out_name)
-
-@app.command(name='loghist_sigma')
-def loghist_sigma(sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')],
-                  delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
-                  maxspecimen: Annotated[int, typer.Option(help='Maximum amount of specimens.')] = 10,
-                  nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
-                  xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0,2)):
-    """
-    Plots histograms of splinter sizes for specimens with stress in a given range.
-
-
-    Args:
-        sigmas (str): The stress range. Either a single value or a range separated by a dash (i.e. '100-110' or '120').
-        delta (float, optional): Additional margin for the stress range. Defaults to 10.
-        xlim (tuple[float,float], optional): Plot limits on x axis. Defaults to None.
-    """
-    if "-" in sigmas:
-        sigmas = [float(s) for s in sigmas.split("-")]
-    else:
-        sigmas = [float(sigmas), float(sigmas)]
-        sigmas[0] = max(0, sigmas[0] - delta)
-        sigmas[1] += delta
-
-    print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
-
-    def in_sigma_range(specimen: Specimen):
-        if not specimen.has_scalp:
-            return False
-        if not specimen.has_splinters:
-            return False
-
-        return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
-
-    specimens: list[Specimen] = Specimen.get_all_by(in_sigma_range, max_n=maxspecimen)
-
-
-    out_path = general.get_output_file( f"{sigmas[0]}-{sigmas[1]}_log_histograms.png")
-    fig = plot_histograms(xlim, specimens, lambda x: f"{x.name}_{abs(x.scalp.sig_h):.2f}", has_legend=not nolegend)
-    fig.savefig(out_path)
-    plt.close(fig)
-
-    disp_mean_sizes(specimens)
-
-    plot_stress_size(specimens)
-
-    finalize(out_path)
-
-# @app.command(name='accumulation_all')
-# def plot_all_accumulations():
-#     """Plot histograms for all specimens in the base path."""
-#     for dir in (pbar := track(os.listdir(general.base_path))):
-#         spec_path = general.get_output_file( dir)
-#         if not os.path.isdir(spec_path):
-#             continue
-
-#         spec = Specimen(spec_path)
-#         if spec.splinters is None or spec.scalp is None:
-#             continue
-#         pbar.set_description(f"Processing {spec.name}...")
-#         spec.splinters.plot_splintersize_accumulation()
-
+    GlobalState.finalize(fig, specimen)
 
 @app.command()
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
     """Plot the orientation of splinters."""
     specimen = Specimen.get(specimen_name)
-    out_name = general.get_output_file(f"{specimen_name}.png")
 
     impact_pos = specimen.get_impact_position()
     splinters = specimen.splinters
@@ -801,8 +728,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         max_value=1
     )
 
-    general.save_image(out_name, orientation_image)
-    finalize(out_name)
+    GlobalState.finalize(orientation_image, specimen)
 
 @app.command()
 def fracture_intensity_img(
@@ -827,10 +753,11 @@ def fracture_intensity_img(
     specimen = Specimen.get(specimen_name)
 
     def mean_img_value(img_part):
-        return 255-np.mean(img_part)
+        return np.mean(img_part)
 
     img = specimen.get_fracture_image()
-    img = preprocess_image(img, specimen.splinter_config)
+    img = to_gray(img)
+    # img = preprocess_image(img, specimen.splinter_config)
 
     fig = plot_image_kernel_contours(img, kernel_width,
                                      mean_img_value,
@@ -838,10 +765,7 @@ def fracture_intensity_img(
                                      fig_title="Fracture Intensity (Based on image mean values)",
                                      skip_edge=skip_edges)
 
-    out_path = os.path.join(specimen.splinters_path, f"fig_img_intensity.{general.image_extension}")
-    fig.savefig(out_path, dpi=500)
-    del fig
-    finalize(out_path)
+    GlobalState.finalize(fig, specimen)
 
 @app.command()
 def fracture_intensity(
@@ -857,15 +781,14 @@ def fracture_intensity(
     original_image = specimen.get_fracture_image()
 
     # this counts the splinters in the kernel by default
-    fig = plot_splinter_kernel_contours(original_image,
+    fig,axs = plot_splinter_kernel_contours(original_image,
                                         specimen.splinters,
                                         kernel_width,
+                                        z_action=lambda x: len(x),
                                         plot_vertices=plot_vertices,
                                         skip_edge=skip_edges)
 
-    out_name = specimen.get_splinter_outfile(f"fig_fracture_intensity.{general.plot_extension}")
-    fig.savefig(out_name, dpi=500)
-    finalize(out_name)
+    GlobalState.finalize(fig, specimen)
 
 @app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
@@ -938,7 +861,7 @@ def crop_fracture_morph(
         rotate_only (bool, optional): Only rotate the images. Defaults to False.
         resize_only (bool, optional): Only resizes the images. Defaults to False.
     """
-    from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE
+    from stat import S_IREAD, S_IRGRP, S_IROTH
     if all:
         specimens = Specimen.get_all()
     elif isinstance(specimen_name, Specimen):
@@ -1002,7 +925,7 @@ def watershed(
 
     assert image is not None, "No fracture image found."
 
-    size_factor = specimen.splinters_data['size_factor']
+    size_factor = specimen.get_size_factor()
     splinters = Splinter.analyze_image(image, debug=debug, px_per_mm=size_factor)
 
     # ORIGINAL output
@@ -1018,45 +941,55 @@ def watershed(
     cv2.drawContours(m_img, [x.contour for x in splinters], -1, (255,255,255), 1)
     cmp_image = cv2.addWeighted(image, 1.0, sp_img, 0.2, 0)
     cmp_image = cv2.addWeighted(cmp_image, 1, m_img, 1, 0)
-    plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
-    cv2.imwrite(general.get_output_file("legacy_vs_watershed_contours", is_image=True), cmp_image)
+    if debug:
+        plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
+        GlobalState.finalize(cmp_image)
+
+
 
     ## create splinter size image
     sz_image2 = create_splinter_sizes_image(
         splinters,
         image.shape,
-        out_file=general.get_output_file(f"{specimen.name}_img_splintersizes_watershed.png"),
         annotate = True,
         annotate_title="Watershed",
         with_contours=True)
+    if debug:
+        GlobalState.finalize(sz_image2)
 
-    rnd_splinters = create_colored_splinter_image(
+    rnd_splinters = create_splinter_colored_image(
         splinters,
         image.shape,
         specimen.get_splinter_outfile("img_filled_watershed.png"),
     )
 
-    plotImages([("Splinter Sizes", sz_img), ("Splinter Sizes Watershed", sz_image2)])
+    if debug:
+        plotImages([("Splinter Sizes", sz_img), ("Splinter Sizes Watershed", sz_image2)])
 
 
     # overlay contours over rnd splinters
     rnd_splinters = cv2.addWeighted(rnd_splinters, 1.0, to_rgb(m_img), 1.0, 0)
-    plotImage(rnd_splinters, "Splinters Watershed")
+    if debug:
+        plotImage(rnd_splinters, "Splinters Watershed")
 
     # plot splinter histograms
-    fig, axs = datahist_plot(1,2)
-    fig.set_size_inches(12,6)
-    fig.suptitle("Splinter Sizes")
-    axs[0].set_title("Original")
-    axs[1].set_title("Watershed")
-    axs[0].set_xlabel("Splinter Size [mm²]")
-    axs[1].set_xlabel("Splinter Size [mm²]")
-    axs[0].set_ylabel("PDF [-]")
-    axs[1].set_ylabel("PDF [-]")
-    datahist_to_ax(axs[0], [x.area for x in specimen.splinters], 20, as_log=True)
-    datahist_to_ax(axs[1], [x.area for x in splinters], 20, as_log=True)
-
+    fig, axs = datahist_plot()
+    ax = axs[0]
+    ax.set_xlabel("Splinter Size [mm²]")
+    ax.set_ylabel("PDF [-]")
+    datahist_to_ax(ax, [x.area for x in splinters], 20, as_log=True, alpha = 0.9, label='Watershed', plot_mean=False)
+    datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False)
+    ax.legend()
     fig.tight_layout()
-    plt.show()
+    GlobalState.finalize(fig, specimen, override_name="splinter_sizes_watershed")
+    plt.close(fig)
 
-    fig.savefig(general.get_output_file("legacy_vs_watershed_histograms", is_plot=True))
+    fig, axs = datahist_plot(xlim=(0,2))
+    ax = axs[0]
+    ax.set_xlabel("Splinter Size [mm²]")
+    ax.set_ylabel("CDF [-]")
+    datahist_to_ax(ax, [x.area for x in splinters], 20, as_log=True, alpha = 0.9, label='Watershed', plot_mean=False, data_mode='cdf')
+    datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False, data_mode='cdf')
+    ax.legend()
+    fig.tight_layout()
+    GlobalState.finalize(fig, specimen, override_name="splinter_sizes_watershed_cdf")

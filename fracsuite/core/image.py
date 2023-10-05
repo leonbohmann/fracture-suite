@@ -2,7 +2,6 @@
 Image conversion functions.
 """
 
-import os
 from typing import Any
 import cv2
 import numpy as np
@@ -69,10 +68,13 @@ class SplitImage:
         return self.parts[i * self.cols + j]
 
 def split_image(img, grid_size) -> SplitImage:
-    assert is_gray(img), "Image must be grayscale."
-
+    gray = is_gray(img)
+    if is_gray(img):
+        shp = img.shape
+    else:
+        shp = img.shape[:2]
     # Höhe und Breite des Bildes erhalten
-    height, width = img.shape
+    height, width = shp
 
     # Anzahl der Zeilen und Spalten im Raster berechnen
     rows = height // grid_size
@@ -91,7 +93,11 @@ def split_image(img, grid_size) -> SplitImage:
             lower = (i + 1) * grid_size
 
             # Ausschnitt des Bildes erstellen
-            part = img[upper:lower, left:right]
+            if gray:
+                part = img[upper:lower, left:right]
+            else:
+                part = img[upper:lower, left:right, :]
+
 
             # Modifizierten Teil zur Liste hinzufügen
             parts.append(part)

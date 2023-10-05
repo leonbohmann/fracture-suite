@@ -1,6 +1,5 @@
 from __future__ import annotations
 import pickle
-import re
 import cv2
 from rich import print
 import argparse

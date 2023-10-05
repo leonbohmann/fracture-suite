@@ -12,8 +12,6 @@ from rich.pretty import pretty_repr
 class GeneralSettings:
     __create_key = object()
 
-    sub_outpath: str = ""
-    sub_specimen: str = ""
 
     def get() -> GeneralSettings:
         """Creates a new instance of GeneralSettings or returns the existing one and returns it."""
@@ -83,15 +81,7 @@ class GeneralSettings:
         with open(cfg_path, "w") as f:
             json.dump(self.__dict__, f, indent=4)
 
-    def save_image(self, out_name, image):
-        f = np.max(image.shape[:2]) / general.output_image_maxsize
-
-        h,w = image.shape[:2] / f
-        w = int(w)
-        h = int(h)
-
-        image = cv2.resize(image, (w,h))
-        cv2.imwrite(out_name, image)
+    
 
     def update_setting(self, key: str, value: str) -> None:
         setattr(self, key, value)
@@ -119,21 +109,3 @@ class GeneralSettings:
         self.base_path = p
         self.plot_extension = pe
         self.save()
-
-    def get_output_file(self, *name, **kwargs):
-        """Gets an output file path.
-
-        Kwargs:
-            is_plot (bool): If true, the plot extension is appended.
-            is_image (bool): If true, the image extension is appended.
-        Returns:
-            str: path
-        """
-        name = list(name)
-        if 'is_plot' in kwargs and kwargs['is_plot']:
-            name[-1] = f'{GeneralSettings.sub_specimen}{name[-1]}.{general.plot_extension}'
-        if 'is_image' in kwargs and kwargs['is_image']:
-            name[-1] = f'{GeneralSettings.sub_specimen}{name[-1]}.{general.image_extension}'
-
-
-        return os.path.join(self.out_path, GeneralSettings.sub_outpath, *name)

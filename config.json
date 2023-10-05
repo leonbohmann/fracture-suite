@@ -21,6 +21,7 @@
     "output_paths": {
         "test-prep/test-watershed-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
         "test-prep/test-legacy-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
-        "splinters/splinter-orientation": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\orientation"
+        "splinters/splinter-orientation": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\orientation",
+        "splinters/roughness-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roughness"
     }
 }

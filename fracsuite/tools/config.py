@@ -3,7 +3,6 @@ Configuration of fracsuite.
 """
 import os
 import re
-import numpy as np
 import typer
 from rich import print, inspect
 

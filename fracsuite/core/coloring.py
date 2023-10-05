@@ -4,7 +4,7 @@ Coloring functions.
 
 import random
 
-from matplotlib import colors, pyplot as plt
+from matplotlib import colors
 import matplotlib as mpl
 
 
@@ -16,7 +16,7 @@ def rand_col():
     """
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
-def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo_r'):
+def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo'):
     # Normalize the value to be in the range [0, 1]
     normalized_value = (value - min_value) / (max_value - min_value)
 

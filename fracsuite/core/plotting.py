@@ -9,67 +9,71 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+
 import numpy as np
 from fracsuite.core.coloring import get_color, rand_col
-from fracsuite.core.image import to_rgb
+from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 
-from fracsuite.core.stochastics import csintkern_image, csintkern_objects
 from fracsuite.splinters.splinter import Splinter
+from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image
 
+general = GeneralSettings.get()
 
+CONTOUR_ALPHA = 0.8
 
 new_colormap  = mpl.colormaps['turbo'].resampled(7)
 new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
 modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', new_colormap.colors, 256,)
 "Turbo but with starting color white."
 
-def plot_splinter_kernel_contours(original_image: np.ndarray,
-                   splinters: list[Splinter],
-                   kernel_width: float,
-                    z_action: Callable[[list[Splinter]], float] = None,
-                    clr_label="Intensity [Splinters / Area]",
-                    fig_title="Fracture Intensity",
-                    xlabel="Pixels",
-                    ylabel="Pixels",
-                    plot_vertices: bool = False,
-                    skip_edge: bool = False,
-                    ):
-    """Create an intensity plot of the fracture.
+def plot_splinter_kernel_contours(
+    original_image: np.ndarray,
+    splinters: list[Splinter],
+    kernel_width: float,
+    z_action: Callable[[list[Splinter]], float] = None,
+    clr_label: str = None,
+    no_ticks: bool = True,
+    plot_vertices: bool = False,
+    **kwargs
+):
+    """
+    Create a figure that contains the kernel results as contours on
+    top of the original image with a colorbar to the side.
 
-    Args:
-        intensity_h (float): Size of the analyzed regions.
-        z_action (def(list[Specimen])): The action that is called for every region.
-        clr_label (str, optional): Colorbar title. Defaults to "Intensity [Splinters / Area]".
-
-    Returns:
-        Figure: A figure showing the intensity plot.
+    This plot does not contain any labels or titles except for the colorbar.
     """
     region = np.array([original_image.shape[1], original_image.shape[0]])
     # print(f'Creating intensity plot with region={region}...')
 
-    X, Y, Z = csintkern_objects(region,
-                                splinters,
-                                lambda x,r: x.in_region_px(r),
-                                kernel_width,
-                                z_action,
-                                skip_edge=skip_edge)
-    fig,axs = plt.subplots()
+    kernel = ObjectKerneler(
+        region,
+        splinters,
+        lambda x,r: x.in_region_px(r),
+        kernel_width,
+        skip_edge=True,
+        skip_edge_factor=0.02
+    )
+
+    X, Y, Z = kernel.run(z_action, mode="area")
+
+    fig,axs = plt.subplots(figsize=general.figure_size)
+
     axs.imshow(original_image)
 
     if plot_vertices:
-        axs.scatter(X, Y, marker='o', c='red')
+            axs.scatter(X, Y, marker='o', c='red')
 
-    axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
-    fig.colorbar(axim, label=clr_label)
-    axs.xaxis.tick_top()
-    axs.xaxis.set_label_position('top')
-    axs.set_xlabel(xlabel)
-    axs.set_ylabel(ylabel)
-    axs.set_title(f'{fig_title} (h={kernel_width:.2f})')
+    axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
+    if clr_label is not None:
+        fig.colorbar(axim, label=clr_label)
+
+    if no_ticks:
+        axs.set_xticks([])
+        axs.set_yticks([])
 
     fig.tight_layout()
-    return fig
+    return fig, axs
 
 def plot_image_kernel_contours(image: np.ndarray,
                    kernel_width: float,
@@ -93,11 +97,8 @@ def plot_image_kernel_contours(image: np.ndarray,
     """
 
     # print(f'Creating intensity plot with region={region}...')
-
-    X, Y, Z = csintkern_image(image,
-                                kernel_width,
-                                z_action,
-                                skip_edge=skip_edge)
+    kernel = ImageKerneler(image, kernel_width, skip_edge=skip_edge)
+    X, Y, Z = kernel.run(z_action)
 
     fig,axs = plt.subplots()
     axs.imshow(image)
@@ -105,7 +106,7 @@ def plot_image_kernel_contours(image: np.ndarray,
     if plot_vertices:
         axs.scatter(X, Y, marker='o', c='red')
 
-    axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=0.5)
+    axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
     fig.colorbar(axim, label=clr_label)
     axs.xaxis.tick_top()
     axs.xaxis.set_label_position('top')
@@ -133,7 +134,6 @@ def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tup
 def create_splinter_sizes_image(
     splinters: list[Splinter],
     shape: tuple[int,int, int],
-    out_file: str = None,
     annotate: bool = True,
     annotate_title: str = "",
     with_contours: bool = False
@@ -159,13 +159,9 @@ def create_splinter_sizes_image(
             min_value=min_area,
             max_value=max_area)
 
-
-    if out_file is not None:
-        cv2.imwrite(out_file, img)
-
     return img
 
-def create_colored_splinter_image(
+def create_splinter_colored_image(
     splinters: list[Splinter],
     shape: tuple[int,int, int],
     out_file: str = None
@@ -187,11 +183,11 @@ def create_colored_splinter_image(
 def datahist_plot(
     ncols:int = 1,
     nrows:int = 1,
-    xlim:bool = None,
+    xlim: tuple[float,float] = None,
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
 
-    fig, axs = plt.subplots(ncols, nrows)
+    fig, axs = plt.subplots(ncols, nrows, figsize=general.figure_size, sharex=True, sharey=True)
 
     if nrows == 1 and ncols == 1:
         axs = [axs]
@@ -222,9 +218,14 @@ def datahist_to_ax(
     n_bins: int = 20,
     plot_mean: bool = True,
     label: str = None,
-    as_log:bool = True
+    as_log:bool = True,
+    alpha: float = 0.5,
+    data_mode = 'pdf'
 ):
     """Plot a histogram of the data to axes ax."""
+
+    assert data_mode in ['pdf', 'cdf'], "data_mode must be either 'pdf' or 'cdf'."
+
 
     def cvt(x):
         return np.log10(x) if as_log else x
@@ -238,14 +239,25 @@ def datahist_to_ax(
     # ascending sort, smallest to largest
     data.sort()
 
-    max_data = cvt(50)
+    max_data = cvt(100)
     binrange = np.linspace(0, max_data, n_bins)
 
-    # density: normalize the bins data count to the total amount of data
-    _,_,container = ax.hist(data, bins=binrange,
-            density=True,
-            label=label,
-            alpha=0.5)
+    if data_mode == 'pdf':
+        # density: normalize the bins data count to the total amount of data
+        _,_,container = ax.hist(data, bins=binrange,
+                density=True,
+                label=label,
+                alpha=alpha)
+    elif data_mode == 'cdf':
+        alpha = 1.0
+        cumsum = np.cumsum(np.histogram(data, bins=binrange, density=True)[0])
+        # density: normalize the bins data count to the total amount of data
+        container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha)
+        # _,_,container = ax.hist(data, bins=binrange,
+        #         density=True,
+        #         label=label,
+        #         cumulative=True,
+        #         alpha=alpha)
 
     if plot_mean:
         mean = np.mean(data)

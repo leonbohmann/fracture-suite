@@ -6,24 +6,24 @@ import os
 from typing import Annotated
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
-from scipy.signal import savgol_filter, order_filter, butter
+from scipy.signal import savgol_filter
 from scipy.integrate import cumulative_trapezoid
-from scipy import signal
 import numpy as np
 import typer
 from apread import APReader, Channel
 from rich import print
 from rich.progress import track
+from fracsuite.tools.GlobalState import GlobalState
 
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import align_axis, find_file
+from fracsuite.tools.helpers import find_file
+from fracsuite.tools.maincallback import main_callback
 from fracsuite.tools.specimen import Specimen
-from fracsuite.tools.splinters import create_filter_function, finalize
+from fracsuite.tools.splinters import create_filter_function
 
-app = typer.Typer(help=__doc__)
+app = typer.Typer(help=__doc__, callback=main_callback)
 general = GeneralSettings.get()
 
 ns = 1e-9       # nanoseconds factor
@@ -352,12 +352,7 @@ def wave_compare(
     fig.tight_layout()
     plt.show()
 
-    outname = general.get_output_file(f'wave_compare_{specimens[0].name}-{specimens[-1].name}.{general.image_extension}')
-    if out is not None:
-        outname = general.get_output_file(f'{out}.{general.image_extension}')
-
-    fig.savefig(outname, bbox_inches="tight")
-    finalize(outname)
+    GlobalState.finalize(fig)
 
 @app.command()
 def plot_mean(
@@ -437,12 +432,8 @@ def plot_mean(
         plt.legend(loc="upper left", bbox_to_anchor=(1.04, 1))
 
     fig.tight_layout()
-    plt.show()
 
-    if specimen is not None:
-        fig.savefig(specimen.get_acc_outfile(f'impact_w_waves.{general.image_extension}'), bbox_inches="tight")
-
-
+    GlobalState.finalize(fig, specimen)
 
 @app.command()
 def plot_impact(
@@ -578,19 +569,8 @@ def plot_impact(
 
     if specimen is not None:
         fig.savefig(specimen.get_acc_outfile(f'impact_w_waves.{general.image_extension}'), bbox_inches="tight")
+    GlobalState.finalize(fig, specimen)
 
-    return
-    drop1 = reader.collectChannels(['Fall_g1'])
-    drop2 = reader.collectChannels(['Fall_g2'])
-    time1 = drop1.Time
-    time2 = drop2.Time
-
-    # find peak in drop1
-    peak1_i = np.argmax(drop1[0].data)
-    time_peak = time1.data[peak1_i]
-
-
-    fig = plt.figure()
 
 def get_impact_time(channel: Channel):
     mean_drop_g = np.max(np.abs(channel.data[:10000]))*1.5

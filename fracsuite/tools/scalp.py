@@ -8,7 +8,6 @@ from rich.progress import track
 from fracsuite.tools.general import GeneralSettings
 
 from fracsuite.tools.specimen import Specimen
-from fracsuite.scalper.scalpSpecimen import ScalpSpecimen
 
 scalp_app = typer.Typer(help=__doc__)
 general = GeneralSettings.get()

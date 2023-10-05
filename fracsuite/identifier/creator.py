@@ -1,12 +1,11 @@
 import os
 import shutil
-from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from tqdm import tqdm
-from pylibdmtx.pylibdmtx import encode, ENCODING_SIZE_NAMES, decode
+from pylibdmtx.pylibdmtx import encode, decode
 from PIL import Image
 
 __path__ = os.path.dirname(__file__)

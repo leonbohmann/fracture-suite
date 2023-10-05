@@ -4,7 +4,7 @@ import cv2
 from fracsuite.core.image import to_gray
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.detection import detect_fragments
-from fracsuite.splinters.processing import dilateImg, erodeImg
+from fracsuite.splinters.processing import erodeImg
 
 
 class Splinter:
@@ -195,7 +195,7 @@ class Splinter:
         magA = np.linalg.norm(A)
         magB = np.linalg.norm(B)
 
-        self.alignment_score = np.abs(dot / (magA * magB))
+        self.alignment_score = 1 - np.abs(dot / (magA * magB))
         return self.alignment_score
 
 

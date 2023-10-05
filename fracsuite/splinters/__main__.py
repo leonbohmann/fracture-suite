@@ -38,7 +38,6 @@ import shutil
 import time
 from matplotlib import pyplot as plt
 # import module
-import traceback
 from fracsuite.core.progress import get_progress
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig

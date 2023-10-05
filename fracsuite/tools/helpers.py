@@ -2,8 +2,9 @@ import os
 import traceback
 import cv2
 import re
+import tempfile
 
-from matplotlib import colors, pyplot as plt
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 import numpy as np
 
@@ -75,9 +76,6 @@ def find_files(path: os.PathLike, filter: str) -> list[str]:
 
     return files
 
-def write_image(out_img, out_path):
-    cv2.imwrite(out_path, out_img)
-
 def checkmark(value: bool) -> str:
         return "[green]✔[/green]" if value else "[red]✗[/red]"
 
@@ -119,7 +117,7 @@ def annotate_image(
         fig.colorbar(mappable=im, ax=ax, label=cbar_title)
 
     fig.tight_layout()
-    temp_file = general.get_output_file("TEMP.png")
+    temp_file = tempfile.mktemp("TEMP_FIG_TO_IMG.png")
     fig.savefig(temp_file, dpi=300)
 
     return cv2.imread(temp_file)

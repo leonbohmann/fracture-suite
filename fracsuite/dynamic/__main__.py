@@ -1,6 +1,3 @@
-import argparse
-from fracsuite.splinters.analyzer import Analyzer
-import yaml
 from fracsuite.splinters.analyzer import AnalyzerConfig
 
 config = AnalyzerConfig()

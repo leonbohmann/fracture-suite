@@ -1,7 +1,6 @@
 import argparse
 from argparse import RawDescriptionHelpFormatter
 import os
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 from apread import APReader, plot_multiple_datasets, Channel
 import numpy as np

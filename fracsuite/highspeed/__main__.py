@@ -1,5 +1,4 @@
 import os
-import argparse
 from fracsuite.splinters.analyzer import preprocess_image
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 import numpy as np

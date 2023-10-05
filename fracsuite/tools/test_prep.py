@@ -2,7 +2,6 @@
 TESTS for the preprocessing unit of this module.
 """
 
-import os
 import time
 import cv2
 from matplotlib import pyplot as plt
@@ -10,11 +9,10 @@ from matplotlib.axes import Axes
 from matplotlib.ticker import FuncFormatter
 import numpy as np
 from fracsuite.core.image import to_gray, to_rgb
-from fracsuite.core.plotting import plot_image_kernel_contours, plot_splinter_kernel_contours, plot_values
+from fracsuite.core.plotting import plot_values
 from fracsuite.core.progress import get_progress, get_spinner
 from fracsuite.splinters.analyzer import Analyzer
-from fracsuite.splinters.analyzerConfig import AnalyzerConfig, PreprocessorConfig
-from fracsuite.splinters.processing import preprocess_image
+from fracsuite.splinters.analyzerConfig import PreprocessorConfig
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import bin_data, img_part
@@ -25,7 +23,6 @@ from pathos.multiprocessing import ProcessPool
 import typer
 
 from fracsuite.splinters.analyzerConfig import defaultPrepConfig, softgaussPrepConfig, softmeanPrepConfig, aggressivegaussPrepConfig, aggressivemeanPrepConfig
-from fracsuite.tools.splinters import finalize
 
 general = GeneralSettings.get()
 
@@ -160,7 +157,6 @@ def disp_mean(specimen_name: str,):
     im = cv2.threshold(im, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
     plt.imshow(im)
     plt.show()
-    pass
 
 @test_prep_app.command()
 def test_splinter_count(specimen_name: str, load: bool = False, calibrated: int = 301):

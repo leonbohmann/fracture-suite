@@ -1,48 +1,49 @@
 import os
 import time
 
-import cv2
 import typer
 from matplotlib import pyplot as plt
-from rich import print
-from rich.progress import track
-from rich.panel import Panel
+from rich import inspect, print
 
-from typing_extensions import Annotated
 from fracsuite.core.progress import get_progress
-from fracsuite.splinters.processing import crop_matrix, crop_perspective
 
+from fracsuite.tools.GlobalState import GlobalState
 from fracsuite.tools.config import app as config_app
 from fracsuite.tools.splinters import app as splinter_app
 from fracsuite.tools.acc import app as acc_app
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import find_files
-from fracsuite.tools.specimen import Specimen, app as specimen_app
+from fracsuite.tools.specimen import app as specimen_app
 from fracsuite.tools.test_prep import test_prep_app
 from fracsuite.tools.nominals import nominals_app
 from fracsuite.tools.scalp import scalp_app
 
-plt.rcParams['figure.figsize'] = (6, 4)
+
+general = GeneralSettings.get()
+
+plt.rcParams['figure.figsize'] = general.figure_size
 plt.rc('axes', axisbelow=True) # to get grid into background
 plt.rc('grid', linestyle="--") # line style
 plt.rcParams.update({'font.size': 12}) # font size
-
-general = GeneralSettings.get()
-state = {}
 
 def main_callback(ctx: typer.Context, debug: bool = None):
     """Fracsuite tools"""
     # print(Panel.fit(f"# Running [bold]{ctx.invoked_subcommand}[/bold]", title="Fracsuite tools", border_style="green"))
     # print(ctx.protected_args)
-    state['start_time'] = time.time()
-    state['progress'] = get_progress()
-    state['debug'] = debug
-    GeneralSettings.sub_outpath = ctx.invoked_subcommand
+    GlobalState.start_time = time.time()
+    GlobalState.debug = debug
+    GlobalState.progress = get_progress()
+    GlobalState.sub_outpath = ctx.invoked_subcommand
+
 
     os.makedirs(os.path.join(general.out_path, GeneralSettings.sub_outpath), exist_ok=True)
 
-def end_callback(*a, **k):
-    d = time.time() - state['start_time']
+def end_callback(*args, **kwargs):
+    # for i in args:
+    #     inspect(i)
+    # for k in kwargs:
+    #     inspect(k)
+
+    d = time.time() - GlobalState.start_time
     print(f"Finished in {d:.2f}s.")
 
 app = typer.Typer(pretty_exceptions_short=False, result_callback=end_callback, callback=main_callback)

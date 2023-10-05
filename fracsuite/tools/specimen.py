@@ -7,9 +7,11 @@ import json
 import os
 import pickle
 import re
+import subprocess
 from typing import Any, Callable, ClassVar, List, TypeVar
 
 import cv2
+from matplotlib.figure import Figure
 import numpy as np
 import typer
 from rich import print
@@ -20,6 +22,7 @@ from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
+from fracsuite.tools.GlobalState import GlobalState
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import checkmark, find_file
 
@@ -73,7 +76,6 @@ general = GeneralSettings.get()
 
 class SpecimenException(Exception):
     """Exception for specimen related errors."""
-    pass
 
 
 class Specimen:
@@ -185,8 +187,7 @@ class Specimen:
     def print_loaded(self):
         name = f"'{self.name}'"
         print(f"Loaded {name:>30} ({checkmark(self.has_scalp)}, "
-                f"{checkmark(self.has_splinters)}, "
-                f"{checkmark(False)}).")
+                f"{checkmark(self.has_splinters)}).")
 
 
     def __init__(self, path: str, log_missing = True, lazy = False):
@@ -302,6 +303,34 @@ class Specimen:
         with open(self.__cfg_path, "w") as f:
             json.dump(self.settings, f, indent=4)
 
+    def put_acc_output(self, object, override_name = None):
+        """Saves the object to the acc folder."""
+        self.__put_output(object, self.get_acc_outfile, override_name)
+
+    def put_splinter_output(self, object: Figure | np.ArrayLike, override_name = None):
+        """Saves the object to the specimen folder."""
+        self.__put_output(object, self.get_splinter_outfile, override_name)
+
+    def __put_output(self, object: Figure | np.ArrayLike, name_func, override_name = None):
+        name = override_name or GlobalState.current_subcommand
+
+        # check how to save object
+        if isinstance(object, tuple):
+            if isinstance(object[0], Figure):
+                out_name = name_func(name + "." + general.plot_extension)
+                object[0].savefig(out_name, dpi=300)
+        elif isinstance(object, Figure):
+            out_name = name_func(name + "." + general.plot_extension)
+            object.savefig(out_name, dpi=300)
+        elif type(object).__module__ == np.__name__:
+            out_name = name_func(name + "." + general.image_extension)
+            cv2.imwrite(out_name, object)
+        else:
+            raise Exception("Object must be a matplotlib figure or a numpy array.")
+
+        # success, start process
+        print(f"Saved to '{out_name}'.")
+
     def get_analyzer(self,
                      cfg: AnalyzerConfig = None,
                      progress: Progress = None,
@@ -329,11 +358,14 @@ class Specimen:
         return os.path.join(self.splinters_path, name)
 
     def get_impact_position(self):
-        """Returns the impact position of the specimen. Depends on the setting break_pos."""
+        """
+        Returns the impact position of the specimen in mm.
+        Depends on the setting break_pos.
+        """
         if self.settings['break_pos'] == "center":
-            return (250,250)
+            return np.array((250,250))
         elif self.settings['break_pos'] == "corner":
-            return (50,50)
+            return np.array((50,50))
 
         raise Exception("Invalid break position.")
 
@@ -450,7 +482,7 @@ class Specimen:
     def get_all_by( decider: Callable[[Specimen], bool],
                     value: Callable[[Specimen], _T1 | Specimen] = None,
                     max_n: int = 1000,
-                    lazyload: bool = True,
+                    lazyload: bool = False,
                     sortby: Callable[[Specimen], Any] = None) -> list[_T1]:
         """
         Loads specimens with a decider function.
