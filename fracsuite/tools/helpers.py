@@ -6,7 +6,10 @@ import tempfile
 
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.colors import to_rgba
+import matplotlib.patches as mpatches
 import numpy as np
+from fracsuite.core.image import to_rgb
 
 from fracsuite.tools.general import GeneralSettings
 
@@ -79,6 +82,27 @@ def find_files(path: os.PathLike, filter: str) -> list[str]:
 def checkmark(value: bool) -> str:
         return "[green]✔[/green]" if value else "[red]✗[/red]"
 
+def to_img(fig):
+    fig.tight_layout()
+    temp_file = tempfile.mktemp("TEMP_FIG_TO_IMG.png")
+    fig.savefig(temp_file, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    return to_rgb(cv2.imread(temp_file))
+
+def label_image(image, labels, labelcolors, title = None):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.imshow(image)
+    ax.axis('off')
+
+    if title:
+        plt.title(title)
+
+    patches = [mpatches.Patch(color=color if isinstance(color, str) else tuple(x/255 for x in color), label=label) for label, color in zip(labels, labelcolors)]
+    ax.legend(handles=patches, bbox_to_anchor=(1, 1), loc='upper left')
+
+    return to_img(fig)
+
+
 __backgrounds = ['black', 'white']
 def annotate_image(
     image,
@@ -116,11 +140,8 @@ def annotate_image(
     if cbar_title is not None:
         fig.colorbar(mappable=im, ax=ax, label=cbar_title)
 
-    fig.tight_layout()
-    temp_file = tempfile.mktemp("TEMP_FIG_TO_IMG.png")
-    fig.savefig(temp_file, dpi=300)
 
-    return cv2.imread(temp_file)
+    return to_img(fig)
 
 def annotate_images(
     images,

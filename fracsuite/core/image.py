@@ -21,10 +21,14 @@ def to_gray(img):
         return img
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-def to_rgb(img):
+def to_rgb(img, rgb = False):
     if is_rgb(img):
         return img
-    return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    if not rgb:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
 def to_rgba(img):
     if is_rgba(img):

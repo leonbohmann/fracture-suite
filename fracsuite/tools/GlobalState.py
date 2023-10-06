@@ -102,6 +102,14 @@ class GlobalState:
         print(f"Saved to '{out_name}'.")
         subprocess.Popen(['start', '', '/b', out_name], shell=True)
 
+    def get_output_dir():
+        # sub_outpath might be set to custom output path, join will take the last valid path start
+        p = os.path.join(general.out_path, GlobalState.sub_outpath)
+        if not os.path.exists(os.path.dirname(p)):
+            os.makedirs(os.path.dirname(p))
+
+        return p
+
     def get_output_file(*names, **kwargs):
         """Gets an output file path.
 
@@ -118,7 +126,7 @@ class GlobalState:
             names[-1] = f'{GlobalState.sub_specimen}{names[-1]}.{general.image_extension}'
 
         # sub_outpath might be set to custom output path, join will take the last valid path start
-        p = os.path.join(general.out_path, GlobalState.sub_outpath, *names)
+        p = os.path.join(GlobalState.get_output_dir(), *names)
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))
 

@@ -33,11 +33,11 @@ from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
-from fracsuite.splinters.processing import crop_matrix, crop_perspective, preprocess_image
+from fracsuite.splinters.processing import crop_matrix, crop_perspective, dilateImg, erodeImg, preprocess_image
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.GlobalState import GlobalState
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files
+from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, label_image
 from fracsuite.tools.maincallback import main_callback
 from fracsuite.tools.specimen import Specimen
 
@@ -993,3 +993,131 @@ def watershed(
     ax.legend()
     fig.tight_layout()
     GlobalState.finalize(fig, specimen, override_name="splinter_sizes_watershed_cdf")
+
+@app.command()
+def compare_manual(
+        folder: Annotated[str, typer.Argument(help='Folder to load images from.')],
+    ):
+        test_dir = os.path.join(GlobalState.get_output_dir(), folder)
+
+        input_img_path = find_file(test_dir, "input")
+        counted_img_path = find_file(test_dir, "counted")
+
+        assert input_img_path is not None, "No input image found."
+        assert counted_img_path is not None, "No counted image found."
+
+        input_img = cv2.imread(input_img_path, cv2.IMREAD_COLOR)
+        counted_img = cv2.imread(counted_img_path, cv2.IMREAD_COLOR)
+
+        print(input_img.shape)
+        print(counted_img.shape)
+        # get splinters
+        splinters = Splinter.analyze_image(input_img, debug=False, px_per_mm=1)
+
+        # count red pixels in counted_img
+        red = np.sum(counted_img[:,:,2] == 255)
+
+        print(len(splinters))
+        print(red)
+        red_pixels = counted_img[:,:,2] == 255  # get red pixels
+        bkground = counted_img[:,:,2] != 255  # get red pixels
+        markers = np.zeros_like(counted_img[:,:,0], dtype=np.uint8)
+        markers[red_pixels] = 255  # set white points for red pixels
+        markers[bkground] = 0  # set white points for red pixels
+        ret, markers = cv2.connectedComponents(markers)
+        markers = markers.astype(np.int32)
+        plotImage(markers, "Markers", cvt_to_rgb=False)
+
+        thresh = cv2.threshold(counted_img[:,:,2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        thresh = erodeImg(thresh, sz = 5)
+        plotImage(thresh, "Background Image WS1")
+
+        thresh2 = to_rgb(thresh)
+        # create binary mask for non-black pixels in thresh2
+        mask1 = cv2.inRange(thresh2, (1, 1, 1), (255, 255, 255))
+
+        # create binary mask for red pixels
+        mask2 = red_pixels.astype(np.uint8) * 255
+
+        # combine the two binary masks using a bitwise AND operation
+        mask = cv2.bitwise_and(mask1, mask2)
+        # set red pixels in thresh2 using the mask
+        thresh2[mask != 0] = (255, 0, 0)
+        plotImage(thresh2, "Background Image WS2")
+
+        _, markers = cv2.connectedComponents(mask)
+        markers = cv2.watershed(to_rgb(thresh),markers)
+
+        m_img = np.zeros_like(counted_img[:,:,0], dtype=np.uint8)
+        m_img[markers == -1] = 255
+        plotImage(m_img, "WS-Contours 1")
+        plotImage(markers, "WS-Markers1", cvt_to_rgb=False)
+        contours, _ = cv2.findContours(to_gray(m_img), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)[2:]
+        contours = sorted(contours, key=cv2.contourArea)
+        print(len(contours))
+        # draw cont ours on new image
+        step1_img = np.zeros_like(counted_img[:,:,0])
+        for c in contours:
+            mask = np.zeros_like(counted_img[:,:,0])
+            cv2.drawContours(mask, [c], -1, 255, -1)
+            cv2.drawContours(mask, [c], -1, 0, 1)
+            step1_img = cv2.add(step1_img, mask)
+
+
+        plotImage(step1_img, "After first watershed")
+
+
+        ret, markers = cv2.connectedComponents(step1_img)
+
+        markers = cv2.watershed(np.zeros_like(input_img),markers)
+
+        step2_img = np.zeros_like(counted_img[:,:,0], dtype=np.uint8)
+        step2_img[markers == -1] = 255
+        plt.imshow(step2_img)
+        plt.show()
+
+
+        contours = cv2.drawContours(counted_img.copy(), [x.contour for x in splinters], -1, (255,0,0), 2)
+        plt.imshow(contours)
+        plt.show()
+
+        manual_splinters = Splinter.analyze_contour_image(step2_img)
+        alg_areas = [x.area for x in splinters]
+        man_areas = [x.area for x in manual_splinters]
+
+        crange = (np.max(alg_areas), np.min(alg_areas))
+
+        img = create_splinter_sizes_image(
+            splinters,
+            input_img.shape,
+            annotate = False,
+            with_contours=True,
+            crange=crange
+        )
+
+        img_manual = create_splinter_sizes_image(
+            manual_splinters,
+            input_img.shape,
+            annotate = False,
+            with_contours=True,
+            crange=crange
+        )
+        diff = cv2.absdiff(img, img_manual)
+        plotImages((("Splinter Sizes", img), ("Splinter Sizes Manual", img_manual),
+                    ("Difference", diff)))
+
+
+        cont_img_alg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in splinters], -1, (255,0,0), 3)
+        cont_img_man = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in manual_splinters], -1, (0,0,255), 3)
+
+        cont_diff = cv2.absdiff(cont_img_alg, cont_img_man)
+        plotImage(cont_diff, "Contour Difference")
+
+
+        cont_diff[np.all(cont_diff == (0,0,0), axis=-1)] = (255,255,255)
+        cont_diff[np.all(cont_diff == (255,0,255), axis=-1)] = (0,0,0)
+
+        labels = ['Automatic', 'Manual', 'Identical']
+        labelcolors = ['red', 'blue', 'black']
+        plotImage(label_image(cont_diff, labels, labelcolors), "Contour Differences")

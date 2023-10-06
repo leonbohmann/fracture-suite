@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from fracsuite.core.image import to_gray
+from fracsuite.core.image import is_rgb, to_gray
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.detection import detect_fragments
 from fracsuite.splinters.processing import erodeImg
@@ -217,7 +217,30 @@ class Splinter:
         return self.__calculate_orientation_score(impact_position)
 
     @staticmethod
+    def analyze_contour_image(contour_image, px_per_mm=1):
+        """Analyze a contour image and return a list of splinters."""
+        contour_image = to_gray(contour_image)
+
+        contours = detect_fragments(contour_image, min_area=5, max_area=2000, filter=False)
+
+        splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
+
+        return splinters
+
+    @staticmethod
     def analyze_image(image, debug: bool = False, px_per_mm: float = 1.0):
+        """Analyze an unprocessed image and return a list of splinters.
+
+        Parameters:
+        - image: The input image to be analyzed. Must be in RGB format for watershed algorithm.
+        - debug: A boolean flag indicating whether to display intermediate images for debugging purposes. Default is False.
+        - px_per_mm: The number of pixels per millimeter in the image. Default is 1.0.
+
+        Returns:
+        - A list of Splinter objects representing the splinters detected in the input image.
+        """
+        assert is_rgb(image), "Image must be in RGB format for watershed algorithm."
+
         # thresh: black is crack, white is splinter
         gray = to_gray(image)
 
@@ -274,9 +297,4 @@ class Splinter:
         m_img[markers == -1] = 255
         # m_img = dilateImg(m_img)
 
-        ## find contours on watershed markered image
-        contours = detect_fragments(m_img, min_area=5, max_area=2000, filter=False)
-
-        splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
-
-        return splinters
+        return Splinter.analyze_contour_image(m_img, px_per_mm=px_per_mm)
