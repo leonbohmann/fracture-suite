@@ -159,18 +159,21 @@ class Analyzer(object):
         update_main(0, 'Initializing...', total=step_count)
 
         self.config = config
+        self.specimen_config = {
+            'break_pos': 'corner',
 
+        }
         if clear_splinters:
             fracpath = os.path.join(get_specimen_path(config.specimen_name),
                                     'fracture',
                                     'splinter')
             shutil.rmtree(fracpath, ignore_errors=True)
 
+
         #############
         # folder operations
         if config.path.endswith('\\'):
             search_path = os.path.join(config.path, 'fracture', 'morphology')
-
             for file in os.listdir(search_path):
                 if 'Transmission' in file and file.endswith('.bmp'):
                     update_main(0,
@@ -183,9 +186,7 @@ class Analyzer(object):
             if self.file_dir is None:
                 raise Exception("Could not find a morphology file.")
 
-            specimen_config_file = os.path.join(config.path, 'config.json')
-            with open(specimen_config_file, 'r') as f:
-                self.specimen_config = json.load(f)
+
 
             config.interest_region = general.interest_region
         else:
@@ -383,12 +384,12 @@ class Analyzer(object):
         #############
         # Orientational analysis
         update_main(7, 'Orientation analysis')
-        position = \
-            (50,50) if self.specimen_config['break_pos'] == "corner" \
-            else (250,250)
+        # position = \
+        #     (50,50) if self.specimen_config['break_pos'] == "corner" \
+        #     else (250,250)
 
-        for s in self.splinters:
-            s.measure_orientation(position)
+        # for s in self.splinters:
+        #     s.measure_orientation(position)
 
         update_main(8, 'Save data...')
         if not no_save:

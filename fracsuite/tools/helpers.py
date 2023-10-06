@@ -89,7 +89,13 @@ def to_img(fig):
     plt.close(fig)
     return to_rgb(cv2.imread(temp_file))
 
-def label_image(image, labels, labelcolors, title = None):
+def label_image(image, *labels, title = None):
+    assert len(labels) % 2 == 0, "Labels must be a multiple of 2."
+    assert len(labels) > 0, "Labels must not be empty."
+
+    texts = labels[::2]
+    labelcolors = labels[1::2]
+
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.imshow(image)
     ax.axis('off')
@@ -97,7 +103,7 @@ def label_image(image, labels, labelcolors, title = None):
     if title:
         plt.title(title)
 
-    patches = [mpatches.Patch(color=color if isinstance(color, str) else tuple(x/255 for x in color), label=label) for label, color in zip(labels, labelcolors)]
+    patches = [mpatches.Patch(color=color if isinstance(color, str) else tuple(x/255 for x in color), label=label) for label, color in zip(texts, labelcolors)]
     ax.legend(handles=patches, bbox_to_anchor=(1, 1), loc='upper left')
 
     return to_img(fig)

@@ -2,8 +2,10 @@
 Splinter analyzation tools.
 """
 
+import json
 import os
 from itertools import groupby
+import pickle
 import re
 import subprocess
 from typing import Annotated, Any, Callable
@@ -1019,105 +1021,58 @@ def compare_manual(
 
         print(len(splinters))
         print(red)
-        red_pixels = counted_img[:,:,2] == 255  # get red pixels
-        bkground = counted_img[:,:,2] != 255  # get red pixels
-        markers = np.zeros_like(counted_img[:,:,0], dtype=np.uint8)
-        markers[red_pixels] = 255  # set white points for red pixels
-        markers[bkground] = 0  # set white points for red pixels
-        ret, markers = cv2.connectedComponents(markers)
-        markers = markers.astype(np.int32)
-        plotImage(markers, "Markers", cvt_to_rgb=False)
 
-        thresh = cv2.threshold(counted_img[:,:,2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        thresh = erodeImg(thresh, sz = 5)
-        plotImage(thresh, "Background Image WS1")
-
-        thresh2 = to_rgb(thresh)
-        # create binary mask for non-black pixels in thresh2
-        mask1 = cv2.inRange(thresh2, (1, 1, 1), (255, 255, 255))
-
-        # create binary mask for red pixels
-        mask2 = red_pixels.astype(np.uint8) * 255
-
-        # combine the two binary masks using a bitwise AND operation
-        mask = cv2.bitwise_and(mask1, mask2)
-        # set red pixels in thresh2 using the mask
-        thresh2[mask != 0] = (255, 0, 0)
-        plotImage(thresh2, "Background Image WS2")
-
-        _, markers = cv2.connectedComponents(mask)
-        markers = cv2.watershed(to_rgb(thresh),markers)
-
-        m_img = np.zeros_like(counted_img[:,:,0], dtype=np.uint8)
-        m_img[markers == -1] = 255
-        plotImage(m_img, "WS-Contours 1")
-        plotImage(markers, "WS-Markers1", cvt_to_rgb=False)
-        contours, _ = cv2.findContours(to_gray(m_img), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[2:]
-        contours = sorted(contours, key=cv2.contourArea)
-        print(len(contours))
-        # draw cont ours on new image
-        step1_img = np.zeros_like(counted_img[:,:,0])
-        for c in contours:
-            mask = np.zeros_like(counted_img[:,:,0])
-            cv2.drawContours(mask, [c], -1, 255, -1)
-            cv2.drawContours(mask, [c], -1, 0, 1)
-            step1_img = cv2.add(step1_img, mask)
-
-
-        plotImage(step1_img, "After first watershed")
-
-
-        ret, markers = cv2.connectedComponents(step1_img)
-
-        markers = cv2.watershed(np.zeros_like(input_img),markers)
-
-        step2_img = np.zeros_like(counted_img[:,:,0], dtype=np.uint8)
-        step2_img[markers == -1] = 255
-        plt.imshow(step2_img)
-        plt.show()
-
-
-        contours = cv2.drawContours(counted_img.copy(), [x.contour for x in splinters], -1, (255,0,0), 2)
-        plt.imshow(contours)
-        plt.show()
-
-        manual_splinters = Splinter.analyze_contour_image(step2_img)
-        alg_areas = [x.area for x in splinters]
-        man_areas = [x.area for x in manual_splinters]
-
-        crange = (np.max(alg_areas), np.min(alg_areas))
-
-        img = create_splinter_sizes_image(
-            splinters,
-            input_img.shape,
-            annotate = False,
-            with_contours=True,
-            crange=crange
+        manual_splinters, thresh2 = Splinter.analyzer_marked_image(
+            counted_img,
+            px_per_mm=1,
+            return_thresh=True,
         )
 
-        img_manual = create_splinter_sizes_image(
-            manual_splinters,
-            input_img.shape,
-            annotate = False,
-            with_contours=True,
-            crange=crange
-        )
-        diff = cv2.absdiff(img, img_manual)
-        plotImages((("Splinter Sizes", img), ("Splinter Sizes Manual", img_manual),
-                    ("Difference", diff)))
-
+        with open(find_file(test_dir, "splinters"), 'rb') as f:
+            legacy_splinters: list[Splinter] = pickle.load(f)
 
         cont_img_alg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in splinters], -1, (255,0,0), 3)
-        cont_img_man = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in manual_splinters], -1, (0,0,255), 3)
+        cont_img_man = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in manual_splinters], -1, (0,255,0), 3)
+        cont_img_leg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in legacy_splinters], -1, (0,255,0), 3)
 
         cont_diff = cv2.absdiff(cont_img_alg, cont_img_man)
+        cont_diff_leg = cv2.absdiff(cont_img_alg, cont_img_leg)
         plotImage(cont_diff, "Contour Difference")
 
 
-        cont_diff[np.all(cont_diff == (0,0,0), axis=-1)] = (255,255,255)
-        cont_diff[np.all(cont_diff == (255,0,255), axis=-1)] = (0,0,0)
+        cont_diff[np.all(cont_diff == (255,255,0), axis=-1)] = (0,0,0)
+        cont_diff_leg[np.all(cont_diff_leg == (255,255,0), axis=-1)] = (0,0,0)
 
-        labels = ['Automatic', 'Manual', 'Identical']
-        labelcolors = ['red', 'blue', 'black']
-        plotImage(label_image(cont_diff, labels, labelcolors), "Contour Differences")
+        cont_diff = cv2.addWeighted(thresh2, 0.7, cont_diff, 1.0, 0)
+        cont_diff_leg = cv2.addWeighted(thresh2, 0.7, cont_diff_leg, 1.0, 0)
+
+        cmp_alg_man = label_image(
+                cont_diff,
+                'Automatic', 'red',
+                'Manual', 'green',
+                'Identical', 'black',
+            )
+        cmp_alg_leg = label_image(
+                cont_diff_leg,
+                'Watershed', 'red',
+                'Legacy', 'green',
+                'Identical', 'black',
+            )
+
+        GlobalState.finalize(cmp_alg_man, override_name='compare_contours_watershed_manual')
+        GlobalState.finalize(cmp_alg_leg, override_name='compare_contours_watershed_legacy')
+        plotImage(
+            cmp_alg_man,
+            "Contour Differences")
+        plotImage(
+            cmp_alg_leg,
+            "Contour Differences")
+
+
+
+@app.command()
+def test_colors():
+    red_image = np.zeros((100,100,3), dtype=np.uint8)
+    red_image[:,:,2] = 255
+
+    plotImage(red_image, "Red Image")

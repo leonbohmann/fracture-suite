@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from fracsuite.core.image import is_rgb, to_gray
+from fracsuite.core.image import is_rgb, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.detection import detect_fragments
 from fracsuite.splinters.processing import erodeImg
@@ -217,6 +217,65 @@ class Splinter:
         return self.__calculate_orientation_score(impact_position)
 
     @staticmethod
+    def analyzer_marked_image(marked_image, px_per_mm=1, return_thresh=False):
+        # step 1: find markers and background
+        red_pixels = marked_image[:,:,2] == 255
+
+        # step 2: create binary mask for image
+        thresh = cv2.threshold(marked_image[:,:,2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        thresh = erodeImg(thresh, sz = 5)
+
+        # step 3: create mask by copying red pixels from marked image
+        #           only if the destination pixel is not black
+        # create binary mask for non-black pixels in thresh
+        mask1 = cv2.inRange(to_rgb(thresh), (1,1,1), (255,255,255))
+        # create binary mask for red pixels
+        mask2 = red_pixels.astype(np.uint8) * 255
+        # combine the two binary masks using a bitwise AND operation
+        red_mask = cv2.bitwise_and(mask1, mask2)
+
+        # step 4: create connectedcomponents and run watershed to identify sure foreground
+        _, markers = cv2.connectedComponents(red_mask)
+        markers = cv2.watershed(to_rgb(thresh),markers)
+
+        # step 5: create binary stencil from the markers
+        m_img = np.zeros_like(marked_image[:,:,0], dtype=np.uint8)
+        m_img[markers == -1] = 255
+
+        contours, _ = cv2.findContours(to_gray(m_img), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)[2:]
+        contours = sorted(contours, key=cv2.contourArea)
+
+        # draw contours on new image
+        step1_img = np.zeros_like(marked_image[:,:,0])
+        # cv2.drawContours(step1_img, contours, -1, 255, -1)
+        # cv2.drawContours(step1_img, contours, -1, 0, 1)
+
+        for c in contours:
+            mask = np.zeros_like(marked_image[:,:,0])
+            cv2.drawContours(mask, [c], -1, 255, -1)
+            cv2.drawContours(mask, [c], -1, 0, 1)
+            step1_img = cv2.add(step1_img, mask)
+
+        # create new set on markers, which are now the sure foreground
+        _, markers = cv2.connectedComponents(step1_img)
+
+        # perform second watershed to eliminate background
+        markers = cv2.watershed(np.zeros_like(marked_image),markers)
+
+        # create skeleton image from markers
+        contour_image = np.zeros_like(marked_image[:,:,0], dtype=np.uint8)
+        contour_image[markers == -1] = 255
+
+        # FINAL STEP: Analyze the resulting contour image
+        splinters = Splinter.analyze_contour_image(contour_image)
+
+        if return_thresh:
+            return splinters, to_rgb(thresh)
+
+        return splinters
+
+    @staticmethod
     def analyze_contour_image(contour_image, px_per_mm=1):
         """Analyze a contour image and return a list of splinters."""
         contour_image = to_gray(contour_image)
@@ -232,12 +291,12 @@ class Splinter:
         """Analyze an unprocessed image and return a list of splinters.
 
         Parameters:
-        - image: The input image to be analyzed. Must be in RGB format for watershed algorithm.
-        - debug: A boolean flag indicating whether to display intermediate images for debugging purposes. Default is False.
-        - px_per_mm: The number of pixels per millimeter in the image. Default is 1.0.
+            image: The input image to be analyzed. Must be in RGB format for watershed algorithm.
+            debug: A boolean flag indicating whether to display intermediate images for debugging purposes. Default is False.
+            px_per_mm: The number of pixels per millimeter in the image. Default is 1.0.
 
         Returns:
-        - A list of Splinter objects representing the splinters detected in the input image.
+            (list[Splinter]): A list of Splinter objects representing the splinters detected in the input image.
         """
         assert is_rgb(image), "Image must be in RGB format for watershed algorithm."
 

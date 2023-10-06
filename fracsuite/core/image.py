@@ -25,10 +25,11 @@ def to_rgb(img, rgb = False):
     if is_rgb(img):
         return img
 
-    if not rgb:
-        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if rgb:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
-    return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
 
 def to_rgba(img):
     if is_rgba(img):

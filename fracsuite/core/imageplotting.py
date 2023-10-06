@@ -1,11 +1,15 @@
 from typing import Any
+import cv2
 from matplotlib import pyplot as plt
-from fracsuite.core.image import to_rgb
+from fracsuite.core.image import is_rgb, to_rgb
 
 
 def plotImage(img,title:str, cvt_to_rgb: bool = True, region: tuple[int,int,int,int] = None):
     if cvt_to_rgb:
         img = to_rgb(img)
+
+    if is_rgb(img):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     fig, axs = plt.subplots()
     axs.imshow(img)
@@ -29,6 +33,8 @@ def plotImages(imgs: list[(str, Any)], region = None ):
     """
     fig,axs  = plt.subplots(1,len(imgs), sharex='all', sharey='all')
     for i, (title, img) in enumerate(imgs):
+        if is_rgb(img):
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         axs[i].imshow(img)
         axs[i].set_title(title)
         if region is not None:
