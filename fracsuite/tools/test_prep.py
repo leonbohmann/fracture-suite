@@ -17,7 +17,7 @@ from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import bin_data, img_part
 from fracsuite.tools.callbacks import main_callback
-from fracsuite.tools.specimen import Specimen
+from fracsuite.core.specimen import Specimen
 from pathos.multiprocessing import ProcessPool
 
 import typer

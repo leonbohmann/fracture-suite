@@ -8,7 +8,7 @@ import numpy as np
 import typer
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.specimen import Specimen
+from fracsuite.core.specimen import Specimen
 
 nominals_app = typer.Typer(help=__doc__)
 general = GeneralSettings.get()

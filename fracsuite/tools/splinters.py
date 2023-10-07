@@ -2,12 +2,10 @@
 Splinter analyzation tools.
 """
 
-import json
 import os
 from itertools import groupby
 import pickle
 import re
-import subprocess
 from typing import Annotated, Any, Callable
 
 import cv2
@@ -35,13 +33,13 @@ from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
-from fracsuite.splinters.processing import crop_matrix, crop_perspective, dilateImg, erodeImg, preprocess_image
+from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
 from fracsuite.tools.callbacks import main_callback
-from fracsuite.tools.specimen import Specimen
+from fracsuite.core.specimen import Specimen
 
 
 

@@ -47,7 +47,7 @@ import matplotlib
 
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import print_exc_to_log, print_to_log
-from fracsuite.tools.specimen import Specimen
+from fracsuite.core.specimen import Specimen
 
 matplotlib.rcParams['figure.figsize'] = (6, 4)
 matplotlib.rc('axes', axisbelow=True) # to get grid into background

@@ -23,7 +23,7 @@ from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.detection import detect_fragments
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.processing import (
+from fracsuite.core.imageprocessing import (
     closeImg,
     crop_perspective,
     erodeImg,

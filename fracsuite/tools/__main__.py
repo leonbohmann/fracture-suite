@@ -103,4 +103,8 @@ app.add_typer(nominals_app, name="nominals")
 #                     os.rename(os.path.join(morph_path, file2), os.path.join(morph_path, num + " " + file2))
 #                     break
 
+@app.command()
+def test(input: list[str]):
+    print(input)
+
 app()

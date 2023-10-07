@@ -1,5 +1,6 @@
 import os
-from typing import Any
+import re
+from typing import Any, Callable
 import typer
 from rich import print
 from fracsuite.tools.state import State
@@ -33,6 +34,94 @@ def main_callback(ctx: typer.Context, set_path: str = None, out: str = None, cle
 
     State.debug = debug
 
-#TODO: Implement
-def specimen_callback(name_or_names: Any):
-    pass
+#TODO: In the future this can be used to make the commands more modular
+def specimen_callback(name_or_names_with_sigma: list[str]):
+    """Creates a filter function for specimens.
+
+    Args:
+        names (str): String wildcard to match specimen names.
+        sigmas (str): String with sigma range.
+        sigma_delta (int, optional): If a single sigma value is passed, this range is added around the value. Defaults to 10.
+        exclude (str, optional): Name filter to exclude. Defaults to None.
+        needs_scalp (bool, optional): The specimen needs valid scalp data. Defaults to True.
+        needs_splinters (bool, optional): The specimen needs valid splinter data. Defaults to True.
+
+    Returns:
+        Callable[[Specimen], bool]: Modified names, sigmas and filter function.
+    """
+
+    from fracsuite.core.specimen import Specimen
+
+    def in_names_wildcard(s: Specimen, filter: str) -> bool:
+        return re.match(filter, s.name) is not None
+    def in_names_list(s: Specimen, filter: list[str]) -> bool:
+        return s.name in filter
+    def all_names(s, filter) -> bool:
+        return True
+
+    name_filter_function: Callable[[Specimen, Any], bool] = None
+
+    # split input
+    if len(name_or_names_with_sigma) == 1:
+        name_filter, sigmas = name_or_names_with_sigma[0], None
+    elif len(name_or_names_with_sigma) == 2:
+        name_filter, sigmas = name_or_names_with_sigma
+
+    if "," in sigmas:
+        sigmas, sigma_delta = sigmas.split(",")
+    else:
+        sigma_delta = 10
+
+    # create name_filter_function based on name_filter
+    if name_filter is not None and "," in name_filter:
+        name_filter = name_filter.split(",")
+        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        name_filter_function = in_names_list
+    elif name_filter is not None and " " in name_filter:
+        name_filter = name_filter.split(" ")
+        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        name_filter_function = in_names_list
+    elif name_filter is not None and "*" not in name_filter:
+        name_filter = [name_filter]
+        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        name_filter_function = in_names_list
+    elif name_filter is not None and "*" in name_filter:
+        print(f"Searching for specimen whose name matches: '{name_filter}'")
+        name_filter = name_filter.replace(".","\.").replace("*", ".*").replace('!', '|')
+        name_filter_function = in_names_wildcard
+    elif name_filter is None:
+        name_filter = ".*"
+        print("[green]All[/green] specimen names included!")
+        name_filter_function = all_names
+
+    if sigmas is not None:
+        if "-" in sigmas:
+            sigmas = [float(s) for s in sigmas.split("-")]
+        elif sigmas == "all":
+            sigmas = [0,1000]
+        else:
+            sigmas = [float(sigmas), float(sigmas)]
+            sigmas[0] = max(0, sigmas[0] - sigma_delta)
+            sigmas[1] += sigma_delta
+
+        print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
+
+    exclude = name_or_names_with_sigma[2] if len(name_or_names_with_sigma) > 2 else None
+    needs_scalp = name_or_names_with_sigma[3] if len(name_or_names_with_sigma) > 3 else True
+    needs_splinters = name_or_names_with_sigma[4] if len(name_or_names_with_sigma) > 4 else True
+
+    def filter_specimens(specimen: Specimen):
+        if needs_scalp and not specimen.has_scalp:
+            return False
+        elif needs_splinters and not specimen.has_splinters:
+            return False
+        elif exclude is not None and re.match(exclude, specimen.name):
+            return False
+        elif not name_filter_function(specimen, name_filter):
+            return False
+        elif sigmas is not None:
+            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+
+        return True
+
+    return filter_specimens
