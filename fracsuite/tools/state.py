@@ -92,28 +92,36 @@ class State:
             assert isinstance(subfolders, list), "subfolders must be a list of strings."
             names = subfolders + names
 
-        # check how to save object
-        if isinstance(object, tuple):
-            if isinstance(object[0], Figure):
-                out_name = State.get_output_file(*names, is_plot=True)
-                object[0].savefig(out_name, dpi=300, bbox_inches='tight')
-        elif isinstance(object, Figure):
-            out_name = State.get_output_file(*names, is_plot=True)
-            object.savefig(out_name, dpi=300, bbox_inches='tight')
-        elif type(object).__module__ == np.__name__:
-            out_name = State.get_output_file(*names, is_image=True)
-            image = object
-            f = np.max(image.shape[:2]) / general.output_image_maxsize
+        saved = False
+        while not saved:
+            try:
+                # check how to save object
+                if isinstance(object, tuple):
+                    if isinstance(object[0], Figure):
+                        out_name = State.get_output_file(*names, is_plot=True)
+                        object[0].savefig(out_name, dpi=300, bbox_inches='tight')
+                elif isinstance(object, Figure):
+                    out_name = State.get_output_file(*names, is_plot=True)
+                    object.savefig(out_name, dpi=300, bbox_inches='tight')
+                elif type(object).__module__ == np.__name__:
+                    out_name = State.get_output_file(*names, is_image=True)
+                    image = object
+                    f = np.max(image.shape[:2]) / general.output_image_maxsize
 
-            h,w = image.shape[:2] / f
-            w = int(w)
-            h = int(h)
+                    h,w = image.shape[:2] / f
+                    w = int(w)
+                    h = int(h)
 
-            image = cv2.resize(image, (w,h))
-            cv2.imwrite(out_name, image)
-            cv2.imwrite(out_name, object)
-        else:
-            raise Exception("Object must be a matplotlib figure or a numpy array.")
+                    image = cv2.resize(image, (w,h))
+                    cv2.imwrite(out_name, image)
+                else:
+                    raise Exception("Object must be a matplotlib figure or a numpy array.")
+
+                saved = True
+            except Exception as e:
+                print("[red]Error while saving. Waiting for 1 second...[/red]")
+                time.sleep(1)
+                continue
 
         # success, start process
         print(f"Saved to '{out_name}'.")
@@ -161,7 +169,6 @@ class State:
             while os.path.exists(p):
                 count += 1
                 p = os.path.join(general.out_path, State.sub_outpath, f'{fname} ({count}){ext}')
-
 
 
         return p

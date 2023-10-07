@@ -6,6 +6,7 @@ import os
 from itertools import groupby
 import pickle
 import re
+import sys
 from typing import Annotated, Any, Callable
 
 import cv2
@@ -33,7 +34,7 @@ from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
-from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, preprocess_image
+from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
@@ -1009,41 +1010,53 @@ def compare_manual(
         input_img = cv2.imread(input_img_path, cv2.IMREAD_COLOR)
         counted_img = cv2.imread(counted_img_path, cv2.IMREAD_COLOR)
 
-        thresh2 = to_rgb(preprocess_image(input_img))
-
-        plt.imshow(thresh2)
-        plt.show()
-
-        print(input_img.shape)
-        print(counted_img.shape)
-        # get splinters
+        # get splinters from watershed
         splinters = Splinter.analyze_image(input_img, debug=False, px_per_mm=1)
 
-        # count red pixels in counted_img
-        red = np.sum(counted_img[:,:,2] == 255)
-
-        print(len(splinters))
-        print(red)
-
+        # get splinters from labeled image
         manual_splinters = Splinter.analyze_marked_image(
             counted_img,
             px_per_mm=1,
         )
 
-        legacy_splinters = Splinter.analyze_image_legacy(input_img)
+        # get splinters from legacy method
+        with open(find_file(test_dir, "splinters"), 'rb') as f:
+            # import to redirect pickle import
+            import fracsuite.core.splinter as splt
+            sys.modules['fracsuite.splinters.splinter'] = splt
+            legacy_splinters: list[Splinter] = pickle.load(f, fix_imports=True)
 
         cont_img_alg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in splinters], -1, (255,0,0), 3)
         cont_img_man = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in manual_splinters], -1, (0,255,0), 3)
         cont_img_leg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in legacy_splinters], -1, (0,255,0), 3)
 
-        cont_diff = cv2.absdiff(cont_img_alg, cont_img_man)
-        cont_diff_leg = cv2.absdiff(cont_img_alg, cont_img_leg)
+        cont_diff = cv2.addWeighted(input_img, 0.5, cont_img_alg, 1.0, 0)
+        cont_diff = cv2.addWeighted(cont_diff, 1, cont_img_man, 1.0, 0)
+        cont_diff_leg = cv2.addWeighted(input_img, 0.5, cont_img_alg, 1.0, 0)
+        cont_diff_leg = cv2.addWeighted(cont_diff_leg, 1, cont_img_leg, 1.0, 0)
 
-        cont_diff[np.all(cont_diff == (255,255,0), axis=-1)] = (0,0,0)
-        cont_diff_leg[np.all(cont_diff_leg == (255,255,0), axis=-1)] = (0,0,0)
+        cd = cv2.absdiff(cont_img_alg, cont_img_man)
+        yellow_pixels = np.all(cd == (255, 255, 0), axis=-1)
 
-        cont_diff = cv2.addWeighted(thresh2, 0.7, cont_diff, 1.0, 0)
-        cont_diff_leg = cv2.addWeighted(thresh2, 0.7, cont_diff_leg, 1.0, 0)
+        cont_diff[yellow_pixels] = input_img[yellow_pixels]
+
+        # cont_diff = cv2.absdiff(cont_img_alg, cont_img_man)
+        # cont_diff_leg = cv2.absdiff(cont_img_alg, cont_img_leg)
+
+        # cont_diff[np.all(cont_diff == (255,255,0), axis=-1)] = (0,0,0)
+        # cont_diff_leg[np.all(cont_diff_leg == (255,255,0), axis=-1)] = (0,0,0)
+
+        # thresh_diff = thresh.copy()
+        # thresh_diff[np.all(cont_diff != (0,0,0), axis=-1)] = (0,0,0)
+        # cont_diff = cv2.addWeighted(thresh_diff, 1, cont_diff, 1.0, 0)
+        # thresh_diff_leg = thresh.copy()
+        # thresh_diff_leg[np.all(cont_diff_leg != (0,0,0), axis=-1)] = (0,0,0)
+        # cont_diff_leg = cv2.addWeighted(thresh_diff_leg, 1, cont_diff_leg, 1.0, 0)
+
+        # cont_img_alg1 = cont_img_alg.copy()
+        # cont_img_alg1[np.all(cont_img_man != (0,0,0), axis=-1)] = (0,0,255)
+
+
 
         cmp_alg_man = label_image(
                 cont_diff,
