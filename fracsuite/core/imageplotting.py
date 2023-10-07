@@ -2,9 +2,13 @@ from typing import Any
 import cv2
 from matplotlib import pyplot as plt
 from fracsuite.core.image import is_rgb, to_rgb
+from fracsuite.tools.GlobalState import GlobalState
 
 
 def plotImage(img,title:str, cvt_to_rgb: bool = True, region: tuple[int,int,int,int] = None):
+    if not GlobalState.debug:
+        return
+
     if cvt_to_rgb:
         img = to_rgb(img)
 

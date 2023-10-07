@@ -8,7 +8,7 @@ from fracsuite.tools.general import GeneralSettings
 general = GeneralSettings.get()
 
 
-def main_callback(ctx: typer.Context, set_path: str = None, out: str = None, clear_output: bool = False):
+def main_callback(ctx: typer.Context, set_path: str = None, out: str = None, clear_output: bool = False, debug: bool = False):
     """Splinter analyzation tools."""
     cmd = os.path.basename(GlobalState.sub_outpath) + "/" + ctx.invoked_subcommand
 
@@ -28,3 +28,6 @@ def main_callback(ctx: typer.Context, set_path: str = None, out: str = None, cle
         print("[yellow]Similar files will be deleted when finalizing.")
 
     os.makedirs(os.path.join(general.out_path, GlobalState.sub_outpath), exist_ok=True)
+
+
+    GlobalState.debug = debug

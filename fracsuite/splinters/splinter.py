@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.image import is_rgb, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
@@ -224,6 +225,7 @@ class Splinter:
         # step 2: create binary mask for image
         thresh = cv2.threshold(marked_image[:,:,2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         thresh = erodeImg(thresh, sz = 5)
+        plotImage(thresh, "Thresholded Image")
 
         # step 3: create mask by copying red pixels from marked image
         #           only if the destination pixel is not black
@@ -233,6 +235,7 @@ class Splinter:
         mask2 = red_pixels.astype(np.uint8) * 255
         # combine the two binary masks using a bitwise AND operation
         red_mask = cv2.bitwise_and(mask1, mask2)
+        plotImage(red_mask, "Red Mask")
 
         # step 4: create connectedcomponents and run watershed to identify sure foreground
         _, markers = cv2.connectedComponents(red_mask)
@@ -241,21 +244,35 @@ class Splinter:
         # step 5: create binary stencil from the markers
         m_img = np.zeros_like(marked_image[:,:,0], dtype=np.uint8)
         m_img[markers == -1] = 255
+        plotImage(m_img, "WS Contours 1")
 
-        contours, _ = cv2.findContours(to_gray(m_img), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[2:]
-        contours = sorted(contours, key=cv2.contourArea)
+        contours, hierarchy = cv2.findContours(to_gray(m_img), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # contours = sorted(contours, key=cv2.contourArea, reverse=True)[2:]
 
+        filtered_contours = []
+        for i, h in enumerate(hierarchy[0]):
+            first_child_idx = h[2]
+            if first_child_idx == -1:
+                filtered_contours.append(contours[i])
+
+        filtered_contours = sorted(filtered_contours, key=cv2.contourArea)
+        cimg = to_rgb(255-to_gray(m_img))
+        for c in filtered_contours:
+            clr = rand_col()
+            cv2.drawContours(cimg, [c], -1, clr, 1)
+        plotImage(cimg, "Detected contours")
         # draw contours on new image
         step1_img = np.zeros_like(marked_image[:,:,0])
         # cv2.drawContours(step1_img, contours, -1, 255, -1)
         # cv2.drawContours(step1_img, contours, -1, 0, 1)
 
-        for c in contours:
+        for c in filtered_contours:
             mask = np.zeros_like(marked_image[:,:,0])
             cv2.drawContours(mask, [c], -1, 255, -1)
-            cv2.drawContours(mask, [c], -1, 0, 1)
+            cv2.drawContours(mask, [c], -1, 0, 5)
             step1_img = cv2.add(step1_img, mask)
+
+        plotImage(step1_img, "Step 1 Image")
 
         # create new set on markers, which are now the sure foreground
         _, markers = cv2.connectedComponents(step1_img)

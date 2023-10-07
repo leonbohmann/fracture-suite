@@ -85,27 +85,33 @@ def checkmark(value: bool) -> str:
 def to_img(fig):
     fig.tight_layout()
     temp_file = tempfile.mktemp("TEMP_FIG_TO_IMG.png")
-    fig.savefig(temp_file, dpi=300, bbox_inches='tight')
+    fig.savefig(temp_file, dpi=300, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
     return to_rgb(cv2.imread(temp_file))
 
-def label_image(image, *labels, title = None):
+def label_image(image, *labels, title = None, nums=None, return_fig=True):
     assert len(labels) % 2 == 0, "Labels must be a multiple of 2."
-    assert len(labels) > 0, "Labels must not be empty."
 
     texts = labels[::2]
     labelcolors = labels[1::2]
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 5))
     ax.imshow(image)
     ax.axis('off')
 
     if title:
         plt.title(title)
 
-    patches = [mpatches.Patch(color=color if isinstance(color, str) else tuple(x/255 for x in color), label=label) for label, color in zip(texts, labelcolors)]
-    ax.legend(handles=patches, bbox_to_anchor=(1, 1), loc='upper left')
+    if nums is not None:
+        texts = [f"{text} ({num})" for text, num in zip(texts, nums)]
 
+    if len(labels) > 2:
+        patches = [mpatches.Patch(color=color if isinstance(color, str) else tuple(x/255 for x in color), label=label) for label, color in zip(texts, labelcolors)]
+        ax.legend(handles=patches, bbox_to_anchor=(1, 1), loc='upper left')
+
+    if return_fig:
+        fig.tight_layout()
+        return fig
     return to_img(fig)
 
 
@@ -117,6 +123,7 @@ def annotate_image(
     min_value = 0,
     max_value = 1,
     figsize_cm=(10, 8),
+    return_fig=True,
 ):
     """Put a header in white text on top of the image.
 
@@ -146,7 +153,9 @@ def annotate_image(
     if cbar_title is not None:
         fig.colorbar(mappable=im, ax=ax, label=cbar_title)
 
-
+    if return_fig:
+        fig.tight_layout()
+        return fig
     return to_img(fig)
 
 def annotate_images(
@@ -156,6 +165,7 @@ def annotate_images(
     min_value = 0,
     max_value = 1,
     figsize_cm=(12, 8),
+    return_fig = False
 ):
     """Put a header in white text on top of the image.
 
@@ -187,11 +197,10 @@ def annotate_images(
     if cbar_title is not None:
         fig.colorbar(mappable=im, ax=axs[:-1], label=cbar_title)
 
-    fig.tight_layout()
-    temp_file = general.get_output_file("TEMP.png")
-    fig.savefig(temp_file, dpi=300)
-
-    return cv2.imread(temp_file)
+    if return_fig:
+        fig.tight_layout()
+        return fig
+    return to_img(fig)
 
 
 def img_part(im, x, y, w, h):

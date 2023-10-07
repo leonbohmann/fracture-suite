@@ -162,7 +162,8 @@ def create_splinter_sizes_image(
             img,
             title=annotate_title,
             min_value=min_area,
-            max_value=max_area)
+            max_value=max_area,
+            return_fig=False)
 
     return img
 

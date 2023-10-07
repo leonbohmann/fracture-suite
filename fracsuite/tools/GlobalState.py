@@ -42,7 +42,12 @@ class GlobalState:
         GlobalState.progress.stop()
         GlobalState.__progress_started = False
 
-    def finalize(object: Figure | npt.ArrayLike, *names: str, override_name: str = None):
+    def finalize(
+        object: Figure | npt.ArrayLike,
+        *names: str,
+        override_name: str = None,
+        subfolders: list[str] = None
+    ):
         """
         Saves an object to a file and opens it.
 
@@ -61,6 +66,10 @@ class GlobalState:
 
         names = list(names)
 
+
+
+
+
         if 'splinter' in GlobalState.sub_outpath:
             if callable(b := getattr(names[-1], 'put_splinter_output', None)):
                 b(object)
@@ -70,19 +79,23 @@ class GlobalState:
         if hasattr(names[-1], 'name'):
             names[-1] = names[-1].name
 
-        names = names[:-1] + [names[-1]+sep+GlobalState.current_subcommand]
+        names = [*names[:-1], names[-1]+sep+GlobalState.current_subcommand]
 
         if override_name is not None:
             names[-1] = override_name
+
+        if subfolders is not None:
+            assert isinstance(subfolders, list), "subfolders must be a list of strings."
+            names = subfolders + names
 
         # check how to save object
         if isinstance(object, tuple):
             if isinstance(object[0], Figure):
                 out_name = GlobalState.get_output_file(*names, is_plot=True)
-                object[0].savefig(out_name, bbox_inches='tight')
+                object[0].savefig(out_name, dpi=300, bbox_inches='tight')
         elif isinstance(object, Figure):
             out_name = GlobalState.get_output_file(*names, is_plot=True)
-            object.savefig(out_name, bbox_inches='tight')
+            object.savefig(out_name, dpi=300, bbox_inches='tight')
         elif type(object).__module__ == np.__name__:
             out_name = GlobalState.get_output_file(*names, is_image=True)
             image = object

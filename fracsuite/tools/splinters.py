@@ -39,7 +39,7 @@ from fracsuite.splinters.processing import crop_matrix, crop_perspective, dilate
 from fracsuite.splinters.splinter import Splinter
 from fracsuite.tools.GlobalState import GlobalState
 from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image, bin_data, find_file, find_files, label_image
+from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
 from fracsuite.tools.maincallback import main_callback
 from fracsuite.tools.specimen import Specimen
 
@@ -229,11 +229,11 @@ def str_to_intlist(input: str) -> list[int]:
 def specimen_parser(input: str):
     return input
 
-def sort_two_arrays(array1, array2, reversed = False) -> tuple[list, list]:
+def sort_two_arrays(array1, array2, reversed = False, keyoverride=None) -> tuple[list, list]:
     # Combine x and y into pairs
     pairs = list(zip(array1, array2))
     # Sort the pairs based on the values in x
-    sorted_pairs = sorted(pairs, key=lambda pair: pair[0], reverse=reversed)
+    sorted_pairs = sorted(pairs, key=keyoverride or (lambda pair: pair[0]), reverse=reversed)
     # Separate the sorted pairs back into separate arrays
     return zip(*sorted_pairs)
 
@@ -1037,8 +1037,6 @@ def compare_manual(
 
         cont_diff = cv2.absdiff(cont_img_alg, cont_img_man)
         cont_diff_leg = cv2.absdiff(cont_img_alg, cont_img_leg)
-        plotImage(cont_diff, "Contour Difference")
-
 
         cont_diff[np.all(cont_diff == (255,255,0), axis=-1)] = (0,0,0)
         cont_diff_leg[np.all(cont_diff_leg == (255,255,0), axis=-1)] = (0,0,0)
@@ -1048,25 +1046,49 @@ def compare_manual(
 
         cmp_alg_man = label_image(
                 cont_diff,
-                'Automatic', 'red',
+                'Watershed', 'red',
                 'Manual', 'green',
-                'Identical', 'black',
+                nums = [len(splinters), len(manual_splinters)]
             )
         cmp_alg_leg = label_image(
                 cont_diff_leg,
                 'Watershed', 'red',
                 'Legacy', 'green',
-                'Identical', 'black',
+                nums = [len(splinters), len(legacy_splinters)]
             )
 
-        GlobalState.finalize(cmp_alg_man, override_name='compare_contours_watershed_manual')
-        GlobalState.finalize(cmp_alg_leg, override_name='compare_contours_watershed_legacy')
-        plotImage(
-            cmp_alg_man,
-            "Contour Differences")
-        plotImage(
-            cmp_alg_leg,
-            "Contour Differences")
+        man_sizes = create_splinter_sizes_image(
+            manual_splinters,
+            input_img.shape,
+            annotate = True,
+            annotate_title="Manual",
+            with_contours=True
+        )
+        alg_sizes = create_splinter_sizes_image(
+            splinters,
+            input_img.shape,
+            annotate = True,
+            annotate_title="Watershed",
+            with_contours=True
+        )
+        leg_sizes = create_splinter_sizes_image(
+            legacy_splinters,
+            input_img.shape,
+            annotate = True,
+            annotate_title="Legacy",
+            with_contours=True
+        )
+
+        size_fig=annotate_images([leg_sizes, alg_sizes, man_sizes])
+        GlobalState.finalize(size_fig, subfolders=[folder], override_name='compare_contours_sizes')
+        GlobalState.finalize(cmp_alg_man, subfolders=[folder], override_name='compare_contours_watershed_manual')
+        GlobalState.finalize(cmp_alg_leg, subfolders=[folder], override_name='compare_contours_watershed_legacy')
+        # plotImage(
+        #     cmp_alg_man,
+        #     "Contour Differences")
+        # plotImage(
+        #     cmp_alg_leg,
+        #     "Contour Differences")
 
 
 
