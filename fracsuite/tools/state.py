@@ -45,12 +45,26 @@ class State:
     def stop_progress():
         State.progress.stop()
         State.__progress_started = False
-
-    def finalize(
+    def output_nopen(
         object: Figure | npt.ArrayLike,
         *names: str,
         override_name: str = None,
-        subfolders: list[str] = None
+        subfolders: list[str] = None,
+    ):
+        State.output(
+            object,
+            *names,
+            override_name=override_name,
+            subfolders=subfolders,
+            open=False
+        )
+
+    def output(
+        object: Figure | npt.ArrayLike,
+        *names: str,
+        override_name: str = None,
+        subfolders: list[str] = None,
+        open=True
     ):
         """
         Saves an object to a file and opens it.
@@ -106,13 +120,13 @@ class State:
                 elif type(object).__module__ == np.__name__:
                     out_name = State.get_output_file(*names, is_image=True)
                     image = object
-                    f = np.max(image.shape[:2]) / general.output_image_maxsize
+                    # f = np.max(image.shape[:2]) / general.output_image_maxsize
 
-                    h,w = image.shape[:2] / f
-                    w = int(w)
-                    h = int(h)
+                    # h,w = image.shape[:2] / f
+                    # w = int(w)
+                    # h = int(h)
 
-                    image = cv2.resize(image, (w,h))
+                    # image = cv2.resize(image, (w,h))
                     cv2.imwrite(out_name, image)
                 else:
                     raise Exception("Object must be a matplotlib figure or a numpy array.")
@@ -125,7 +139,9 @@ class State:
 
         # success, start process
         print(f"Saved to '{out_name}'.")
-        subprocess.Popen(['start', '', '/b', out_name], shell=True)
+
+        if open:
+            subprocess.Popen(['start', '', '/b', out_name], shell=True)
 
     def get_output_dir():
         # sub_outpath might be set to custom output path, join will take the last valid path start

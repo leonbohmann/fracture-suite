@@ -39,7 +39,7 @@ def preprocess_image(
     # image = np.clip(image - np.mean(image), 0, 255).astype(np.uint8)
 
     # Apply Gaussian blur to reduce noise and enhance edge detection
-    image = cv2.GaussianBlur(image, prep.gauss_size, prep.gauss_sigma * W_FAC / w)
+    image = cv2.GaussianBlur(image, prep.gauss_size, prep.gauss_sigma)
     image = cv2.resize(image,
                         (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
 
@@ -47,9 +47,9 @@ def preprocess_image(
         plotImage(image, 'PREP: GaussianBlur -> Resize', region=interest_region)
 
     # adapt blocksize and c to current image size
-    thresh_block_size = int(prep.thresh_block_size * W_FAC / w)
-    thresh_block_size = thresh_block_size + (thresh_block_size + 1 )% 2
-    thresh_c = prep.thresh_c * W_FAC / w
+    thresh_block_size = int(prep.thresh_block_size)
+    thresh_block_size = thresh_block_size + (thresh_block_size + 1 ) % 2
+    thresh_c = prep.thresh_c
 
     # Use adaptive thresholding
     image = 255-cv2.adaptiveThreshold(image, 255, prep.thresh_adapt_mode, \

@@ -5,8 +5,8 @@ from fracsuite.core.image import is_rgb, to_rgb
 from fracsuite.tools.state import State
 
 
-def plotImage(img,title:str, cvt_to_rgb: bool = True, region: tuple[int,int,int,int] = None):
-    if not State.debug:
+def plotImage(img,title:str, cvt_to_rgb: bool = True, region: tuple[int,int,int,int] = None, force=False):
+    if not State.debug and not force:
         return
 
     if cvt_to_rgb:
@@ -28,13 +28,16 @@ def plotImage(img,title:str, cvt_to_rgb: bool = True, region: tuple[int,int,int,
     plt.close(fig)
 
 
-def plotImages(imgs: list[(str, Any)], region = None ):
+def plotImages(imgs: list[(str, Any)], region = None, force=False ):
     """Plots several images side-by-side in a subplot.
 
     Args:
         imgs (list[tuple[str,Any]]): List of tuples containing the title and the image to plot.
         region (x,y,w,h, optional): A specific region to draw. Defaults to None.
     """
+    if not State.debug and not force:
+        return
+
     fig,axs  = plt.subplots(1,len(imgs), sharex='all', sharey='all')
     for i, (title, img) in enumerate(imgs):
         if is_rgb(img):

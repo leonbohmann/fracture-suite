@@ -98,7 +98,7 @@ def count_splinters_in_norm_region(
     specimen.set_setting('esg_count', s_count)
 
     specimen.put_splinter_output(output_image, 'norm_region')
-    State.finalize(output_image, specimen.name)
+    State.output(output_image, specimen.name)
 
 @app.command()
 def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
@@ -123,7 +123,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         fig_title='Splinter Roughness')
 
     specimen.put_splinter_output(fig)
-    State.finalize(fig, specimen.name)
+    State.output(fig, specimen.name)
 
 @app.command()
 def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
@@ -148,7 +148,7 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         fig_title='Splinter Roughness')
 
     specimen.put_splinter_output(fig)
-    State.finalize(fig, specimen.name)
+    State.output(fig, specimen.name)
 
 @app.command()
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
@@ -180,7 +180,7 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 
     out_img = annotate_image(out_img, cbar_title="Roughness", min_value=min_r, max_value=max_r)
     specimen.put_splinter_output(out_img)
-    State.finalize(out_img, specimen.name)
+    State.output(out_img, specimen.name)
 
 
 @app.command()
@@ -216,7 +216,7 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
                                   max_value=max_r,)
 
     specimen.put_splinter_output(out_img, 'roundness')
-    State.finalize(out_img, specimen.name)
+    State.output(out_img, specimen.name)
 
 
 def str_to_intlist(input: str) -> list[int]:
@@ -325,7 +325,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
     ax.grid(True, which='both', axis='both')
     fig.tight_layout()
 
-    State.finalize(fig, 'stress_vs_size')
+    State.output(fig, 'stress_vs_size')
 
 def diag_dist_specimen_intensity_func(
     specimen: Specimen,
@@ -430,7 +430,7 @@ def log2dhist_diag(
     # axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
     fig.tight_layout()
 
-    State.finalize(fig)
+    State.output(fig)
 
 
 
@@ -518,7 +518,7 @@ def log_2d_histograms(
     elif names is not None:
         out_name =  f"{names[0]}"
 
-    State.finalize(fig, out_name)
+    State.output(fig, out_name)
 
 def create_filter_function(name_filter,
                    sigmas = None,
@@ -631,7 +631,7 @@ def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens
 
     disp_mean_sizes(specimens)
 
-    State.finalize(fig, specimens[0].name)
+    State.output(fig, specimens[0].name)
 
 
 def disp_mean_sizes(specimens: list[Specimen]):
@@ -687,7 +687,7 @@ def splinter_orientation_f(
         clr_label="Mean Orientation Score",
     )
 
-    State.finalize(fig, specimen)
+    State.output(fig, specimen)
 
 @app.command()
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
@@ -729,7 +729,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         max_value=1
     )
 
-    State.finalize(orientation_image, specimen)
+    State.output(orientation_image, specimen)
 
 @app.command()
 def fracture_intensity_img(
@@ -766,7 +766,7 @@ def fracture_intensity_img(
                                      fig_title="Fracture Intensity (Based on image mean values)",
                                      skip_edge=skip_edges)
 
-    State.finalize(fig, specimen)
+    State.output(fig, specimen)
 
 @app.command()
 def fracture_intensity(
@@ -789,7 +789,7 @@ def fracture_intensity(
                                         plot_vertices=plot_vertices,
                                         skip_edge=skip_edges)
 
-    State.finalize(fig, specimen)
+    State.output(fig, specimen)
 
 @app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
@@ -944,7 +944,7 @@ def watershed(
     cmp_image = cv2.addWeighted(cmp_image, 1, m_img, 1, 0)
     if debug:
         plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
-        State.finalize(cmp_image)
+        State.output(cmp_image)
 
 
 
@@ -956,7 +956,7 @@ def watershed(
         annotate_title="Watershed",
         with_contours=True)
     if debug:
-        State.finalize(sz_image2)
+        State.output(sz_image2)
 
     rnd_splinters = create_splinter_colored_image(
         splinters,
@@ -982,7 +982,7 @@ def watershed(
     datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False)
     ax.legend()
     fig.tight_layout()
-    State.finalize(fig, specimen, override_name="splinter_sizes_watershed")
+    State.output(fig, specimen, override_name="splinter_sizes_watershed")
     plt.close(fig)
 
     fig, axs = datahist_plot(xlim=(0,2))
@@ -993,7 +993,7 @@ def watershed(
     datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False, data_mode='cdf')
     ax.legend()
     fig.tight_layout()
-    State.finalize(fig, specimen, override_name="splinter_sizes_watershed_cdf")
+    State.output(fig, specimen, override_name="splinter_sizes_watershed_cdf")
 
 @app.command()
 def compare_manual(
@@ -1002,20 +1002,20 @@ def compare_manual(
         test_dir = os.path.join(State.get_output_dir(), folder)
 
         input_img_path = find_file(test_dir, "input")
-        counted_img_path = find_file(test_dir, "counted")
+        marked_img_path = find_file(test_dir, "marked")
 
         assert input_img_path is not None, "No input image found."
-        assert counted_img_path is not None, "No counted image found."
+        assert marked_img_path is not None, "No marked image found."
 
         input_img = cv2.imread(input_img_path, cv2.IMREAD_COLOR)
-        counted_img = cv2.imread(counted_img_path, cv2.IMREAD_COLOR)
+        marked_img = cv2.imread(marked_img_path, cv2.IMREAD_COLOR)
 
         # get splinters from watershed
-        splinters = Splinter.analyze_image(input_img, debug=False, px_per_mm=1)
+        splinters = Splinter.analyze_image(input_img, px_per_mm=1)
 
         # get splinters from labeled image
         manual_splinters = Splinter.analyze_marked_image(
-            counted_img,
+            marked_img,
             px_per_mm=1,
         )
 
@@ -1030,15 +1030,29 @@ def compare_manual(
         cont_img_man = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in manual_splinters], -1, (0,255,0), 3)
         cont_img_leg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in legacy_splinters], -1, (0,255,0), 3)
 
-        cont_diff = cv2.addWeighted(input_img, 0.5, cont_img_alg, 1.0, 0)
+        cont_diff = cv2.addWeighted(input_img, 1, cont_img_alg, 1.0, 0)
         cont_diff = cv2.addWeighted(cont_diff, 1, cont_img_man, 1.0, 0)
-        cont_diff_leg = cv2.addWeighted(input_img, 0.5, cont_img_alg, 1.0, 0)
+        cont_diff_leg = cv2.addWeighted(input_img, 1, cont_img_alg, 1.0, 0)
         cont_diff_leg = cv2.addWeighted(cont_diff_leg, 1, cont_img_leg, 1.0, 0)
 
-        cd = cv2.absdiff(cont_img_alg, cont_img_man)
-        yellow_pixels = np.all(cd == (255, 255, 0), axis=-1)
+        alg_man = cv2.absdiff(cont_img_alg, cont_img_man)
+        yellow_pixels = np.all(alg_man == (255, 255, 0), axis=-1)
 
+        alg_leg = cv2.absdiff(cont_img_alg, cont_img_leg)
+        yellow_pixels_leg = np.all(alg_leg == (255, 255, 0), axis=-1)
+
+
+        matching_color = (0,120,255)
+        diff_matching = np.zeros_like(input_img)
+        diff_matching[yellow_pixels] = matching_color
         cont_diff[yellow_pixels] = input_img[yellow_pixels]
+        cont_diff = cv2.addWeighted(cont_diff, 1, diff_matching, 1.0, 0)
+
+        diff_leg_matching = np.zeros_like(input_img)
+        diff_leg_matching[yellow_pixels_leg] = matching_color
+        cont_diff_leg[yellow_pixels_leg] = input_img[yellow_pixels_leg]
+        cont_diff_leg = cv2.addWeighted(cont_diff_leg, 1, diff_leg_matching, 1.0, 0)
+
 
         # cont_diff = cv2.absdiff(cont_img_alg, cont_img_man)
         # cont_diff_leg = cv2.absdiff(cont_img_alg, cont_img_leg)
@@ -1062,12 +1076,14 @@ def compare_manual(
                 cont_diff,
                 'Watershed', 'red',
                 'Manual', 'green',
+                'Identical', matching_color,
                 nums = [len(splinters), len(manual_splinters)]
             )
         cmp_alg_leg = label_image(
                 cont_diff_leg,
                 'Watershed', 'red',
                 'Legacy', 'green',
+                'Identical', matching_color,
                 nums = [len(splinters), len(legacy_splinters)]
             )
 
@@ -1094,9 +1110,12 @@ def compare_manual(
         )
 
         size_fig=annotate_images([leg_sizes, alg_sizes, man_sizes])
-        State.finalize(size_fig, subfolders=[folder], override_name='compare_contours_sizes')
-        State.finalize(cmp_alg_man, subfolders=[folder], override_name='compare_contours_watershed_manual')
-        State.finalize(cmp_alg_leg, subfolders=[folder], override_name='compare_contours_watershed_legacy')
+        State.output_nopen(size_fig, subfolders=[folder], override_name='compare_contours_sizes')
+        State.output_nopen(cont_img_alg, subfolders=[folder], override_name='watershed_contour')
+        State.output(cmp_alg_man, subfolders=[folder],
+                     override_name='compare_contours_watershed_manual')
+        State.output(cmp_alg_leg, subfolders=[folder],
+                     override_name='compare_contours_watershed_legacy')
         # plotImage(
         #     cmp_alg_man,
         #     "Contour Differences")

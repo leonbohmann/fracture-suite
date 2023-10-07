@@ -352,7 +352,7 @@ def wave_compare(
     fig.tight_layout()
     plt.show()
 
-    State.finalize(fig)
+    State.output(fig)
 
 @app.command()
 def plot_mean(
@@ -433,7 +433,7 @@ def plot_mean(
 
     fig.tight_layout()
 
-    State.finalize(fig, specimen)
+    State.output(fig, specimen)
 
 @app.command()
 def plot_impact(
@@ -569,7 +569,7 @@ def plot_impact(
 
     if specimen is not None:
         fig.savefig(specimen.get_acc_outfile(f'impact_w_waves.{general.image_extension}'), bbox_inches="tight")
-    State.finalize(fig, specimen)
+    State.output(fig, specimen)
 
 
 def get_impact_time(channel: Channel):

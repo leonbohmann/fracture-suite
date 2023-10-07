@@ -61,7 +61,7 @@ def stress():
     fig.tight_layout()
     axs.legend(bars, lbs, loc='lower right')
 
-    State.finalize(fig, override_name='compare_nominal_stress_to_real_stress')
+    State.output(fig, override_name='compare_nominal_stress_to_real_stress')
 
 @nominals_app.command()
 def thickness():
@@ -109,4 +109,4 @@ def thickness():
     axs.legend(bars, lbs, loc='lower right')
 
 
-    State.finalize(fig, override_name='compare_nominal_stress_to_real_stress')
+    State.output(fig, override_name='compare_nominal_stress_to_real_stress')

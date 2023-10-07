@@ -18,8 +18,8 @@ class PreprocessorConfig:
 
     def __init__(self,
                  name="",
-                 block: int = 13,
-                 c: float = 8,
+                 block: int = 11,
+                 c: float = 0.6,
                  gauss_size: tuple[int,int] = (5,5),
                  gauss_sigma: float = 8,
                  resize_factor: float = 1,

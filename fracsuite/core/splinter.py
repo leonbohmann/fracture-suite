@@ -7,7 +7,7 @@ from fracsuite.core.coloring import rand_col
 from fracsuite.core.image import is_rgb, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.detection import detect_fragments, remove_dark_spots
-from fracsuite.core.imageprocessing import closeImg, erodeImg, preprocess_image
+from fracsuite.core.imageprocessing import closeImg, dilateImg, erodeImg, preprocess_image
 
 from skimage.morphology import skeletonize
 
@@ -225,12 +225,43 @@ class Splinter:
         marked_image,
         px_per_mm=1
     ) -> list[Splinter]:
+        """
+        Analyzes a marked image to identify splinters.
+
+
+        The marked image must have the following properties:
+            - The image must be in RGB format.
+            - The red channel is reserved for markings.
+            - The red channel must be set to 255 for all marked pixels.
+
+        First, the red channel of the input image is extracted and a mask
+        is created. Using that mask, we proceed to modify the input image, so
+        that marked areas are eroded from the background.
+        Then, we use the watershed algorithm to identify the sure foreground. The
+        markers that were found on the input are now as big as the surrounding area,
+        bound by a threshold version of the input.
+        Next, we use the new markers to perform a second watershed algorithm to
+        eliminate the background.
+        Finally, we analyze the resulting contour image to identify the splinters.
+
+        Args:
+            marked_image (numpy.ndarray): The marked image to analyze.
+            px_per_mm (int, optional): The number of pixels per millimeter in the image. Defaults to 1.
+
+        Returns:
+            list[Splinter]: A list of Splinter objects representing the identified splinters.
+        """
         # step 1: find markers and background
         red_pixels = marked_image[:,:,2] == 255
 
         # step 2: create binary mask for image
-        thresh = cv2.threshold(marked_image[:,:,2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        thresh = cv2.threshold(to_gray(marked_image), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         thresh = erodeImg(thresh, sz = 5)
+
+        red_pixels = red_pixels.astype(np.uint8) * 255
+
+        red_pixels = dilateImg(red_pixels, sz=3, it=1)
+        thresh[red_pixels == 255] = 255
         plotImage(thresh, "Thresholded Image")
 
         # step 3: create mask by copying red pixels from marked image
@@ -238,9 +269,10 @@ class Splinter:
         # create binary mask for non-black pixels in thresh
         mask1 = cv2.inRange(to_rgb(thresh), (1,1,1), (255,255,255))
         # create binary mask for red pixels
-        mask2 = red_pixels.astype(np.uint8) * 255
+        mask2 = red_pixels
         # combine the two binary masks using a bitwise AND operation
         red_mask = cv2.bitwise_and(mask1, mask2)
+
         plotImage(red_mask, "Red Mask")
 
         # step 4: create connectedcomponents and run watershed to identify sure foreground
@@ -310,6 +342,11 @@ class Splinter:
     def analyze_image(image, debug: bool = False, px_per_mm: float = 1.0):
         """Analyze an unprocessed image and return a list of splinters.
 
+        Remarks:
+            - A dilation of the threshold is not feasible, since that will eliminate a lot
+            of the smaller splinters.
+            
+
         Parameters:
             image: The input image to be analyzed. Must be in RGB format for watershed algorithm.
             debug: A boolean flag indicating whether to display intermediate images for debugging purposes. Default is False.
@@ -331,8 +368,7 @@ class Splinter:
         kernel = np.ones((3,3),np.uint8)
         opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
 
-        if debug:
-            plotImage(thresh, "Thresholded Image")
+        plotImage(thresh, "Thresholded Image")
 
         # sure background: white is splinter, black is crack
         sure_bg = cv2.dilate(opening,kernel,iterations=3)
@@ -346,8 +382,7 @@ class Splinter:
         ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
         sure_fg = erodeImg(sure_fg, it=4)
 
-        if debug:
-            plotImages([("Distance Transform", dist_transform),("Sure Foreground", sure_fg)])
+        plotImages([("Distance Transform", dist_transform),("Sure Foreground", sure_fg)])
 
 
         # Finding unknown region
@@ -362,8 +397,7 @@ class Splinter:
         # Now, mark the region of unknown with zero
         markers[sure_fg!=255] = 0
 
-        if debug:
-            plotImages([
+        plotImages([
                 ("Sure Background", sure_bg),
                 ("Sure Foreground", sure_fg),
                 ("Back - Foreground", unknown),
@@ -374,7 +408,6 @@ class Splinter:
 
         m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         m_img[markers == -1] = 255
-        # m_img = dilateImg(m_img)
 
         return Splinter.analyze_contour_image(m_img, px_per_mm=px_per_mm)
 

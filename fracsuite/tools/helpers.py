@@ -84,7 +84,7 @@ def checkmark(value: bool) -> str:
 
 def to_img(fig):
     fig.tight_layout()
-    temp_file = tempfile.mktemp("TEMP_FIG_TO_IMG.png")
+    temp_file = tempfile.mkstemp("TEMP_FIG_TO_IMG.png")[1]
     fig.savefig(temp_file, dpi=300, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
     return to_rgb(cv2.imread(temp_file))
@@ -103,7 +103,13 @@ def label_image(image, *labels, title = None, nums=None, return_fig=True):
         plt.title(title)
 
     if nums is not None:
-        texts = [f"{text} ({num})" for text, num in zip(texts, nums)]
+        ntexts = []
+        for i, text in enumerate(texts):
+            if len(nums) > i:
+                ntexts.append(f"{text} ({nums[i]})")
+            else:
+                ntexts.append(text)
+        texts = ntexts
 
     if len(labels) > 2:
         patches = [mpatches.Patch(color=color if isinstance(color, str) else tuple(x/255 for x in color), label=label) for label, color in zip(texts, labelcolors)]
