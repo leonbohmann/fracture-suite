@@ -4,7 +4,10 @@ import numpy.typing as nptyp
 
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage
-from fracsuite.splinters.analyzerConfig import AnalyzerConfig
+from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
+
+W_FAC = 4000
+
 
 def preprocess_spot_detect(img) -> nptyp.ArrayLike:
     img = to_gray(img)
@@ -12,38 +15,50 @@ def preprocess_spot_detect(img) -> nptyp.ArrayLike:
     img = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
     return img
 
-def preprocess_image(image, config: AnalyzerConfig) -> nptyp.ArrayLike:
-        """Preprocess a raw image.
+def preprocess_image(
+    image,
+    prep: PreprocessorConfig = None,
+    interest_region: tuple[int,int,int,int] = None,
+) -> nptyp.ArrayLike:
+    """Preprocess a raw image.
 
-        Args:
-            image (nd.array): The input image.
-            config (AnalyzerConfig): The configuration to use.
+    Args:
+        image (nd.array): The input image.
+        config (AnalyzerConfig): The configuration to use.
 
-        Returns:
-            np.array: Preprocessed image.
-        """
+    Returns:
+        np.array: Preprocessed image.
+    """
+    w,h = image.shape[:2]
 
-        rsz_fac = config.prep.resize_factor # x times smaller
+    if prep is None:
+        prep = defaultPrepConfig
+    rsz_fac = prep.resize_factor # x times smaller
 
-        image = to_gray(image)
-        # image = np.clip(image - np.mean(image), 0, 255).astype(np.uint8)
+    image = to_gray(image)
+    # image = np.clip(image - np.mean(image), 0, 255).astype(np.uint8)
 
-        # Apply Gaussian blur to reduce noise and enhance edge detection
-        image = cv2.GaussianBlur(image, config.prep.gauss_size, config.prep.gauss_sigma)
-        image = cv2.resize(image,
-                           (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
+    # Apply Gaussian blur to reduce noise and enhance edge detection
+    image = cv2.GaussianBlur(image, prep.gauss_size, prep.gauss_sigma * W_FAC / w)
+    image = cv2.resize(image,
+                        (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
 
-        if config.debug:
-            plotImage(image, 'PREP: GaussianBlur -> Resize', region=config.interest_region)
+    if interest_region is not None:
+        plotImage(image, 'PREP: GaussianBlur -> Resize', region=interest_region)
 
-        # Use adaptive thresholding
-        image = 255-cv2.adaptiveThreshold(image, 255, config.prep.thresh_adapt_mode, \
-            cv2.THRESH_BINARY_INV, config.prep.thresh_block_size, config.prep.thresh_c)
+    # adapt blocksize and c to current image size
+    thresh_block_size = int(prep.thresh_block_size * W_FAC / w)
+    thresh_block_size = thresh_block_size + (thresh_block_size + 1 )% 2
+    thresh_c = prep.thresh_c * W_FAC / w
 
-        if config.debug:
-            plotImage(image, 'PREP: ... -> Adaptive Thresh', region=config.interest_region)
+    # Use adaptive thresholding
+    image = 255-cv2.adaptiveThreshold(image, 255, prep.thresh_adapt_mode, \
+        cv2.THRESH_BINARY_INV, thresh_block_size, thresh_c)
 
-        return image
+    if interest_region is not None:
+        plotImage(image, 'PREP: ... -> Adaptive Thresh', region=interest_region)
+
+    return image
 
 
 def crop_perspective(img,

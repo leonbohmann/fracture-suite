@@ -1,4 +1,7 @@
+from __future__ import annotations
 import numpy as np
+import numpy.typing as npt
+
 import cv2
 from fracsuite.core.coloring import rand_col
 
@@ -219,7 +222,10 @@ class Splinter:
         return self.__calculate_orientation_score(impact_position)
 
     @staticmethod
-    def analyze_marked_image(marked_image, px_per_mm=1, return_thresh=False):
+    def analyze_marked_image(
+        marked_image,
+        px_per_mm=1
+    ) -> list[Splinter]:
         # step 1: find markers and background
         red_pixels = marked_image[:,:,2] == 255
 
@@ -287,9 +293,6 @@ class Splinter:
 
         # FINAL STEP: Analyze the resulting contour image
         splinters = Splinter.analyze_contour_image(contour_image)
-
-        if return_thresh:
-            return splinters, to_rgb(thresh)
 
         return splinters
 
@@ -376,34 +379,41 @@ class Splinter:
 
         return Splinter.analyze_contour_image(m_img, px_per_mm=px_per_mm)
 
-    @staticmethod
-    def analyze_image_legacy(image, px_per_mm=1):
-        preprocess = preprocess_image(image)
+    # @staticmethod
+    # def analyze_image_legacy(image, px_per_mm=1):
+    #     preprocess = preprocess_image(image)
+    #     plotImage(preprocess, "Preprocessed Image")
 
-        prelim_contours = detect_fragments(preprocess, min_area=5, max_area=2000, filter=False)
+    #     prelim_contours = detect_fragments(preprocess, min_area=5, max_area=2000, filter=False)
+    #     stencil = np.zeros((preprocess.shape[0], preprocess.shape[1]), dtype=np.uint8)
+    #     cv2.drawContours(stencil, prelim_contours, -1, 255, -1)
+    #     plotImage(stencil, "Preliminary Contours")
 
-        stencil = np.zeros((preprocess.shape[0], preprocess.shape[1]), dtype=np.uint8)
-        cv2.drawContours(stencil, prelim_contours, -1, 255, -1)
+    #     stencil = erodeImg(stencil)
+    #     stencil = erodeImg(stencil, 2, 1)
+    #     stencil = erodeImg(stencil, 1, 1)
+    #     plotImage(stencil, "Preliminary Contours")
 
-        stencil = erodeImg(stencil)
-        stencil = erodeImg(stencil, 2, 1)
-        stencil = erodeImg(stencil, 1, 1)
+    #     skeleton = skeletonize(255-stencil).astype(np.uint8) * 255
+    #     skeleton = closeImg(skeleton, 3, 5)
 
-        skeleton = skeletonize(255-stencil).astype(np.uint8) * 255
-        skeleton = closeImg(skeleton, 3, 5)
+    #     skeleton = skeletonize(skeleton).astype(np.uint8) * 255
+    #     plotImage(skeleton, "Before detection")
 
-        skeleton = skeletonize(skeleton).astype(np.uint8) * 255
+    #     contours = detect_fragments(skeleton, min_area=5, max_area=2000, filter=False)
 
-        contours = detect_fragments(skeleton, min_area=5, max_area=2000, filter=False)
+    #     filtered_img = remove_dark_spots(
+    #         original_image=image,
+    #         skeleton_image=skeleton,
+    #         contours=contours,
+    #     )
+    #     plotImage(filtered_img, "After detection")
 
-        filtered_img = remove_dark_spots(
-            original_image=image,
-            skeleton_image=skeleton,
-            contours=contours,
-        )
+    #     contours = detect_fragments(filtered_img, min_area=5, max_area=2000, filter=False)
 
-        contours = detect_fragments(filtered_img, min_area=5, max_area=2000, filter=False)
+    #     contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    #     contours = [x for x in contours if cv2.contourArea(x) > 0 and len(x) > 5]
 
-        splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
+    #     splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
 
-        return splinters
+    #     return splinters

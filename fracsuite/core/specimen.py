@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from fracsuite.core.progress import get_spinner
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
-from fracsuite.splinters.analyzer import Analyzer
-from fracsuite.splinters.analyzerConfig import AnalyzerConfig
-from fracsuite.splinters.splinter import Splinter
+from fracsuite.core.splinter import Splinter
 from fracsuite.tools.helpers import checkmark, find_file
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
@@ -23,23 +21,20 @@ import re
 from typing import Any, Callable, ClassVar, List, TypeVar
 
 
+general: GeneralSettings = GeneralSettings.get()
+
+class SpecimenException(Exception):
+    """Exception for specimen related errors."""
+    pass
 
 class Specimen:
     """ Container class for a specimen. """
-
-    general: GeneralSettings = GeneralSettings.get()
 
     @property
     def splinters(self) -> list[Splinter]:
         "Splinters on the glass ply."
         assert self.__splinters is not None, "Splinters are empty. Specimen not loaded?"
         return self.__splinters
-
-    @property
-    def splinter_config(self) -> AnalyzerConfig:
-        "Splinter analysis configuration that can be used to rerun it."
-        assert self.__splinter_config is not None, "Config is empty. Specimen not loaded?"
-        return self.__splinter_config
 
     @property
     def scalp(self) -> ScalpSpecimen:
@@ -106,9 +101,6 @@ class Specimen:
         assert self.loaded, "Specimen not loaded."
         return self.__U
 
-
-
-
     def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
 
@@ -146,7 +138,6 @@ class Specimen:
         """
 
         self.__splinters: list[Splinter] = None
-        self.__splinter_config: AnalyzerConfig = None
         self.__scalp: ScalpSpecimen = None
         self.__sigma_h: ScalpStress = ScalpStress.default()
         self.__measured_thickness: float = np.nan
@@ -227,18 +218,11 @@ class Specimen:
         self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
             and find_file(self.fracture_morph_dir, "*.bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
-        self.__splinters_data_file = find_file(self.splinters_path, "splinters_data.json")
         self.__splinters_file = find_file(self.splinters_path, "splinters.pkl")
         self.__config_file = find_file(self.splinters_path, "config.pkl")
         self.has_splinters = self.__splinters_file is not None
         self.has_splinter_config = self.__config_file is not None
         self.has_config = self.__config_file is not None
-
-        if self.__splinters_data_file is not None:
-            with open(self.__splinters_data_file, "r") as f:
-                self.splinters_data = json.load(f)
-        else:
-            self.splinters_data = {}
 
         if not lazy:
             self.load(log_missing)
@@ -278,16 +262,6 @@ class Specimen:
 
         # success, start process
         print(f"Saved to '{out_name}'.")
-
-    def get_analyzer(self,
-                     cfg: AnalyzerConfig = None,
-                     progress: Progress = None,
-                     task = None,
-                     silent: bool = False):
-        return Analyzer(cfg if cfg is not None else self.splinter_config,
-                        progress = progress,
-                        main_task=task,
-                        silent=silent)
 
     def get_filled_image(self):
         filled_file = find_file(self.splinters_path, "img_filled.png")
@@ -358,15 +332,6 @@ class Specimen:
 
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
-
-    def __load_splinter_config(self, file = None):
-        if not self.has_splinter_config:
-            return
-
-        if file is None:
-            file = self.__config_file
-
-        self.__splinter_config = AnalyzerConfig.load(file)
 
     def get(name: str | Specimen, load: bool = True) -> Specimen:
         """Gets a specimen by name. Raises exception, if not found."""

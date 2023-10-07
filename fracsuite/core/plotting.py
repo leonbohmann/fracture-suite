@@ -14,7 +14,7 @@ import numpy as np
 from fracsuite.core.coloring import get_color, rand_col
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 
-from fracsuite.splinters.splinter import Splinter
+from fracsuite.core.splinter import Splinter
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image
 

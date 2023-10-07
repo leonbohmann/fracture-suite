@@ -33,8 +33,8 @@ from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
-from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
-from fracsuite.splinters.splinter import Splinter
+from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, preprocess_image
+from fracsuite.core.splinter import Splinter
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
@@ -1009,6 +1009,11 @@ def compare_manual(
         input_img = cv2.imread(input_img_path, cv2.IMREAD_COLOR)
         counted_img = cv2.imread(counted_img_path, cv2.IMREAD_COLOR)
 
+        thresh2 = to_rgb(preprocess_image(input_img))
+
+        plt.imshow(thresh2)
+        plt.show()
+
         print(input_img.shape)
         print(counted_img.shape)
         # get splinters
@@ -1020,14 +1025,12 @@ def compare_manual(
         print(len(splinters))
         print(red)
 
-        manual_splinters, thresh2 = Splinter.analyze_marked_image(
+        manual_splinters = Splinter.analyze_marked_image(
             counted_img,
             px_per_mm=1,
-            return_thresh=True,
         )
 
-        with open(find_file(test_dir, "splinters"), 'rb') as f:
-            legacy_splinters: list[Splinter] = pickle.load(f)
+        legacy_splinters = Splinter.analyze_image_legacy(input_img)
 
         cont_img_alg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in splinters], -1, (255,0,0), 3)
         cont_img_man = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in manual_splinters], -1, (0,255,0), 3)

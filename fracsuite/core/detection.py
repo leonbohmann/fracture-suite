@@ -153,6 +153,9 @@ def get_contour_centroid(contour):
         A tuple (cx, cy) representing the centroid of the contour.
     """
     moments = cv2.moments(contour)
+    if moments['m00'] == 0:
+        return None
+
     cx = int(moments["m10"] / moments["m00"])
     cy = int(moments["m01"] / moments["m00"])
     return (cx, cy)
@@ -161,7 +164,7 @@ def remove_dark_spots(
     original_image,
     skeleton_image,
     contours,
-    progress,
+    progress = None,
     task = None,
     silent: bool = False
 ) -> np.ndarray:
@@ -180,6 +183,7 @@ def remove_dark_spots(
     Returns:
         A patched image where dark spots are filled.
     """
+    skeleton_image = skeleton_image.copy()
     # create normal threshold of original image to get dark spots
     img = preprocess_spot_detect(original_image)
 
@@ -187,7 +191,7 @@ def remove_dark_spots(
     removed_contours: list = []
 
     def update_task(task, advance=1, total=None, descr=None):
-        if progress is None:
+        if progress is None or task is None:
             return
 
         if silent:
@@ -226,16 +230,19 @@ def remove_dark_spots(
 
         c = get_contour_centroid(s)
 
-        # Remove the original contour from the mask
-        cv2.drawContours(skel_mask, [s.contour], -1, 0, 1)
-        cv2.drawContours(skel_mask, [s.contour], -1, 0, -1)
+        if c is None:
+            continue
 
-        # cv2.drawContours(skel_mask, [s.contour], -1, 0, -1)
+        # Remove the original contour from the mask
+        cv2.drawContours(skel_mask, [s], -1, 0, 1)
+        cv2.drawContours(skel_mask, [s], -1, 0, -1)
+
+        # cv2.drawContours(skel_mask, [s], -1, 0, -1)
         connections = []
 
         # Search for adjacent lines that were previously attached
         #   to the removed contour
-        for p in s.contour:
+        for p in s:
             p = p[0]
             # Search the perimeter of the original pixel
             for i,j in [(-1,-1), (-1,0), (-1,1),\
@@ -255,7 +262,7 @@ def remove_dark_spots(
 
         # 2 connections -> connect them
         if len(connections) == 2:
-            cv2.drawContours(skeleton_image, [s.contour], -1, (0), -1)
+            cv2.drawContours(skeleton_image, [s], -1, (0), -1)
             x,y = connections[0]
             a,b = connections[1]
 
@@ -263,8 +270,8 @@ def remove_dark_spots(
 
         # more than 2 -> connect each of them to centroid
         elif len(connections) > 2:
-            cv2.drawContours(skeleton_image, [s.contour], -1, (0), -1)
-            # cv2.drawContours(skeleton_image, [s.contour], -1, (0), 1)
+            cv2.drawContours(skeleton_image, [s], -1, (0), -1)
+            # cv2.drawContours(skeleton_image, [s], -1, (0), 1)
             for x,y in connections:
                 cv2.line(skeleton_image, (int(x), int(y)), (int(c[0]), int(c[1])), 255)
 
@@ -272,5 +279,7 @@ def remove_dark_spots(
 
     del skel_mask
 
-    if not silent:
+    if not silent and progress is not None:
         progress.remove_task(task)
+
+    return skeleton_image
