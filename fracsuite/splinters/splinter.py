@@ -4,9 +4,10 @@ from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.image import is_rgb, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
-from fracsuite.core.detection import detect_fragments
-from fracsuite.splinters.processing import erodeImg
+from fracsuite.core.detection import detect_fragments, remove_dark_spots
+from fracsuite.core.imageprocessing import closeImg, erodeImg, preprocess_image
 
+from skimage.morphology import skeletonize
 
 class Splinter:
 
@@ -376,5 +377,33 @@ class Splinter:
         return Splinter.analyze_contour_image(m_img, px_per_mm=px_per_mm)
 
     @staticmethod
-    def __analyze_image_legacy(image):
-        pass
+    def analyze_image_legacy(image, px_per_mm=1):
+        preprocess = preprocess_image(image)
+
+        prelim_contours = detect_fragments(preprocess, min_area=5, max_area=2000, filter=False)
+
+        stencil = np.zeros((preprocess.shape[0], preprocess.shape[1]), dtype=np.uint8)
+        cv2.drawContours(stencil, prelim_contours, -1, 255, -1)
+
+        stencil = erodeImg(stencil)
+        stencil = erodeImg(stencil, 2, 1)
+        stencil = erodeImg(stencil, 1, 1)
+
+        skeleton = skeletonize(255-stencil).astype(np.uint8) * 255
+        skeleton = closeImg(skeleton, 3, 5)
+
+        skeleton = skeletonize(skeleton).astype(np.uint8) * 255
+
+        contours = detect_fragments(skeleton, min_area=5, max_area=2000, filter=False)
+
+        filtered_img = remove_dark_spots(
+            original_image=image,
+            skeleton_image=skeleton,
+            contours=contours,
+        )
+
+        contours = detect_fragments(filtered_img, min_area=5, max_area=2000, filter=False)
+
+        splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
+
+        return splinters

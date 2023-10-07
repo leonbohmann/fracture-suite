@@ -6,7 +6,7 @@ from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
-def preprocess_spot_detect(img):
+def preprocess_spot_detect(img) -> nptyp.ArrayLike:
     img = to_gray(img)
     img = cv2.GaussianBlur(img, (5,5), 3)
     img = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]

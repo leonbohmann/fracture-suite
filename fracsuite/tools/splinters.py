@@ -37,10 +37,10 @@ from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
 from fracsuite.splinters.processing import crop_matrix, crop_perspective, dilateImg, erodeImg, preprocess_image
 from fracsuite.splinters.splinter import Splinter
-from fracsuite.tools.GlobalState import GlobalState
+from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
-from fracsuite.tools.maincallback import main_callback
+from fracsuite.tools.callbacks import main_callback
 from fracsuite.tools.specimen import Specimen
 
 
@@ -99,7 +99,7 @@ def count_splinters_in_norm_region(
     specimen.set_setting('esg_count', s_count)
 
     specimen.put_splinter_output(output_image, 'norm_region')
-    GlobalState.finalize(output_image, specimen.name)
+    State.finalize(output_image, specimen.name)
 
 @app.command()
 def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
@@ -124,7 +124,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         fig_title='Splinter Roughness')
 
     specimen.put_splinter_output(fig)
-    GlobalState.finalize(fig, specimen.name)
+    State.finalize(fig, specimen.name)
 
 @app.command()
 def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
@@ -149,7 +149,7 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         fig_title='Splinter Roughness')
 
     specimen.put_splinter_output(fig)
-    GlobalState.finalize(fig, specimen.name)
+    State.finalize(fig, specimen.name)
 
 @app.command()
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
@@ -181,7 +181,7 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 
     out_img = annotate_image(out_img, cbar_title="Roughness", min_value=min_r, max_value=max_r)
     specimen.put_splinter_output(out_img)
-    GlobalState.finalize(out_img, specimen.name)
+    State.finalize(out_img, specimen.name)
 
 
 @app.command()
@@ -217,7 +217,7 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
                                   max_value=max_r,)
 
     specimen.put_splinter_output(out_img, 'roundness')
-    GlobalState.finalize(out_img, specimen.name)
+    State.finalize(out_img, specimen.name)
 
 
 def str_to_intlist(input: str) -> list[int]:
@@ -326,7 +326,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float,float], typer.Option(help='X-Limit
     ax.grid(True, which='both', axis='both')
     fig.tight_layout()
 
-    GlobalState.finalize(fig, 'stress_vs_size')
+    State.finalize(fig, 'stress_vs_size')
 
 def diag_dist_specimen_intensity_func(
     specimen: Specimen,
@@ -431,7 +431,7 @@ def log2dhist_diag(
     # axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
     fig.tight_layout()
 
-    GlobalState.finalize(fig)
+    State.finalize(fig)
 
 
 
@@ -519,7 +519,7 @@ def log_2d_histograms(
     elif names is not None:
         out_name =  f"{names[0]}"
 
-    GlobalState.finalize(fig, out_name)
+    State.finalize(fig, out_name)
 
 def create_filter_function(name_filter,
                    sigmas = None,
@@ -632,7 +632,7 @@ def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens
 
     disp_mean_sizes(specimens)
 
-    GlobalState.finalize(fig, specimens[0].name)
+    State.finalize(fig, specimens[0].name)
 
 
 def disp_mean_sizes(specimens: list[Specimen]):
@@ -688,7 +688,7 @@ def splinter_orientation_f(
         clr_label="Mean Orientation Score",
     )
 
-    GlobalState.finalize(fig, specimen)
+    State.finalize(fig, specimen)
 
 @app.command()
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
@@ -730,7 +730,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         max_value=1
     )
 
-    GlobalState.finalize(orientation_image, specimen)
+    State.finalize(orientation_image, specimen)
 
 @app.command()
 def fracture_intensity_img(
@@ -767,7 +767,7 @@ def fracture_intensity_img(
                                      fig_title="Fracture Intensity (Based on image mean values)",
                                      skip_edge=skip_edges)
 
-    GlobalState.finalize(fig, specimen)
+    State.finalize(fig, specimen)
 
 @app.command()
 def fracture_intensity(
@@ -790,7 +790,7 @@ def fracture_intensity(
                                         plot_vertices=plot_vertices,
                                         skip_edge=skip_edges)
 
-    GlobalState.finalize(fig, specimen)
+    State.finalize(fig, specimen)
 
 @app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
@@ -945,7 +945,7 @@ def watershed(
     cmp_image = cv2.addWeighted(cmp_image, 1, m_img, 1, 0)
     if debug:
         plotImages((("Original", image), ("Comparison", cmp_image), ("Splinter Sizes", sz_img)))
-        GlobalState.finalize(cmp_image)
+        State.finalize(cmp_image)
 
 
 
@@ -957,7 +957,7 @@ def watershed(
         annotate_title="Watershed",
         with_contours=True)
     if debug:
-        GlobalState.finalize(sz_image2)
+        State.finalize(sz_image2)
 
     rnd_splinters = create_splinter_colored_image(
         splinters,
@@ -983,7 +983,7 @@ def watershed(
     datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False)
     ax.legend()
     fig.tight_layout()
-    GlobalState.finalize(fig, specimen, override_name="splinter_sizes_watershed")
+    State.finalize(fig, specimen, override_name="splinter_sizes_watershed")
     plt.close(fig)
 
     fig, axs = datahist_plot(xlim=(0,2))
@@ -994,13 +994,13 @@ def watershed(
     datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False, data_mode='cdf')
     ax.legend()
     fig.tight_layout()
-    GlobalState.finalize(fig, specimen, override_name="splinter_sizes_watershed_cdf")
+    State.finalize(fig, specimen, override_name="splinter_sizes_watershed_cdf")
 
 @app.command()
 def compare_manual(
         folder: Annotated[str, typer.Argument(help='Folder to load images from.')],
     ):
-        test_dir = os.path.join(GlobalState.get_output_dir(), folder)
+        test_dir = os.path.join(State.get_output_dir(), folder)
 
         input_img_path = find_file(test_dir, "input")
         counted_img_path = find_file(test_dir, "counted")
@@ -1080,9 +1080,9 @@ def compare_manual(
         )
 
         size_fig=annotate_images([leg_sizes, alg_sizes, man_sizes])
-        GlobalState.finalize(size_fig, subfolders=[folder], override_name='compare_contours_sizes')
-        GlobalState.finalize(cmp_alg_man, subfolders=[folder], override_name='compare_contours_watershed_manual')
-        GlobalState.finalize(cmp_alg_leg, subfolders=[folder], override_name='compare_contours_watershed_legacy')
+        State.finalize(size_fig, subfolders=[folder], override_name='compare_contours_sizes')
+        State.finalize(cmp_alg_man, subfolders=[folder], override_name='compare_contours_watershed_manual')
+        State.finalize(cmp_alg_leg, subfolders=[folder], override_name='compare_contours_watershed_legacy')
         # plotImage(
         #     cmp_alg_man,
         #     "Contour Differences")

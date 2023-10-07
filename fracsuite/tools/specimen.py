@@ -22,7 +22,7 @@ from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.splinters.analyzer import Analyzer
 from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 from fracsuite.splinters.splinter import Splinter
-from fracsuite.tools.GlobalState import GlobalState
+from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import checkmark, find_file
 
@@ -312,7 +312,7 @@ class Specimen:
         self.__put_output(object, self.get_splinter_outfile, override_name)
 
     def __put_output(self, object: Figure | np.ArrayLike, name_func, override_name = None):
-        name = override_name or GlobalState.current_subcommand
+        name = override_name or State.current_subcommand
 
         # check how to save object
         if isinstance(object, tuple):

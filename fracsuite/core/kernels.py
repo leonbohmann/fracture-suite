@@ -1,7 +1,7 @@
 from typing import Any, Callable, TypeVar
 import numpy as np
 from fracsuite.core.image import split_image
-from fracsuite.tools.GlobalState import GlobalState
+from fracsuite.tools.state import State
 from rich.progress import track
 from fracsuite.tools.general import GeneralSettings
 
@@ -162,7 +162,7 @@ class ObjectKerneler():
 
         skip_i = int(len(xd)*self.edgeskip_factor) if self.skip_edge else 0
 
-        if GlobalState.has_progress():
+        if State.has_progress():
             d = range(skip_i,len(xd) - skip_i)
         else:
             d = track(range(skip_i,len(xd) - skip_i), transient=True,

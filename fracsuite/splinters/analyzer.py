@@ -45,31 +45,7 @@ general = GeneralSettings.get()
 
 SM_IMAGE = 'image_41jfnn1fh'
 
-def check_splinter(kv):
-    """Check if a splinter is valid.
 
-    kv: tuple(int, splinter)
-    """
-    i,s = kv
-
-    shm = sm.SharedMemory(name=SM_IMAGE)
-    img = np.ndarray((702, 648), dtype=np.uint8, buffer=shm.buf)
-    x, y, w, h = cv2.boundingRect(s.contour)
-    roi_orig = img[y:y+h, x:x+w]
-
-    mask = np.zeros_like(img)
-    cv2.drawContours(mask, [s.contour], -1, 255, thickness=cv2.FILLED)
-
-    roi = mask[y:y+h, x:x+w]
-    # Apply the mask to the original image
-    result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
-
-    # Check if all pixels in the contour area are black
-    #TODO! this value is crucial to the quality of histograms!
-    if np.mean(result) < 5:
-        return i
-    else:
-        return -1
 
 class Analyzer(object):
     """

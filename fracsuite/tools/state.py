@@ -1,19 +1,23 @@
-import os
-import subprocess
-import time
-import cv2
-from matplotlib.figure import Figure
-import numpy as np
-from rich import print
-from rich.progress  import Progress
-import numpy.typing as npt
-
 from fracsuite.core.progress import get_progress
 from fracsuite.tools.general import GeneralSettings
 
+
+import cv2
+import numpy as np
+import numpy.typing as npt
+from matplotlib.figure import Figure
+from rich import print
+from rich.progress import Progress
+
+
+import os
+import subprocess
+import time
+
 general = GeneralSettings.get()
 
-class GlobalState:
+
+class State:
     """Contains static variables that are set during execution of a command."""
     start_time: float = time.time()
     progress: Progress = get_progress()
@@ -32,15 +36,15 @@ class GlobalState:
     __progress_started: bool = False
 
     def has_progress():
-        return GlobalState.__progress_started
+        return State.__progress_started
 
     def start_progress():
-        GlobalState.progress.start()
-        GlobalState.__progress_started = True
+        State.progress.start()
+        State.__progress_started = True
 
     def stop_progress():
-        GlobalState.progress.stop()
-        GlobalState.__progress_started = False
+        State.progress.stop()
+        State.__progress_started = False
 
     def finalize(
         object: Figure | npt.ArrayLike,
@@ -70,16 +74,16 @@ class GlobalState:
 
 
 
-        if 'splinter' in GlobalState.sub_outpath:
+        if 'splinter' in State.sub_outpath:
             if callable(b := getattr(names[-1], 'put_splinter_output', None)):
                 b(object)
-        elif 'acc' in GlobalState.sub_outpath:
+        elif 'acc' in State.sub_outpath:
             if callable(b := getattr(names[-1], 'put_acc_output', None)):
                 b(object)
         if hasattr(names[-1], 'name'):
             names[-1] = names[-1].name
 
-        names = [*names[:-1], names[-1]+sep+GlobalState.current_subcommand]
+        names = [*names[:-1], names[-1]+sep+State.current_subcommand]
 
         if override_name is not None:
             names[-1] = override_name
@@ -91,13 +95,13 @@ class GlobalState:
         # check how to save object
         if isinstance(object, tuple):
             if isinstance(object[0], Figure):
-                out_name = GlobalState.get_output_file(*names, is_plot=True)
+                out_name = State.get_output_file(*names, is_plot=True)
                 object[0].savefig(out_name, dpi=300, bbox_inches='tight')
         elif isinstance(object, Figure):
-            out_name = GlobalState.get_output_file(*names, is_plot=True)
+            out_name = State.get_output_file(*names, is_plot=True)
             object.savefig(out_name, dpi=300, bbox_inches='tight')
         elif type(object).__module__ == np.__name__:
-            out_name = GlobalState.get_output_file(*names, is_image=True)
+            out_name = State.get_output_file(*names, is_image=True)
             image = object
             f = np.max(image.shape[:2]) / general.output_image_maxsize
 
@@ -117,7 +121,7 @@ class GlobalState:
 
     def get_output_dir():
         # sub_outpath might be set to custom output path, join will take the last valid path start
-        p = os.path.join(general.out_path, GlobalState.sub_outpath)
+        p = os.path.join(general.out_path, State.sub_outpath)
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))
 
@@ -134,12 +138,12 @@ class GlobalState:
         """
         names = list(names)
         if 'is_plot' in kwargs and kwargs['is_plot']:
-            names[-1] = f'{GlobalState.sub_specimen}{names[-1]}.{general.plot_extension}'
+            names[-1] = f'{State.sub_specimen}{names[-1]}.{general.plot_extension}'
         if 'is_image' in kwargs and kwargs['is_image']:
-            names[-1] = f'{GlobalState.sub_specimen}{names[-1]}.{general.image_extension}'
+            names[-1] = f'{State.sub_specimen}{names[-1]}.{general.image_extension}'
 
         # sub_outpath might be set to custom output path, join will take the last valid path start
-        p = os.path.join(GlobalState.get_output_dir(), *names)
+        p = os.path.join(State.get_output_dir(), *names)
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))
 
@@ -147,7 +151,7 @@ class GlobalState:
         ext = os.path.splitext(p)[1]
         if os.path.exists(p):
 
-            if GlobalState.clear_output:
+            if State.clear_output:
                 for file in os.listdir(os.path.dirname(p)):
                     if file.startswith(fname):
                         os.remove(os.path.join(os.path.dirname(p), file))
@@ -156,7 +160,7 @@ class GlobalState:
             count = 1
             while os.path.exists(p):
                 count += 1
-                p = os.path.join(general.out_path, GlobalState.sub_outpath, f'{fname} ({count}){ext}')
+                p = os.path.join(general.out_path, State.sub_outpath, f'{fname} ({count}){ext}')
 
 
 

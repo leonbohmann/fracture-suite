@@ -15,11 +15,11 @@ import typer
 from apread import APReader, Channel
 from rich import print
 from rich.progress import track
-from fracsuite.tools.GlobalState import GlobalState
+from fracsuite.tools.state import State
 
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import find_file
-from fracsuite.tools.maincallback import main_callback
+from fracsuite.tools.callbacks import main_callback
 from fracsuite.tools.specimen import Specimen
 from fracsuite.tools.splinters import create_filter_function
 
@@ -352,7 +352,7 @@ def wave_compare(
     fig.tight_layout()
     plt.show()
 
-    GlobalState.finalize(fig)
+    State.finalize(fig)
 
 @app.command()
 def plot_mean(
@@ -433,7 +433,7 @@ def plot_mean(
 
     fig.tight_layout()
 
-    GlobalState.finalize(fig, specimen)
+    State.finalize(fig, specimen)
 
 @app.command()
 def plot_impact(
@@ -569,7 +569,7 @@ def plot_impact(
 
     if specimen is not None:
         fig.savefig(specimen.get_acc_outfile(f'impact_w_waves.{general.image_extension}'), bbox_inches="tight")
-    GlobalState.finalize(fig, specimen)
+    State.finalize(fig, specimen)
 
 
 def get_impact_time(channel: Channel):

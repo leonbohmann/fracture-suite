@@ -7,7 +7,7 @@ from rich import inspect, print
 
 from fracsuite.core.progress import get_progress
 
-from fracsuite.tools.GlobalState import GlobalState
+from fracsuite.tools.state import State
 from fracsuite.tools.config import app as config_app
 from fracsuite.tools.splinters import app as splinter_app
 from fracsuite.tools.acc import app as acc_app
@@ -29,10 +29,10 @@ def main_callback(ctx: typer.Context, debug: bool = None):
     """Fracsuite tools"""
     # print(Panel.fit(f"# Running [bold]{ctx.invoked_subcommand}[/bold]", title="Fracsuite tools", border_style="green"))
     # print(ctx.protected_args)
-    GlobalState.start_time = time.time()
-    GlobalState.debug = debug
-    GlobalState.progress = get_progress()
-    GlobalState.sub_outpath = ctx.invoked_subcommand
+    State.start_time = time.time()
+    State.debug = debug
+    State.progress = get_progress()
+    State.sub_outpath = ctx.invoked_subcommand
 
 
     os.makedirs(os.path.join(general.out_path, GeneralSettings.sub_outpath), exist_ok=True)
@@ -43,7 +43,7 @@ def end_callback(*args, **kwargs):
     # for k in kwargs:
     #     inspect(k)
 
-    d = time.time() - GlobalState.start_time
+    d = time.time() - State.start_time
     print(f"Finished in {d:.2f}s.")
 
 app = typer.Typer(pretty_exceptions_short=False, result_callback=end_callback, callback=main_callback)

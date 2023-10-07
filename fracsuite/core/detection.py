@@ -1,7 +1,39 @@
+from multiprocessing import Pool
 import cv2
 import numpy.typing as nptyp
+from fracsuite.core.image import to_rgb
+import multiprocessing.shared_memory as sm
+import numpy as np
 
+from fracsuite.core.imageprocessing import preprocess_spot_detect
 
+SM_IMAGE = "IMAGE_SM_SPLINT_DETECT"
+
+def check_splinter(kv):
+    """Check if a splinter is valid.
+
+    kv: tuple(int, splinter)
+    """
+    i,contour,sz = kv
+
+    shm = sm.SharedMemory(name=SM_IMAGE)
+    img = np.ndarray(sz, dtype=np.uint8, buffer=shm.buf)
+    x, y, w, h = cv2.boundingRect(contour)
+    roi_orig = img[y:y+h, x:x+w]
+
+    mask = np.zeros_like(img)
+    cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+
+    roi = mask[y:y+h, x:x+w]
+    # Apply the mask to the original image
+    result = cv2.bitwise_and(roi_orig, roi_orig, mask=roi)
+
+    # Check if all pixels in the contour area are black
+    #TODO! this value is crucial to the quality of histograms!
+    if np.mean(result) < 5:
+        return i
+    else:
+        return -1
 
 def filter_contours(contours, hierarchy, min_area = 1, max_area=25000) \
     -> list[nptyp.ArrayLike]:
@@ -110,3 +142,135 @@ def detect_fragments(
         return contours
     except Exception as e:
         raise ValueError(f"Error in fragment detection: {e}")
+
+def get_contour_centroid(contour):
+    """Calculate the centroid of a contour.
+
+    Args:
+        contour: A list of points representing the contour.
+
+    Returns:
+        A tuple (cx, cy) representing the centroid of the contour.
+    """
+    moments = cv2.moments(contour)
+    cx = int(moments["m10"] / moments["m00"])
+    cy = int(moments["m01"] / moments["m00"])
+    return (cx, cy)
+
+def remove_dark_spots(
+    original_image,
+    skeleton_image,
+    contours,
+    progress,
+    task = None,
+    silent: bool = False
+) -> np.ndarray:
+    """
+    Filter contours, that contain only dark spots in the original image.
+    Fills the dark spots by connecting adjacent contours to the dark spot centroid.
+
+    Args:
+        original_image: The original image.
+        skeleton_image: The skeleton image.
+        contours: A list of contours to check.
+        progress: A progress bar.
+        task: The task id of the progress bar.
+        silent: If True, no progress bar is shown.
+
+    Returns:
+        A patched image where dark spots are filled.
+    """
+    # create normal threshold of original image to get dark spots
+    img = preprocess_spot_detect(original_image)
+
+    i_del = []
+    removed_contours: list = []
+
+    def update_task(task, advance=1, total=None, descr=None):
+        if progress is None:
+            return
+
+        if silent:
+            return
+        if total is not None:
+            progress.update(task, total=total)
+        if descr is not None:
+            progress.update(task, description=descr)
+
+        progress.update(task, advance=advance)
+
+    print(img.shape)
+    shm = sm.SharedMemory(create=True, size=img.nbytes, name=SM_IMAGE)
+    shm_img = np.ndarray(img.shape, dtype=img.dtype, buffer=shm.buf)
+    shm_img[:] = img[:]
+    i_del = []
+    update_task(task, advance=1, descr='Finding dark spots...', total = len(contours))
+    with Pool(processes=4) as pool:
+        for i,result in enumerate(pool.imap_unordered(check_splinter, [(i,s,img.shape) for i,s in enumerate(contours)])):
+            if result != -1:
+                i_del.append(result)
+            update_task(task, advance=1)
+
+
+    update_task(task, advance=1, total=len(i_del), descr="Remove splinters...")
+    # remove splinters starting from the back
+    for i in sorted(i_del, reverse=True):
+        update_task(task, advance=1)
+        removed_contours.append(contours[i])
+        del contours[i]
+
+    skel_mask = skeleton_image.copy()
+
+    update_task(task, advance=1, total=len(removed_contours), descr="Fill dark spots...")
+    for s in removed_contours:
+
+        c = get_contour_centroid(s)
+
+        # Remove the original contour from the mask
+        cv2.drawContours(skel_mask, [s.contour], -1, 0, 1)
+        cv2.drawContours(skel_mask, [s.contour], -1, 0, -1)
+
+        # cv2.drawContours(skel_mask, [s.contour], -1, 0, -1)
+        connections = []
+
+        # Search for adjacent lines that were previously attached
+        #   to the removed contour
+        for p in s.contour:
+            p = p[0]
+            # Search the perimeter of the original pixel
+            for i,j in [(-1,-1), (-1,0), (-1,1),\
+                        (0,-1), (0,1),\
+                        (1,-1), (1,0), (1,1) ]:
+                x = p[0] + j
+                y = p[1] + i
+                if x >= skeleton_image.shape[1] or x < 0:
+                    continue
+                if y >= skeleton_image.shape[0] or y < 0:
+                    continue
+
+                # Check if the pixel in the skeleton image is white
+                if skel_mask[y][x] != 0:
+                    # Draw a line from the point to the centroid
+                    connections.append((x,y))
+
+        # 2 connections -> connect them
+        if len(connections) == 2:
+            cv2.drawContours(skeleton_image, [s.contour], -1, (0), -1)
+            x,y = connections[0]
+            a,b = connections[1]
+
+            cv2.line(skeleton_image, (int(x), int(y)), (int(a), int(b)), 255)
+
+        # more than 2 -> connect each of them to centroid
+        elif len(connections) > 2:
+            cv2.drawContours(skeleton_image, [s.contour], -1, (0), -1)
+            # cv2.drawContours(skeleton_image, [s.contour], -1, (0), 1)
+            for x,y in connections:
+                cv2.line(skeleton_image, (int(x), int(y)), (int(c[0]), int(c[1])), 255)
+
+        update_task(task, advance=1)
+
+    del skel_mask
+
+    if not silent:
+        progress.remove_task(task)
