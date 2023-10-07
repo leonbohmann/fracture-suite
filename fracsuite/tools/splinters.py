@@ -1022,7 +1022,7 @@ def compare_manual(
         print(len(splinters))
         print(red)
 
-        manual_splinters, thresh2 = Splinter.analyzer_marked_image(
+        manual_splinters, thresh2 = Splinter.analyze_marked_image(
             counted_img,
             px_per_mm=1,
             return_thresh=True,

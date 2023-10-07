@@ -218,7 +218,7 @@ class Splinter:
         return self.__calculate_orientation_score(impact_position)
 
     @staticmethod
-    def analyzer_marked_image(marked_image, px_per_mm=1, return_thresh=False):
+    def analyze_marked_image(marked_image, px_per_mm=1, return_thresh=False):
         # step 1: find markers and background
         red_pixels = marked_image[:,:,2] == 255
 
@@ -374,3 +374,7 @@ class Splinter:
         # m_img = dilateImg(m_img)
 
         return Splinter.analyze_contour_image(m_img, px_per_mm=px_per_mm)
+
+    @staticmethod
+    def __analyze_image_legacy(image):
+        pass
