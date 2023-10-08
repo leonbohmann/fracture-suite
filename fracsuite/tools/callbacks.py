@@ -27,7 +27,7 @@ def main_callback(ctx: typer.Context, set_path: str = None, out: str = None, cle
 
     State.clear_output = clear_output
     if clear_output:
-        print("[yellow]Similar files will be deleted when finalizing.")
+        print("[cyan]Similar files will be deleted when finalizing.")
 
     os.makedirs(os.path.join(general.out_path, State.sub_outpath), exist_ok=True)
 

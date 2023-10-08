@@ -1,4 +1,5 @@
 from __future__ import annotations
+import sys
 
 from fracsuite.core.progress import get_spinner
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -111,11 +112,6 @@ class Specimen:
             self.__load_splinters()
         elif log_missing_data:
             print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
-
-        if self.__config_file is not None:
-            self.__load_splinter_config()
-        elif log_missing_data:
-            print(f"Could not find splinter config file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
 
         if self.__scalp_file is not None:
             self.__load_scalp()
@@ -331,6 +327,7 @@ class Specimen:
             file = self.__splinters_file
 
         with open(file, "rb") as f:
+
             self.__splinters = pickle.load(f)
 
     def get(name: str | Specimen, load: bool = True) -> Specimen:

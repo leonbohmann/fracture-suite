@@ -36,7 +36,7 @@ from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import calculate_match_hist
+from fracsuite.core.stochastics import calculate_match_count, calculate_similarity_hist, calculate_match_hist_ks
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
@@ -911,6 +911,7 @@ def watershed(
     name: Annotated[str, typer.Argument(help='Name of the specimen.', metavar='*.*.*.*')],
     debug: Annotated[bool, typer.Option(help='Show debug plots.')] = False,
 ):
+    """Raw comparison of existing splinter data with watershed algorithm."""
     #TODO: Check the individual steps of the watershed algorithm
     #   1. Check Background identification, this should be 0 so that all available space
     #       is used for the watershed algorithm and the markers
@@ -928,7 +929,7 @@ def watershed(
     assert image is not None, "No fracture image found."
 
     size_factor = specimen.get_size_factor()
-    splinters = Splinter.analyze_image(image, debug=debug, px_per_mm=size_factor)
+    splinters = Splinter.analyze_image(image, px_per_mm=size_factor)
 
     # ORIGINAL output
     sp_img = cv2.imread(specimen.get_splinter_outfile("img_filled.png"))
@@ -998,8 +999,18 @@ def watershed(
 
 @app.command()
 def compare_manual(
-        folder: Annotated[str, typer.Argument(help='Folder to load images from.')],
+        folder: Annotated[str, typer.Argument(help=f'Subfolder of "{State.get_output_dir()}" that contains images.')],
     ):
+        """
+        Compare the results of different methods for detecting splinters in an image.
+
+        Args:
+            folder: The name of the subfolder inside of `State.get_output_dir()`
+
+        Raises:
+            Files "input", "marked", and "label" must be present in the folder.
+        """
+
         test_dir = os.path.join(State.get_output_dir(), folder)
 
         input_img_path = find_file(test_dir, "input")
@@ -1127,26 +1138,32 @@ def compare_manual(
         State.output_nopen(cmp_alg_leg, subfolders=[folder],
                      override_name='compare_contours_watershed_legacy')
 
-        mean_error_alg_lab = calculate_match_hist(
-            splinters,
-            label_splinters,
-            np.linspace(np.min([x.area for x in splinters]), np.max([x.area for x in splinters]), 50),
+
+        fig,axs = datahist_plot()
+        ax = axs[0]
+        ax.set_xlabel("Splinter Size [mm²]")
+        ax.set_ylabel("PDF [-]")
+
+        datahist_to_ax(ax, [x.area for x in splinters], 20, alpha = 0.9, label='Watershed', plot_mean=False, as_density=False)
+        # datahist_to_ax(ax, [x.area for x in manual_splinters], 20, label='Manual', plot_mean=False)
+        # datahist_to_ax(ax, [x.area for x in legacy_splinters], 20, label='Legacy', plot_mean=False)
+        datahist_to_ax(ax, [x.area for x in label_splinters], 20, label='Label', plot_mean=False, as_density=False)
+        ax.set_xlim((0,4))
+        ax.legend()
+
+        State.output(fig, subfolders=[folder], override_name="splinter_sizes_compare")
+
+        mean_error_alg_lab = calculate_similarity_hist(
+            [x.area for x in splinters],
+            [x.area for x in label_splinters],
+            np.linspace(np.min([x.area for x in splinters]), np.max([x.area for x in splinters]), 20),
+        )
+        mean_error_alg_lab2 = calculate_match_hist_ks(
+            [x.area for x in splinters],
+            [x.area for x in label_splinters],
+            np.linspace(np.min([x.area for x in splinters]), np.max([x.area for x in splinters]), 20),
         )
 
-        print(f'Alg matches Lab: {mean_error_alg_lab:.2f}%')
-
-        # plotImage(
-        #     cmp_alg_man,
-        #     "Contour Differences")
-        # plotImage(
-        #     cmp_alg_leg,
-        #     "Contour Differences")
-
-
-
-@app.command()
-def test_colors():
-    red_image = np.zeros((100,100,3), dtype=np.uint8)
-    red_image[:,:,2] = 255
-
-    plotImage(red_image, "Red Image")
+        print(f'Alg vs. Lab     (Mean(²)): {mean_error_alg_lab:.2f}%')
+        print(f'                     (KS): {mean_error_alg_lab2:.2f}%')
+        print(f'                      (#): {calculate_match_count(splinters,label_splinters):.2f}%')

@@ -1,9 +1,11 @@
 import os
+import sys
 import time
 
 import typer
 from matplotlib import pyplot as plt
 from rich import inspect, print
+from rich.theme import Theme
 
 from fracsuite.core.progress import get_progress
 
@@ -18,12 +20,24 @@ from fracsuite.tools.nominals import nominals_app
 from fracsuite.tools.scalp import scalp_app
 from fracsuite.tools.tester import tester_app
 
+# used for redirection of pickling
+import fracsuite.core.splinter as splt
+
+custom_theme = Theme({
+    "info": "dim cyan",
+    "warning": "magenta",
+    "danger": "bold red"
+})
+
 general = GeneralSettings.get()
 
 plt.rcParams['figure.figsize'] = general.figure_size
 plt.rc('axes', axisbelow=True) # to get grid into background
 plt.rc('grid', linestyle="--") # line style
 plt.rcParams.update({'font.size': 12}) # font size
+
+# import to redirect pickle import
+sys.modules['fracsuite.splinters.splinter'] = splt
 
 def main_callback(ctx: typer.Context, debug: bool = None):
     """Fracsuite tools"""

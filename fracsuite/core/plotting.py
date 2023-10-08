@@ -222,12 +222,14 @@ def datahist_to_ax(
     ax: Axes,
     data: list[float],
     n_bins: int = 20,
+    binrange: list[float] = None,
     plot_mean: bool = True,
     label: str = None,
     as_log:bool = True,
     alpha: float = 0.5,
-    data_mode = 'pdf'
-):
+    data_mode = 'pdf',
+    as_density = True
+) -> tuple[Any, list[float]]:
     """Plot a histogram of the data to axes ax."""
 
     assert data_mode in ['pdf', 'cdf'], "data_mode must be either 'pdf' or 'cdf'."
@@ -245,18 +247,17 @@ def datahist_to_ax(
     # ascending sort, smallest to largest
     data.sort()
 
-    max_data = cvt(100)
-    binrange = np.linspace(0, max_data, n_bins)
+    binrange = binrange or np.linspace(data[0], data[-1], n_bins)
 
     if data_mode == 'pdf':
         # density: normalize the bins data count to the total amount of data
         _,_,container = ax.hist(data, bins=binrange,
-                density=True,
+                density=as_density,
                 label=label,
                 alpha=alpha)
     elif data_mode == 'cdf':
         alpha = 1.0
-        cumsum = np.cumsum(np.histogram(data, bins=binrange, density=True)[0])
+        cumsum = np.cumsum(np.histogram(data, bins=binrange, density=as_density)[0])
         # density: normalize the bins data count to the total amount of data
         container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha)
         # _,_,container = ax.hist(data, bins=binrange,
@@ -269,4 +270,4 @@ def datahist_to_ax(
         mean = np.mean(data)
         ax.axvline(mean, linestyle='--', label=f"Ø={mean:.2f}mm²")
 
-    return container
+    return container, binrange

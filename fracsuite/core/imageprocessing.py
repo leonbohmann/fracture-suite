@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import numpy.typing as nptyp
 
-from fracsuite.core.image import to_gray, to_rgb
+from fracsuite.core.image import is_rgb, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 
@@ -53,6 +53,8 @@ def preprocess_image(
     Returns:
         np.array: Preprocessed image.
     """
+    assert is_rgb(image), "Image must be in RGB format for preprocessing."
+
     w,h = image.shape[:2]
 
     if prep is None:

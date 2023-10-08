@@ -1,6 +1,8 @@
 from __future__ import annotations
 import numpy as np
 
+from rich import print
+
 import cv2
 from fracsuite.core.coloring import rand_col
 
@@ -179,19 +181,16 @@ class Splinter:
         centroid = self.centroid_mm
         Ax = origin[0] - centroid[0]
         Ay = origin[1] - centroid[1]
+
         A = np.array((Ax, Ay))
 
-        ellipse = cv2.fitEllipse(self.contour)
-
-        # Get the major axis angle in degrees
-        major_axis_angle = ellipse[2]
-
-        # Convert the angle to radians
-        major_axis_angle_rad = np.deg2rad(major_axis_angle)
-
+        #
         # Calculate the major axis vector
+        ellipse = cv2.fitEllipse(self.contour)
+        major_axis_angle = ellipse[2]
+        major_axis_angle_rad = np.deg2rad(major_axis_angle)
         major_axis_vector = (np.cos(major_axis_angle_rad), np.sin(major_axis_angle_rad))
-        # get main axis of ellipse
+
         B = np.array(major_axis_vector)
 
 
@@ -201,7 +200,6 @@ class Splinter:
 
         self.alignment_score = 1 - np.abs(dot / (magA * magB))
         return self.alignment_score
-
 
 
     def measure_orientation(self, impact_position: tuple[float,float]) -> float:
@@ -235,15 +233,15 @@ class Splinter:
             - The red channel is reserved for markings.
             - The red channel must be set to 255 for all marked pixels.
 
-        First, the red channel of the input image is extracted and a mask
-        is created. Using that mask, we proceed to modify the input image, so
-        that marked areas are eroded from the background.
-        Then, we use the watershed algorithm to identify the sure foreground. The
-        markers that were found on the input are now as big as the surrounding area,
-        bound by a threshold version of the input.
-        Next, we use the new markers to perform a second watershed algorithm to
-        eliminate the background.
-        Finally, we analyze the resulting contour image to identify the splinters.
+        The algorithm works as follows:
+            1. The red channel is extracted and a mask is created.
+            2. Using that mask, we proceed to modify the input image,
+                so that marked areas are eroded from the background.
+            3. Then, we use the watershed algorithm to identify the sure foreground.
+                The markers that were found on the input are now as big as the
+                surrounding area, bound by a threshold version of the input.
+            4. Next, we use the new markers to perform a second watershed algorithm.
+                This is done using Splinter.analyze_image(..).
 
         Args:
             marked_image (numpy.ndarray): The marked image to analyze.
@@ -322,54 +320,77 @@ class Splinter:
         plotImage(contour_image, "MK: Final contours")
 
         # FINAL STEP: Analyze the resulting contour image
-        splinters = Splinter.analyze_contour_image(contour_image)
+        splinters = Splinter.analyze_contour_image(contour_image, px_per_mm=px_per_mm)
 
         return splinters
 
     @staticmethod
-    def analyze_label_image(label_image):
-        """Analyze a labeled image and return a list of splinters."""
+    def analyze_label_image(
+        label_image,
+        px_per_mm: float = 1
+    ):
+        """
+        Analyze a labeled image and return a list of splinters.
+
+        The input label needs to have the following properties:
+            - Marked regions describe the crack or any area, that is surely no splinter
+            - Unmarked regions are either splinters or cracks, that are surely splinter
+
+        Therefore one can mark everything that is surely no splinter as black, the
+        algorithm will simply fill these spaces to find the exact contours.
+
+        You can create a label easily by following these steps:
+
+            1. Use fracsuite.tools tester threshold "path/to/img.ext",
+                with img being the input image
+            2. Try out the best fitting threshold value, the GUI will save the current
+                contours in the background to the output folder
+            3. Use a tool like paint.net or GIMP to overlay the contours over the output
+                image. Proceed to patch the detected contours, until you are
+                satisfied with the result.
+            4. Convert the contours to black and insert a white background.
+            5. Export the label and use with this function.
+        """
+        if np.mean(to_gray(label_image)) < 127:
+            print("[yellow]Image appears to show more cracks than splinters."
+                  "Remember that cracks=black, splinters=white!")
+
         label_image = to_rgb(label_image)
-        plotImage(label_image, "Label Image", force=True)
-        return Splinter.analyze_image(label_image)
+        return Splinter.analyze_image(label_image, px_per_mm=px_per_mm)
 
     @staticmethod
     def analyze_contour_image(contour_image, px_per_mm=1):
         """Analyze a contour image and return a list of splinters."""
         contour_image = to_gray(contour_image)
-
         contours = detect_fragments(contour_image, min_area=5, max_area=2000, filter=False)
-
-        splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
-
-        return splinters
+        return [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
 
     @staticmethod
-    def analyze_image(image, px_per_mm: float = 1.0):
-        """Analyze an unprocessed image and return a list of splinters.
+    def analyze_image(
+        image,
+        px_per_mm: float = 1.0,
+        skip_preprocessing: bool = False
+    ):
+        """
+        Analyze an unprocessed image and return a list of splinters.
 
         Remarks:
             - A dilation of the threshold is not feasible, since that will eliminate a lot
             of the smaller splinters.
+            - Input image should display cracks in black and splinters white
 
 
         Parameters:
             image: The input image to be analyzed. Must be in RGB format for watershed algorithm.
-            debug: A boolean flag indicating whether to display intermediate images for debugging purposes. Default is False.
             px_per_mm: The number of pixels per millimeter in the image. Default is 1.0.
-
+            skip_preprocessing: If True, the input image is assumed to be preprocessed already.
         Returns:
             (list[Splinter]): A list of Splinter objects representing the splinters detected in the input image.
         """
-        assert is_rgb(image), "Image must be in RGB format for watershed algorithm."
-
-        # thresh: black is crack, white is splinter
-        # gray = to_gray(image)
-
-        # gray = cv2.GaussianBlur(gray, (5, 5), 1)
-        # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 75, 35)
-        # thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        thresh = preprocess_image(image)
+        if not skip_preprocessing:
+            thresh = preprocess_image(image)
+        else:
+            thresh = image
 
         plotImage(thresh, "WS: Preprocessed Image")
 
@@ -392,11 +413,9 @@ class Splinter:
 
         plotImages([("WS: Distance Transform", dist_transform),("WS: Sure Foreground", sure_fg)])
 
-
         # Finding unknown region
         sure_fg = np.uint8(sure_fg)
         unknown = cv2.subtract(sure_bg,sure_fg)
-
 
         # Marker labelling
         ret, markers = cv2.connectedComponents(sure_fg)
