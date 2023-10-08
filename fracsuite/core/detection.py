@@ -4,6 +4,7 @@ import numpy.typing as nptyp
 from fracsuite.core.image import to_rgb
 import multiprocessing.shared_memory as sm
 import numpy as np
+from fracsuite.core.imageplotting import plotImage
 
 from fracsuite.core.imageprocessing import preprocess_spot_detect
 
@@ -132,10 +133,13 @@ def detect_fragments(
     Returns:
         list[nptyp.ArrayLike]: The found contours.
     """
+    assert np.mean(binary_image) < 120, "detect_fragments needs white cracks and black background!"
+
     try:
         # Find contours of objects in the binary image
         contours, hierar = \
             cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
         contours = list(contours)[1:]
         if filter:
             contours = filter_contours(contours, hierar, min_area=min_area, max_area=max_area)

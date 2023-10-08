@@ -36,6 +36,7 @@ from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
+from fracsuite.core.stochastics import calculate_match_hist
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
@@ -1003,12 +1004,17 @@ def compare_manual(
 
         input_img_path = find_file(test_dir, "input")
         marked_img_path = find_file(test_dir, "marked")
+        label_img_path = find_file(test_dir, "label")
 
         assert input_img_path is not None, "No input image found."
         assert marked_img_path is not None, "No marked image found."
+        assert label_img_path is not None, "No label image found."
 
         input_img = cv2.imread(input_img_path, cv2.IMREAD_COLOR)
         marked_img = cv2.imread(marked_img_path, cv2.IMREAD_COLOR)
+        label_img = cv2.imread(label_img_path, cv2.IMREAD_COLOR)
+
+        label_splinters = Splinter.analyze_label_image(label_img)
 
         # get splinters from labeled image
         manual_splinters = Splinter.analyze_marked_image(
@@ -1031,17 +1037,29 @@ def compare_manual(
         cont_img_alg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in splinters], -1, (255,0,0), 3)
         cont_img_man = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in manual_splinters], -1, (0,255,0), 3)
         cont_img_leg = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in legacy_splinters], -1, (0,255,0), 3)
+        cont_img_lab = cv2.drawContours(np.zeros_like(input_img), [x.contour for x in label_splinters], -1, (0,255,0), 3)
+
+
+        # test = cv2.addWeighted(input_img, 1, cont_img_lab, 1.0, 0)
+        # plotImage(test, "test", force=True)
 
         cont_diff = cv2.addWeighted(input_img, 1, cont_img_alg, 1.0, 0)
         cont_diff = cv2.addWeighted(cont_diff, 1, cont_img_man, 1.0, 0)
         cont_diff_leg = cv2.addWeighted(input_img, 1, cont_img_alg, 1.0, 0)
         cont_diff_leg = cv2.addWeighted(cont_diff_leg, 1, cont_img_leg, 1.0, 0)
+        cont_diff_lab = cv2.addWeighted(input_img, 1, cont_img_alg, 1.0, 0)
+        cont_diff_lab = cv2.addWeighted(cont_diff_lab, 1, cont_img_lab, 1.0, 0)
+
 
         alg_man = cv2.absdiff(cont_img_alg, cont_img_man)
         yellow_pixels = np.all(alg_man == (255, 255, 0), axis=-1)
 
         alg_leg = cv2.absdiff(cont_img_alg, cont_img_leg)
         yellow_pixels_leg = np.all(alg_leg == (255, 255, 0), axis=-1)
+
+        alg_lab = cv2.absdiff(cont_img_alg, cont_img_lab)
+        yellow_pixels_lab = np.all(alg_lab == (255, 255, 0), axis=-1)
+
 
 
         matching_color = (0,120,255)
@@ -1054,6 +1072,11 @@ def compare_manual(
         diff_leg_matching[yellow_pixels_leg] = matching_color
         cont_diff_leg[yellow_pixels_leg] = (0,0,0)
         cont_diff_leg = cv2.addWeighted(cont_diff_leg, 1, diff_leg_matching, 1.0, 0)
+
+        diff_lab_matching = np.zeros_like(input_img)
+        diff_lab_matching[yellow_pixels_lab] = matching_color
+        cont_diff_lab[yellow_pixels_lab] = (0,0,0)
+        cont_diff_lab = cv2.addWeighted(cont_diff_lab, 1, diff_lab_matching, 1.0, 0)
 
 
         # cont_diff = cv2.absdiff(cont_img_alg, cont_img_man)
@@ -1088,36 +1111,30 @@ def compare_manual(
                 'Identical', matching_color,
                 nums = [len(splinters), len(legacy_splinters)]
             )
+        cmp_alg_lab = label_image(
+                cont_diff_lab,
+                'Watershed', 'red',
+                'Labeled', 'green',
+                'Identical', matching_color,
+                nums = [len(splinters), len(label_splinters)]
+            )
 
-        man_sizes = create_splinter_sizes_image(
-            manual_splinters,
-            input_img.shape,
-            annotate = True,
-            annotate_title="Manual",
-            with_contours=True
-        )
-        alg_sizes = create_splinter_sizes_image(
-            splinters,
-            input_img.shape,
-            annotate = True,
-            annotate_title="Watershed",
-            with_contours=True
-        )
-        leg_sizes = create_splinter_sizes_image(
-            legacy_splinters,
-            input_img.shape,
-            annotate = True,
-            annotate_title="Legacy",
-            with_contours=True
-        )
-
-        size_fig=annotate_images([leg_sizes, alg_sizes, man_sizes])
-        State.output_nopen(size_fig, subfolders=[folder], override_name='compare_contours_sizes')
         State.output_nopen(cont_img_alg, subfolders=[folder], override_name='watershed_contour')
-        State.output(cmp_alg_man, subfolders=[folder],
+        State.output_nopen(cmp_alg_man, subfolders=[folder],
                      override_name='compare_contours_watershed_manual')
+        State.output(cmp_alg_lab, subfolders=[folder],
+                override_name='compare_contours_watershed_label')
         State.output_nopen(cmp_alg_leg, subfolders=[folder],
                      override_name='compare_contours_watershed_legacy')
+
+        mean_error_alg_lab = calculate_match_hist(
+            splinters,
+            label_splinters,
+            np.linspace(np.min([x.area for x in splinters]), np.max([x.area for x in splinters]), 50),
+        )
+
+        print(f'Alg matches Lab: {mean_error_alg_lab:.2f}%')
+
         # plotImage(
         #     cmp_alg_man,
         #     "Contour Differences")

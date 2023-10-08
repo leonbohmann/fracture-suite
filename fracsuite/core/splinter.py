@@ -327,6 +327,13 @@ class Splinter:
         return splinters
 
     @staticmethod
+    def analyze_label_image(label_image):
+        """Analyze a labeled image and return a list of splinters."""
+        label_image = to_rgb(label_image)
+        plotImage(label_image, "Label Image", force=True)
+        return Splinter.analyze_image(label_image)
+
+    @staticmethod
     def analyze_contour_image(contour_image, px_per_mm=1):
         """Analyze a contour image and return a list of splinters."""
         contour_image = to_gray(contour_image)
