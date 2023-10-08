@@ -27,6 +27,12 @@ def sigmoid(image):
 
     return high_contrast
 
+def brightnesscorrect(image, target):
+    average_brightness = np.mean(to_gray(image))
+    factor = target / average_brightness
+    return cv2.convertScaleAbs(image, alpha=factor, beta=0)
+
+
 def preprocess_spot_detect(img) -> nptyp.ArrayLike:
     img = to_gray(img)
     img = cv2.GaussianBlur(img, (5,5), 3)
@@ -56,6 +62,7 @@ def preprocess_image(
     image = sigmoid(image)
     image = lightcorrect(image)
     image = to_gray(image)
+    image = brightnesscorrect(image, 10)
     # image = np.clip(image - np.mean(image), 0, 255).astype(np.uint8)
 
     # Apply Gaussian blur to reduce noise and enhance edge detection
