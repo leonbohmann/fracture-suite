@@ -50,13 +50,17 @@ class State:
         *names: str,
         override_name: str = None,
         subfolders: list[str] = None,
+        force_delete_old=False,
+        no_print=False,
     ):
         State.output(
             object,
             *names,
             override_name=override_name,
             subfolders=subfolders,
-            open=False
+            open=False,
+            force_delete_old=force_delete_old,
+            no_print=no_print,
         )
 
     def output(
@@ -64,7 +68,9 @@ class State:
         *names: str,
         override_name: str = None,
         subfolders: list[str] = None,
-        open=True
+        open=True,
+        force_delete_old=False,
+        no_print=False
     ):
         """
         Saves an object to a file and opens it.
@@ -112,13 +118,13 @@ class State:
                 # check how to save object
                 if isinstance(object, tuple):
                     if isinstance(object[0], Figure):
-                        out_name = State.get_output_file(*names, is_plot=True)
+                        out_name = State.get_output_file(*names, is_plot=True, force_delete_old=force_delete_old)
                         object[0].savefig(out_name, dpi=300, bbox_inches='tight')
                 elif isinstance(object, Figure):
-                    out_name = State.get_output_file(*names, is_plot=True)
+                    out_name = State.get_output_file(*names, is_plot=True, force_delete_old=force_delete_old)
                     object.savefig(out_name, dpi=300, bbox_inches='tight')
                 elif type(object).__module__ == np.__name__:
-                    out_name = State.get_output_file(*names, is_image=True)
+                    out_name = State.get_output_file(*names, is_image=True, force_delete_old=force_delete_old)
                     image = object
                     # f = np.max(image.shape[:2]) / general.output_image_maxsize
 
@@ -138,7 +144,8 @@ class State:
                 continue
 
         # success, start process
-        print(f"Saved to '{out_name}'.")
+        if not no_print:
+            print(f"Saved to '{out_name}'.")
 
         if open:
             subprocess.Popen(['start', '', '/b', out_name], shell=True)
@@ -157,6 +164,7 @@ class State:
         Kwargs:
             is_plot (bool): If true, the plot extension is appended.
             is_image (bool): If true, the image extension is appended.
+            force_delete_old (bool): If true, all files with the same name will be deleted.
         Returns:
             str: path
         """
@@ -171,11 +179,13 @@ class State:
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))
 
+
+        force_delete_old = 'force_delete_old' in kwargs and kwargs['force_delete_old']
+
         fname = os.path.splitext(os.path.basename(p))[0]
         ext = os.path.splitext(p)[1]
         if os.path.exists(p):
-
-            if State.clear_output:
+            if State.clear_output or force_delete_old:
                 for file in os.listdir(os.path.dirname(p)):
                     if file.startswith(fname):
                         os.remove(os.path.join(os.path.dirname(p), file))

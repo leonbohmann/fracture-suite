@@ -16,7 +16,7 @@ from fracsuite.tools.specimen import app as specimen_app
 from fracsuite.tools.test_prep import test_prep_app
 from fracsuite.tools.nominals import nominals_app
 from fracsuite.tools.scalp import scalp_app
-
+from fracsuite.tools.tester import tester_app
 
 general = GeneralSettings.get()
 
@@ -54,6 +54,7 @@ app.add_typer(acc_app, name="acc")
 app.add_typer(scalp_app, name="scalp")
 app.add_typer(test_prep_app, name="test-prep")
 app.add_typer(nominals_app, name="nominals")
+app.add_typer(tester_app, name="tester")
 
 
 # @app.command()

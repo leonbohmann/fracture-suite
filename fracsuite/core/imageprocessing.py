@@ -8,6 +8,24 @@ from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 
 W_FAC = 4000
 
+def lightcorrect(image):
+    # Convert to LAB color space
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2Lab)
+    # Split the LAB image into different channels
+    l, a, b = cv2.split(lab)
+    # Apply CLAHE to L-channel
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    cl = clahe.apply(l)
+    limg = cv2.merge((cl, a, b))
+    # Convert back to BGR
+    return cv2.cvtColor(limg, cv2.COLOR_Lab2BGR)
+
+def sigmoid(image):
+    img_normalized = image / 255.0
+    high_contrast = 1 / (1 + np.exp(-10 * (img_normalized - 0.5)))
+    high_contrast = np.uint8(high_contrast * 255)
+
+    return high_contrast
 
 def preprocess_spot_detect(img) -> nptyp.ArrayLike:
     img = to_gray(img)
@@ -35,6 +53,8 @@ def preprocess_image(
         prep = defaultPrepConfig
     rsz_fac = prep.resize_factor # x times smaller
 
+    image = sigmoid(image)
+    image = lightcorrect(image)
     image = to_gray(image)
     # image = np.clip(image - np.mean(image), 0, 255).astype(np.uint8)
 

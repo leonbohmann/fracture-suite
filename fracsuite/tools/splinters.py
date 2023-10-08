@@ -1010,14 +1010,16 @@ def compare_manual(
         input_img = cv2.imread(input_img_path, cv2.IMREAD_COLOR)
         marked_img = cv2.imread(marked_img_path, cv2.IMREAD_COLOR)
 
-        # get splinters from watershed
-        splinters = Splinter.analyze_image(input_img, px_per_mm=1)
-
         # get splinters from labeled image
         manual_splinters = Splinter.analyze_marked_image(
             marked_img,
+            input_img,
             px_per_mm=1,
         )
+
+        # get splinters from watershed
+        splinters = Splinter.analyze_image(input_img, px_per_mm=1)
+
 
         # get splinters from legacy method
         with open(find_file(test_dir, "splinters"), 'rb') as f:
@@ -1045,12 +1047,12 @@ def compare_manual(
         matching_color = (0,120,255)
         diff_matching = np.zeros_like(input_img)
         diff_matching[yellow_pixels] = matching_color
-        cont_diff[yellow_pixels] = input_img[yellow_pixels]
+        cont_diff[yellow_pixels] = (0,0,0)
         cont_diff = cv2.addWeighted(cont_diff, 1, diff_matching, 1.0, 0)
 
         diff_leg_matching = np.zeros_like(input_img)
         diff_leg_matching[yellow_pixels_leg] = matching_color
-        cont_diff_leg[yellow_pixels_leg] = input_img[yellow_pixels_leg]
+        cont_diff_leg[yellow_pixels_leg] = (0,0,0)
         cont_diff_leg = cv2.addWeighted(cont_diff_leg, 1, diff_leg_matching, 1.0, 0)
 
 
@@ -1114,7 +1116,7 @@ def compare_manual(
         State.output_nopen(cont_img_alg, subfolders=[folder], override_name='watershed_contour')
         State.output(cmp_alg_man, subfolders=[folder],
                      override_name='compare_contours_watershed_manual')
-        State.output(cmp_alg_leg, subfolders=[folder],
+        State.output_nopen(cmp_alg_leg, subfolders=[folder],
                      override_name='compare_contours_watershed_legacy')
         # plotImage(
         #     cmp_alg_man,

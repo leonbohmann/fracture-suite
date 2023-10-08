@@ -223,6 +223,7 @@ class Splinter:
     @staticmethod
     def analyze_marked_image(
         marked_image,
+        original_image,
         px_per_mm=1
     ) -> list[Splinter]:
         """
@@ -251,29 +252,25 @@ class Splinter:
         Returns:
             list[Splinter]: A list of Splinter objects representing the identified splinters.
         """
-        # step 1: find markers and background
         red_pixels = marked_image[:,:,2] == 255
+        red_pixels = red_pixels.astype(np.uint8) * 255
+        red_pixels = dilateImg(red_pixels, sz=3, it=1)
 
-        # step 2: create binary mask for image
-        thresh = cv2.threshold(to_gray(marked_image), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        # thresh = cv2.threshold(to_gray(original_image), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        # thresh[red_pixels == 255] = 255
+
+        thresh = preprocess_image(original_image) # black cracks
+        # thresh = cv2.GaussianBlur(thresh, (5, 5), 1)
+        # thresh = cv2.threshold(to_gray(marked_image), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        thresh[red_pixels == 255] = 255
         thresh = erodeImg(thresh, sz = 5)
 
-        red_pixels = red_pixels.astype(np.uint8) * 255
+        plotImage(thresh, "MK: Thresholded Image")
 
-        red_pixels = dilateImg(red_pixels, sz=3, it=1)
-        thresh[red_pixels == 255] = 255
-        plotImage(thresh, "Thresholded Image")
-
-        # step 3: create mask by copying red pixels from marked image
-        #           only if the destination pixel is not black
-        # create binary mask for non-black pixels in thresh
-        mask1 = cv2.inRange(to_rgb(thresh), (1,1,1), (255,255,255))
-        # create binary mask for red pixels
-        mask2 = red_pixels
         # combine the two binary masks using a bitwise AND operation
-        red_mask = cv2.bitwise_and(mask1, mask2)
+        red_mask = red_pixels # white splinter marks
 
-        plotImage(red_mask, "Red Mask")
+        plotImage(red_mask, "MK: Red Mask")
 
         # step 4: create connectedcomponents and run watershed to identify sure foreground
         _, markers = cv2.connectedComponents(red_mask)
@@ -282,7 +279,7 @@ class Splinter:
         # step 5: create binary stencil from the markers
         m_img = np.zeros_like(marked_image[:,:,0], dtype=np.uint8)
         m_img[markers == -1] = 255
-        plotImage(m_img, "WS Contours 1")
+        plotImage(m_img, "MK: WS Contours 1")
 
         contours, hierarchy = cv2.findContours(to_gray(m_img), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         # contours = sorted(contours, key=cv2.contourArea, reverse=True)[2:]
@@ -298,7 +295,7 @@ class Splinter:
         for c in filtered_contours:
             clr = rand_col()
             cv2.drawContours(cimg, [c], -1, clr, 1)
-        plotImage(cimg, "Detected contours")
+        plotImage(255-cimg, "MK: Detected contours")
         # draw contours on new image
         step1_img = np.zeros_like(marked_image[:,:,0])
         # cv2.drawContours(step1_img, contours, -1, 255, -1)
@@ -307,10 +304,10 @@ class Splinter:
         for c in filtered_contours:
             mask = np.zeros_like(marked_image[:,:,0])
             cv2.drawContours(mask, [c], -1, 255, -1)
-            cv2.drawContours(mask, [c], -1, 0, 5)
+            cv2.drawContours(mask, [c], -1, 0, 3)
             step1_img = cv2.add(step1_img, mask)
 
-        plotImage(step1_img, "Step 1 Image")
+        plotImage(step1_img, "MK: Step 1 Image") # still black cracks
 
         # create new set on markers, which are now the sure foreground
         _, markers = cv2.connectedComponents(step1_img)
@@ -319,8 +316,10 @@ class Splinter:
         markers = cv2.watershed(np.zeros_like(marked_image),markers)
 
         # create skeleton image from markers
-        contour_image = np.zeros_like(marked_image[:,:,0], dtype=np.uint8)
+        contour_image = np.zeros(marked_image.shape[:2], dtype=np.uint8)
         contour_image[markers == -1] = 255
+
+        plotImage(contour_image, "MK: Final contours")
 
         # FINAL STEP: Analyze the resulting contour image
         splinters = Splinter.analyze_contour_image(contour_image)
@@ -339,13 +338,13 @@ class Splinter:
         return splinters
 
     @staticmethod
-    def analyze_image(image, debug: bool = False, px_per_mm: float = 1.0):
+    def analyze_image(image, px_per_mm: float = 1.0):
         """Analyze an unprocessed image and return a list of splinters.
 
         Remarks:
             - A dilation of the threshold is not feasible, since that will eliminate a lot
             of the smaller splinters.
-            
+
 
         Parameters:
             image: The input image to be analyzed. Must be in RGB format for watershed algorithm.
@@ -358,23 +357,25 @@ class Splinter:
         assert is_rgb(image), "Image must be in RGB format for watershed algorithm."
 
         # thresh: black is crack, white is splinter
-        gray = to_gray(image)
+        # gray = to_gray(image)
 
         # gray = cv2.GaussianBlur(gray, (5, 5), 1)
         # thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 75, 35)
-        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        # thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        thresh = preprocess_image(image)
+
+        plotImage(thresh, "WS: Preprocessed Image")
 
         # noise removal
         kernel = np.ones((3,3),np.uint8)
         opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
 
-        plotImage(thresh, "Thresholded Image")
+        plotImage(opening, "WS: Opened Image")
 
         # sure background: white is splinter, black is crack
         sure_bg = cv2.dilate(opening,kernel,iterations=3)
 
-        if debug:
-            plotImage(sure_bg, "Sure Background")
+        plotImage(sure_bg, "WS: Sure Background")
 
         # Finding sure foreground area
         dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3,)
@@ -382,7 +383,7 @@ class Splinter:
         ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
         sure_fg = erodeImg(sure_fg, it=4)
 
-        plotImages([("Distance Transform", dist_transform),("Sure Foreground", sure_fg)])
+        plotImages([("WS: Distance Transform", dist_transform),("WS: Sure Foreground", sure_fg)])
 
 
         # Finding unknown region
@@ -398,10 +399,10 @@ class Splinter:
         markers[sure_fg!=255] = 0
 
         plotImages([
-                ("Sure Background", sure_bg),
-                ("Sure Foreground", sure_fg),
-                ("Back - Foreground", unknown),
-                ("Markers", np.abs(markers).astype(np.uint8)),
+                ("WS: Sure Background", sure_bg),
+                ("WS: Sure Foreground", sure_fg),
+                ("WS: Back - Foreground", unknown),
+                ("WS: Markers", np.abs(markers).astype(np.uint8)),
             ])
 
         markers = cv2.watershed(np.zeros_like(image),markers)
