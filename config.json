@@ -18,10 +18,12 @@
         4
     ],
     "output_image_maxsize": 2000,
+    "hist_bins": 25,
     "output_paths": {
         "test-prep/test-watershed-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
         "test-prep/test-legacy-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
         "splinters/splinter-orientation": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\orientation",
-        "splinters/roughness-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roughness"
+        "splinters/roughness-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roughness",
+        "splinters/compare-manual": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\quality"
     }
 }

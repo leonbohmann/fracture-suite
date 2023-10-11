@@ -290,6 +290,9 @@ class Specimen:
     def get_size_factor(self):
         """Returns the size factor of the specimen. mm/px."""
         realsize = self.settings['real_size_mm']
+        if realsize is None:
+            return 1
+
         frac_img = self.get_fracture_image()
         assert frac_img is not None, "Fracture image not found."
         return realsize[0] / frac_img.shape[0]
@@ -327,7 +330,6 @@ class Specimen:
             file = self.__splinters_file
 
         with open(file, "rb") as f:
-
             self.__splinters = pickle.load(f)
 
     def get(name: str | Specimen, load: bool = True) -> Specimen:

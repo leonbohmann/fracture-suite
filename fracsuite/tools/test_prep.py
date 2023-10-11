@@ -17,6 +17,7 @@ from fracsuite.core.splinter import Splinter
 from fracsuite.tools.callbacks import main_callback
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import img_part
+from fracsuite.tools.state import State
 
 general = GeneralSettings.get()
 
@@ -46,8 +47,7 @@ def test_watershed_count():
     cv2.drawContours(im0, [x.contour for x in splinters], -1, (0,0,255), 2)
 
     im0 = img_part(im0, *region)
-
-    cv2.imwrite(general.get_output_file('watershed_count', is_image=True), im0)
+    State.output(im0, override_name='watershed_count')
     print(len(splinters))
 
 @test_prep_app.command()
@@ -61,5 +61,5 @@ def test_legacy_count():
 
     im0 = img_part(im0, *region)
 
-    cv2.imwrite(general.get_output_file('legacy_count', is_image=True), im0)
+    State.output(im0, override_name='legacy_count')
     print(len(splinters))

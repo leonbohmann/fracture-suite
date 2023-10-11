@@ -30,14 +30,42 @@ class PreprocessorConfig:
         self.gauss_size = gauss_size
         self.gauss_sigma = gauss_sigma
         self.resize_factor = resize_factor
-        self.thresh_adapt_mode = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
+        self.thresh_adapt_mode = 1
+        self.thresh_adapt_mode : int  = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
             if adapt_mode == "gaussian" else cv2.ADAPTIVE_THRESH_MEAN_C
 
     def print(self):
         print(self.__dict__)
 
+    def __json__(self):
+        return {
+            'name': self.name,
+            'thresh_block_size': self.thresh_block_size,
+            'thresh_c': self.thresh_c,
+            'gauss_size': self.gauss_size,
+            'gauss_sigma': self.gauss_sigma,
+            'resize_factor': self.resize_factor,
+            'thresh_adapt_mode': 'gaussian' if self.thresh_adapt_mode == cv2.ADAPTIVE_THRESH_GAUSSIAN_C else 'mean'
+        }
+
+    @classmethod
+    def from_json(cls, json_obj):
+        return cls(
+            name=json_obj['name'],
+            block=json_obj['thresh_block_size'],
+            c=json_obj['thresh_c'],
+            gauss_size=tuple(json_obj['gauss_size']),
+            gauss_sigma=json_obj['gauss_sigma'],
+            resize_factor=json_obj['resize_factor'],
+            adapt_mode=json_obj['thresh_adapt_mode']
+        )
+
 softerPrepConfig = PreprocessorConfig("soft", block=413)
 softerPrepConfig = PreprocessorConfig("softer", block=313)
-defaultPrepConfig = PreprocessorConfig("default")
+# defaultPrepConfig = PreprocessorConfig("default")
+defaultPrepConfig = PreprocessorConfig("test1", block=1100, c=0, gauss_size=(3,3), gauss_sigma=0)
+# defaultPrepConfig = PreprocessorConfig("test2", block=55, c=0, gauss_size=(5,5), gauss_sigma=1)
+# defaultPrepConfig = PreprocessorConfig("test3", block=333, c=1.16, gauss_size=(11,11), gauss_sigma=8)
+# defaultPrepConfig = PreprocessorConfig("default", block=1100, c=4, gauss_size=(3,3), gauss_sigma=28)
 harderPrepConfig = PreprocessorConfig("harder", block=113)
 hardPrepConfig = PreprocessorConfig("hard", block=53)

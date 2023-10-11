@@ -25,6 +25,8 @@ class State:
 
     sub_outpath: str = ""
     "Current sub-path for current command."
+    additional_output_path: str = None
+    "Current additional path for output."
     sub_specimen: str = ""
     "Current specimen, if any is analysed."
 
@@ -45,32 +47,67 @@ class State:
     def stop_progress():
         State.progress.stop()
         State.__progress_started = False
+
+
+
+    def __save_object(object, dir, *sub_path):
+        saved = False
+        while not saved:
+            try:
+                # check how to save object
+                if isinstance(object, tuple):
+                    if isinstance(object[0], Figure):
+                        out_path = os.path.join(dir, *sub_path) + f'.{general.plot_extension}'
+                        object[0].savefig(out_path, dpi=300, bbox_inches='tight')
+                elif isinstance(object, Figure):
+                    out_path = os.path.join(dir, *sub_path) + f'.{general.plot_extension}'
+                    object.savefig(out_path, dpi=300, bbox_inches='tight')
+                elif type(object).__module__ == np.__name__:
+                    out_path = os.path.join(dir, *sub_path) + f'.{general.image_extension}'
+                    image = object
+                    # f = np.max(image.shape[:2]) / general.output_image_maxsize
+
+                    # h,w = image.shape[:2] / f
+                    # w = int(w)
+                    # h = int(h)
+
+                    # image = cv2.resize(image, (w,h))
+                    cv2.imwrite(out_path, image)
+                else:
+                    raise Exception("Object must be a matplotlib figure or a numpy array.")
+
+                saved = True
+                return out_path
+            except Exception as e:
+                print(e)
+                print("[red]Error while saving. Waiting for 1 second...[/red]")
+                time.sleep(1)
+                continue
+
     def output_nopen(
         object: Figure | npt.ArrayLike,
         *names: str,
-        override_name: str = None,
-        subfolders: list[str] = None,
         force_delete_old=False,
         no_print=False,
+        to_additional=False,
     ):
         State.output(
             object,
             *names,
-            override_name=override_name,
-            subfolders=subfolders,
             open=False,
             force_delete_old=force_delete_old,
             no_print=no_print,
+            to_additional=to_additional
         )
 
     def output(
         object: Figure | npt.ArrayLike,
         *names: str,
-        override_name: str = None,
-        subfolders: list[str] = None,
         open=True,
         force_delete_old=False,
-        no_print=False
+        no_print=False,
+        to_additional=False,
+        **kwargs
     ):
         """
         Saves an object to a file and opens it.
@@ -82,73 +119,42 @@ class State:
         Remarks:
             The current subcommand will be appended to the last path part.
         """
-        # append last subcommand to output path
-        sep = "_" if len(names) > 0 else ""
-        if len(names) == 0:
-            names = [""]
-            sep = ""
+        if 'override_name' in kwargs:
+            print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
+
+        assert len(names) != 0, "No output names given."
 
         names = list(names)
-
-
-
-
+        # file_name might be the specimen itself!
+        file_name = names[-1]
 
         if 'splinter' in State.sub_outpath:
-            if callable(b := getattr(names[-1], 'put_splinter_output', None)):
-                b(object)
+            if callable(b := getattr(file_name, 'put_splinter_output', None)):
+                b(object, file_name)
         elif 'acc' in State.sub_outpath:
-            if callable(b := getattr(names[-1], 'put_acc_output', None)):
-                b(object)
-        if hasattr(names[-1], 'name'):
-            names[-1] = names[-1].name
+            if callable(b := getattr(file_name, 'put_acc_output', None)):
+                b(object, file_name)
+        if hasattr(file_name, 'name'):
+            file_name = file_name.name
 
-        names = [*names[:-1], names[-1]+sep+State.current_subcommand]
 
-        if override_name is not None:
-            names[-1] = override_name
-
-        if subfolders is not None:
-            assert isinstance(subfolders, list), "subfolders must be a list of strings."
-            names = subfolders + names
-
-        saved = False
-        while not saved:
-            try:
-                # check how to save object
-                if isinstance(object, tuple):
-                    if isinstance(object[0], Figure):
-                        out_name = State.get_output_file(*names, is_plot=True, force_delete_old=force_delete_old)
-                        object[0].savefig(out_name, dpi=300, bbox_inches='tight')
-                elif isinstance(object, Figure):
-                    out_name = State.get_output_file(*names, is_plot=True, force_delete_old=force_delete_old)
-                    object.savefig(out_name, dpi=300, bbox_inches='tight')
-                elif type(object).__module__ == np.__name__:
-                    out_name = State.get_output_file(*names, is_image=True, force_delete_old=force_delete_old)
-                    image = object
-                    # f = np.max(image.shape[:2]) / general.output_image_maxsize
-
-                    # h,w = image.shape[:2] / f
-                    # w = int(w)
-                    # h = int(h)
-
-                    # image = cv2.resize(image, (w,h))
-                    cv2.imwrite(out_name, image)
-                else:
-                    raise Exception("Object must be a matplotlib figure or a numpy array.")
-
-                saved = True
-            except Exception as e:
-                print("[red]Error while saving. Waiting for 1 second...[/red]")
-                time.sleep(1)
-                continue
-
+        out = State.get_output_file(*names, force_delete_old=force_delete_old)
+        out = State.__save_object(object, ".", out)
         # success, start process
         if not no_print:
-            print(f"Saved to '{out_name}'.")
+            n = State.sub_outpath + '\\' + '\\'.join(names) + os.path.splitext(out)[1]
+            print(f"Saved to '{n}'.")
+
+        if (additional_path := State.additional_output_path) is not None \
+            and to_additional:
+            add_path = State.__save_object(object, additional_path, file_name)
+            if not no_print:
+                print(f" > Additional file to '{add_path}'.")
+
+
 
         if open:
-            subprocess.Popen(['start', '', '/b', out_name], shell=True)
+            subprocess.Popen(['start', '', '/b', out], shell=True)
 
     def get_output_dir():
         # sub_outpath might be set to custom output path, join will take the last valid path start
@@ -174,7 +180,6 @@ class State:
         if 'is_image' in kwargs and kwargs['is_image']:
             names[-1] = f'{State.sub_specimen}{names[-1]}.{general.image_extension}'
 
-        # sub_outpath might be set to custom output path, join will take the last valid path start
         p = os.path.join(State.get_output_dir(), *names)
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))

@@ -1,3 +1,5 @@
+import json
+import os
 import numpy as np
 import typer
 import cv2
@@ -71,7 +73,7 @@ def threshold(image):
 
     # Load image and convert to grayscale
     img = cv2.imread(image)
-    plot_counts(image)
+    # plot_counts(image)
 
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(img_gray, 100, 200)
@@ -87,17 +89,17 @@ def threshold(image):
     normthresh_frame.grid(row=0, column=2)
 
     # Create Sliders in Threshold Frame
-    block_size_slider = Scale(threshold_frame, from_=3, to_=1500, orient="horizontal", label="Block Size", command=lambda x: update_image())
+    block_size_slider = Scale(threshold_frame, from_=3, to_=500, orient="horizontal", label="Block Size", command=lambda x: update_image())
     block_size_slider.pack()
     block_size_slider.set(213)
 
-    c_slider = Scale(threshold_frame, from_=-30, to_=30, orient="horizontal", label="C", command=lambda x: update_image())
+    c_slider = Scale(threshold_frame, from_=-50, to_=50, orient="horizontal", label="C", command=lambda x: update_image())
     c_slider.pack()
 
     sz_slider = Scale(threshold_frame, from_=1, to_=31, orient="horizontal", label="Gauss Size", command=lambda x: update_image())
     sz_slider.pack()
     sz_slider.set(5)
-    sig_slider = Scale(threshold_frame, from_=0, to_=28, orient="horizontal", label="Gauss Sigma", command=lambda x: update_image())
+    sig_slider = Scale(threshold_frame, from_=-10, to_=28, orient="horizontal", label="Gauss Sigma", command=lambda x: update_image())
     sig_slider.pack()
     sig_slider.set(1)
 
@@ -142,9 +144,38 @@ def threshold(image):
     norm_thresh_check = tk.Checkbutton(normthresh_frame, text="Use normal Thresh", variable=normal_thresh_filter_var, command=toggle_bilateral)
     norm_thresh_check.pack()
 
+
+
+    def save_state():
+        blockSize = block_size_slider.get()
+        C = (float(c_slider.get()) / 50.0 )* 2.0
+        sz = sz_slider.get()
+        sig = sig_slider.get()
+        if blockSize % 2 == 0:  # Ensure it's odd
+            blockSize += 1
+        if sz % 2 == 0:  # Ensure it's odd
+            sz += 1
+
+        prep = PreprocessorConfig(
+            "test",
+            block=blockSize,
+            c=C,
+            gauss_size=(sz,sz),
+            gauss_sigma=sig
+        )
+
+        with open(State.get_output_file('prep_config.json'), 'w') as f:
+            d = prep.__json__()
+            d['meant_for'] = os.path.basename(image)
+            json.dump(d, f, indent=4)
+
+    save_state_button = tk.Button(threshold_frame, text="Save State", command=save_state)
+    save_state_button.pack()
+
     def update_image():
         blockSize = block_size_slider.get()
-        C = c_slider.get()
+        thresh_C = (float(c_slider.get()) / 50.0) * 2.0
+
         sz = sz_slider.get()
         sig = sig_slider.get()
         if blockSize % 2 == 0:  # Ensure it's odd
@@ -165,7 +196,7 @@ def threshold(image):
             upper = upper_slider.get()
             img_processed = cv2.threshold(img_gray, lower, upper, cv2.THRESH_BINARY)[1]
         else:
-            prep = PreprocessorConfig("test", block=blockSize, c=C, gauss_size=(sz,sz), gauss_sigma=sig)
+            prep = PreprocessorConfig("test", block=blockSize, c=thresh_C, gauss_size=(sz,sz), gauss_sigma=sig)
             img_processed = preprocess_image(img, prep)
 
 
@@ -179,7 +210,7 @@ def threshold(image):
             ctrs_img = np.zeros(blended_img.shape)
             cv2.drawContours(ctrs_img, ctrs, -1, (0,0,255), 1)
 
-        State.output_nopen(ctrs_img, override_name='contours', force_delete_old=True, no_print=True)
+        State.output_nopen(ctrs_img, 'contours', force_delete_old=True, no_print=True)
 
         # Blend the original image with the red overlay
         blended_img[np.all(ctrs_img == (0,0,255), axis=-1)] = ctrs_img[np.all(ctrs_img == (0,0,255), axis=-1)]

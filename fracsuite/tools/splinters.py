@@ -36,7 +36,7 @@ from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import calculate_match_count, calculate_similarity_hist, calculate_match_hist_ks
+from fracsuite.core.stochastics import similarity, similarity_count, similarity_mse, similarity_ks
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
@@ -607,7 +607,7 @@ def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens
                    xlim: Annotated[tuple[float,float], typer.Option(help='X-Limits for plot')] = (0, 2),
                    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
                    nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
-                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 50):
+                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins):
     """Plot logaritmic histograms of splinter sizes for specimens."""
     path = general.base_path
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
@@ -629,10 +629,10 @@ def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens
         legend = legend_f
 
     fig = plot_histograms(xlim, specimens, legend=legend, n=n_bins, has_legend=not nolegend)
+    State.output(fig, specimens[0].name)
 
     disp_mean_sizes(specimens)
 
-    State.output(fig, specimens[0].name)
 
 
 def disp_mean_sizes(specimens: list[Specimen]):
@@ -650,7 +650,7 @@ def plot_histograms(xlim: tuple[float,float],
                     specimens: list[Specimen],
                     legend = None,
                     plot_mean = False,
-                    n: int = 50,
+                    n: int = 30,
                     has_legend: bool = True) -> Figure:
     fig, axs = datahist_plot(xlim=xlim)
 
@@ -659,10 +659,10 @@ def plot_histograms(xlim: tuple[float,float],
             return f'{x.name}'
 
     for specimen in specimens:
-        areas = [x.area for x in specimen.splinters]
+        areas = [x.area for x in Splinter.analyze_image(specimen.get_fracture_image(), specimen.get_size_factor())]
         datahist_to_ax(axs[0], areas, n_bins=n, plot_mean=plot_mean, label=legend(specimen))
 
-    if has_legend:
+    if has_legend and len(specimens) > 1:
         fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)
 
     fig.tight_layout()
@@ -929,6 +929,7 @@ def watershed(
     assert image is not None, "No fracture image found."
 
     size_factor = specimen.get_size_factor()
+    print(size_factor)
     splinters = Splinter.analyze_image(image, px_per_mm=size_factor)
 
     # ORIGINAL output
@@ -975,25 +976,29 @@ def watershed(
     if debug:
         plotImage(rnd_splinters, "Splinters Watershed")
 
+
     # plot splinter histograms
     fig, axs = datahist_plot()
     ax = axs[0]
-    ax.set_xlabel("Splinter Size [mm²]")
-    ax.set_ylabel("PDF [-]")
-    datahist_to_ax(ax, [x.area for x in splinters], 20, as_log=True, alpha = 0.9, label='Watershed', plot_mean=False)
-    datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False)
+    ax.set_xlabel("Splinter Size $A_S$ [px²]")
+    ax.set_ylabel("PDF $P(A_S)$")
+    _, br = datahist_to_ax(ax, [x.area for x in splinters], general.hist_bins, as_log=True, alpha = 0.9, label='Watershed', plot_mean=False)
+    datahist_to_ax(ax, [x.area for x in specimen.splinters], binrange=br, as_log=True, label='Original', plot_mean=False)
     ax.legend()
+    ax.autoscale()
     fig.tight_layout()
+
     State.output(fig, specimen, override_name="splinter_sizes_watershed")
     plt.close(fig)
 
     fig, axs = datahist_plot(xlim=(0,2))
     ax = axs[0]
-    ax.set_xlabel("Splinter Size [mm²]")
-    ax.set_ylabel("CDF [-]")
-    datahist_to_ax(ax, [x.area for x in splinters], 20, as_log=True, alpha = 0.9, label='Watershed', plot_mean=False, data_mode='cdf')
-    datahist_to_ax(ax, [x.area for x in specimen.splinters], 20, as_log=True, label='Original', plot_mean=False, data_mode='cdf')
+    ax.set_xlabel("Splinter Size [px²]")
+    ax.set_ylabel("CDF")
+    datahist_to_ax(ax, [x.area for x in splinters], 50, as_log=True, alpha = 0.9, label='Watershed', plot_mean=False, data_mode='cdf')
+    datahist_to_ax(ax, [x.area for x in specimen.splinters], 50, as_log=True, label='Original', plot_mean=False, data_mode='cdf')
     ax.legend()
+    ax.autoscale()
     fig.tight_layout()
     State.output(fig, specimen, override_name="splinter_sizes_watershed_cdf")
 
@@ -1130,40 +1135,43 @@ def compare_manual(
                 nums = [len(splinters), len(label_splinters)]
             )
 
-        State.output_nopen(cont_img_alg, subfolders=[folder], override_name='watershed_contour')
-        State.output_nopen(cmp_alg_man, subfolders=[folder],
-                     override_name='compare_contours_watershed_manual')
-        State.output(cmp_alg_lab, subfolders=[folder],
-                override_name='compare_contours_watershed_label')
-        State.output_nopen(cmp_alg_leg, subfolders=[folder],
-                     override_name='compare_contours_watershed_legacy')
+        nr = folder.replace("test","")
+
+        State.output_nopen(cont_img_alg, folder, 'watershed_contour')
+        State.output_nopen(cmp_alg_man, folder, f'{nr}_compare_contours_watershed_manual')
+        State.output(cmp_alg_lab, folder, f'{nr}_compare_contours_watershed_label', to_additional=True)
+        State.output_nopen(cmp_alg_leg, folder, f'{nr}_compare_contours_watershed_legacy')
 
 
         fig,axs = datahist_plot()
         ax = axs[0]
-        ax.set_xlabel("Splinter Size [mm²]")
-        ax.set_ylabel("PDF [-]")
+        ax.set_xlabel("Splinter Size $A_S$ [px²]")
+        ax.set_ylabel("PDF $P(A_S)$ [1/px²]")
 
-        datahist_to_ax(ax, [x.area for x in splinters], 20, alpha = 0.9, label='Watershed', plot_mean=False, as_density=False)
-        # datahist_to_ax(ax, [x.area for x in manual_splinters], 20, label='Manual', plot_mean=False)
-        # datahist_to_ax(ax, [x.area for x in legacy_splinters], 20, label='Legacy', plot_mean=False)
-        datahist_to_ax(ax, [x.area for x in label_splinters], 20, label='Label', plot_mean=False, as_density=False)
-        ax.set_xlim((0,4))
+        area0 = [x.area for x in splinters]
+        area1 = [x.area for x in manual_splinters]
+
+
+        _,br = datahist_to_ax(ax, area0, n_bins=20, alpha = 0.9, label='Watershed', plot_mean=False, as_density=True)
+        # datahist_to_ax(ax, [x.area for x in manual_splinters], n_bins=20, label='Manual', plot_mean=False)
+        # datahist_to_ax(ax, [x.area for x in legacy_splinters], n_bins=20, label='Legacy', plot_mean=False)
+        datahist_to_ax(ax, area1, binrange=br, label='Label', plot_mean=False, as_density=True)
+        ax.autoscale()
         ax.legend()
 
-        State.output(fig, subfolders=[folder], override_name="splinter_sizes_compare")
+        State.output(fig, folder, f"{nr}_splinter_sizes_compare", to_additional=True)
 
-        mean_error_alg_lab = calculate_similarity_hist(
-            [x.area for x in splinters],
-            [x.area for x in label_splinters],
-            np.linspace(np.min([x.area for x in splinters]), np.max([x.area for x in splinters]), 20),
-        )
-        mean_error_alg_lab2 = calculate_match_hist_ks(
-            [x.area for x in splinters],
-            [x.area for x in label_splinters],
-            np.linspace(np.min([x.area for x in splinters]), np.max([x.area for x in splinters]), 20),
+
+        binrange = np.linspace(np.min(area0), np.max(area0), 20)
+        sims=similarity(
+            area0,
+            area1,
+            binrange
         )
 
-        print(f'Alg vs. Lab     (Mean(²)): {mean_error_alg_lab:.2f}%')
-        print(f'                     (KS): {mean_error_alg_lab2:.2f}%')
-        print(f'                      (#): {calculate_match_count(splinters,label_splinters):.2f}%')
+        with open(State.get_output_file(folder, "data.txt"), 'w') as f:
+            f.write('Similarities:\n')
+            f.write(f'Pearson: {sims[0]}\n')
+            f.write(f'MSE: {sims[1]}\n')
+            f.write(f'KS: {sims[2]}\n')
+            f.write(f'Count: {sims[3]}\n')

@@ -81,8 +81,8 @@ def preprocess_image(
     thresh_c = prep.thresh_c
 
     # Use adaptive thresholding
-    image = 255-cv2.adaptiveThreshold(image, 255, prep.thresh_adapt_mode, \
-        cv2.THRESH_BINARY_INV, thresh_block_size, thresh_c)
+    image = cv2.adaptiveThreshold(image, 255, prep.thresh_adapt_mode, \
+        cv2.THRESH_BINARY, thresh_block_size, thresh_c)
 
     if interest_region is not None:
         plotImage(image, 'PREP: ... -> Adaptive Thresh', region=interest_region)

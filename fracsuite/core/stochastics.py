@@ -1,5 +1,7 @@
+from rich import print
+
 import numpy as np
-from scipy.stats import ks_2samp
+from scipy.stats import ks_2samp, ttest_ind, chisquare
 
 def to_cdf(data):
     """
@@ -17,13 +19,13 @@ def to_cdf(data):
 
     return cdf
 
-def calculate_match_count(splinters1, splinters2):
+def similarity_count(splinters1, splinters2):
     max = np.max([len(splinters1), len(splinters2)])
     min = np.min([len(splinters1), len(splinters2)])
 
     return 100.0 * min / max
 
-def calculate_match_hist_ks(reference, measure, binrange):
+def similarity_ks(reference, measure, binrange):
     """
     Calculates the matching percentage between two sets of splinters based on their area using the KS test.
 
@@ -48,7 +50,7 @@ def calculate_match_hist_ks(reference, measure, binrange):
 
     return matching_percentage
 
-def calculate_similarity_hist(
+def similarity_mse(
     reference,
     measure,
     binrange
@@ -66,8 +68,6 @@ def calculate_similarity_hist(
     """
     reference = np.asarray(reference)
     measure = np.asarray(measure)
-    reference, _ = np.histogram(reference, bins=binrange)
-    measure, _ = np.histogram(measure, bins=binrange)
 
     # mean square error
     mse = np.mean((reference - measure) ** 2)
@@ -77,8 +77,45 @@ def calculate_similarity_hist(
     similarity = (1 - mse / max_mse) * 100
     return similarity
 
-    # max_error = np.sum((np.maximum(hist1, hist2) - np.minimum(hist1, hist2)) ** 2)
-    # mean_sqr_err = np.mean((hist2 - hist1) ** 2)
-    # matching_percentage = 100 * (1 - mean_sqr_err / max_error)
+def pearson_correlation(x, y):
+    n = len(x)
+    sum_x = np.sum(x)
+    sum_y = np.sum(y)
+    sum_x_sq = np.sum(x**2)
+    sum_y_sq = np.sum(y**2)
+    sum_xy = np.sum(x * y)
 
-    # return mean_sqr_err
+    numerator = n * sum_xy - sum_x * sum_y
+    denominator = np.sqrt((n * sum_x_sq - sum_x**2) * (n * sum_y_sq - sum_y**2))
+
+    return 100 * (numerator / denominator)
+
+def spearman_correlation(x, y):
+    n = len(x)
+    rank_x = np.argsort(np.argsort(x))
+    rank_y = np.argsort(np.argsort(y))
+
+    d = rank_x - rank_y
+    d_squared = d**2
+    sum_d_squared = np.sum(d_squared)
+
+    return 100 * (1 - (6 * sum_d_squared) / (n * (n**2 - 1)))
+
+def similarity(a, b, binrange=100):
+    count = similarity_count(a, b)
+
+    a = np.histogram(a, bins=binrange)[0]
+    b = np.histogram(b, bins=binrange)[0]
+
+    r_pearson = pearson_correlation(a, b)
+    r_spearman = spearman_correlation(a, b)
+    mean_se = similarity_mse(a, b, binrange)
+    ks = similarity_ks(a, b, binrange)
+
+    print(f"Pearson:            {r_pearson:>7.2f}%")
+    print(f"Spearman:           {r_spearman:>7.2f}%")
+    print(f"Mean squared error: {mean_se:>7.2f}%")
+    print(f"KS:                 {ks:>7.2f}%")
+    print(f"Count:              {count:>7.2f}%")
+
+    return r_pearson, r_spearman, mean_se, ks, count

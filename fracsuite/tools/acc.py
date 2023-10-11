@@ -523,14 +523,14 @@ def plot_impact(
     # plot the impact time
     if file is None:
         _,_,crack_runtime = annotate_runtimes(specimen, ax)
-        ax.axvline(drop_time - impact_time, color="red", linestyle=drop_ls)
-        ax.text(drop_time  - impact_time, 0.01, 'Drop',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+        # ax.axvline(drop_time - impact_time, color="red", linestyle=drop_ls)
+        # ax.text(drop_time  - impact_time, 0.01, 'Drop',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
 
         drop_height = specimen.fall_height_m
         drop_dur = np.sqrt(2*drop_height/g)
 
-        ax.axvline(drop_time - impact_time + drop_dur, color="red", linestyle=drop_ls)
-        ax.text(drop_time  - impact_time + drop_dur, 0.01, 'Impact',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
+        # ax.axvline(drop_time - impact_time + drop_dur, color="red", linestyle=drop_ls)
+        # ax.text(drop_time  - impact_time + drop_dur, 0.01, 'Impact',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
 
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x*time_f:.2f}"))
 
@@ -567,8 +567,6 @@ def plot_impact(
     fig.tight_layout()
     plt.show()
 
-    if specimen is not None:
-        fig.savefig(specimen.get_acc_outfile(f'impact_w_waves.{general.image_extension}'), bbox_inches="tight")
     State.output(fig, specimen)
 
 

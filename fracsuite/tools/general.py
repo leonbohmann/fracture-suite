@@ -37,8 +37,9 @@ class GeneralSettings:
         "x,y,w,h of the interest region in mm"
         self.figure_size: tuple[int,int] = (6,4)
         self.output_image_maxsize: int = 2000
-
+        self.hist_bins = 25
         self.output_paths: dict[str,str] = {}
+
 
         GeneralSettings.sub_outpath: str = ""
 
@@ -81,7 +82,7 @@ class GeneralSettings:
         with open(cfg_path, "w") as f:
             json.dump(self.__dict__, f, indent=4)
 
-    
+
 
     def update_setting(self, key: str, value: str) -> None:
         setattr(self, key, value)

@@ -213,7 +213,7 @@ def datahist_plot(
 
         # ax.xaxis.set_major_formatter(ScalarFormatter())
         ax.set_xlabel('Splinter Area [mm²]')
-        ax.set_ylabel('Probability Density (Area) [-]')
+        ax.set_ylabel('PDF $P(Area)$')
         ax.grid(True, which='both', axis='both')
 
     return fig, axs
@@ -221,7 +221,7 @@ def datahist_plot(
 def datahist_to_ax(
     ax: Axes,
     data: list[float],
-    n_bins: int = 20,
+    n_bins: int = None,
     binrange: list[float] = None,
     plot_mean: bool = True,
     label: str = None,
@@ -233,7 +233,8 @@ def datahist_to_ax(
     """Plot a histogram of the data to axes ax."""
 
     assert data_mode in ['pdf', 'cdf'], "data_mode must be either 'pdf' or 'cdf'."
-
+    if n_bins is None and binrange is None:
+        n_bins = general.hist_bins
 
     def cvt(x):
         return np.log10(x) if as_log else x
@@ -242,12 +243,16 @@ def datahist_to_ax(
         ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(x))
         ax.xaxis.set_major_formatter(ticks)
 
+    data = np.asarray(data)
     # fetch areas from splinters
-    data = [cvt(x) for x in data if x > 0]
+    data = data[data > 0]
     # ascending sort, smallest to largest
     data.sort()
 
-    binrange = binrange or np.linspace(data[0], data[-1], n_bins)
+    data = cvt(data)
+
+    if binrange is None:
+        binrange = np.linspace(data[0], data[-1], n_bins)
 
     if data_mode == 'pdf':
         # density: normalize the bins data count to the total amount of data
