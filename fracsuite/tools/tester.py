@@ -1,6 +1,7 @@
 from functools import partial
 import json
 import os
+import re
 import numpy as np
 import typer
 import cv2
@@ -11,6 +12,7 @@ from rich.progress import track, Progress
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageprocessing import preprocess_image
 from fracsuite.core.preps import PreprocessorConfig
+from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import similarity, similarity_count
 from fracsuite.tools.callbacks import main_callback
@@ -235,9 +237,18 @@ def threshold(image):
     normal_thresh_filter_var = IntVar()
     correct_light_var = IntVar()
 
-    # Load image and convert to grayscale
-    img = cv2.imread(image, cv2.IMREAD_COLOR)
-    # plot_counts(image)
+    if re.match(r'*.*.*.*', image):
+        specimen = Specimen.get(image)
+        img = specimen.get_fracture_image()
+        # take a small portion of the image
+        img = img[250:750, 250:750]
+        is_specimen = True
+    else:
+        # Load image and convert to grayscale
+        img = cv2.imread(image, cv2.IMREAD_COLOR)
+        is_specimen = False
+
+    # plot_counts(img)
 
     dir = os.path.dirname(image)
     label_path = find_file(dir, 'label.png')
@@ -341,6 +352,12 @@ def threshold(image):
             d = prep.__json__()
             d['meant_for'] = os.path.basename(image)
             json.dump(d, f, indent=4)
+
+        if is_specimen:
+            output_file = specimen.get_splinter_outfile("prep.json")
+            with open(output_file, 'w') as f:
+                d = prep.__json__()
+                json.dump(d, f, indent=4)
 
     save_state_button = tk.Button(threshold_frame, text="Save State", command=save_state)
     save_state_button.pack()

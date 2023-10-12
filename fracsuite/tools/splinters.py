@@ -50,6 +50,21 @@ app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
 
+@app.command()
+def gen(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
+    """Generate a specimen from the original image."""
+    specimen = Specimen.get(specimen_name)
+
+    fracture_image = specimen.get_fracture_image()
+    px_per_mm = 1/specimen.get_size_factor()
+    # generate splinters for the specimen
+    splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm)
+
+    # save splinters to specimen
+    output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
+    with open(output_file, 'wb') as f:
+        pickle.dump(splinters, f)
+
 @app.command(name='norm')
 def count_splinters_in_norm_region(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
@@ -1149,6 +1164,11 @@ def compare_manual(
         nr = folder.replace("test","")
 
         State.output_nopen(cont_img_alg, folder, 'watershed_contour')
+
+        State.output_nopen(cont_diff, folder, f'{nr}_compare_contours_watershed_manual_nolegend', cvt_rgb=True)
+        State.output(cont_diff_lab, folder, f'{nr}_compare_contours_watershed_label_nolegend', to_additional=True, cvt_rgb=True)
+        State.output_nopen(cont_diff_leg, folder, f'{nr}_compare_contours_watershed_legacy_nolegend', cvt_rgb=True)
+
         State.output_nopen(cmp_alg_man, folder, f'{nr}_compare_contours_watershed_manual')
         State.output(cmp_alg_lab, folder, f'{nr}_compare_contours_watershed_label', to_additional=True)
         State.output_nopen(cmp_alg_leg, folder, f'{nr}_compare_contours_watershed_legacy')

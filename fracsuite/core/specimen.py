@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sys
+from fracsuite.core.preps import PreprocessorConfig
 
 from fracsuite.core.progress import get_spinner
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -108,10 +109,10 @@ class Specimen:
         if self.loaded:
             print("[red]Specimen already loaded.")
 
-        if self.__splinters_file:
+        if self.__splinters_file_legacy:
             self.__load_splinters()
         elif log_missing_data:
-            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite.splinters[/green].")
+            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite.tools splinters gen[/green].")
 
         if self.__scalp_file is not None:
             self.__load_scalp()
@@ -214,11 +215,10 @@ class Specimen:
         self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
             and find_file(self.fracture_morph_dir, "*.bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
-        self.__splinters_file = find_file(self.splinters_path, "splinters.pkl")
-        self.__config_file = find_file(self.splinters_path, "config.pkl")
+        self.__splinters_file_legacy = find_file(self.splinters_path, "splinters.pkl")
+        self.__splinters_file = find_file(self.splinters_path, "splinters_v2.pkl")
+
         self.has_splinters = self.__splinters_file is not None
-        self.has_splinter_config = self.__config_file is not None
-        self.has_config = self.__config_file is not None
 
         if not lazy:
             self.load(log_missing)
@@ -287,6 +287,18 @@ class Specimen:
 
         raise Exception("Invalid break position.")
 
+    def get_prepconf(self) -> PreprocessorConfig | None:
+        """
+        Returns a prepconfig object or none, if not found.
+        Can be created using 'fracsuite.tools tester threshhold 8.100.Z.01'.
+        """
+        prep_file = find_file(self.splinters_path, "prep.json")
+        if prep_file is not None:
+            with open(prep_file, "r") as f:
+                return json.load(f)
+
+        return None
+
     def get_size_factor(self):
         """Returns the size factor of the specimen. mm/px."""
         realsize = self.settings['real_size_mm']
@@ -327,7 +339,7 @@ class Specimen:
             return
 
         if file is None:
-            file = self.__splinters_file
+            file = self.__splinters_file_legacy
 
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)

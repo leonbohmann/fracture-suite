@@ -1,4 +1,5 @@
 import tempfile
+from fracsuite.core.image import to_rgb
 from fracsuite.core.progress import get_progress
 from fracsuite.tools.general import GeneralSettings
 
@@ -92,6 +93,7 @@ class State:
         force_delete_old=False,
         no_print=False,
         to_additional=False,
+        cvt_rgb=False,
     ):
         State.output(
             object,
@@ -99,7 +101,8 @@ class State:
             open=False,
             force_delete_old=force_delete_old,
             no_print=no_print,
-            to_additional=to_additional
+            to_additional=to_additional,
+            cvt_rgb=cvt_rgb
         )
 
     def output(
@@ -109,6 +112,7 @@ class State:
         force_delete_old=False,
         no_print=False,
         to_additional=False,
+        cvt_rgb=False,
         **kwargs
     ):
         """
@@ -125,6 +129,10 @@ class State:
             print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
 
         assert len(names) != 0, "No output names given."
+
+        if type(object).__module__ == np.__name__:
+            if cvt_rgb:
+                object = cv2.cvtColor(object, cv2.COLOR_BGR2RGB)
 
         names = list(names)
         # file_name might be the specimen itself!
