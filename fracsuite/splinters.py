@@ -53,18 +53,27 @@ general = GeneralSettings.get()
 @app.command()
 def gen(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
     """Generate a specimen from the original image."""
-    specimen = Specimen.get(specimen_name)
+    specimen = Specimen.get(specimen_name, load=False)
+
+    if specimen.has_splinters:
+        if not typer.confirm(f"> Specimen '{specimen.name}' already has splinters. Overwrite?"):
+            return
 
     fracture_image = specimen.get_fracture_image()
     px_per_mm = 1/specimen.get_size_factor()
     prep = specimen.get_prepconf()
     # generate splinters for the specimen
+    print(f'Using  px_per_mm = {px_per_mm:.2f}')
+    print(f'            prep = "{prep.name}"')
+
+    print('Running analysis...')
     splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
 
     # save splinters to specimen
     output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
     with open(output_file, 'wb') as f:
         pickle.dump(splinters, f)
+    print(f'Saved splinters to "{output_file}"')
 
 @app.command(name='norm')
 def count_splinters_in_norm_region(
