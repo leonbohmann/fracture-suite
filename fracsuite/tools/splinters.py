@@ -23,8 +23,9 @@ from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.plotting import (
     create_splinter_colored_image,
     datahist_plot,
+    hist_abs,
     plot_image_kernel_contours,
-    plot_splinter_kernel_contours,
+    plot_splinter_movavg,
     create_splinter_sizes_image,
     datahist_to_ax,
 )
@@ -36,7 +37,7 @@ from fracsuite.core.plotting import modified_turbo
 from fracsuite.core.coloring import get_color
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import similarity, similarity_count, similarity_mse, similarity_ks
+from fracsuite.core.stochastics import similarity, similarity_count, similarity_lberror, similarity_ks
 from fracsuite.tools.state import State
 from fracsuite.tools.general import GeneralSettings
 from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
@@ -116,7 +117,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     specimen = Specimen.get(specimen_name)
     assert specimen is not None, "Specimen not found."
 
-    fig = plot_splinter_kernel_contours(specimen.get_fracture_image(),
+    fig = plot_splinter_movavg(specimen.get_fracture_image(),
                                         splinters=specimen.splinters,
                                         kernel_width=kernel_width,
                                         z_action=roughness_function,
@@ -141,7 +142,7 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     specimen = Specimen.get(specimen_name)
     assert specimen is not None, "Specimen not found."
 
-    fig = plot_splinter_kernel_contours(specimen.get_fracture_image(),
+    fig = plot_splinter_movavg(specimen.get_fracture_image(),
                                         splinters=specimen.splinters,
                                         kernel_width=kernel_width,
                                         z_action=roundness_function,
@@ -671,7 +672,8 @@ def plot_histograms(xlim: tuple[float,float],
 
 @app.command()
 def splinter_orientation_f(
-    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    w_mm: Annotated[float, typer.Option(help='Width of kernel in mm.')] = 20,
 ):
     specimen = Specimen.get(specimen_name)
     impact_pos = specimen.get_impact_position()
@@ -680,15 +682,18 @@ def splinter_orientation_f(
         orientations = [x.measure_orientation(impact_pos) for x in splinters]
         return np.mean(orientations)
 
-    fig, axs = plot_splinter_kernel_contours(
+    w_px = int(w_mm / specimen.get_size_factor())
+
+    fig, axs = plot_splinter_movavg(
         specimen.get_fracture_image(),
         specimen.splinters,
-        kernel_width=200,
+        kernel_width=w_px,
         z_action=mean_orientations,
-        clr_label="Mean Orientation Score",
+        clr_label="Mean Orientation Strength",
+        mode='rect',
     )
 
-    State.output(fig, specimen)
+    State.output(fig, specimen, to_additional=True)
 
 @app.command()
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
@@ -730,7 +735,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         max_value=1
     )
 
-    State.output(orientation_image, specimen)
+    State.output(orientation_image, specimen, to_additional=True)
 
 @app.command()
 def fracture_intensity_img(
@@ -770,25 +775,29 @@ def fracture_intensity_img(
     State.output(fig, specimen)
 
 @app.command()
-def fracture_intensity(
+def fracture_intensity_f(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
-        kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 200,
+        w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 20,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
         skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
         ):
     """Plot the intensity of the fracture morphology."""
 
     specimen = Specimen.get(specimen_name)
+    w_px = int(w_mm / specimen.get_size_factor())
 
     original_image = specimen.get_fracture_image()
 
     # this counts the splinters in the kernel by default
-    fig,axs = plot_splinter_kernel_contours(original_image,
-                                        specimen.splinters,
-                                        kernel_width,
-                                        z_action=lambda x: len(x),
-                                        plot_vertices=plot_vertices,
-                                        skip_edge=skip_edges)
+    fig,axs = plot_splinter_movavg(
+        original_image,
+        specimen.splinters,
+        w_px,
+        z_action=lambda x: len(x),
+        plot_vertices=plot_vertices,
+        clr_label="Fracture Intensity",
+        mode='rect',
+    )
 
     State.output(fig, specimen)
 
@@ -1005,6 +1014,8 @@ def watershed(
 @app.command()
 def compare_manual(
         folder: Annotated[str, typer.Argument(help=f'Subfolder of "{State.get_output_dir()}" that contains images.')],
+        x_range: Annotated[str, typer.Option(help='Comma seperated x bounds.')] = None,
+        y_range: Annotated[str, typer.Option(help='Comma seperated y bounds.')] = None,
     ):
         """
         Compare the results of different methods for detecting splinters in an image.
@@ -1016,7 +1027,7 @@ def compare_manual(
             Files "input", "marked", and "label" must be present in the folder.
         """
 
-        test_dir = os.path.join(State.get_output_dir(), folder)
+        test_dir = os.path.join(State.get_input_dir(), folder)
 
         input_img_path = find_file(test_dir, "input")
         marked_img_path = find_file(test_dir, "marked")
@@ -1040,7 +1051,7 @@ def compare_manual(
         )
 
         # get splinters from watershed
-        splinters = Splinter.analyze_image(input_img, px_per_mm=1)
+        splinters = Splinter.analyze_image(input_img)
 
 
         # get splinters from legacy method
@@ -1115,21 +1126,21 @@ def compare_manual(
 
         cmp_alg_man = label_image(
                 cont_diff,
-                'Watershed', 'red',
+                'Algorithm', 'red',
                 'Manual', 'green',
                 'Identical', matching_color,
                 nums = [len(splinters), len(manual_splinters)]
             )
         cmp_alg_leg = label_image(
                 cont_diff_leg,
-                'Watershed', 'red',
+                'Algorithm', 'red',
                 'Legacy', 'green',
                 'Identical', matching_color,
                 nums = [len(splinters), len(legacy_splinters)]
             )
         cmp_alg_lab = label_image(
                 cont_diff_lab,
-                'Watershed', 'red',
+                'Algorithm', 'red',
                 'Labeled', 'green',
                 'Identical', matching_color,
                 nums = [len(splinters), len(label_splinters)]
@@ -1143,33 +1154,56 @@ def compare_manual(
         State.output_nopen(cmp_alg_leg, folder, f'{nr}_compare_contours_watershed_legacy')
 
 
-        fig,axs = datahist_plot()
+        fig,axs = datahist_plot(
+            y_format='{0:.0f}',
+        )
         ax = axs[0]
         ax.set_xlabel("Splinter Size $A_S$ [px²]")
-        ax.set_ylabel("PDF $P(A_S)$ [1/px²]")
+        # ax.set_ylabel("PDF $P(A_S)$ [1/px²]")
+        ax.set_ylabel("$N(A_S)$ [#]")
+        area0 = np.array([x.area for x in splinters])
+        area1 = np.array([x.area for x in manual_splinters])
 
-        area0 = [x.area for x in splinters]
-        area1 = [x.area for x in manual_splinters]
+        if x_range is None:
+            _,br, d1 = datahist_to_ax(ax, area0, n_bins=30, label='Algorithm', color='red', plot_mean=False, as_density=False)
+        else:
+            low, up = [float(x) for x in x_range.split(':')]
+            br = np.linspace(low, np.log10(up), 20)
+            _,_, d1 = datahist_to_ax(ax, area0, binrange=br, label='Algorithm', color='red', plot_mean=False, as_density=False)
 
-
-        _,br = datahist_to_ax(ax, area0, n_bins=20, alpha = 0.9, label='Watershed', plot_mean=False, as_density=True)
         # datahist_to_ax(ax, [x.area for x in manual_splinters], n_bins=20, label='Manual', plot_mean=False)
         # datahist_to_ax(ax, [x.area for x in legacy_splinters], n_bins=20, label='Legacy', plot_mean=False)
-        datahist_to_ax(ax, area1, binrange=br, label='Label', plot_mean=False, as_density=True)
+        _,_,d2 = datahist_to_ax(ax, area1, binrange=br, label='Manual', color='green', plot_mean=False, as_density=False)
+        delta_area = np.abs(d1-d2)
+        plt.bar(br[:-1], delta_area, width=np.diff(br), align="edge", alpha=1, label="Difference", color="blue")
         ax.autoscale()
-        ax.legend()
+        if x_range is not None:
+            ax.set_xlim((low,np.log10(up)))
+
+        if y_range is not None:
+            low, up = [float(x) for x in y_range.split(':')]
+
+            ax.set_ylim((low,up))
+
+        ax.legend(loc='upper left')
 
         State.output(fig, folder, f"{nr}_splinter_sizes_compare", to_additional=True)
 
+        if x_range is None:
+            binrange = np.linspace(np.min(area0), np.max(area0), 20)
+        else:
+            low, up = [float(x) for x in x_range.split(':')]
+            binrange = np.linspace(low, up, 20)
 
-        binrange = np.linspace(np.min(area0), np.max(area0), 20)
         sims=similarity(
             area0,
             area1,
             binrange
         )
 
-        with open(State.get_output_file(folder, "data.txt"), 'w') as f:
+        data_file = State.get_output_file(folder, "data.txt")
+        print(f"Writing data to '{data_file}'")
+        with open(data_file, 'w') as f:
             f.write('Similarities:\n')
             f.write(f'Pearson: {sims[0]}\n')
             f.write(f'MSE: {sims[1]}\n')

@@ -6,15 +6,17 @@ from fracsuite.core.image import is_rgb, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 
+from rich import print
+
 W_FAC = 4000
 
-def lightcorrect(image):
+def lightcorrect(image, strength=5, size=8):
     # Convert to LAB color space
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2Lab)
     # Split the LAB image into different channels
     l, a, b = cv2.split(lab)
     # Apply CLAHE to L-channel
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    clahe = cv2.createCLAHE(clipLimit=strength, tileGridSize=(size,size))
     cl = clahe.apply(l)
     limg = cv2.merge((cl, a, b))
     # Convert back to BGR
@@ -61,10 +63,13 @@ def preprocess_image(
         prep = defaultPrepConfig
     rsz_fac = prep.resize_factor # x times smaller
 
-    image = sigmoid(image)
-    image = lightcorrect(image)
+    # image = sigmoid(image)
+    if prep.correct_light:
+        image = lightcorrect(image, prep.clahe_strength, prep.clahe_size)
+
     image = to_gray(image)
-    image = brightnesscorrect(image, 10)
+    if prep.lum is not None and prep.lum != 0:
+        image = brightnesscorrect(image, prep.lum)
     # image = np.clip(image - np.mean(image), 0, 255).astype(np.uint8)
 
     # Apply Gaussian blur to reduce noise and enhance edge detection

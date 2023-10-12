@@ -16,6 +16,14 @@ class PreprocessorConfig:
     thresh_adapt_mode: int
     "adaptive threshold mode"
 
+    lum: float
+    correct_light: bool
+    "Instruct preprocessor to use CLERC to correct light"
+    clahe_strength: float
+    "CLAHE strength"
+    clahe_size: int
+    "CLAHE size"
+
     def __init__(self,
                  name="",
                  block: int = 213,
@@ -23,7 +31,12 @@ class PreprocessorConfig:
                  gauss_size: tuple[int,int] = (3,3),
                  gauss_sigma: float = 1,
                  resize_factor: float = 1,
-                 adapt_mode: str = "mean"):
+                 adapt_mode: str = "mean",
+                 lum: float = None,
+                 correct_light: bool = False,
+                 clahe_strength: float = 5.0,
+                 clahe_size: int = 8,
+            ):
         self.name = name
         self.thresh_block_size = block
         self.thresh_c = c
@@ -33,6 +46,11 @@ class PreprocessorConfig:
         self.thresh_adapt_mode = 1
         self.thresh_adapt_mode : int  = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
             if adapt_mode == "gaussian" else cv2.ADAPTIVE_THRESH_MEAN_C
+
+        self.lum = lum
+        self.correct_light = correct_light
+        self.clahe_strength = clahe_strength
+        self.clahe_size = clahe_size
 
     def print(self):
         print(self.__dict__)
@@ -60,12 +78,20 @@ class PreprocessorConfig:
             adapt_mode=json_obj['thresh_adapt_mode']
         )
 
-softerPrepConfig = PreprocessorConfig("soft", block=413)
-softerPrepConfig = PreprocessorConfig("softer", block=313)
+# softerPrepConfig = PreprocessorConfig("soft", block=413)
+# softerPrepConfig = PreprocessorConfig("softer", block=313)
 # defaultPrepConfig = PreprocessorConfig("default")
-defaultPrepConfig = PreprocessorConfig("test1", block=1100, c=0, gauss_size=(3,3), gauss_sigma=0)
+# defaultPrepConfig = PreprocessorConfig("test1", block=1100, c=0, gauss_size=(3,3), gauss_sigma=0)
 # defaultPrepConfig = PreprocessorConfig("test2", block=55, c=0, gauss_size=(5,5), gauss_sigma=1)
 # defaultPrepConfig = PreprocessorConfig("test3", block=333, c=1.16, gauss_size=(11,11), gauss_sigma=8)
 # defaultPrepConfig = PreprocessorConfig("default", block=1100, c=4, gauss_size=(3,3), gauss_sigma=28)
-harderPrepConfig = PreprocessorConfig("harder", block=113)
-hardPrepConfig = PreprocessorConfig("hard", block=53)
+# harderPrepConfig = PreprocessorConfig("harder", block=113)
+# hardPrepConfig = PreprocessorConfig("hard", block=53)
+
+defaultPrepConfig = PreprocessorConfig("test1_3-final", block=68, c=0, gauss_size=(3,3), gauss_sigma=0)
+
+# defaultPrepConfig = PreprocessorConfig("test1-2", block=80, c=0, gauss_size=(3,3), gauss_sigma=9)
+# defaultPrepConfig = PreprocessorConfig("test2-2", block=41, c=1, gauss_size=(5,5),
+#                                        gauss_sigma=5,correct_light=True)
+# defaultPrepConfig = PreprocessorConfig("test3-2", block=77, c=2, gauss_size=(5,5), gauss_sigma=1, correct_light=True)
+# defaultPrepConfig = PreprocessorConfig("test3-3", block=159, c=0, gauss_size=(3,3), gauss_sigma=0, correct_light=False)

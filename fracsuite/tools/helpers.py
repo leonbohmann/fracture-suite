@@ -9,6 +9,7 @@ from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 import matplotlib.patches as mpatches
 import numpy as np
+from fracsuite.core.coloring import norm_color
 from fracsuite.core.image import to_rgb
 
 from fracsuite.tools.general import GeneralSettings
@@ -112,7 +113,7 @@ def label_image(image, *labels, title = None, nums=None, return_fig=True):
         texts = ntexts
 
     if len(labels) > 2:
-        patches = [mpatches.Patch(color=color if isinstance(color, str) else tuple(x/255 for x in color), label=label) for label, color in zip(texts, labelcolors)]
+        patches = [mpatches.Patch(color=norm_color(color), label=label) for label, color in zip(texts, labelcolors)]
         ax.legend(handles=patches, bbox_to_anchor=(1, 1), loc='upper left')
 
     if return_fig:
@@ -128,7 +129,7 @@ def annotate_image(
     cbar_title = None,
     min_value = 0,
     max_value = 1,
-    figsize_cm=(10, 8),
+    figsize=general.figure_size,
     return_fig=True,
 ):
     """Put a header in white text on top of the image.
@@ -138,8 +139,8 @@ def annotate_image(
         title (str): The title of the image.
     """
     assert max_value > min_value, "Max value must be greater than min value."
-    cm = 1/2.54
-    fig, ax = plt.subplots(figsize=(figsize_cm[0]*cm, figsize_cm[1]*cm))
+    cm = 1
+    fig, ax = plt.subplots(figsize=(figsize[0]*cm, figsize[1]*cm))
 
     ax.tick_params(
         axis='both',          # changes apply to the x-axis

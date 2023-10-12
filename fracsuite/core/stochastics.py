@@ -19,12 +19,6 @@ def to_cdf(data):
 
     return cdf
 
-def similarity_count(splinters1, splinters2):
-    max = np.max([len(splinters1), len(splinters2)])
-    min = np.min([len(splinters1), len(splinters2)])
-
-    return 100.0 * min / max
-
 def similarity_ks(reference, measure, binrange):
     """
     Calculates the matching percentage between two sets of splinters based on their area using the KS test.
@@ -50,7 +44,7 @@ def similarity_ks(reference, measure, binrange):
 
     return matching_percentage
 
-def similarity_mse(
+def similarity_lberror(
     reference,
     measure,
     binrange
@@ -78,6 +72,13 @@ def similarity_mse(
     return similarity
 
 def pearson_correlation(x, y):
+    """
+    Correlation coefficient between two variables, between -1 and 1,
+    where 1 is total positive linear correlation, 0 is no linear correlation.
+
+    Remarks:
+        - This is used to compare linear relationships.
+    """
     n = len(x)
     sum_x = np.sum(x)
     sum_y = np.sum(y)
@@ -91,6 +92,16 @@ def pearson_correlation(x, y):
     return 100 * (numerator / denominator)
 
 def spearman_correlation(x, y):
+    """
+    Assesses how well the relationship between two variables can be described
+    using a monotonic function.
+
+    Value between -1 and 1, where 1 is total positive monotonic correlation,
+    0 is no monotonic correlation, and -1 is total negative monotonic correlation.
+
+    Remarks:
+        - This is used to compare monotonic relationships, not linear relationships.
+    """
     n = len(x)
     rank_x = np.argsort(np.argsort(x))
     rank_y = np.argsort(np.argsort(y))
@@ -100,22 +111,74 @@ def spearman_correlation(x, y):
     sum_d_squared = np.sum(d_squared)
 
     return 100 * (1 - (6 * sum_d_squared) / (n * (n**2 - 1)))
+def mse(reference, measure):
+    return np.mean((reference - measure) ** 2)
 
-def similarity(a, b, binrange=100):
-    count = similarity_count(a, b)
+def nrmse(reference, measure):
+    return np.sqrt(mse(reference, measure)) / np.mean(reference)
 
-    a = np.histogram(a, bins=binrange)[0]
-    b = np.histogram(b, bins=binrange)[0]
+def detercoeff(reference, measure):
+    return (1 - mse(reference, measure) / np.var(reference)) * 100
 
-    r_pearson = pearson_correlation(a, b)
-    r_spearman = spearman_correlation(a, b)
-    mean_se = similarity_mse(a, b, binrange)
-    ks = similarity_ks(a, b, binrange)
+def smape(reference, measure):
+    return 100 * np.mean(np.abs(reference - measure) / (np.abs(reference) + np.abs(measure))/2)
+def mape(reference, measure):
+    ref = reference.copy()
+    ref[reference == 0] = 1
+    return 100 * (1-np.mean(np.abs(reference - measure) / ref))
 
-    print(f"Pearson:            {r_pearson:>7.2f}%")
-    print(f"Spearman:           {r_spearman:>7.2f}%")
-    print(f"Mean squared error: {mean_se:>7.2f}%")
-    print(f"KS:                 {ks:>7.2f}%")
-    print(f"Count:              {count:>7.2f}%")
+def mae(reference, measure):
+    return np.mean(np.abs(reference - measure))
 
-    return r_pearson, r_spearman, mean_se, ks, count
+
+
+def jaccard(x, y):
+    jaccard_index = np.sum(np.minimum(x, y)) / np.sum(np.maximum(x, y))
+    return jaccard_index * 100
+
+def similarity(reference, measure, binrange=100, no_print=False):
+    reference = np.histogram(reference, bins=binrange)[0]
+    measure = np.histogram(measure, bins=binrange)[0]
+
+    r_pearson = pearson_correlation(reference, measure)
+    r_spearman = spearman_correlation(reference, measure)
+    lb_error = similarity_lberror(reference, measure, binrange)
+    ks = similarity_ks(reference, measure, binrange)
+    jac = jaccard(reference,measure)
+    mse_val = mse(reference, measure)
+    nrmse_val = nrmse(reference, measure)
+    detercoeff_val = detercoeff(reference, measure)
+    smape_val = smape(reference, measure)
+    mape_val = mape(reference, measure)
+    count = similarity_count(reference, measure)
+    mae_val = mae(reference, measure)
+    if not no_print:
+        print(f"Pearson:            {r_pearson:>7.2f} %")
+        print(f"Spearman:           {r_spearman:>7.2f} %")
+        print(f"LB Error:           {lb_error:>7.2f} %")
+        print(f"MSE:                {mse_val:>7.2f} #²")
+        print(f"NRMSE:              {nrmse_val:>7.2f} %")
+        print(f"Deter-Coeff:        {detercoeff_val:>7.2f} %")
+        print(f"SMAPE:              {smape_val:>7.2f} %")
+        print(f"MAPE:               {mape_val:>7.2f} %")
+        print(f"Jaccard:            {jac:>7.2f} %")
+        print(f"KS:                 {ks:>7.2f} %")
+        print(f"Count:              {count:>7.2f} %")
+        print(f"MAE:                {mae_val:>7.2f} #²")
+
+    return r_pearson, r_spearman, lb_error, ks, count
+
+def similarity_count(reference,measure,binrange=100) -> float:
+    reference = np.histogram(reference, bins=binrange)[0]
+    measure = np.histogram(measure, bins=binrange)[0]
+    ref = reference.copy()
+    ref[reference == 0] = 1
+
+    # delta
+    d = np.abs(reference - measure)
+    # relative error to reference
+    err = d / ref
+    # mean error
+    err = np.mean(err)
+
+    return 100 * (1 - err)

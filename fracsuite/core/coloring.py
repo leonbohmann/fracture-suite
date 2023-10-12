@@ -30,3 +30,6 @@ def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo'):
     rgb_color = colors.to_rgba(color)[:3]
 
     return tuple(int(255 * channel) for channel in rgb_color)
+
+def norm_color(color):
+    return color if isinstance(color, str) else tuple(x/255 for x in color)

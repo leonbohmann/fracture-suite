@@ -1,3 +1,4 @@
+import tempfile
 from fracsuite.core.progress import get_progress
 from fracsuite.tools.general import GeneralSettings
 
@@ -34,7 +35,8 @@ class State:
     "The current subcommand."
     clear_output: bool = False
     "Clear the output directory of similar files when finalizing."
-
+    to_temp: bool = False
+    "Redirect all output to the temp folder."
     __progress_started: bool = False
 
     def has_progress():
@@ -127,15 +129,16 @@ class State:
         names = list(names)
         # file_name might be the specimen itself!
         file_name = names[-1]
-
+        first = names[0]
+        if hasattr(first, 'name'):
+            names[0] = first.name
+            file_name = first.name + "_" + State.current_subcommand
         if 'splinter' in State.sub_outpath:
-            if callable(b := getattr(file_name, 'put_splinter_output', None)):
-                b(object, file_name)
+            if callable(b := getattr(first, 'put_splinter_output', None)):
+                b(object, State.current_subcommand)
         elif 'acc' in State.sub_outpath:
-            if callable(b := getattr(file_name, 'put_acc_output', None)):
-                b(object, file_name)
-        if hasattr(file_name, 'name'):
-            file_name = file_name.name
+            if callable(b := getattr(first, 'put_acc_output', None)):
+                b(object, State.current_subcommand)
 
 
         out = State.get_output_file(*names, force_delete_old=force_delete_old)
@@ -146,7 +149,7 @@ class State:
             print(f"Saved to '{n}'.")
 
         if (additional_path := State.additional_output_path) is not None \
-            and to_additional:
+            and to_additional and not State.to_temp:
             add_path = State.__save_object(object, additional_path, file_name)
             if not no_print:
                 print(f" > Additional file to '{add_path}'.")
@@ -156,9 +159,24 @@ class State:
         if open:
             subprocess.Popen(['start', '', '/b', out], shell=True)
 
-    def get_output_dir():
+    def get_input_dir():
+        """Gets the input directory, which is subfolder tree resembling the command structure."""
         # sub_outpath might be set to custom output path, join will take the last valid path start
         p = os.path.join(general.out_path, State.sub_outpath)
+
+        if not os.path.exists(os.path.dirname(p)):
+            os.makedirs(os.path.dirname(p))
+
+        return p
+
+    def get_output_dir():
+        """Gets the output directory, which is subfolder tree resembling the command structure."""
+        # sub_outpath might be set to custom output path, join will take the last valid path start
+        if State.to_temp:
+            p = os.path.join(tempfile.gettempdir(), State.sub_outpath)
+        else:
+            p = os.path.join(general.out_path, State.sub_outpath)
+
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))
 
@@ -180,7 +198,9 @@ class State:
         if 'is_image' in kwargs and kwargs['is_image']:
             names[-1] = f'{State.sub_specimen}{names[-1]}.{general.image_extension}'
 
+
         p = os.path.join(State.get_output_dir(), *names)
+
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))
 
@@ -199,7 +219,7 @@ class State:
             count = 1
             while os.path.exists(p):
                 count += 1
-                p = os.path.join(general.out_path, State.sub_outpath, f'{fname} ({count}){ext}')
+                p = os.path.join(State.get_output_dir(), *names[:-1], f'{fname} ({count}){ext}')
 
 
         return p

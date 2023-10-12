@@ -13,6 +13,8 @@ from fracsuite.core.imageprocessing import closeImg, dilateImg, erodeImg, prepro
 
 from skimage.morphology import skeletonize
 
+from fracsuite.core.preps import PreprocessorConfig
+
 class Splinter:
 
     angle: float
@@ -369,7 +371,8 @@ class Splinter:
     def analyze_image(
         image,
         px_per_mm: float = 1.0,
-        skip_preprocessing: bool = False
+        skip_preprocessing: bool = False,
+        prep: PreprocessorConfig = None,
     ):
         """
         Analyze an unprocessed image and return a list of splinters.
@@ -388,9 +391,11 @@ class Splinter:
             (list[Splinter]): A list of Splinter objects representing the splinters detected in the input image.
         """
         if not skip_preprocessing:
-            thresh = preprocess_image(image)
+            # here we need a rgb image!
+            thresh = preprocess_image(image, prep)
         else:
-            thresh = image
+            image = to_rgb(image)
+            thresh = to_gray(image)
 
         plotImage(thresh, "WS: Preprocessed Image")
 
@@ -407,9 +412,9 @@ class Splinter:
 
         # Finding sure foreground area
         dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3,)
-        cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
+        # cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
         ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
-        sure_fg = erodeImg(sure_fg, it=4)
+        sure_fg = erodeImg(sure_fg, it=1)
 
         plotImages([("WS: Distance Transform", dist_transform),("WS: Sure Foreground", sure_fg)])
 

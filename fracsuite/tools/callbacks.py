@@ -11,23 +11,26 @@ general = GeneralSettings.get()
 
 
 def main_callback(
-    ctx: typer.Context,
-    add_path: Annotated[str, typer.Option(help='Set an output path for the subcommand.')] = None,
-    clear_path: Annotated[bool, typer.Option('--clear-path', help='Remove the additional output path.')] = None,
-    clear_output: Annotated[bool, typer.Option(help='Clears similar files when generating output.')] = False,
-    debug: Annotated[bool, typer.Option(help='Set a debug flag for the subcommand.')] = False):
+        ctx: typer.Context,
+        set_additional_path: Annotated[str, typer.Option(help='Set an output path for the subcommand.')] = None,
+        clear_path: Annotated[bool, typer.Option('--clear-path', help='Remove the additional output path.')] = None,
+        clear_output: Annotated[bool, typer.Option(help='Clears similar files when generating output.')] = False,
+        debug: Annotated[bool, typer.Option(help='Set a debug flag for the subcommand.')] = False,
+        no_additional: Annotated[bool, typer.Option(help='Do not use an additional output path.')] = False,
+        to_temp: Annotated[bool, typer.Option(help='Redirect all output to temp folder.')] = False,
+    ):
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
 
-    if add_path is not None:
-        general.output_paths[cmd] = add_path
+    if set_additional_path is not None:
+        general.output_paths[cmd] = set_additional_path
         general.save()
 
     if clear_path:
         general.output_paths.pop(cmd, None)
         general.save()
 
-    if cmd in general.output_paths:
+    if cmd in general.output_paths and not no_additional:
         State.additional_output_path = general.output_paths[cmd]
 
     State.sub_outpath = os.path.join(State.sub_outpath, ctx.invoked_subcommand)
@@ -40,8 +43,8 @@ def main_callback(
 
     os.makedirs(os.path.join(general.out_path, State.sub_outpath), exist_ok=True)
 
-
     State.debug = debug
+    State.to_temp = to_temp
 
 #TODO: In the future this can be used to make the commands more modular
 def specimen_callback(name_or_names_with_sigma: list[str]):

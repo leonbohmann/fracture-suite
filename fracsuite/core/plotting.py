@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 import numpy as np
-from fracsuite.core.coloring import get_color, rand_col
+from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 
 from fracsuite.core.splinter import Splinter
@@ -27,7 +27,7 @@ new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
 modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', new_colormap.colors, 256,)
 "Turbo but with starting color white."
 
-def plot_splinter_kernel_contours(
+def plot_splinter_movavg(
     original_image: np.ndarray,
     splinters: list[Splinter],
     kernel_width: float,
@@ -35,6 +35,7 @@ def plot_splinter_kernel_contours(
     clr_label: str = None,
     no_ticks: bool = True,
     plot_vertices: bool = False,
+    mode = 'contours',
     **kwargs
 ):
     """
@@ -43,6 +44,8 @@ def plot_splinter_kernel_contours(
 
     This plot does not contain any labels or titles except for the colorbar.
     """
+    assert mode in ['contours', 'rect'], "mode must be either 'contours' or 'rect'."
+
     region = np.array([original_image.shape[1], original_image.shape[0]])
     # print(f'Creating intensity plot with region={region}...')
 
@@ -51,7 +54,7 @@ def plot_splinter_kernel_contours(
         splinters,
         lambda x,r: x.in_region_px(r),
         kernel_width,
-        skip_edge=True,
+        skip_edge=False,
         skip_edge_factor=0.02
     )
 
@@ -64,7 +67,11 @@ def plot_splinter_kernel_contours(
     if plot_vertices:
             axs.scatter(X, Y, marker='o', c='red')
 
-    axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
+    if mode == 'contours':
+        axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
+    elif mode == 'rect':
+        z_im = cv2.resize(Z, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
+        axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA)
     if clr_label is not None:
         fig.colorbar(axim, label=clr_label)
 
@@ -185,11 +192,27 @@ def create_splinter_colored_image(
 
     return img
 
+def hist_abs(data1, data2, binrange):
+    data1 = np.asarray(data1)
+    data2 = np.asarray(data2)
+
+    data1 = data1[data1 > 0]
+    data2 = data2[data2 > 0]
+
+    data1.sort()
+    data2.sort()
+
+    data1, _ = np.histogram(data1, binrange, density=True)
+    data2, _ = np.histogram(data2, binrange, density=True)
+
+    return np.abs(data1-data2)
 
 def datahist_plot(
     ncols:int = 1,
     nrows:int = 1,
     xlim: tuple[float,float] = None,
+    x_format: str = "{0:.00f}",
+    y_format: str = "{0:.2f}",
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
 
@@ -205,8 +228,8 @@ def datahist_plot(
         for ax in axs:
             ax.set_xlim((0, 2))
 
-    ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(10**x))
-    ticksy = FuncFormatter(lambda x, pos: '{0:.2f}'.format(x))
+    ticks = FuncFormatter(lambda x, pos: x_format.format(10**x))
+    ticksy = FuncFormatter(lambda x, pos: y_format.format(x))
     for ax in axs:
         ax.xaxis.set_major_formatter(ticks)
         ax.yaxis.set_major_formatter(ticksy)
@@ -225,8 +248,9 @@ def datahist_to_ax(
     binrange: list[float] = None,
     plot_mean: bool = True,
     label: str = None,
+    color = None,
     as_log:bool = True,
-    alpha: float = 0.5,
+    alpha: float = 0.75,
     data_mode = 'pdf',
     as_density = True
 ) -> tuple[Any, list[float]]:
@@ -256,15 +280,17 @@ def datahist_to_ax(
 
     if data_mode == 'pdf':
         # density: normalize the bins data count to the total amount of data
-        _,_,container = ax.hist(data, bins=binrange,
+        v,_,container = ax.hist(data, bins=binrange,
                 density=as_density,
+                color=norm_color(color),
                 label=label,
                 alpha=alpha)
     elif data_mode == 'cdf':
         alpha = 1.0
         cumsum = np.cumsum(np.histogram(data, bins=binrange, density=as_density)[0])
         # density: normalize the bins data count to the total amount of data
-        container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha)
+        container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha,
+                            color=color)
         # _,_,container = ax.hist(data, bins=binrange,
         #         density=True,
         #         label=label,
@@ -275,4 +301,4 @@ def datahist_to_ax(
         mean = np.mean(data)
         ax.axvline(mean, linestyle='--', label=f"Ø={mean:.2f}mm²")
 
-    return container, binrange
+    return container, binrange, v
