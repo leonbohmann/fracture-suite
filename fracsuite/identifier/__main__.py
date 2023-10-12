@@ -13,7 +13,7 @@ from fracsuite.splinters.analyzerConfig import AnalyzerConfig
 
 from rich import print
 
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 general = GeneralSettings.get()
 

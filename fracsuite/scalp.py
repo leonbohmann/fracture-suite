@@ -5,7 +5,7 @@ Scalp data tools.
 import typer
 from rich import print
 from rich.progress import track
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 from fracsuite.core.specimen import Specimen
 

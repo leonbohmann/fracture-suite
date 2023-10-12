@@ -15,8 +15,8 @@ from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 
 from fracsuite.core.splinter import Splinter
-from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image
+from fracsuite.general import GeneralSettings
+from fracsuite.helpers import annotate_image
 
 general = GeneralSettings.get()
 
@@ -213,6 +213,7 @@ def datahist_plot(
     xlim: tuple[float,float] = None,
     x_format: str = "{0:.00f}",
     y_format: str = "{0:.2f}",
+    data_mode = 'pdf',
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
 
@@ -235,8 +236,12 @@ def datahist_plot(
         ax.yaxis.set_major_formatter(ticksy)
 
         # ax.xaxis.set_major_formatter(ScalarFormatter())
-        ax.set_xlabel('Splinter Area [mm²]')
-        ax.set_ylabel('PDF $P(Area)$')
+        if data_mode == 'pdf':
+            ax.set_xlabel('Splinter Area $A_S$ [mm²]')
+            ax.set_ylabel('PDF $P(A_S)$')
+        elif data_mode == 'cdf':
+            ax.set_xlabel('Splinter Area $A_S$ [mm²]')
+            ax.set_ylabel('CDF $C(A_S)$')
         ax.grid(True, which='both', axis='both')
 
     return fig, axs
@@ -253,8 +258,13 @@ def datahist_to_ax(
     alpha: float = 0.75,
     data_mode = 'pdf',
     as_density = True
-) -> tuple[Any, list[float]]:
-    """Plot a histogram of the data to axes ax."""
+) -> tuple[Any, list[float], Any]:
+    """
+    Plot a histogram of the data to axes ax.
+
+    Returns:
+        tuple[Any, list[float], Any]: The container, binrange and values of the histogram.
+    """
 
     assert data_mode in ['pdf', 'cdf'], "data_mode must be either 'pdf' or 'cdf'."
     if n_bins is None and binrange is None:

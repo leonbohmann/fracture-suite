@@ -6,8 +6,8 @@ import os
 from matplotlib import pyplot as plt
 import numpy as np
 import typer
-from fracsuite.tools.state import State
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.state import State
+from fracsuite.general import GeneralSettings
 from fracsuite.core.specimen import Specimen
 
 nominals_app = typer.Typer(help=__doc__)

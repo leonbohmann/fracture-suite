@@ -1,25 +1,28 @@
-from functools import partial
 import json
 import os
 import re
+import tkinter as tk
+from functools import partial
+from itertools import product
+from multiprocessing import Pool
+from tkinter import Checkbutton, Frame, IntVar, Scale
+
+import cv2
 import numpy as np
 import typer
-import cv2
-import tkinter as tk
-from tkinter import Scale, Checkbutton, IntVar, Frame
 from PIL import Image, ImageTk
-from rich.progress import track, Progress
+from rich import print
+from rich.progress import Progress, track
+
+from fracsuite.callbacks import main_callback
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageprocessing import preprocess_image
-from fracsuite.core.preps import PreprocessorConfig
+from fracsuite.core.preps import PrepMode, PreprocessorConfig
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import similarity, similarity_count
-from fracsuite.tools.callbacks import main_callback
-from fracsuite.tools.helpers import find_file
-from fracsuite.tools.state import State
-from itertools import product
-from multiprocessing import Pool
+from fracsuite.helpers import find_file
+from fracsuite.state import State
 
 tester_app = typer.Typer(callback=main_callback)
 
@@ -237,11 +240,13 @@ def threshold(image):
     normal_thresh_filter_var = IntVar()
     correct_light_var = IntVar()
 
-    if re.match(r'*.*.*.*', image):
+    if re.match(r'.*\..*\..*\..*', image):
+        print("[cyan]Specimen detected")
         specimen = Specimen.get(image)
+        image = specimen.get_splinter_outfile("dummy")
         img = specimen.get_fracture_image()
         # take a small portion of the image
-        img = img[250:750, 250:750]
+        img = img[500:1000, 500:1000]
         is_specimen = True
     else:
         # Load image and convert to grayscale
@@ -271,7 +276,7 @@ def threshold(image):
     edges = cv2.Canny(img_gray, 100, 200)
     edge_density = np.sum(edges) / (edges.shape[0] * edges.shape[1])
     blockSize = int(40*edge_density)
-    print(blockSize)
+    print('Edge density blocksize: ', blockSize)
     # Create Frames
     threshold_frame = Frame(root)
     threshold_frame.grid(row=0, column=0)
@@ -309,7 +314,7 @@ def threshold(image):
     similarity_label.pack()
 
     # Create Sliders in Bilateral Frame (Initially Hidden)
-    lower_slider = Scale(normthresh_frame, from_=1, to_=255, orient="horizontal", label="Lower Bound", command=lambda x: update_image())
+    lower_slider = Scale(normthresh_frame, from_=-1, to_=255, orient="horizontal", label="Lower Bound", command=lambda x: update_image())
     upper_slider = Scale(normthresh_frame, from_=1, to_=255, orient="horizontal", label="Max Value", command=lambda x: update_image())
     upper_slider.set(255)
     lower_slider.pack()
@@ -339,13 +344,20 @@ def threshold(image):
             sz += 1
         lum = lum_slider.get()
 
+        cl_strength = clahe_strength.get()
+        cl_size = clahe_size.get()
+
         prep = PreprocessorConfig(
-            "test",
+            specimen.name + "_prep",
+            mode=PrepMode.ADAPTIVE if not normal_thresh_filter_var.get() else PrepMode.NORMAL,
             block=blockSize,
             c=C,
             gauss_size=(sz,sz),
             gauss_sigma=sig,
-            lum = lum
+            lum = lum,
+            clahe_size=cl_size,
+            clahe_strength=cl_strength,
+            correct_light=correct_light_var.get(),
         )
 
         with open(State.get_output_file('prep_config.json'), 'w') as f:
@@ -380,23 +392,21 @@ def threshold(image):
         cl_strength = clahe_strength.get()
         cl_size = clahe_size.get()
 
-        if normal_thresh_filter_var.get():
-            lower = lower_slider.get()
-            upper = upper_slider.get()
-            img_processed = cv2.threshold(img_gray, lower, upper, cv2.THRESH_BINARY)[1]
-        else:
-            prep = PreprocessorConfig(
-                "test",
-                block=blockSize,
-                c=thresh_C,
-                gauss_size=(sz,sz),
-                gauss_sigma=sig,
-                lum=lum,
-                correct_light=correct_light_var.get(),
-                clahe_strength=cl_strength,
-                clahe_size=cl_size
-            )
-            img_processed = preprocess_image(img, prep)
+        prep = PreprocessorConfig(
+            "test",
+            block=blockSize,
+            c=thresh_C,
+            gauss_size=(sz,sz),
+            gauss_sigma=sig,
+            lum=lum,
+            correct_light=correct_light_var.get(),
+            clahe_strength=cl_strength,
+            clahe_size=cl_size,
+            mode=PrepMode.ADAPTIVE if not normal_thresh_filter_var.get() else PrepMode.NORMAL,
+            nthresh_lower=lower_slider.get(),
+            nthresh_upper=upper_slider.get()
+        )
+        img_processed = preprocess_image(img, prep)
 
 
         img_thresh = img_processed

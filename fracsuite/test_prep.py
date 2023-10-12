@@ -14,10 +14,10 @@ from fracsuite.core.image import to_gray
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
-from fracsuite.tools.callbacks import main_callback
-from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import img_part
-from fracsuite.tools.state import State
+from fracsuite.callbacks import main_callback
+from fracsuite.general import GeneralSettings
+from fracsuite.helpers import img_part
+from fracsuite.state import State
 
 general = GeneralSettings.get()
 

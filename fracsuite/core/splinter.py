@@ -343,7 +343,7 @@ class Splinter:
 
         You can create a label easily by following these steps:
 
-            1. Use fracsuite.tools tester threshold "path/to/img.ext",
+            1. Use fracsuite tester threshold "path/to/img.ext",
                 with img being the input image
             2. Try out the best fitting threshold value, the GUI will save the current
                 contours in the background to the output folder
@@ -411,7 +411,7 @@ class Splinter:
         plotImage(sure_bg, "WS: Sure Background")
 
         # Finding sure foreground area
-        dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,3,)
+        dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,0,)
         # cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
         ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
         sure_fg = erodeImg(sure_fg, it=1)

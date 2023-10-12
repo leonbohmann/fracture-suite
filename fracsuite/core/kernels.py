@@ -1,9 +1,9 @@
 from typing import Any, Callable, TypeVar
 import numpy as np
 from fracsuite.core.image import split_image
-from fracsuite.tools.state import State
+from fracsuite.state import State
 from rich.progress import track
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 class ImageKerneler():
     def __init__(

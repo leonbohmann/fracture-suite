@@ -37,7 +37,7 @@ class GeneralSettings:
         "x,y,w,h of the interest region in mm"
         self.figure_size: tuple[int,int] = (6,4)
         self.output_image_maxsize: int = 2000
-        self.hist_bins = 25
+        self.hist_bins = 30
         self.output_paths: dict[str,str] = {}
 
 
@@ -92,7 +92,7 @@ class GeneralSettings:
         print(pretty_repr(self.__dict__))
 
     def __get_cfg_file(self) -> str:
-        return os.path.join(__file__, "..", "..", "..", "config.json")
+        return os.path.join(__file__, "..", "..", "config.json")
 
     def clear(self):
         # delete cfg file

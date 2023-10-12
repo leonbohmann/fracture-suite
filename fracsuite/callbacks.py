@@ -3,9 +3,9 @@ import re
 from typing import Annotated, Any, Callable
 import typer
 from rich import print
-from fracsuite.tools.state import State
+from fracsuite.state import State
 
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 general = GeneralSettings.get()
 

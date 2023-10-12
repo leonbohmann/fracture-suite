@@ -2,7 +2,7 @@ from typing import Any
 import cv2
 from matplotlib import pyplot as plt
 from fracsuite.core.image import is_rgb, to_rgb
-from fracsuite.tools.state import State
+from fracsuite.state import State
 
 
 def plotImage(img,title:str, cvt_to_rgb: bool = True, region: tuple[int,int,int,int] = None, force=False):

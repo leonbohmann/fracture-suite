@@ -38,10 +38,10 @@ from fracsuite.core.coloring import get_color
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import similarity, similarity_count, similarity_lberror, similarity_ks
-from fracsuite.tools.state import State
-from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
-from fracsuite.tools.callbacks import main_callback
+from fracsuite.state import State
+from fracsuite.general import GeneralSettings
+from fracsuite.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
+from fracsuite.callbacks import main_callback
 from fracsuite.core.specimen import Specimen
 
 
@@ -57,8 +57,9 @@ def gen(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to l
 
     fracture_image = specimen.get_fracture_image()
     px_per_mm = 1/specimen.get_size_factor()
+    prep = specimen.get_prepconf()
     # generate splinters for the specimen
-    splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm)
+    splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
 
     # save splinters to specimen
     output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
@@ -625,7 +626,6 @@ def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens
                    nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
                    n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins):
     """Plot logaritmic histograms of splinter sizes for specimens."""
-    path = general.base_path
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
     specimens = Specimen.get_all_by(filter, lazyload=False)
 
@@ -645,7 +645,10 @@ def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens
         legend = legend_f
 
     fig = plot_histograms(xlim, specimens, legend=legend, n=n_bins, has_legend=not nolegend)
-    State.output(fig, specimens[0].name)
+    if len(specimens) == 1:
+        State.output(fig, 'loghist', spec=specimens[0])
+    else:
+        State.output(fig, specimens[0].name)
 
     disp_mean_sizes(specimens)
 
@@ -674,9 +677,12 @@ def plot_histograms(xlim: tuple[float,float],
         def legend(x):
             return f'{x.name}'
 
+    br = None
     for specimen in specimens:
-        areas = [x.area for x in Splinter.analyze_image(specimen.get_fracture_image(), specimen.get_size_factor())]
-        datahist_to_ax(axs[0], areas, n_bins=n, plot_mean=plot_mean, label=legend(specimen))
+        areas = [x.area for x in specimen.splinters]
+        _,br0,_ = datahist_to_ax(axs[0], areas, n_bins=n, binrange=br, plot_mean=plot_mean, label=legend(specimen))
+        if br is None:
+            br = br0
 
     if has_legend and len(specimens) > 1:
         fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)

@@ -12,7 +12,7 @@ import numpy as np
 from fracsuite.core.coloring import norm_color
 from fracsuite.core.image import to_rgb
 
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 general = GeneralSettings.get()
 def print_to_log(message: str):

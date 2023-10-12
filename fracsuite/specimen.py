@@ -11,7 +11,7 @@ from rich import print
 from rich.progress import track
 
 from fracsuite.core.specimen import Specimen
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 app = typer.Typer(help=__doc__)
 

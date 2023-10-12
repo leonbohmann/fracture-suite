@@ -31,8 +31,8 @@ from fracsuite.core.imageprocessing import (
     preprocess_spot_detect,
 )
 from fracsuite.core.splinter import Splinter
-from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import (
+from fracsuite.general import GeneralSettings
+from fracsuite.helpers import (
     get_specimen_path,
 )
 

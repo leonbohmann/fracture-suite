@@ -1,6 +1,14 @@
+from enum import Enum
 import cv2
 
+class PrepMode(str, Enum):
+    ADAPTIVE = 'ADAPTIVE'
+    NORMAL = 'NORMAL'
+
 class PreprocessorConfig:
+    mode: PrepMode
+    "Mode of the preprocessor. Either 'adaptive' or 'normal'."
+
     resize_factor: float
     "factor to resize input image in preprocess"
 
@@ -9,14 +17,21 @@ class PreprocessorConfig:
     gauss_sigma: float
     "gaussian sigma before adaptive thold"
 
-    thresh_block_size: int
+    athresh_block_size: int
     "adaptive threshold block size"
-    thresh_c: float
+    athresh_c: float
     "adaptive threshold c value"
-    thresh_adapt_mode: int
+    athresh_adapt_mode: int
     "adaptive threshold mode"
 
+    nthresh_lower: int
+    "lower threshold for normal thresholding"
+    nthresh_upper: int
+    "upper threshold for normal thresholding"
+
+
     lum: float
+    "Lumincance correction"
     correct_light: bool
     "Instruct preprocessor to use CLERC to correct light"
     clahe_strength: float
@@ -24,28 +39,36 @@ class PreprocessorConfig:
     clahe_size: int
     "CLAHE size"
 
-    def __init__(self,
-                 name="",
-                 block: int = 213,
-                 c: float = 0,
-                 gauss_size: tuple[int,int] = (3,3),
-                 gauss_sigma: float = 1,
-                 resize_factor: float = 1,
-                 adapt_mode: str = "mean",
-                 lum: float = None,
-                 correct_light: bool = False,
-                 clahe_strength: float = 5.0,
-                 clahe_size: int = 8,
-            ):
+    def __init__(
+        self,
+        name="default",
+        mode=PrepMode.ADAPTIVE,
+        block: int = 213,
+        c: float = 0,
+        gauss_size: tuple[int,int] = (3,3),
+        gauss_sigma: float = 1,
+        resize_factor: float = 1,
+        adapt_mode: str = "mean",
+        lum: float = None,
+        correct_light: bool = False,
+        clahe_strength: float = 5.0,
+        clahe_size: int = 8,
+        nthresh_lower: int = -1,
+        nthresh_upper: int = 255
+    ):
+        self.mode = mode
         self.name = name
-        self.thresh_block_size = block
-        self.thresh_c = c
+        self.athresh_block_size = block
+        self.athresh_c = c
         self.gauss_size = gauss_size
         self.gauss_sigma = gauss_sigma
         self.resize_factor = resize_factor
-        self.thresh_adapt_mode = 1
-        self.thresh_adapt_mode : int  = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
+        self.athresh_adapt_mode = 1
+        self.athresh_adapt_mode : int  = cv2.ADAPTIVE_THRESH_GAUSSIAN_C \
             if adapt_mode == "gaussian" else cv2.ADAPTIVE_THRESH_MEAN_C
+
+        self.nthresh_lower = nthresh_lower
+        self.nthresh_upper = nthresh_upper
 
         self.lum = lum
         self.correct_light = correct_light
@@ -56,27 +79,20 @@ class PreprocessorConfig:
         print(self.__dict__)
 
     def __json__(self):
-        return {
-            'name': self.name,
-            'thresh_block_size': self.thresh_block_size,
-            'thresh_c': self.thresh_c,
-            'gauss_size': self.gauss_size,
-            'gauss_sigma': self.gauss_sigma,
-            'resize_factor': self.resize_factor,
-            'thresh_adapt_mode': 'gaussian' if self.thresh_adapt_mode == cv2.ADAPTIVE_THRESH_GAUSSIAN_C else 'mean'
-        }
+        dic = self.__dict__.copy()
+
+        dic['thresh_adapt_mode'] = 'gaussian' if self.athresh_adapt_mode == cv2.ADAPTIVE_THRESH_GAUSSIAN_C else 'mean'
+        return dic
 
     @classmethod
     def from_json(cls, json_obj):
-        return cls(
-            name=json_obj['name'],
-            block=json_obj['thresh_block_size'],
-            c=json_obj['thresh_c'],
-            gauss_size=tuple(json_obj['gauss_size']),
-            gauss_sigma=json_obj['gauss_sigma'],
-            resize_factor=json_obj['resize_factor'],
-            adapt_mode=json_obj['thresh_adapt_mode']
-        )
+        c = cls()
+
+        for key in json_obj:
+            if hasattr(c, key):
+                setattr(c, key, json_obj[key])
+
+        return c
 
 # softerPrepConfig = PreprocessorConfig("soft", block=413)
 # softerPrepConfig = PreprocessorConfig("softer", block=313)

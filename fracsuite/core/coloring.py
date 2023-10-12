@@ -32,4 +32,7 @@ def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo'):
     return tuple(int(255 * channel) for channel in rgb_color)
 
 def norm_color(color):
+    if color is None:
+        return color
+
     return color if isinstance(color, str) else tuple(x/255 for x in color)

@@ -4,7 +4,7 @@ import numpy.typing as nptyp
 
 from fracsuite.core.image import is_rgb, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage
-from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
+from fracsuite.core.preps import PrepMode, PreprocessorConfig, defaultPrepConfig
 
 from rich import print
 
@@ -80,14 +80,23 @@ def preprocess_image(
     if interest_region is not None:
         plotImage(image, 'PREP: GaussianBlur -> Resize', region=interest_region)
 
-    # adapt blocksize and c to current image size
-    thresh_block_size = int(prep.thresh_block_size)
-    thresh_block_size = thresh_block_size + (thresh_block_size + 1 ) % 2
-    thresh_c = prep.thresh_c
 
-    # Use adaptive thresholding
-    image = cv2.adaptiveThreshold(image, 255, prep.thresh_adapt_mode, \
-        cv2.THRESH_BINARY, thresh_block_size, thresh_c)
+    if prep.mode == PrepMode.ADAPTIVE:
+        # adapt blocksize and c to current image size
+        thresh_block_size = int(prep.athresh_block_size)
+        thresh_block_size = thresh_block_size + (thresh_block_size + 1 ) % 2
+        thresh_c = prep.athresh_c
+
+        # Use adaptive thresholding
+        image = cv2.adaptiveThreshold(image, 255, prep.athresh_adapt_mode, \
+            cv2.THRESH_BINARY, thresh_block_size, thresh_c)
+    elif prep.mode == PrepMode.NORMAL:
+        # Use normal thresholding
+        if prep.nthresh_lower == -1:
+            image = cv2.threshold(image, 0, prep.nthresh_upper, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        else:
+            image = cv2.threshold(image, prep.nthresh_lower, prep.nthresh_upper, \
+            cv2.THRESH_BINARY)[1]
 
     if interest_region is not None:
         plotImage(image, 'PREP: ... -> Adaptive Thresh', region=interest_region)

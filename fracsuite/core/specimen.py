@@ -5,9 +5,9 @@ from fracsuite.core.preps import PreprocessorConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.core.splinter import Splinter
-from fracsuite.tools.helpers import checkmark, find_file
-from fracsuite.tools.state import State
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.helpers import checkmark, find_file
+from fracsuite.state import State
+from fracsuite.general import GeneralSettings
 
 import cv2
 import numpy as np
@@ -109,12 +109,12 @@ class Specimen:
         if self.loaded:
             print("[red]Specimen already loaded.")
 
-        if self.__splinters_file_legacy:
+        if self.has_splinters:
             self.__load_splinters()
         elif log_missing_data:
-            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite.tools splinters gen[/green].")
+            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite splinters gen[/green].")
 
-        if self.__scalp_file is not None:
+        if self.has_scalp:
             self.__load_scalp()
         elif log_missing_data:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
@@ -290,12 +290,13 @@ class Specimen:
     def get_prepconf(self) -> PreprocessorConfig | None:
         """
         Returns a prepconfig object or none, if not found.
-        Can be created using 'fracsuite.tools tester threshhold 8.100.Z.01'.
+        Can be created using 'fracsuite tester threshhold 8.100.Z.01'.
         """
         prep_file = find_file(self.splinters_path, "prep.json")
         if prep_file is not None:
             with open(prep_file, "r") as f:
-                return json.load(f)
+                js = json.load(f)
+                return PreprocessorConfig.from_json(js)
 
         return None
 

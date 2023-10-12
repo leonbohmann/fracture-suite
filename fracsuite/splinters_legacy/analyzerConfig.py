@@ -4,8 +4,8 @@ import cv2
 from rich import print
 import argparse
 
-from fracsuite.tools.general import GeneralSettings
-from fracsuite.tools.helpers import get_specimenname_from_path
+from fracsuite.general import GeneralSettings
+from fracsuite.helpers import get_specimenname_from_path
 
 general = GeneralSettings.get()
 

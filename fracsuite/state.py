@@ -1,7 +1,8 @@
 import tempfile
+from typing import Any
 from fracsuite.core.image import to_rgb
 from fracsuite.core.progress import get_progress
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 
 import cv2
@@ -90,6 +91,7 @@ class State:
     def output_nopen(
         object: Figure | npt.ArrayLike,
         *names: str,
+        spec: Any = None,
         force_delete_old=False,
         no_print=False,
         to_additional=False,
@@ -99,6 +101,7 @@ class State:
             object,
             *names,
             open=False,
+            spec=spec,
             force_delete_old=force_delete_old,
             no_print=no_print,
             to_additional=to_additional,
@@ -107,8 +110,9 @@ class State:
 
     def output(
         object: Figure | npt.ArrayLike,
-        *names: str,
+        *path_and_name: str,
         open=True,
+        spec: Any = None,
         force_delete_old=False,
         no_print=False,
         to_additional=False,
@@ -128,32 +132,37 @@ class State:
         if 'override_name' in kwargs:
             print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
 
-        assert len(names) != 0, "No output names given."
+        if len(path_and_name) == 0:
+            path_and_name = (State.current_subcommand,)
+
+        for x in path_and_name:
+            assert type(x) == str, "Path parts must be strings."
 
         if type(object).__module__ == np.__name__:
             if cvt_rgb:
                 object = cv2.cvtColor(object, cv2.COLOR_BGR2RGB)
 
-        names = list(names)
-        # file_name might be the specimen itself!
-        file_name = names[-1]
-        first = names[0]
-        if hasattr(first, 'name'):
-            names[0] = first.name
-            file_name = first.name + "_" + State.current_subcommand
-        if 'splinter' in State.sub_outpath:
-            if callable(b := getattr(first, 'put_splinter_output', None)):
-                b(object, State.current_subcommand)
-        elif 'acc' in State.sub_outpath:
-            if callable(b := getattr(first, 'put_acc_output', None)):
-                b(object, State.current_subcommand)
+        path_and_name = list(path_and_name)
 
+        if 'splinter' in State.sub_outpath and spec is not None:
+            if callable(b := getattr(spec, 'put_splinter_output', None)):
+                b(object, path_and_name[-1])
+        elif 'acc' in State.sub_outpath and spec is not None:
+            if callable(b := getattr(spec, 'put_acc_output', None)):
+                b(object, path_and_name[-1])
 
-        out = State.get_output_file(*names, force_delete_old=force_delete_old)
+        file_name = path_and_name[-1]
+        if spec is not None and hasattr(spec, 'name'):
+            file_name = spec.name + "_" + path_and_name[-1]
+            path_and_name[-1] = spec.name + "_" + path_and_name[-1]
+        else:
+            file_name = path_and_name[-1]
+
+        out = State.get_output_file(*path_and_name, force_delete_old=force_delete_old)
         out = State.__save_object(object, ".", out)
         # success, start process
         if not no_print:
-            n = State.sub_outpath + '\\' + '\\'.join(names) + os.path.splitext(out)[1]
+            n = State.sub_outpath + '\\' + '\\'.join(path_and_name) + os.path.splitext(out)[1]
             print(f"Saved to '{n}'.")
 
         if (additional_path := State.additional_output_path) is not None \

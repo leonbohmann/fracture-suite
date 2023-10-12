@@ -6,7 +6,7 @@ import re
 import typer
 from rich import print, inspect
 
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 app = typer.Typer(help=__doc__)
 general = GeneralSettings.get()
