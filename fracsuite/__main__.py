@@ -35,7 +35,7 @@ general = GeneralSettings.get()
 
 plt.rcParams['figure.figsize'] = general.figure_size
 plt.rc('axes', axisbelow=True) # to get grid into background
-plt.rc('grid', linestyle="--") # line style
+plt.rc('grid', linestyle="--", linewidth=0.5) # line style
 plt.rcParams.update({'font.size': 12}) # font size
 # plt.style.use('bmh')
 

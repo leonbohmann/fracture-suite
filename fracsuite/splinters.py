@@ -603,16 +603,18 @@ def create_filter_function(name_filter,
         print(f"Searching for splinters with stress in range {sigmas[0]} - {sigmas[1]}")
 
     def filter_specimens(specimen: Specimen):
-        if needs_scalp and not specimen.has_scalp:
-            return False
-        elif needs_splinters and not specimen.has_splinters:
-            return False
-        elif exclude is not None and re.match(exclude, specimen.name):
+        if exclude is not None and re.match(exclude, specimen.name):
             return False
         elif not name_filter_function(specimen, name_filter):
             return False
+        elif needs_scalp and not specimen.has_scalp:
+            print(f"Specimen '{specimen.name}' has no scalp data. Skipping.")
+            return False
         elif sigmas is not None:
             return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
+        elif needs_splinters and not specimen.has_splinters:
+            print(f"Specimen '{specimen.name}' has no splinter data. Skipping.")
+            return False
 
         return True
 
