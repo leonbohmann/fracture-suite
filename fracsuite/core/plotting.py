@@ -2,6 +2,7 @@
 Plotting helper functions
 """
 
+from enum import Enum
 from typing import Any, Callable, TypeVar
 import cv2
 import matplotlib as mpl
@@ -9,6 +10,8 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.gridspec import GridSpec
 
 import numpy as np
 from fracsuite.core.coloring import get_color, norm_color, rand_col
@@ -27,6 +30,10 @@ new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
 modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', new_colormap.colors, 256,)
 "Turbo but with starting color white."
 
+class KernelContourMode(str, Enum):
+    RECT = 'rect'
+    CONTOURS = 'contours'
+
 def plot_splinter_movavg(
     original_image: np.ndarray,
     splinters: list[Splinter],
@@ -35,7 +42,7 @@ def plot_splinter_movavg(
     clr_label: str = None,
     no_ticks: bool = True,
     plot_vertices: bool = False,
-    mode = 'contours',
+    mode: KernelContourMode = KernelContourMode.CONTOURS,
     **kwargs
 ):
     """
@@ -45,6 +52,9 @@ def plot_splinter_movavg(
     This plot does not contain any labels or titles except for the colorbar.
     """
     assert mode in ['contours', 'rect'], "mode must be either 'contours' or 'rect'."
+    assert kernel_width > 0, "kernel_width must be greater than 0."
+    assert kernel_width < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
+
 
     region = np.array([original_image.shape[1], original_image.shape[0]])
     # print(f'Creating intensity plot with region={region}...')
@@ -60,20 +70,33 @@ def plot_splinter_movavg(
 
     X, Y, Z = kernel.run(z_action, mode="area")
 
-    fig,axs = plt.subplots(figsize=general.figure_size)
+    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z)
 
+def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z):
+    fig,axs = plt.subplots(figsize=general.figure_size, layout='tight')
     axs.imshow(original_image)
 
     if plot_vertices:
             axs.scatter(X, Y, marker='o', c='red')
 
-    if mode == 'contours':
+    if mode == KernelContourMode.CONTOURS:
         axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
-    elif mode == 'rect':
+    elif mode == KernelContourMode.RECT:
         z_im = cv2.resize(Z, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
         axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA)
+
     if clr_label is not None:
-        fig.colorbar(axim, label=clr_label)
+
+        # divider = make_axes_locatable(axs)
+        # cax = divider.append_axes("right", size="15%", pad=0.1)
+        cbar = fig.colorbar(axim, label=clr_label, ax=axs)
+        # ticks = np.arange(cbar.vmin, cbar.vmax, (cbar.vmax - cbar.vmin) / 5)
+        # cbar.set_ticks(ticks)
+        # labels = [f"{x:.2f}" for x in ticks]
+        # cbar.set_ticklabels(labels)
+        # tick_list = cbar.get_ticks()
+        # tick_list = [cbar.vmin] + list(tick_list) + [cbar.vmax]
+        # cbar.set_ticks(tick_list)
 
     if no_ticks:
         axs.set_xticks([])
@@ -83,15 +106,15 @@ def plot_splinter_movavg(
     return fig, axs
 
 def plot_image_kernel_contours(image: np.ndarray,
-                   kernel_width: float,
-                    z_action: Callable[[list[Splinter]], float] = None,
-                    clr_label="Z-Value [?]",
-                    fig_title="Title",
-                    xlabel="Pixels",
-                    ylabel="Pixels",
-                    plot_vertices: bool = False,
-                    skip_edge: bool = False,
-                    ):
+        kernel_width: float,
+        z_action: Callable[[list[Splinter]], float] = None,
+        clr_label="Z-Value [?]",
+        plot_vertices: bool = False,
+        skip_edge: bool = False,
+        mode: KernelContourMode = KernelContourMode.CONTOURS,
+        exclude_points: list[tuple[int,int]] = None,
+        no_ticks = True,
+    ):
     """Create an intensity plot of the fracture.
 
     Args:
@@ -105,24 +128,9 @@ def plot_image_kernel_contours(image: np.ndarray,
 
     # print(f'Creating intensity plot with region={region}...')
     kernel = ImageKerneler(image, kernel_width, skip_edge=skip_edge)
-    X, Y, Z = kernel.run(z_action)
+    X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
 
-    fig,axs = plt.subplots()
-    axs.imshow(image)
-
-    if plot_vertices:
-        axs.scatter(X, Y, marker='o', c='red')
-
-    axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
-    fig.colorbar(axim, label=clr_label)
-    axs.xaxis.tick_top()
-    axs.xaxis.set_label_position('top')
-    axs.set_xlabel(xlabel)
-    axs.set_ylabel(ylabel)
-    axs.set_title(f'{fig_title} (h={kernel_width:.2f})')
-
-    fig.tight_layout()
-    return fig
+    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z)
 
 
 T2 = TypeVar('T2')
@@ -214,10 +222,11 @@ def datahist_plot(
     x_format: str = "{0:.00f}",
     y_format: str = "{0:.2f}",
     data_mode = 'pdf',
+    figsize=None
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
-
-    fig, axs = plt.subplots(ncols, nrows, figsize=general.figure_size, sharex=True, sharey=True)
+    figsize = figsize or general.figure_size
+    fig, axs = plt.subplots(ncols, nrows, figsize=figsize, sharex=True, sharey=True)
 
     if nrows == 1 and ncols == 1:
         axs = [axs]
@@ -294,6 +303,8 @@ def datahist_to_ax(
                 density=as_density,
                 color=norm_color(color),
                 label=label,
+                edgecolor='gray',
+                linewidth=0.5,
                 alpha=alpha)
     elif data_mode == 'cdf':
         alpha = 1.0

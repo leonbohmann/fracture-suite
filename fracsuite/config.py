@@ -13,7 +13,7 @@ general = GeneralSettings.get()
 
 
 @app.command()
-def list():
+def ls():
     inspect(general, title= "General Settings")
 
 @app.command()
@@ -24,11 +24,23 @@ def clear():
 def set(key, value):
     general = GeneralSettings.get()
 
+    print(f"Setting '{key}' to '{value}'.")
     # match input value for tuple format
-    if re.match(r"^\(.*\)$", value):
-        value = tuple(map(int, value[1:-1].split(',')))
-    elif re.match(r"^\[.*\]$", value):
-        value = list(map(int, value[1:-1].split(',')))
+    if (is_tuple := re.match(r"^\(.*\)$", value)) or (is_list := re.match(r"^\[.*\]$", value)):
+        nums= value[1:-1].split(',')
+        for i in range(len(nums)):
+            if 'cm' in nums[i]:
+                f = 2.54
+                nums[i] = nums[i].replace('cm', '').strip()
+            else:
+                f = 1
+
+            nums[i] = float(nums[i]) / f
+
+        if is_tuple:
+            value = tuple(nums)
+        elif is_list:
+            value = list(nums)
 
     if not hasattr(general, key):
         print(f"Setting '{key}' does not exist.")

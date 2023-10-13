@@ -275,15 +275,19 @@ class Specimen:
     def get_splinter_outfile(self, name: str) -> str:
         return os.path.join(self.splinters_path, name)
 
-    def get_impact_position(self):
+    def get_impact_position(self, in_px = False):
         """
         Returns the impact position of the specimen in mm.
         Depends on the setting break_pos.
+
+        Origin is top left corner!
         """
+        factor = self.get_size_factor() if in_px else 1
+
         if self.settings['break_pos'] == "center":
-            return np.array((250,250))
+            return np.array((250,250)) / factor
         elif self.settings['break_pos'] == "corner":
-            return np.array((50,50))
+            return np.array((50,50)) / factor
 
         raise Exception("Invalid break position.")
 
@@ -345,6 +349,7 @@ class Specimen:
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
 
+    @staticmethod
     def get(name: str | Specimen, load: bool = True) -> Specimen:
         """Gets a specimen by name. Raises exception, if not found."""
         if isinstance(name, Specimen):
@@ -356,6 +361,7 @@ class Specimen:
 
         return Specimen(path, lazy=not load)
 
+    @staticmethod
     def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None) \
         -> List[Specimen]:
         """
@@ -404,6 +410,7 @@ class Specimen:
         return specimen
 
     _T1 = TypeVar('_T1')
+    @staticmethod
     def get_all_by( decider: Callable[[Specimen], bool],
                     value: Callable[[Specimen], _T1 | Specimen] = None,
                     max_n: int = 1000,
@@ -475,3 +482,24 @@ class Specimen:
             data = sorted(data, key=sortby)
 
         return data
+
+    @staticmethod
+    def create(name: str, force_create = False) -> Specimen:
+        path = os.path.join(general.base_path, name)
+
+        if os.path.exists(path) and not force_create:
+            raise SpecimenException(f"Specimen '{name}' already exists.")
+
+        necessary_folders = [
+            os.path.join(path, "fracture", "acceleration"),
+            os.path.join(path, "fracture", "morphology"),
+            os.path.join(path, "scalp"),
+            os.path.join(path, "anisotropy"),
+        ]
+
+        for folder in necessary_folders:
+            os.makedirs(folder)
+
+        specimen = Specimen(path, log_missing=True)
+
+        return specimen

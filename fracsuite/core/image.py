@@ -65,11 +65,11 @@ class SplitImage:
             for j in range(self.cols):
                 part = parts[i * self.cols + j]
                 result[self.grid_size * i:self.grid_size * (i + 1),
-                       self.grid_size * j:self.grid_size * (j + 1)] = part
+                       self.grid_size * j:self.grid_size * (j + 1)] = part[0]
 
         return result
 
-    def get_part(self, i, j):
+    def get_part(self, i, j) -> tuple[Any, tuple[int, int]]:
         return self.parts[i * self.cols + j]
 
 def split_image(img, grid_size) -> SplitImage:
@@ -103,9 +103,10 @@ def split_image(img, grid_size) -> SplitImage:
             else:
                 part = img[upper:lower, left:right, :]
 
+            location = (j * grid_size, i * grid_size)
 
             # Modifizierten Teil zur Liste hinzufügen
-            parts.append(part)
+            parts.append((part, location))
 
     # Das resultierende Bild zurückgeben
     return SplitImage(parts, grid_size, cols, rows)

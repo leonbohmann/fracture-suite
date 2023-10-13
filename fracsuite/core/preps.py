@@ -104,10 +104,6 @@ class PreprocessorConfig:
 # harderPrepConfig = PreprocessorConfig("harder", block=113)
 # hardPrepConfig = PreprocessorConfig("hard", block=53)
 
-defaultPrepConfig = PreprocessorConfig("test1_3-final", block=68, c=0, gauss_size=(3,3), gauss_sigma=0)
-
-# defaultPrepConfig = PreprocessorConfig("test1-2", block=80, c=0, gauss_size=(3,3), gauss_sigma=9)
-# defaultPrepConfig = PreprocessorConfig("test2-2", block=41, c=1, gauss_size=(5,5),
-#                                        gauss_sigma=5,correct_light=True)
-# defaultPrepConfig = PreprocessorConfig("test3-2", block=77, c=2, gauss_size=(5,5), gauss_sigma=1, correct_light=True)
-# defaultPrepConfig = PreprocessorConfig("test3-3", block=159, c=0, gauss_size=(3,3), gauss_sigma=0, correct_light=False)
+# defaultPrepConfig = PreprocessorConfig("test3-final", block=61, c=0, gauss_size=(3,3), gauss_sigma=1)
+defaultPrepConfig = PreprocessorConfig("test2-final", block=61, c=0, gauss_size=(5,5), gauss_sigma=1)
+# defaultPrepConfig = PreprocessorConfig("test1-final", block=41, c=0, gauss_size=(5,5), gauss_sigma=1)

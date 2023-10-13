@@ -138,3 +138,8 @@ def disp(filter: str = None):
     for s in data:
         if s.has_scalp:
             print(f"{s.name}: {s.sig_h:.2f} (+- {s.sig_h.deviation:.2f})MPa")
+
+
+@app.command()
+def create(name):
+    Specimen.create(name)

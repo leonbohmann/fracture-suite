@@ -33,11 +33,29 @@ custom_theme = Theme({
 
 general = GeneralSettings.get()
 
-plt.rcParams['figure.figsize'] = general.figure_size
-plt.rc('axes', axisbelow=True) # to get grid into background
-plt.rc('grid', linestyle="--", linewidth=0.5) # line style
-plt.rcParams.update({'font.size': 12}) # font size
-# plt.style.use('bmh')
+params = {
+    # 'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}',
+    # 'text.usetex': True,
+    'savefig.dpi': 150,  # to adjust notebook inline plot size
+    'axes.labelsize': 12, # fontsize for x and y labels (was 10)
+    'axes.titlesize': 8,
+    'font.size': 12, # was 10
+    'legend.fontsize': 10,
+    'xtick.labelsize': 10, # was 8
+    'ytick.labelsize': 10, # was 8
+    'figure.figsize': general.figure_size,
+    # 'pdf.fonttype': 42,
+    # 'ps.fonttype': 42,
+    # 'font.family': 'Arial',
+    'axes.grid': True,
+    'axes.axisbelow': True,
+    'grid.linestyle': '--',
+    'grid.linewidth': 0.5,
+}
+plt.rcParams.update(params)
+# plt.rc('text', usetex=True)
+# plt.rc('text.latex', preamble=r'\usepackage{amsmath}\usepackage{xfrac}')
+# plt.style.use('fast')
 
 # cmap = plt.get_cmap('turbo')
 # num_colors = 10

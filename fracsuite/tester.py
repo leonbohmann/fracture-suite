@@ -110,7 +110,7 @@ def best_params_mp(image):
 
 
     # Define parameter ranges
-    block_range = np.linspace(3, 250, 20)
+    block_range = np.linspace(3, 101, 50)
 
 
     c_range = np.linspace(0, 5, 5)
@@ -148,7 +148,7 @@ def best_params_mp(image):
                     best_similarity = sim
                     best_params = params
                     progress.print("[bold green]<<< NEW BEST PARAM FOUND >>")
-                    progress.print(f"{best_params}")
+                    progress.print(f"{best_params}: {best_similarity:.2f}")
                     progress.update(task, description=f"Current best Similarity: {best_similarity}")
 
 

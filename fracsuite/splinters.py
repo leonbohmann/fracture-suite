@@ -15,12 +15,13 @@ import numpy.typing as npt
 import typer
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
-from rich import print
+from rich import inspect, print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
 from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
+    KernelContourMode,
     create_splinter_colored_image,
     datahist_plot,
     hist_abs,
@@ -30,6 +31,7 @@ from fracsuite.core.plotting import (
     datahist_to_ax,
 )
 
+from fracsuite.core.preps import defaultPrepConfig
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
@@ -74,6 +76,11 @@ def gen(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to l
     with open(output_file, 'wb') as f:
         pickle.dump(splinters, f)
     print(f'Saved splinters to "{output_file}"')
+
+@app.command()
+def show_prep():
+    """Show the default preprocessing configuration."""
+    inspect(defaultPrepConfig)
 
 @app.command(name='norm')
 def count_splinters_in_norm_region(
@@ -688,10 +695,12 @@ def plot_histograms(xlim: tuple[float,float],
         def legend(x):
             return f'{x.name}'
 
+    a = 0.7 if len(specimens) > 1 else 1
+
     br = None
     for specimen in specimens:
         areas = [x.area for x in specimen.splinters]
-        _,br0,_ = datahist_to_ax(axs[0], areas, n_bins=n, binrange=br, plot_mean=plot_mean, label=legend(specimen))
+        _,br0,_ = datahist_to_ax(axs[0], areas, alpha=a, n_bins=n, binrange=br, plot_mean=plot_mean, label=legend(specimen))
         if br is None:
             br = br0
 
@@ -772,7 +781,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 @app.command()
 def fracture_intensity_img(
     specimen_name: str,
-    kernel_width: Annotated[int, typer.Option(help='Kernel width.')] = 100,
+    w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 20,
     skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
 ):
     """
@@ -792,19 +801,23 @@ def fracture_intensity_img(
     specimen = Specimen.get(specimen_name)
 
     def mean_img_value(img_part):
-        return np.mean(img_part)
+        return np.sum(img_part[0] < 120) # np.mean(img_part[0])
 
     img = specimen.get_fracture_image()
     img = to_gray(img)
     # img = preprocess_image(img, specimen.splinter_config)
+    w_px = int(w_mm / specimen.get_size_factor())
+    fig = plot_image_kernel_contours(
+        img,
+        kernel_width=w_px,
+        z_action=mean_img_value,
+        clr_label="Black Pixels [N/A]",
+        mode=KernelContourMode.RECT,
+        skip_edge=True,
+        exclude_points=[specimen.get_impact_position(True)]
+    )
 
-    fig = plot_image_kernel_contours(img, kernel_width,
-                                     mean_img_value,
-                                     clr_label="Amnt Black",
-                                     fig_title="Fracture Intensity (Based on image mean values)",
-                                     skip_edge=skip_edges)
-
-    State.output(fig, specimen)
+    State.output(fig, spec=specimen, to_additional=True)
 
 @app.command()
 def fracture_intensity_f(
@@ -817,6 +830,7 @@ def fracture_intensity_f(
 
     specimen = Specimen.get(specimen_name)
     w_px = int(w_mm / specimen.get_size_factor())
+    print(f"Kernel width: {w_mm} mm")
 
     original_image = specimen.get_fracture_image()
 
@@ -827,11 +841,11 @@ def fracture_intensity_f(
         w_px,
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
-        clr_label="Fracture Intensity",
-        mode='rect',
+        clr_label=f"Fracture Intensity [$N/A$], $w_A,h_A$={w_mm}mm",
+        mode=KernelContourMode.RECT,
     )
 
-    State.output(fig, specimen)
+    State.output(fig, spec=specimen, to_additional=True)
 
 @app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
@@ -1193,6 +1207,7 @@ def compare_manual(
 
         fig,axs = datahist_plot(
             y_format='{0:.0f}',
+            figsize=(4,3),
         )
         ax = axs[0]
         ax.set_xlabel("Splinter Size $A_S$ [px²]")
@@ -1205,7 +1220,8 @@ def compare_manual(
             _,br, d1 = datahist_to_ax(ax, area0, n_bins=30, label='Algorithm', color='red', plot_mean=False, as_density=False)
         else:
             low, up = [float(x) for x in x_range.split(':')]
-            br = np.linspace(low, np.log10(up), 20)
+            low = low if low > 0 else 1
+            br = np.linspace(np.log10(low) if low > 0 else 1, np.log10(up), 20)
             _,_, d1 = datahist_to_ax(ax, area0, binrange=br, label='Algorithm', color='red', plot_mean=False, as_density=False)
 
         # datahist_to_ax(ax, [x.area for x in manual_splinters], n_bins=20, label='Manual', plot_mean=False)
@@ -1215,7 +1231,7 @@ def compare_manual(
         plt.bar(br[:-1], delta_area, width=np.diff(br), align="edge", alpha=1, label="Difference", color="blue")
         ax.autoscale()
         if x_range is not None:
-            ax.set_xlim((low,np.log10(up)))
+            ax.set_xlim((np.log10(low),np.log10(up)))
 
         if y_range is not None:
             low, up = [float(x) for x in y_range.split(':')]

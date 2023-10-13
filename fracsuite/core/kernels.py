@@ -10,15 +10,18 @@ class ImageKerneler():
         self,
         image,
         grid,
-        skip_edge=False
+        skip_edge=False,
+        skip_edge_factor=0.05,
     ):
         self.image = image
         self.grid = grid
         self.skip_edge = skip_edge
+        self.skip_edge_factor = skip_edge_factor
 
     def run(
         self,
         z_value: Callable[[Any], float] = None,
+        exclude_points: list[tuple[int,int]] = None,
     ):
         px_w, px_h = (self.image.shape[1], self.image.shape[0])
 
@@ -44,12 +47,26 @@ class ImageKerneler():
         # print(result.shape)
         # print(len(xd))
         # print(len(yd))
-        skip_i = int(len(xd)*0.1) if self.skip_edge else 0
+        skip_i = int(len(xd)*self.skip_edge_factor) if self.skip_edge else 0
         # Iterate over all points and find splinters in the area of X, Y and intensity_h
         for i in track(range(skip_i,len(xd)-skip_i), transient=True,
                     description="Calculating intensity..."):
             for j in range(skip_i,len(yd)-skip_i):
                 part = split.get_part(i,j)
+
+                loc = part[1]
+                is_excluded = False
+                # Skip points that are in the exclude list
+                if exclude_points is not None:
+                    for x,y in exclude_points:
+                        if x >= loc[1] and x <= loc[1] + self.grid \
+                            and y >= loc[0] and y <= loc[0] + self.grid:
+                            result[j, i] = 0
+                            is_excluded = True
+                            break
+
+                if is_excluded:
+                    continue
 
                 value = z_value(part)
 
