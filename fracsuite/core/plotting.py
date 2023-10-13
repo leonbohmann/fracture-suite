@@ -24,6 +24,7 @@ from fracsuite.helpers import annotate_image
 general = GeneralSettings.get()
 
 CONTOUR_ALPHA = 0.8
+KERNEL_FIG_SIZE = (7,4)
 
 new_colormap  = mpl.colormaps['turbo'].resampled(7)
 new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
@@ -65,15 +66,17 @@ def plot_splinter_movavg(
         lambda x,r: x.in_region_px(r),
         kernel_width,
         skip_edge=False,
-        skip_edge_factor=0.02
+        skip_edge_factor=0.02,
+
     )
 
     X, Y, Z = kernel.run(z_action, mode="area")
 
-    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z)
+    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z,figsize=KERNEL_FIG_SIZE)
 
-def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z):
-    fig,axs = plt.subplots(figsize=general.figure_size, layout='tight')
+def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=None):
+    figsize = figsize or general.figure_size
+    fig,axs = plt.subplots(figsize=figsize)
     axs.imshow(original_image)
 
     if plot_vertices:
@@ -86,10 +89,23 @@ def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode
         axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA)
 
     if clr_label is not None:
-
+        # box = axs.get_position()
+        # axs.set_position([box.x0, box.y0, box.width * 0.9, box.height])
         # divider = make_axes_locatable(axs)
-        # cax = divider.append_axes("right", size="15%", pad=0.1)
-        cbar = fig.colorbar(axim, label=clr_label, ax=axs)
+        # cax = divider.append_axes("right", size="8%", pad=0.1)
+        # cax.grid(False)
+        # cbar_ax = fig.add_axes([axs.get_position().x1 + 0.01, axs.get_position().y0, 0.03, axs.get_position().height])
+        cbar = fig.colorbar(axim, label=clr_label)
+
+        #TODO: CREATE manual ticks for cbar and align first bottom and last top
+        for t in cbar.ax.get_yticklabels():
+            t.set_horizontalalignment('right')
+            t.set_x(3.5)
+
+
+
+
+
         # ticks = np.arange(cbar.vmin, cbar.vmax, (cbar.vmax - cbar.vmin) / 5)
         # cbar.set_ticks(ticks)
         # labels = [f"{x:.2f}" for x in ticks]
@@ -103,6 +119,10 @@ def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode
         axs.set_yticks([])
 
     fig.tight_layout()
+    # height_desired = figsize[1]  # For example, 6 inches. Adjust as needed.
+    # current_size = fig.get_size_inches()
+    # new_width = current_size[0] * (height_desired / current_size[1])
+    # fig.set_size_inches(new_width, height_desired)
     return fig, axs
 
 def plot_image_kernel_contours(image: np.ndarray,
@@ -129,8 +149,8 @@ def plot_image_kernel_contours(image: np.ndarray,
     # print(f'Creating intensity plot with region={region}...')
     kernel = ImageKerneler(image, kernel_width, skip_edge=skip_edge)
     X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
-
-    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z)
+    Z = Z / np.max(Z)
+    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=KERNEL_FIG_SIZE)
 
 
 T2 = TypeVar('T2')

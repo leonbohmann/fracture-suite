@@ -841,7 +841,7 @@ def fracture_intensity_f(
         w_px,
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
-        clr_label=f"Fracture Intensity [$N/A$], $w_A,h_A$={w_mm}mm",
+        clr_label="Fracture Intensity [$N/A$]", #, $w_A,h_A$={w_mm}mm
         mode=KernelContourMode.RECT,
     )
 
