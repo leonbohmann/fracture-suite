@@ -62,10 +62,10 @@ class State:
                 if isinstance(object, tuple):
                     if isinstance(object[0], Figure):
                         out_path = os.path.join(dir, *sub_path) + f'.{general.plot_extension}'
-                        object[0].savefig(out_path, dpi=200, bbox_inches='tight', pad_inches=0)
+                        object[0].savefig(out_path, dpi=200, bbox_inches='tight') #, pad_inches=0
                 elif isinstance(object, Figure):
                     out_path = os.path.join(dir, *sub_path) + f'.{general.plot_extension}'
-                    object.savefig(out_path, dpi=200, bbox_inches='tight', pad_inches=0)
+                    object.savefig(out_path, dpi=200, bbox_inches='tight') #, pad_inches=0
                 elif type(object).__module__ == np.__name__:
                     out_path = os.path.join(dir, *sub_path) + f'.{general.image_extension}'
                     image = object
