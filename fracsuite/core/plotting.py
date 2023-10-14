@@ -1,35 +1,80 @@
 """
 Plotting helper functions
 """
+from __future__ import annotations
 
+import tempfile
 from enum import Enum
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable
+
 import cv2
 import matplotlib as mpl
+import matplotlib.patches as mpatches
+import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.gridspec import GridSpec
 
-import numpy as np
 from fracsuite.core.coloring import get_color, norm_color, rand_col
+from fracsuite.core.image import to_rgb
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
-
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
-from fracsuite.helpers import annotate_image
 
 general = GeneralSettings.get()
 
 CONTOUR_ALPHA = 0.8
-KERNEL_FIG_SIZE = (7,4)
 
 new_colormap  = mpl.colormaps['turbo'].resampled(7)
 new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
 modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', new_colormap.colors, 256,)
 "Turbo but with starting color white."
+
+def get_figure_size_fraction(wf, hf=None, dimf=1.2) -> tuple[tuple[float,float],float]:
+    """Set figure dimensions to avoid scaling in LaTeX.
+
+    Parameters
+    ----------
+        width: float
+            Document textwidth or columnwidth in pts
+        fraction: float, optional
+            Fraction of the width which you wish the figure to occupy
+
+    Returns
+    -------
+        fig_dim: tuple
+            Dimensions of figure in inches
+        fraction: float
+            The fraction, so it can be appended to the filename.
+    """
+    # Width of figure (in pts)
+    fig_width_pt = general.document_width_pt * wf
+
+    # Convert from pt to inches
+    inches_per_pt = 1 / 72.27
+
+    # Golden ratio to set aesthetic figure height
+    # https://disq.us/p/2940ij3
+    golden_ratio = (5**.5 - 1) / 2
+
+    # Figure width in inches
+    fig_width_in = fig_width_pt * inches_per_pt * dimf
+    # Figure height in inches
+    fig_height_in = fig_width_in * (hf if hf is not None else golden_ratio)
+
+    fig_dim = (fig_width_in, fig_height_in)
+
+    return fig_dim
+
+def to_img(fig):
+    fig.tight_layout()
+    temp_file = tempfile.mkstemp("TEMP_FIG_TO_IMG.png")[1]
+    fig.savefig(temp_file, dpi=300, bbox_inches='tight', pad_inches=0)
+    plt.close(fig)
+    return to_rgb(cv2.imread(temp_file))
+
+
 
 class KernelContourMode(str, Enum):
     RECT = 'rect'
@@ -44,6 +89,7 @@ def plot_splinter_movavg(
     no_ticks: bool = True,
     plot_vertices: bool = False,
     mode: KernelContourMode = KernelContourMode.CONTOURS,
+    w_fraction = 1.0,
     **kwargs
 ):
     """
@@ -67,15 +113,15 @@ def plot_splinter_movavg(
         kernel_width,
         skip_edge=False,
         skip_edge_factor=0.02,
-
     )
 
     X, Y, Z = kernel.run(z_action, mode="area")
 
-    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z,figsize=KERNEL_FIG_SIZE)
+    figsize, fraction = get_figure_size_fraction(w_fraction)
 
-def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=None):
-    figsize = figsize or general.figure_size
+    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=figsize)
+
+def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize):
     fig,axs = plt.subplots(figsize=figsize)
     axs.imshow(original_image)
 
@@ -134,6 +180,7 @@ def plot_image_kernel_contours(image: np.ndarray,
         mode: KernelContourMode = KernelContourMode.CONTOURS,
         exclude_points: list[tuple[int,int]] = None,
         no_ticks = True,
+        w_fraction = 1.0,
     ):
     """Create an intensity plot of the fracture.
 
@@ -150,21 +197,23 @@ def plot_image_kernel_contours(image: np.ndarray,
     kernel = ImageKerneler(image, kernel_width, skip_edge=skip_edge)
     X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
     Z = Z / np.max(Z)
-    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=KERNEL_FIG_SIZE)
+
+    figsize, _ = get_figure_size_fraction(w_fraction)
+    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=figsize)
 
 
-T2 = TypeVar('T2')
-def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tuple[Figure, Axes]:
-    """Plot the values of a list of objects.
+# T2 = TypeVar('T2')
+# def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tuple[Figure, Axes]:
+#     """Plot the values of a list of objects.
 
-    Args:
-        values (list[T2]): The values to plot.
-        values_func (Callable[[T2], Any]): The function that returns the value to plot.
-    """
-    fig, axs = plt.subplots(1, len(values))
-    for i,x in enumerate(values):
-        values_func(x, axs[i])
-    return fig,axs
+#     Args:
+#         values (list[T2]): The values to plot.
+#         values_func (Callable[[T2], Any]): The function that returns the value to plot.
+#     """
+#     fig, axs = plt.subplots(1, len(values))
+#     for i,x in enumerate(values):
+#         values_func(x, axs[i])
+#     return fig,axs
 
 def create_splinter_sizes_image(
     splinters: list[Splinter],
@@ -242,10 +291,10 @@ def datahist_plot(
     x_format: str = "{0:.00f}",
     y_format: str = "{0:.2f}",
     data_mode = 'pdf',
-    figsize=None
+    fig_fracw = 1.0,
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
-    figsize = figsize or general.figure_size
+    figsize = get_figure_size_fraction(fig_fracw)
     fig, axs = plt.subplots(ncols, nrows, figsize=figsize, sharex=True, sharey=True)
 
     if nrows == 1 and ncols == 1:
@@ -343,3 +392,145 @@ def datahist_to_ax(
         ax.axvline(mean, linestyle='--', label=f"Ø={mean:.2f}mm²")
 
     return container, binrange, v
+
+
+def label_image(
+    image,
+    *labels,
+    title = None,
+    nums=None,
+    return_fig=True,
+    fig_wfrac=1.0,
+):
+    """
+    Add labels to an image.
+
+    Args:
+        image (numpy.ndarray): The image to label.
+        labels: A variable number of label-color pairs. Labels must be a multiple of 2.
+        title (str, optional): The title of the plot. Defaults to None.
+        nums (list, optional): A list of numbers to append to the labels. Defaults to None.
+        return_fig (bool, optional): Whether to return the figure object. Defaults to True.
+        fig_wfrac (float, optional): The width fraction of the figure. Defaults to 1.0.
+    Returns:
+        matplotlib.figure.Figure or numpy.ndarray: The labeled image as a figure object or numpy array.
+    """
+
+    assert len(labels) % 2 == 0, "Labels must be a multiple of 2."
+
+    texts = labels[::2]
+    labelcolors = labels[1::2]
+
+    fig, ax = plt.subplots(figsize=get_figure_size_fraction(fig_wfrac))
+    ax.imshow(image)
+    ax.axis('off')
+
+    if title:
+        plt.title(title)
+
+    if nums is not None:
+        ntexts = []
+        for i, text in enumerate(texts):
+            if len(nums) > i:
+                ntexts.append(f"{text} ({nums[i]})")
+            else:
+                ntexts.append(text)
+        texts = ntexts
+
+    if len(labels) > 2:
+        patches = [mpatches.Patch(color=norm_color(color), label=label) for label, color in zip(texts, labelcolors)]
+        ax.legend(handles=patches, bbox_to_anchor=(1, 1), loc='upper left')
+
+    if return_fig:
+        fig.tight_layout()
+        return fig
+    return to_img(fig)
+
+
+def annotate_image(
+    image,
+    title = None,
+    cbar_title = None,
+    min_value = 0,
+    max_value = 1,
+    fig_wfrac = 1.0,
+    return_fig=True,
+):
+    """Put a header in white text on top of the image.
+
+    Args:
+        image (Image): cv2.imread
+        title (str): The title of the image.
+    """
+    assert max_value > min_value, "Max value must be greater than min value."
+
+    figsize = get_figure_size_fraction(fig_wfrac)
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.tick_params(
+        axis='both',          # changes apply to the x-axis
+        which='both',      # both major and minor ticks are affected
+        bottom=False,      # ticks along the bottom edge are off
+        top=False,
+        left=False,
+        right=False,
+        labelbottom=False,
+        labelleft=False # labels along the bottom edge are off
+    )
+
+    if title is not None:
+        ax.set_title(title)
+
+    im = ax.imshow(image, cmap='turbo', vmin=min_value, vmax=max_value, aspect='equal')
+    if cbar_title is not None:
+        fig.colorbar(mappable=im, ax=ax, label=cbar_title)
+
+    if return_fig:
+        fig.tight_layout()
+        return (fig, fig_wfrac)
+
+    return (to_img(fig), fig_wfrac)
+
+def annotate_images(
+    images,
+    title = None,
+    cbar_title = None,
+    min_value = 0,
+    max_value = 1,
+    figsize_cm=(12, 8),
+    return_fig = False
+):
+    """Put a header in white text on top of the image.
+
+    Args:
+        image (Image): cv2.imread
+        title (str): The title of the image.
+    """
+    assert max_value > min_value, "Max value must be greater than min value."
+    cm = 1/2.54
+    fig, axs = plt.subplots(1,len(images), figsize=(figsize_cm[0]*cm * len(images), figsize_cm[1]*cm))
+    for ax in axs:
+        ax.tick_params(
+            axis='both',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False,
+            left=False,
+            right=False,
+            labelbottom=False,
+            labelleft=False # labels along the bottom edge are off
+        )
+
+    if title is not None:
+        fig.suptitle(title)
+
+    for ax,image in zip(axs, images):
+        im = ax.imshow(image, cmap='turbo', vmin=min_value, vmax=max_value, aspect='equal')
+
+    if cbar_title is not None:
+        fig.colorbar(mappable=im, ax=axs[:-1], label=cbar_title)
+
+    if return_fig:
+        fig.tight_layout()
+        return fig
+    return to_img(fig)

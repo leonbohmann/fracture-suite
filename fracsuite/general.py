@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import Enum
 
 import json
 import os
@@ -39,7 +40,7 @@ class GeneralSettings:
         self.output_image_maxsize: int = 2000
         self.hist_bins = 30
         self.output_paths: dict[str,str] = {}
-
+        self.document_width_pt: float = 418.25555
 
         GeneralSettings.sub_outpath: str = ""
 

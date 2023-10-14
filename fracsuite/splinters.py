@@ -24,7 +24,7 @@ from fracsuite.core.plotting import (
     KernelContourMode,
     create_splinter_colored_image,
     datahist_plot,
-    hist_abs,
+    get_figure_size_fraction,
     plot_image_kernel_contours,
     plot_splinter_movavg,
     create_splinter_sizes_image,
@@ -35,14 +35,14 @@ from fracsuite.core.preps import defaultPrepConfig
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
-from fracsuite.core.plotting import modified_turbo
+from fracsuite.core.plotting import modified_turbo, annotate_image, label_image
 from fracsuite.core.coloring import get_color
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import similarity, similarity_count, similarity_lberror, similarity_ks
+from fracsuite.core.stochastics import similarity
 from fracsuite.state import State
 from fracsuite.general import GeneralSettings
-from fracsuite.helpers import annotate_image, annotate_images, bin_data, find_file, find_files, label_image
+from fracsuite.helpers import bin_data, find_file, find_files
 from fracsuite.callbacks import main_callback
 from fracsuite.core.specimen import Specimen
 
@@ -773,7 +773,8 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         orientation_image,
         cbar_title='Orientation Strength',
         min_value=0,
-        max_value=1
+        max_value=1,
+        fig_wfrac=0.8
     )
 
     State.output(orientation_image, specimen, to_additional=True)
@@ -1062,6 +1063,7 @@ def compare_manual(
         folder: Annotated[str, typer.Argument(help=f'Subfolder of "{State.get_output_dir()}" that contains images.')],
         x_range: Annotated[str, typer.Option(help='Comma seperated x bounds.')] = None,
         y_range: Annotated[str, typer.Option(help='Comma seperated y bounds.')] = None,
+        no_ylabs: Annotated[bool, typer.Option(help='Remove y ticks.')] = False,
     ):
         """
         Compare the results of different methods for detecting splinters in an image.
@@ -1175,21 +1177,21 @@ def compare_manual(
                 'Algorithm', 'red',
                 'Manual', 'green',
                 'Identical', matching_color,
-                nums = [len(splinters), len(manual_splinters)]
+                nums = [len(splinters), len(manual_splinters)],
             )
         cmp_alg_leg = label_image(
                 cont_diff_leg,
                 'Algorithm', 'red',
                 'Legacy', 'green',
                 'Identical', matching_color,
-                nums = [len(splinters), len(legacy_splinters)]
+                nums = [len(splinters), len(legacy_splinters)],
             )
         cmp_alg_lab = label_image(
                 cont_diff_lab,
                 'Algorithm', 'red',
                 'Labeled', 'green',
                 'Identical', matching_color,
-                nums = [len(splinters), len(label_splinters)]
+                nums = [len(splinters), len(label_splinters)],
             )
 
         nr = folder.replace("test","")
@@ -1205,14 +1207,15 @@ def compare_manual(
         State.output_nopen(cmp_alg_leg, folder, f'{nr}_compare_contours_watershed_legacy')
 
 
+        fig_wfrac = 0.3
         fig,axs = datahist_plot(
             y_format='{0:.0f}',
-            figsize=(4,3),
+            fig_fracw=fig_wfrac,
         )
         ax = axs[0]
         ax.set_xlabel("Splinter Size $A_S$ [px²]")
         # ax.set_ylabel("PDF $P(A_S)$ [1/px²]")
-        ax.set_ylabel("$N(A_S)$ [#]")
+        ax.set_ylabel("$N(A_S)$")
         area0 = np.array([x.area for x in splinters])
         area1 = np.array([x.area for x in manual_splinters])
 
@@ -1238,9 +1241,12 @@ def compare_manual(
 
             ax.set_ylim((low,up))
 
-        ax.legend(loc='upper left')
+        # ax.legend(loc='upper left')
+        if no_ylabs:
+            ax.set_yticklabels([])
+            ax.set_ylabel("")
 
-        State.output(fig, folder, f"{nr}_splinter_sizes_compare", to_additional=True)
+        State.output(fig, folder, f"{nr}_splinter_sizes_compare", to_additional=True, width_fraction=fig_wfrac)
 
         if x_range is None:
             binrange = np.linspace(np.min(area0), np.max(area0), 20)

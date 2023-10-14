@@ -32,21 +32,29 @@ custom_theme = Theme({
 })
 
 general = GeneralSettings.get()
-
+    # # Use LaTeX to write all text
+    # "text.usetex": True,
+    # "font.family": "serif",
+    # # Use 10pt font in plots, to match 10pt font in document
+    # "axes.labelsize": 10,
+    # "font.size": 10,
+    # # Make the legend/label fonts a little smaller
+    # "legend.fontsize": 8,
+    # "xtick.labelsize": 8,
+    # "ytick.labelsize": 8
 params = {
-    # 'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}',
-    # 'text.usetex': True,
+    'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}\usepackage{mathpazo}',
+    'text.usetex': True,
     'savefig.dpi': 150,  # to adjust notebook inline plot size
-    'axes.labelsize': 12, # fontsize for x and y labels (was 10)
+    'axes.labelsize': 9, # fontsize for x and y labels (was 10)
     'axes.titlesize': 8,
-    'font.size': 12, # was 10
-    'legend.fontsize': 10,
-    'xtick.labelsize': 10, # was 8
-    'ytick.labelsize': 10, # was 8
-    'figure.figsize': general.figure_size,
+    'font.size': 10, # was 10
+    'legend.fontsize': 8,
+    'xtick.labelsize': 8, # was 8
+    'ytick.labelsize': 8, # was 8
     # 'pdf.fonttype': 42,
     # 'ps.fonttype': 42,
-    # 'font.family': 'Arial',
+    'font.family': 'serif',
     'axes.grid': True,
     'axes.axisbelow': True,
     'grid.linestyle': '--',

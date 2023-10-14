@@ -56,18 +56,20 @@ class State:
 
     def __save_object(object, dir, *sub_path):
         saved = False
+        out_path = os.path.join(dir, *sub_path)  + f'_w{object[1]:.1f}'
+        object = object[0]
         while not saved:
             try:
                 # check how to save object
                 if isinstance(object, tuple):
                     if isinstance(object[0], Figure):
-                        out_path = os.path.join(dir, *sub_path) + f'.{general.plot_extension}'
-                        object[0].savefig(out_path, dpi=200, bbox_inches='tight') #, pad_inches=0
+                        out_path += f'.{general.plot_extension}'
+                        object[0].savefig(out_path, dpi=200, bbox_inches='tight', pad_inches=0)
                 elif isinstance(object, Figure):
-                    out_path = os.path.join(dir, *sub_path) + f'.{general.plot_extension}'
-                    object.savefig(out_path, dpi=200, bbox_inches='tight') #, pad_inches=0
+                    out_path += f'.{general.plot_extension}'
+                    object.savefig(out_path, dpi=200, bbox_inches='tight', pad_inches=0)
                 elif type(object).__module__ == np.__name__:
-                    out_path = os.path.join(dir, *sub_path) + f'.{general.image_extension}'
+                    out_path += f'.{general.image_extension}'
                     image = object
                     # f = np.max(image.shape[:2]) / general.output_image_maxsize
 
@@ -96,6 +98,7 @@ class State:
         no_print=False,
         to_additional=False,
         cvt_rgb=False,
+        width_fraction=1.0,
     ):
         State.output(
             object,
@@ -105,7 +108,8 @@ class State:
             force_delete_old=force_delete_old,
             no_print=no_print,
             to_additional=to_additional,
-            cvt_rgb=cvt_rgb
+            cvt_rgb=cvt_rgb,
+            width_fraction=width_fraction
         )
 
     def output(
@@ -117,6 +121,7 @@ class State:
         no_print=False,
         to_additional=False,
         cvt_rgb=False,
+        width_fraction=1.0,
         **kwargs
     ):
         """
@@ -132,15 +137,18 @@ class State:
         if 'override_name' in kwargs:
             print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
 
+        assert not isinstance(object, tuple), "Object must not be a tuple."
+        object = (object, width_fraction)
+
         if len(path_and_name) == 0:
             path_and_name = (State.current_subcommand,)
 
         for x in path_and_name:
             assert type(x) == str, "Path parts must be strings."
 
-        if type(object).__module__ == np.__name__:
+        if type(object[0]).__module__ == np.__name__:
             if cvt_rgb:
-                object = cv2.cvtColor(object, cv2.COLOR_BGR2RGB)
+                object = (cv2.cvtColor(object[0], cv2.COLOR_BGR2RGB), object[1])
 
         path_and_name = list(path_and_name)
 
@@ -157,6 +165,7 @@ class State:
             path_and_name[-1] = spec.name + "_" + path_and_name[-1]
         else:
             file_name = path_and_name[-1]
+
 
         out = State.get_output_file(*path_and_name, force_delete_old=force_delete_old)
         out = State.__save_object(object, ".", out)
