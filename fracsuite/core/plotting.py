@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any, Callable
 
 import cv2
+from deprecated import deprecated
 import matplotlib as mpl
 import matplotlib.patches as mpatches
 import numpy as np
@@ -31,15 +32,56 @@ new_colormap.colors[0] = (1, 1, 1, 0)  # (R, G, B, Alpha)
 modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', new_colormap.colors, 256,)
 "Turbo but with starting color white."
 
-def get_figure_size_fraction(wf, hf=None, dimf=1.2) -> tuple[tuple[float,float],float]:
+
+class FigWidth(str, Enum):
+    """ Figwidth factor for different figure configurations! """
+    ROW1 = 'row1'
+    "The width of a figure in a row with one figure."
+    ROW2 = 'row2'
+    "The width of a figure in a row with two figures."
+    ROW3 = 'row3'
+    "The width of a figure in a row with three figures."
+
+
+def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
+    """
+    Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.
+
+    Args:
+        w (FigWidth): The width factor of the figure.
+        hf (Optional[float]): The height factor of the figure. Defaults to None.
+        dimf (float): The dimension factor of the figure. Defaults to 1.5.
+
+    Returns:
+        Tuple[float, float]: The figure width and height in inches.
+    """
+    assert w in general.width_factors, f"Width factor {w} not found."
+    factor = general.width_factors[w]
+    w_pt = general.document_width_pt * factor
+
+    inches_per_pt = 1 / 72.27
+
+    # Golden ratio to set aesthetic figure height
+    # https://disq.us/p/2940ij3
+    golden_ratio = (5**.5 - 1) / 2
+
+    fig_width_in = w_pt * inches_per_pt * dimf
+    fig_height_in = fig_width_in * (hf if hf is not None else golden_ratio)
+
+    return (fig_width_in, fig_height_in)
+
+@deprecated(action='error')
+def get_figure_size_fraction(wf, hf=None, dimf=1.0) -> tuple[tuple[float,float],float]:
     """Set figure dimensions to avoid scaling in LaTeX.
 
     Parameters
     ----------
-        width: float
-            Document textwidth or columnwidth in pts
-        fraction: float, optional
-            Fraction of the width which you wish the figure to occupy
+        wf: float
+            Width factor in fraction of the textwidth.
+        hf: float, optional
+            Height factor. The default is None.
+        dimf: float, optional
+            Dimension factor. The default is 1.0.
 
     Returns
     -------
@@ -48,24 +90,7 @@ def get_figure_size_fraction(wf, hf=None, dimf=1.2) -> tuple[tuple[float,float],
         fraction: float
             The fraction, so it can be appended to the filename.
     """
-    # Width of figure (in pts)
-    fig_width_pt = general.document_width_pt * wf
-
-    # Convert from pt to inches
-    inches_per_pt = 1 / 72.27
-
-    # Golden ratio to set aesthetic figure height
-    # https://disq.us/p/2940ij3
-    golden_ratio = (5**.5 - 1) / 2
-
-    # Figure width in inches
-    fig_width_in = fig_width_pt * inches_per_pt * dimf
-    # Figure height in inches
-    fig_height_in = fig_width_in * (hf if hf is not None else golden_ratio)
-
-    fig_dim = (fig_width_in, fig_height_in)
-
-    return fig_dim
+    assert False, "This function is deprecated. Use get_fig_width instead."
 
 def to_img(fig):
     fig.tight_layout()
@@ -89,7 +114,10 @@ def plot_splinter_movavg(
     no_ticks: bool = True,
     plot_vertices: bool = False,
     mode: KernelContourMode = KernelContourMode.CONTOURS,
-    w_fraction = 1.0,
+    figwidth: FigWidth = FigWidth.ROW1,
+    clr_format=None,
+    normalize: bool = False,
+    crange: tuple[float,float] = None,
     **kwargs
 ):
     """
@@ -101,7 +129,7 @@ def plot_splinter_movavg(
     assert mode in ['contours', 'rect'], "mode must be either 'contours' or 'rect'."
     assert kernel_width > 0, "kernel_width must be greater than 0."
     assert kernel_width < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
-
+    assert figwidth in general.width_factors, f"figwidth {figwidth} not found."
 
     region = np.array([original_image.shape[1], original_image.shape[0]])
     # print(f'Creating intensity plot with region={region}...')
@@ -117,11 +145,26 @@ def plot_splinter_movavg(
 
     X, Y, Z = kernel.run(z_action, mode="area")
 
-    figsize, fraction = get_figure_size_fraction(w_fraction)
+    if normalize:
+        Z = Z / np.max(Z)
 
-    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=figsize)
 
-def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize):
+    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figwidth=figwidth, clr_format=clr_format, crange=crange)
+
+def plot_kernel_results(
+    original_image,
+    clr_label,
+    no_ticks,
+    plot_vertices,
+    mode,
+    X,
+    Y,
+    Z,
+    figwidth,
+    clr_format: str = None,
+    crange: tuple[float,float] = None
+):
+    figsize = get_fig_width(figwidth)
     fig,axs = plt.subplots(figsize=figsize)
     axs.imshow(original_image)
 
@@ -132,7 +175,11 @@ def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode
         axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
     elif mode == KernelContourMode.RECT:
         z_im = cv2.resize(Z, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
-        axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA)
+        if crange is None:
+            axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA)
+        else:
+            axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA, vmin=crange[0], vmax=crange[1])
+
 
     if clr_label is not None:
         # box = axs.get_position()
@@ -143,12 +190,12 @@ def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode
         # cbar_ax = fig.add_axes([axs.get_position().x1 + 0.01, axs.get_position().y0, 0.03, axs.get_position().height])
         cbar = fig.colorbar(axim, label=clr_label)
 
-        #TODO: CREATE manual ticks for cbar and align first bottom and last top
-        for t in cbar.ax.get_yticklabels():
-            t.set_horizontalalignment('right')
-            t.set_x(3.5)
+        renew_ticks_cb(cbar)
 
 
+        if clr_format is not None:
+            formatter = FuncFormatter(lambda x, p: clr_format.format(x))
+            cbar.ax.yaxis.set_major_formatter(formatter)
 
 
 
@@ -171,7 +218,17 @@ def plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode
     # fig.set_size_inches(new_width, height_desired)
     return fig, axs
 
-def plot_image_kernel_contours(image: np.ndarray,
+def renew_ticks_cb(cbar):
+    manual_ticks = [cbar.vmin, cbar.vmin + (cbar.vmax - cbar.vmin) / 2, cbar.vmax]
+    print(manual_ticks)
+    cbar.ax.set_yticks(manual_ticks)
+    labels = cbar.ax.get_yticklabels()
+
+    labels[0].set_verticalalignment('bottom')
+    labels[1].set_verticalalignment('center')
+    labels[-1].set_verticalalignment('top')
+
+def plot_image_movavg(image: np.ndarray,
         kernel_width: float,
         z_action: Callable[[list[Splinter]], float] = None,
         clr_label="Z-Value [?]",
@@ -180,7 +237,9 @@ def plot_image_kernel_contours(image: np.ndarray,
         mode: KernelContourMode = KernelContourMode.CONTOURS,
         exclude_points: list[tuple[int,int]] = None,
         no_ticks = True,
-        w_fraction = 1.0,
+        figwidth = FigWidth.ROW2,
+        clr_format: str = None,
+        crange: tuple[float,float] = None,
     ):
     """Create an intensity plot of the fracture.
 
@@ -198,8 +257,8 @@ def plot_image_kernel_contours(image: np.ndarray,
     X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
     Z = Z / np.max(Z)
 
-    figsize, _ = get_figure_size_fraction(w_fraction)
-    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figsize=figsize)
+
+    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figwidth=figwidth, clr_format=clr_format, crange=crange)
 
 
 # T2 = TypeVar('T2')
@@ -291,10 +350,10 @@ def datahist_plot(
     x_format: str = "{0:.00f}",
     y_format: str = "{0:.2f}",
     data_mode = 'pdf',
-    fig_fracw = 1.0,
+    figwidth = FigWidth.ROW1,
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
-    figsize = get_figure_size_fraction(fig_fracw)
+    figsize = get_fig_width(figwidth)
     fig, axs = plt.subplots(ncols, nrows, figsize=figsize, sharex=True, sharey=True)
 
     if nrows == 1 and ncols == 1:
@@ -400,7 +459,7 @@ def label_image(
     title = None,
     nums=None,
     return_fig=True,
-    fig_wfrac=1.0,
+    figwidth=FigWidth.ROW1,
 ):
     """
     Add labels to an image.
@@ -421,7 +480,7 @@ def label_image(
     texts = labels[::2]
     labelcolors = labels[1::2]
 
-    fig, ax = plt.subplots(figsize=get_figure_size_fraction(fig_wfrac))
+    fig, ax = plt.subplots(figsize=get_fig_width(figwidth))
     ax.imshow(image)
     ax.axis('off')
 
@@ -453,8 +512,9 @@ def annotate_image(
     cbar_title = None,
     min_value = 0,
     max_value = 1,
-    fig_wfrac = 1.0,
+    figwidth = FigWidth.ROW1,
     return_fig=True,
+    clr_format: str = None,
 ):
     """Put a header in white text on top of the image.
 
@@ -464,7 +524,7 @@ def annotate_image(
     """
     assert max_value > min_value, "Max value must be greater than min value."
 
-    figsize = get_figure_size_fraction(fig_wfrac)
+    figsize = get_fig_width(figwidth)
     fig, ax = plt.subplots(figsize=figsize)
 
     ax.tick_params(
@@ -482,14 +542,21 @@ def annotate_image(
         ax.set_title(title)
 
     im = ax.imshow(image, cmap='turbo', vmin=min_value, vmax=max_value, aspect='equal')
+    ax.grid(False)
+
     if cbar_title is not None:
-        fig.colorbar(mappable=im, ax=ax, label=cbar_title)
+        cbar = fig.colorbar(mappable=im, ax=ax, label=cbar_title)
+        if clr_format is not None:
+            renew_ticks_cb(cbar)
+
+            formatter = FuncFormatter(lambda x, p: clr_format.format(x))
+            cbar.ax.yaxis.set_major_formatter(formatter)
 
     if return_fig:
         fig.tight_layout()
-        return (fig, fig_wfrac)
+        return (fig, figwidth)
 
-    return (to_img(fig), fig_wfrac)
+    return (to_img(fig), figwidth)
 
 def annotate_images(
     images,

@@ -25,3 +25,7 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/leonbohmann/fracture-suite"
 "Bug Tracker" = "https://github.com/leonbohmann/fracture-suite/issues"
+
+[tool.ruff]
+# Skip unused variable rules (`F841`).
+ignore = ["E501"]

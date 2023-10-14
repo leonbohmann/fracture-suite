@@ -56,7 +56,7 @@ class State:
 
     def __save_object(object, dir, *sub_path):
         saved = False
-        out_path = os.path.join(dir, *sub_path)  + f'_w{object[1]:.1f}'
+        out_path = os.path.join(dir, *sub_path)  + f'_{object[1]}'
         object = object[0]
         while not saved:
             try:
@@ -98,7 +98,7 @@ class State:
         no_print=False,
         to_additional=False,
         cvt_rgb=False,
-        width_fraction=1.0,
+        figwidth='row1',
     ):
         State.output(
             object,
@@ -109,7 +109,7 @@ class State:
             no_print=no_print,
             to_additional=to_additional,
             cvt_rgb=cvt_rgb,
-            width_fraction=width_fraction
+            figwidth=figwidth
         )
 
     def output(
@@ -121,7 +121,7 @@ class State:
         no_print=False,
         to_additional=False,
         cvt_rgb=False,
-        width_fraction=1.0,
+        figwidth='row1',
         **kwargs
     ):
         """
@@ -137,8 +137,8 @@ class State:
         if 'override_name' in kwargs:
             print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
 
-        assert not isinstance(object, tuple), "Object must not be a tuple."
-        object = (object, width_fraction)
+        assert not isinstance(object, tuple), "Object passed to State.output must not be a tuple."
+        object = (object, figwidth)
 
         if len(path_and_name) == 0:
             path_and_name = (State.current_subcommand,)

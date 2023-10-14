@@ -41,6 +41,11 @@ class GeneralSettings:
         self.hist_bins = 30
         self.output_paths: dict[str,str] = {}
         self.document_width_pt: float = 418.25555
+        self.width_factors: dict[str,float] = {
+            'row1': 0.8,
+            'row2': 0.6,
+            'row3': 0.3,
+        }
 
         GeneralSettings.sub_outpath: str = ""
 

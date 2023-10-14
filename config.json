@@ -14,9 +14,14 @@
         120
     ],
     "figure_size": [
-        2.3622047244094486,
-        1.574803149606299
-    ],
+		6,
+		4
+	],
+	"width_factors" : {
+		"row1" : 0.8,
+		"row2" : 0.6,
+		"row3" : 0.35
+	},
     "output_image_maxsize": 2000,
     "hist_bins": "30",
     "output_paths": {

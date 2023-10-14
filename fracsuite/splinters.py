@@ -21,11 +21,12 @@ from fracsuite.core.calculate import pooled
 from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
+    FigWidth,
     KernelContourMode,
     create_splinter_colored_image,
     datahist_plot,
     get_figure_size_fraction,
-    plot_image_kernel_contours,
+    plot_image_movavg,
     plot_splinter_movavg,
     create_splinter_sizes_image,
     datahist_to_ax,
@@ -730,11 +731,14 @@ def splinter_orientation_f(
         specimen.splinters,
         kernel_width=w_px,
         z_action=mean_orientations,
-        clr_label="Mean Orientation Strength",
+        clr_label="Mean Orientation Strength $\Delta$",
         mode='rect',
+        figwidth=FigWidth.ROW2,
+        clr_format='{0:.1f}',
+        crange=(0,1),
     )
 
-    State.output(fig, specimen, to_additional=True)
+    State.output(fig, spec=specimen, to_additional=True, figwidth=FigWidth.ROW2)
 
 @app.command()
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
@@ -769,21 +773,23 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
                 (255,255,255),
                 5)
 
-    orientation_image = annotate_image(
+    orientation_fig, _ = annotate_image(
         orientation_image,
-        cbar_title='Orientation Strength',
+        cbar_title='Orientation Strength $\Delta$',
         min_value=0,
         max_value=1,
-        fig_wfrac=0.8
+        figwidth=FigWidth.ROW2,
+        clr_format='{0:.1f}'
     )
 
-    State.output(orientation_image, specimen, to_additional=True)
+    State.output(orientation_fig, spec=specimen, to_additional=True, figwidth=FigWidth.ROW2)
 
 @app.command()
 def fracture_intensity_img(
     specimen_name: str,
     w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 20,
-    skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
+    skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = True,
+    figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
 ):
     """
     Plot the intensity of the fracture image.
@@ -808,17 +814,19 @@ def fracture_intensity_img(
     img = to_gray(img)
     # img = preprocess_image(img, specimen.splinter_config)
     w_px = int(w_mm / specimen.get_size_factor())
-    fig = plot_image_kernel_contours(
+    fig,axs = plot_image_movavg(
         img,
         kernel_width=w_px,
         z_action=mean_img_value,
-        clr_label="Black Pixels [N/A]",
+        clr_label="Black Pixels [$N_{BP}/A/N_t$]",
         mode=KernelContourMode.RECT,
-        skip_edge=True,
-        exclude_points=[specimen.get_impact_position(True)]
+        skip_edge=skip_edges,
+        exclude_points=[specimen.get_impact_position(True)],
+        figwidth=figwidth,
+        clr_format='{0:.1f}'
     )
 
-    State.output(fig, spec=specimen, to_additional=True)
+    State.output(fig, spec=specimen, to_additional=True, figwidth=figwidth)
 
 @app.command()
 def fracture_intensity_f(
@@ -826,7 +834,8 @@ def fracture_intensity_f(
         w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 20,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
         skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
-        ):
+        figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
+    ):
     """Plot the intensity of the fracture morphology."""
 
     specimen = Specimen.get(specimen_name)
@@ -842,11 +851,14 @@ def fracture_intensity_f(
         w_px,
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
-        clr_label="Fracture Intensity [$N/A$]", #, $w_A,h_A$={w_mm}mm
+        clr_label="Fracture Intensity [$N_S/A$]", #, $w_A,h_A$={w_mm}mm
         mode=KernelContourMode.RECT,
+        skip_edges=skip_edges,
+        figwidth=figwidth,
+        clr_format='{0:.0f}'
     )
 
-    State.output(fig, spec=specimen, to_additional=True)
+    State.output(fig, spec=specimen, to_additional=True, figwidth=figwidth)
 
 @app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
@@ -1207,10 +1219,11 @@ def compare_manual(
         State.output_nopen(cmp_alg_leg, folder, f'{nr}_compare_contours_watershed_legacy')
 
 
-        fig_wfrac = 0.3
+        figwidth=FigWidth.ROW3
+
         fig,axs = datahist_plot(
             y_format='{0:.0f}',
-            fig_fracw=fig_wfrac,
+            figwidth=figwidth,
         )
         ax = axs[0]
         ax.set_xlabel("Splinter Size $A_S$ [px²]")
@@ -1246,7 +1259,13 @@ def compare_manual(
             ax.set_yticklabels([])
             ax.set_ylabel("")
 
-        State.output(fig, folder, f"{nr}_splinter_sizes_compare", to_additional=True, width_fraction=fig_wfrac)
+        State.output(
+            fig,
+            folder,
+            f"{nr}_splinter_sizes_compare",
+            to_additional=True,
+            figwidth=figwidth
+        )
 
         if x_range is None:
             binrange = np.linspace(np.min(area0), np.max(area0), 20)
