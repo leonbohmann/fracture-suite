@@ -102,8 +102,50 @@ def to_img(fig):
 
 
 class KernelContourMode(str, Enum):
-    RECT = 'rect'
+    FILLED = 'filled'
     CONTOURS = 'contours'
+
+
+def plot_image_movavg(image: np.ndarray,
+        kernel_width: float,
+        z_action: Callable[[list[Splinter]], float] = None,
+        clr_label=None,
+        plot_vertices: bool = False,
+        skip_edge: bool = False,
+        mode: KernelContourMode = KernelContourMode.CONTOURS,
+        exclude_points: list[tuple[int,int]] = None,
+        no_ticks = True,
+        figwidth = FigWidth.ROW2,
+        clr_format: str = None,
+        crange: tuple[float,float] = None,
+    ):
+    """Create an intensity plot of the fracture.
+
+    Args:
+        image (np.ndarray): The input image as a 2D numpy array.
+        kernel_width (float): The width of the kernel.
+        z_action (Callable[[list[Splinter]], float], optional): A function that takes a list of Splinter objects and returns a single value to be plotted as the Z coordinate. Defaults to None.
+        clr_label (str, optional): The label of the colorbar. Defaults to None.
+        plot_vertices (bool, optional): Whether to plot the vertices of the individual kernels. Defaults to False.
+        skip_edge (bool, optional): Whether to skip the edges of the image. Defaults to False.
+        mode (KernelContourMode, optional): The mode used for plotting the kernel contours. Defaults to KernelContourMode.CONTOURS.
+        exclude_points (list[tuple[int,int]], optional): A list of points to exclude from the plot. Defaults to None.
+        no_ticks (bool, optional): Whether to show the ticks on the plot. Defaults to True.
+        figwidth (FigWidth, optional): The width of the figure. Defaults to FigWidth.ROW2.
+        clr_format (str, optional): The format of the colorbar labels. Defaults to None.
+        crange (tuple[float,float], optional): The range of values to be plotted. Defaults to None.
+
+    Returns:
+        Figure: A matplotlib figure object showing the intensity plot.
+    """
+
+    # print(f'Creating intensity plot with region={region}...')
+    kernel = ImageKerneler(image, kernel_width, skip_edge=skip_edge)
+    X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
+    Z = Z / np.max(Z)
+
+
+    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figwidth=figwidth, clr_format=clr_format, crange=crange)
 
 def plot_splinter_movavg(
     original_image: np.ndarray,
@@ -121,10 +163,43 @@ def plot_splinter_movavg(
     **kwargs
 ):
     """
-    Create a figure that contains the kernel results as contours on
-    top of the original image with a colorbar to the side.
+    Plot the results of a kernel operation on an image, using a moving average
+    filter to smooth the kernel contours.
 
-    This plot does not contain any labels or titles except for the colorbar.
+    Parameters:
+    -----------
+        original_image : np.ndarray
+            The original image to plot.
+        splinters : list[Splinter]
+            A list of Splinter objects representing the regions of interest in the image.
+        kernel_width : float
+            The width of the kernel to use in the operation.
+        z_action : Callable[[list[Splinter]], float], optional
+            A function that takes a list of Splinter objects and returns a scalar value
+            to use as the z-coordinate of the kernel results. If None, the default
+            z-coordinate is the amount of splinters in the kernel.
+        clr_label : str, optional
+            The label to use for the colorbar.
+        no_ticks : bool, optional
+            Whether to show ticks on the plot axes.
+        plot_vertices : bool, optional
+            Whether to plot the vertices of the Splinter objects.
+        mode : KernelContourMode, optional
+            The mode to use for the kernel contours. Must be either 'contours' or 'rect'.
+        figwidth : FigWidth, optional
+            The width of the figure. Must be one of the values defined in the FigWidth enum.
+        clr_format : str, optional
+            The format string to use for the colorbar labels.
+        normalize : bool, optional
+            Whether to normalize the kernel results to the range [0, 1].
+        crange : tuple[float,float], optional
+            The range of values to use for the colorbar. If None, the range is determined
+            automatically from the kernel results.
+
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        The resulting figure object.
     """
     assert mode in ['contours', 'rect'], "mode must be either 'contours' or 'rect'."
     assert kernel_width > 0, "kernel_width must be greater than 0."
@@ -156,14 +231,33 @@ def plot_kernel_results(
     clr_label,
     no_ticks,
     plot_vertices,
-    mode,
+    mode: str,
     X,
     Y,
-    Z,
-    figwidth,
+    results,
+    figwidth: FigWidth,
     clr_format: str = None,
     crange: tuple[float,float] = None
 ):
+    """
+    Plot the results of a kernel operation on an image.
+
+    Args:
+        original_image (np.ndarray): The original image to plot.
+        clr_label (str): The label for the colorbar.
+        no_ticks (bool): Whether to hide the tick marks on the plot.
+        plot_vertices (bool): Whether to plot the vertices.
+        mode (KernelContourMode): The mode for plotting the kernel contours.
+        X (np.ndarray): The X coordinates of the results.
+        Y (np.ndarray): The Y coordinates of the results.
+        Z (np.ndarray): Kerneled results.
+        figwidth (FigWidth): FigWidth of the figure. Choose from enum!
+        clr_format (str, optional): The format string for the colorbar labels. Defaults to None.
+        crange (tuple[float,float], optional): The range of values to display on the colorbar. Defaults to None.
+
+    Returns:
+        tuple[plt.Figure, plt.Axes]: The figure and axes objects for the plot.
+    """
     figsize = get_fig_width(figwidth)
     fig,axs = plt.subplots(figsize=figsize)
     axs.imshow(original_image)
@@ -172,9 +266,9 @@ def plot_kernel_results(
             axs.scatter(X, Y, marker='o', c='red')
 
     if mode == KernelContourMode.CONTOURS:
-        axim = axs.contourf(X, Y, Z, cmap='turbo', alpha=CONTOUR_ALPHA)
-    elif mode == KernelContourMode.RECT:
-        z_im = cv2.resize(Z, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
+        axim = axs.contourf(X, Y, results, cmap='turbo', alpha=CONTOUR_ALPHA)
+    elif mode == KernelContourMode.FILLED:
+        z_im = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
         if crange is None:
             axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA)
         else:
@@ -227,38 +321,6 @@ def renew_ticks_cb(cbar):
     labels[0].set_verticalalignment('bottom')
     labels[1].set_verticalalignment('center')
     labels[-1].set_verticalalignment('top')
-
-def plot_image_movavg(image: np.ndarray,
-        kernel_width: float,
-        z_action: Callable[[list[Splinter]], float] = None,
-        clr_label="Z-Value [?]",
-        plot_vertices: bool = False,
-        skip_edge: bool = False,
-        mode: KernelContourMode = KernelContourMode.CONTOURS,
-        exclude_points: list[tuple[int,int]] = None,
-        no_ticks = True,
-        figwidth = FigWidth.ROW2,
-        clr_format: str = None,
-        crange: tuple[float,float] = None,
-    ):
-    """Create an intensity plot of the fracture.
-
-    Args:
-        intensity_h (float): Size of the analyzed regions.
-        z_action (def(list[Specimen])): The action that is called for every region.
-        clr_label (str, optional): Colorbar title. Defaults to "Intensity [Splinters / Area]".
-
-    Returns:
-        Figure: A figure showing the intensity plot.
-    """
-
-    # print(f'Creating intensity plot with region={region}...')
-    kernel = ImageKerneler(image, kernel_width, skip_edge=skip_edge)
-    X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
-    Z = Z / np.max(Z)
-
-
-    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figwidth=figwidth, clr_format=clr_format, crange=crange)
 
 
 # T2 = TypeVar('T2')

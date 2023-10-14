@@ -819,7 +819,7 @@ def fracture_intensity_img(
         kernel_width=w_px,
         z_action=mean_img_value,
         clr_label="Black Pixels [$N_{BP}/A/N_t$]",
-        mode=KernelContourMode.RECT,
+        mode=KernelContourMode.FILLED,
         skip_edge=skip_edges,
         exclude_points=[specimen.get_impact_position(True)],
         figwidth=figwidth,
@@ -852,7 +852,7 @@ def fracture_intensity_f(
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
         clr_label="Fracture Intensity [$N_S/A$]", #, $w_A,h_A$={w_mm}mm
-        mode=KernelContourMode.RECT,
+        mode=KernelContourMode.FILLED,
         skip_edges=skip_edges,
         figwidth=figwidth,
         clr_format='{0:.0f}'
