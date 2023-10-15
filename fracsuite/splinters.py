@@ -41,7 +41,7 @@ from fracsuite.core.coloring import get_color
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import similarity
-from fracsuite.state import State
+from fracsuite.state import State, StateOutput
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
 from fracsuite.callbacks import main_callback
@@ -157,8 +157,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         clr_label='Mean roughness',
                                         fig_title='Splinter Roughness')
 
-    specimen.put_splinter_output(fig)
-    State.output(fig, specimen.name)
+    State.output(fig, spec=specimen)
 
 @app.command()
 def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
@@ -182,8 +181,7 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
                                         clr_label='Mean roughness',
                                         fig_title='Splinter Roughness')
 
-    specimen.put_splinter_output(fig)
-    State.output(fig, specimen.name)
+    State.output(fig, spec=specimen)
 
 @app.command()
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
@@ -782,7 +780,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         min_value=0,
         max_value=1,
         figwidth=FigWidth.ROW2,
-        clr_format='{0:.1f}'
+        clr_format='.1f'
     )
 
     State.output(orientation_fig, spec=specimen, to_additional=True)
@@ -1263,11 +1261,10 @@ def compare_manual(
             ax.set_ylabel("")
 
         State.output(
-            fig,
+            StateOutput(fig, figwidth),
             folder,
             f"{nr}_splinter_sizes_compare",
-            to_additional=True,
-            figwidth=figwidth
+            to_additional=True
         )
 
         if x_range is None:

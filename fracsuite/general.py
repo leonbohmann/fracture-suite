@@ -43,8 +43,8 @@ class GeneralSettings:
         self.document_width_pt: float = 418.25555
         self.width_factors: dict[str,float] = {
             'row1': 0.8,
-            'row2': 0.6,
-            'row3': 0.3,
+            'row2': 0.6,  # 204pt, 250 real, f=
+            'row3': 0.3, # 153.646pt, 125pt real, f=1.22
         }
 
         GeneralSettings.sub_outpath: str = ""

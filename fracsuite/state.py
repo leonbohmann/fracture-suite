@@ -31,12 +31,13 @@ class StateOutput:
     is_image: bool
     is_figure: bool
 
-    def __init__(self, data, figwidth):
+    def __init__(self, data, figwidth, **additional_data):
         assert isinstance(data, Figure) or type(data).__module__ == np.__name__, "Data must be a matplotlib figure or a numpy array."
 
         self.Data = data
         self.FigWidth = figwidth
 
+        self.additional_data = additional_data
 
         self.is_image = type(data).__module__ == np.__name__
         self.is_figure = not self.is_image

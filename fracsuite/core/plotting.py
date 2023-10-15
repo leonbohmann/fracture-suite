@@ -65,14 +65,17 @@ class KernelContourMode(str, Enum):
         return list(map(lambda c: c.value, KernelContourMode))
 
 
-def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
+def get_fig_width(w: FigWidth, hf=None, dimf=1.1) -> float:
     """
     Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.
+
+    The dimension factor is used so that the figures are rendered slightly larger than the actual size,
+    because in Latex the textwidth is not the same as the actual width of the environment.
 
     Args:
         w (FigWidth): The width factor of the figure.
         hf (Optional[float]): The height factor of the figure. Defaults to None.
-        dimf (float): The dimension factor of the figure. Defaults to 1.5.
+        dimf (float): The dimension factor of the figure. Defaults to 1.1.
 
     Returns:
         Tuple[float, float]: The figure width and height in inches.
@@ -180,7 +183,7 @@ def plot_splinter_movavg(
     normalize: bool = False,
     crange: tuple[float,float] = None,
     **kwargs
-) -> tuple[StateOutput, Axes]:
+) -> StateOutput:
     """
     Plot the results of a kernel operation on a list of objects, using a moving average
     filter to smooth the kernel contours.
@@ -258,7 +261,7 @@ def plot_kernel_results(
     figwidth: FigWidth,
     clr_format: str = None,
     crange: tuple[float,float] = None
-) -> tuple[StateOutput, Axes]:
+) -> StateOutput:
     """
     Plot the results of a kernel operation on an image.
 
@@ -330,7 +333,7 @@ def plot_kernel_results(
     # current_size = fig.get_size_inches()
     # new_width = current_size[0] * (height_desired / current_size[1])
     # fig.set_size_inches(new_width, height_desired)
-    return StateOutput(fig, figwidth), axs
+    return StateOutput(fig, figwidth, axs=axs)
 
 def renew_ticks_cb(cbar):
     manual_ticks = [cbar.vmin, cbar.vmin + (cbar.vmax - cbar.vmin) / 2, cbar.vmax]
