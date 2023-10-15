@@ -1,6 +1,7 @@
 import tempfile
 from typing import Any
 from fracsuite.core.image import to_rgb
+from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.progress import get_progress
 from fracsuite.general import GeneralSettings
 
@@ -19,6 +20,48 @@ import time
 
 general = GeneralSettings.get()
 
+SAVE_FORMAT = "[cyan]SAVE[/cyan] [dim white]{0:<11}[/dim white] '{1}'"
+
+class StateOutput:
+    Data: Any
+    "Data of the output, may be an image or a figure."
+    FigWidth: Any
+    "If generated using a plot command, the FigWidth of the figure."
+
+    is_image: bool
+    is_figure: bool
+
+    def __init__(self, data, figwidth):
+        assert isinstance(data, Figure) or type(data).__module__ == np.__name__, "Data must be a matplotlib figure or a numpy array."
+
+        self.Data = data
+        self.FigWidth = figwidth
+
+
+        self.is_image = type(data).__module__ == np.__name__
+        self.is_figure = not self.is_image
+
+    def save(self, path) -> str:
+        """Saves the output to a file."""
+        if self.is_image:
+            cv2.imwrite(
+                outfile := path + f'.{general.image_extension}',
+                self.Data
+            )
+        elif self.is_figure:
+            self.Data.savefig(
+                outfile := path + f'.{general.plot_extension}',
+                dpi=200,
+                bbox_inches='tight',
+                pad_inches=0
+            )
+
+        return outfile
+
+    def cvtData(self):
+        """If data is an image, converts BGR to RGB."""
+        if self.is_image:
+            self.Data = cv2.cvtColor(self.Data, cv2.COLOR_BGR2RGB)
 
 class State:
     """Contains static variables that are set during execution of a command."""
@@ -113,7 +156,7 @@ class State:
         )
 
     def output(
-        object: Figure | npt.ArrayLike,
+        object: Figure | npt.ArrayLike | StateOutput,
         *path_and_name: str,
         open=True,
         spec: Any = None,
@@ -121,7 +164,7 @@ class State:
         no_print=False,
         to_additional=False,
         cvt_rgb=False,
-        figwidth='row1',
+        figwidth=None,
         **kwargs
     ):
         """
@@ -138,50 +181,60 @@ class State:
             print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
 
         assert not isinstance(object, tuple), "Object passed to State.output must not be a tuple."
-        object = (object, figwidth)
-
-        if len(path_and_name) == 0:
-            path_and_name = (State.current_subcommand,)
-
+        # make sure that all path parts are strings
         for x in path_and_name:
             assert type(x) == str, "Path parts must be strings."
 
-        if type(object[0]).__module__ == np.__name__:
-            if cvt_rgb:
-                object = (cv2.cvtColor(object[0], cv2.COLOR_BGR2RGB), object[1])
+        # warn, if figwidth is ignored
+        if isinstance(object, StateOutput):
+            if figwidth is not None:
+                print("[yellow]Warning: 'figwidth' is ignored when passing StateOutput.[/yellow]")
+        else:
+            object = StateOutput(object, 'row1')
 
+        # use the subcommand as file name if no name is passed
+        if len(path_and_name) == 0:
+            path_and_name = (State.current_subcommand,)
+
+        # convert the image data to RGB, if needed
+        if cvt_rgb:
+            object.cvtData()
+
+        # we need a list because we might change the last element
         path_and_name = list(path_and_name)
 
-        if 'splinter' in State.sub_outpath and spec is not None:
-            if callable(b := getattr(spec, 'put_splinter_output', None)):
-                b(object, path_and_name[-1])
-        elif 'acc' in State.sub_outpath and spec is not None:
-            if callable(b := getattr(spec, 'put_acc_output', None)):
-                b(object, path_and_name[-1])
+        # If a spec is passed, use its output functions to save
+        #   the object to the specimen path as well.
+        # The name of this output file does not need the specimen ID,
+        #   as it is already in the path.
+        if isinstance(spec, Outputtable):
+            specimen_output_funcs = spec.get_output_funcs()
+            for key, func in specimen_output_funcs.items():
+                if key in State.sub_outpath:
+                    spec_out = object.save(func(State.current_subcommand))
+                    if not no_print:
+                        print(SAVE_FORMAT.format('SPECIMEN', spec_out))
 
-        file_name = path_and_name[-1]
+        # From here, we need the specimen name to save the object.
         if spec is not None and hasattr(spec, 'name'):
-            file_name = spec.name + "_" + path_and_name[-1]
             path_and_name[-1] = spec.name + "_" + path_and_name[-1]
-        else:
-            file_name = path_and_name[-1]
 
-
-        out = State.get_output_file(*path_and_name, force_delete_old=force_delete_old)
-        out = State.__save_object(object, ".", out)
-        # success, start process
+        # save to COMMAND output
+        out = State.get_output_file(*path_and_name)
+        out = object.save(out)
         if not no_print:
-            n = State.sub_outpath + '\\' + '\\'.join(path_and_name) + os.path.splitext(out)[1]
-            print(f"Saved to '{n}'.")
+            print(SAVE_FORMAT.format('COMMAND', os.path.join(State.sub_outpath, os.path.basename(out))))
 
+
+        # save to ADDITIONAL output
         if (additional_path := State.additional_output_path) is not None \
             and to_additional and not State.to_temp:
-            add_path = State.__save_object(object, additional_path, file_name)
+            add_path = os.path.join(additional_path, path_and_name[-1])
+            add_path = object.save(add_path)
             if not no_print:
-                print(f" > Additional file to '{add_path}'.")
+                print(SAVE_FORMAT.format('ADDITIONAL', add_path))
 
-
-
+        # open file
         if open:
             subprocess.Popen(['start', '', '/b', out], shell=True)
 
@@ -211,41 +264,30 @@ class State:
     def get_output_file(*names, **kwargs):
         """Gets an output file path.
 
-        Kwargs:
-            is_plot (bool): If true, the plot extension is appended.
-            is_image (bool): If true, the image extension is appended.
-            force_delete_old (bool): If true, all files with the same name will be deleted.
         Returns:
             str: path
         """
-        names = list(names)
-        if 'is_plot' in kwargs and kwargs['is_plot']:
-            names[-1] = f'{State.sub_specimen}{names[-1]}.{general.plot_extension}'
-        if 'is_image' in kwargs and kwargs['is_image']:
-            names[-1] = f'{State.sub_specimen}{names[-1]}.{general.image_extension}'
-
-
         p = os.path.join(State.get_output_dir(), *names)
 
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))
 
 
-        force_delete_old = 'force_delete_old' in kwargs and kwargs['force_delete_old']
+        # force_delete_old = 'force_delete_old' in kwargs and kwargs['force_delete_old']
 
-        fname = os.path.splitext(os.path.basename(p))[0]
-        ext = os.path.splitext(p)[1]
-        if os.path.exists(p):
-            if State.clear_output or force_delete_old:
-                for file in os.listdir(os.path.dirname(p)):
-                    if file.startswith(fname):
-                        os.remove(os.path.join(os.path.dirname(p), file))
+        # fname = os.path.splitext(os.path.basename(p))[0]
+        # ext = os.path.splitext(p)[1]
+        # if os.path.exists(p):
+        #     if State.clear_output or force_delete_old:
+        #         for file in os.listdir(os.path.dirname(p)):
+        #             if file.startswith(fname):
+        #                 os.remove(os.path.join(os.path.dirname(p), file))
 
-            # count files with same name
-            count = 1
-            while os.path.exists(p):
-                count += 1
-                p = os.path.join(State.get_output_dir(), *names[:-1], f'{fname} ({count}){ext}')
+        #     # count files with same name
+        #     count = 1
+        #     while os.path.exists(p):
+        #         count += 1
+        #         p = os.path.join(State.get_output_dir(), *names[:-1], f'{fname} ({count}){ext}')
 
 
         return p

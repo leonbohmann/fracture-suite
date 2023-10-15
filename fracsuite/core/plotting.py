@@ -22,6 +22,7 @@ from fracsuite.core.image import to_rgb
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
+from fracsuite.state import StateOutput
 
 general = GeneralSettings.get()
 
@@ -123,19 +124,20 @@ def to_img(fig):
 
 
 
-def plot_image_movavg(image: np.ndarray,
-        kernel_width: float,
-        z_action: Callable[[list[Splinter]], float] = None,
-        clr_label=None,
-        plot_vertices: bool = False,
-        skip_edge: bool = False,
-        mode: KernelContourMode = KernelContourMode.CONTOURS,
-        exclude_points: list[tuple[int,int]] = None,
-        no_ticks = True,
-        figwidth = FigWidth.ROW2,
-        clr_format: str = None,
-        crange: tuple[float,float] = None,
-    ):
+def plot_image_movavg(
+    image: np.ndarray,
+    kernel_width: float,
+    z_action: Callable[[list[Splinter]], float] = None,
+    clr_label=None,
+    plot_vertices: bool = False,
+    skip_edge: bool = False,
+    mode: KernelContourMode = KernelContourMode.CONTOURS,
+    exclude_points: list[tuple[int,int]] = None,
+    no_ticks = True,
+    figwidth = FigWidth.ROW2,
+    clr_format: str = None,
+    crange: tuple[float,float] = None,
+) -> tuple[StateOutput, Axes]:
     """Create an intensity plot of the fracture.
 
     Args:
@@ -178,7 +180,7 @@ def plot_splinter_movavg(
     normalize: bool = False,
     crange: tuple[float,float] = None,
     **kwargs
-):
+) -> tuple[StateOutput, Axes]:
     """
     Plot the results of a kernel operation on a list of objects, using a moving average
     filter to smooth the kernel contours.
@@ -256,7 +258,7 @@ def plot_kernel_results(
     figwidth: FigWidth,
     clr_format: str = None,
     crange: tuple[float,float] = None
-):
+) -> tuple[StateOutput, Axes]:
     """
     Plot the results of a kernel operation on an image.
 
@@ -306,7 +308,7 @@ def plot_kernel_results(
 
 
         if clr_format is not None:
-            formatter = FuncFormatter(lambda x, p: clr_format.format(x))
+            formatter = FuncFormatter(lambda x, p: f"{{0:{clr_format}}}".format(x))
             cbar.ax.yaxis.set_major_formatter(formatter)
 
 
@@ -328,7 +330,7 @@ def plot_kernel_results(
     # current_size = fig.get_size_inches()
     # new_width = current_size[0] * (height_desired / current_size[1])
     # fig.set_size_inches(new_width, height_desired)
-    return fig, axs
+    return StateOutput(fig, figwidth), axs
 
 def renew_ticks_cb(cbar):
     manual_ticks = [cbar.vmin, cbar.vmin + (cbar.vmax - cbar.vmin) / 2, cbar.vmax]
@@ -582,8 +584,9 @@ def label_image(
 
     if return_fig:
         fig.tight_layout()
-        return fig
-    return to_img(fig)
+        return StateOutput(fig, figwidth)
+
+    return StateOutput(to_img(fig), figwidth)
 
 
 def annotate_image(
@@ -595,7 +598,7 @@ def annotate_image(
     figwidth = FigWidth.ROW1,
     return_fig=True,
     clr_format: str = None,
-):
+) -> StateOutput:
     """Put a header in white text on top of the image.
 
     Args:
@@ -629,14 +632,14 @@ def annotate_image(
         if clr_format is not None:
             renew_ticks_cb(cbar)
 
-            formatter = FuncFormatter(lambda x, p: clr_format.format(x))
+            formatter = FuncFormatter(lambda x, p: f"{{0:{clr_format}}}".format(x))
             cbar.ax.yaxis.set_major_formatter(formatter)
 
     if return_fig:
         fig.tight_layout()
-        return (fig, figwidth)
+        return StateOutput(fig, figwidth)
 
-    return (to_img(fig), figwidth)
+    return StateOutput(to_img(fig), figwidth)
 
 def annotate_images(
     images,

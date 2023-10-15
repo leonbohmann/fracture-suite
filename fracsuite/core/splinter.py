@@ -1,19 +1,22 @@
 from __future__ import annotations
-import numpy as np
-
-from rich import print
 
 import cv2
-from fracsuite.core.coloring import rand_col
-
-from fracsuite.core.image import is_rgb, to_gray, to_rgb
-from fracsuite.core.imageplotting import plotImage, plotImages
-from fracsuite.core.detection import detect_fragments, remove_dark_spots
-from fracsuite.core.imageprocessing import closeImg, dilateImg, erodeImg, preprocess_image
-
+import numpy as np
+from rich import print
 from skimage.morphology import skeletonize
 
+from fracsuite.core.coloring import rand_col
+from fracsuite.core.detection import detect_fragments, remove_dark_spots
+from fracsuite.core.image import to_gray, to_rgb
+from fracsuite.core.imageplotting import plotImage, plotImages
+from fracsuite.core.imageprocessing import (
+    closeImg,
+    dilateImg,
+    erodeImg,
+    preprocess_image,
+)
 from fracsuite.core.preps import PreprocessorConfig
+
 
 class Splinter:
 
@@ -94,6 +97,20 @@ class Splinter:
         Returns:
             float: A value indicating how round the contour is.
         """
+
+        # new and simpler approach
+        # find enclosing circle circumfence
+        (x,y),radius = cv2.minEnclosingCircle(self.contour)
+        circumfence = 2 * np.pi * radius
+
+        # find circumfence of contour
+        contour_circumfence = cv2.arcLength(self.contour,True)
+
+        min_circ = np.min([circumfence, contour_circumfence])
+        max_circ = np.max([circumfence, contour_circumfence])
+
+        return min_circ / max_circ
+
         #check if contour has at least 5 points
         if len(self.contour) < 5:
             rect = cv2.minAreaRect(self.contour)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sys
+from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.preps import PreprocessorConfig
 
 from fracsuite.core.progress import get_spinner
@@ -29,7 +30,7 @@ class SpecimenException(Exception):
     """Exception for specimen related errors."""
     pass
 
-class Specimen:
+class Specimen(Outputtable):
     """ Container class for a specimen. """
 
     @property
@@ -231,33 +232,12 @@ class Specimen:
         with open(self.__cfg_path, "w") as f:
             json.dump(self.settings, f, indent=4)
 
-    def put_acc_output(self, object, override_name = None):
-        """Saves the object to the acc folder."""
-        self.__put_output(object, self.get_acc_outfile, override_name)
-
-    def put_splinter_output(self, object: Figure | np.ArrayLike, override_name = None):
-        """Saves the object to the specimen folder."""
-        self.__put_output(object, self.get_splinter_outfile, override_name)
-
-    def __put_output(self, object: Figure | np.ArrayLike, name_func, override_name = None):
-        name = override_name or State.current_subcommand
-
-        # check how to save object
-        if isinstance(object, tuple):
-            if isinstance(object[0], Figure):
-                out_name = name_func(name + "." + general.plot_extension)
-                object[0].savefig(out_name, dpi=300)
-        elif isinstance(object, Figure):
-            out_name = name_func(name + "." + general.plot_extension)
-            object.savefig(out_name, dpi=300)
-        elif type(object).__module__ == np.__name__:
-            out_name = name_func(name + "." + general.image_extension)
-            cv2.imwrite(out_name, object)
-        else:
-            raise Exception("Object must be a matplotlib figure or a numpy array.")
-
-        # success, start process
-        print(f"Saved to '{out_name}'.")
+    def get_output_funcs(self) -> dict[str, Callable[[str], str]]:
+        paths = {
+            'acc': self.get_acc_outfile,
+            'splinter': self.get_splinter_outfile,
+        }
+        return paths
 
     def get_filled_image(self):
         filled_file = find_file(self.splinters_path, "img_filled.png")

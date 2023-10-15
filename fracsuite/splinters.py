@@ -245,13 +245,16 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
-    out_img = annotate_image(out_img,
-                                  cbar_title="Roundness",
-                                  min_value=min_r,
-                                  max_value=max_r,)
+    out_img = annotate_image(
+        out_img,
+        cbar_title="Roundness $\lambda_c$",
+        min_value=0,
+        max_value=max_r / 4,
+        figwidth=FigWidth.ROW2,
+        clr_format=".1f"
+    )
 
-    specimen.put_splinter_output(out_img, 'roundness')
-    State.output(out_img, specimen.name)
+    State.output(out_img, spec=specimen, to_additional=True)
 
 
 def str_to_intlist(input: str) -> list[int]:
@@ -734,7 +737,7 @@ def splinter_orientation_f(
         clr_label="Mean Orientation Strength $\Delta$",
         mode=KernelContourMode.FILLED,
         figwidth=FigWidth.ROW2,
-        clr_format='{0:.1f}',
+        clr_format='.1f',
         crange=(0,1),
     )
 
@@ -823,7 +826,7 @@ def fracture_intensity_img(
         skip_edge=skip_edges,
         exclude_points=[specimen.get_impact_position(True)],
         figwidth=figwidth,
-        clr_format='{0:.1f}'
+        clr_format='.1f'
     )
 
     State.output(fig, spec=specimen, to_additional=True, figwidth=figwidth)
@@ -855,7 +858,7 @@ def fracture_intensity_f(
         mode=KernelContourMode.FILLED,
         skip_edges=skip_edges,
         figwidth=figwidth,
-        clr_format='{0:.0f}'
+        clr_format='.0f'
     )
 
     State.output(fig, spec=specimen, to_additional=True, figwidth=figwidth)
