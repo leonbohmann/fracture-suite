@@ -42,6 +42,27 @@ class FigWidth(str, Enum):
     ROW3 = 'row3'
     "The width of a figure in a row with three figures."
 
+    @staticmethod
+    def has_value(value):
+        return value in FigWidth.values()
+
+    @classmethod
+    def values(cls):
+        return set(item.value for item in cls)
+
+
+class KernelContourMode(str, Enum):
+    FILLED = 'filled'
+    CONTOURS = 'contours'
+
+    @staticmethod
+    def has_value(value):
+        return value in KernelContourMode._value2member_map_
+
+    @staticmethod
+    def values():
+        return list(map(lambda c: c.value, KernelContourMode))
+
 
 def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
     """
@@ -55,7 +76,8 @@ def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
     Returns:
         Tuple[float, float]: The figure width and height in inches.
     """
-    assert w in general.width_factors, f"Width factor {w} not found."
+    assert FigWidth.has_value(w), f"FigWidth must be one of {FigWidth.values()}."
+
     factor = general.width_factors[w]
     w_pt = general.document_width_pt * factor
 
@@ -99,11 +121,6 @@ def to_img(fig):
     plt.close(fig)
     return to_rgb(cv2.imread(temp_file))
 
-
-
-class KernelContourMode(str, Enum):
-    FILLED = 'filled'
-    CONTOURS = 'contours'
 
 
 def plot_image_movavg(image: np.ndarray,
@@ -163,7 +180,7 @@ def plot_splinter_movavg(
     **kwargs
 ):
     """
-    Plot the results of a kernel operation on an image, using a moving average
+    Plot the results of a kernel operation on a list of objects, using a moving average
     filter to smooth the kernel contours.
 
     Parameters:
@@ -201,7 +218,8 @@ def plot_splinter_movavg(
     fig : matplotlib.figure.Figure
         The resulting figure object.
     """
-    assert mode in ['contours', 'rect'], "mode must be either 'contours' or 'rect'."
+    assert KernelContourMode.has_value(mode), f"Contour mode must be one of {KernelContourMode.values()}. plot_splinter_movavg."
+    assert FigWidth.has_value(figwidth), f"FigWidth must be one of {FigWidth.values()}. plot_splinter_movavg."
     assert kernel_width > 0, "kernel_width must be greater than 0."
     assert kernel_width < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
     assert figwidth in general.width_factors, f"figwidth {figwidth} not found."

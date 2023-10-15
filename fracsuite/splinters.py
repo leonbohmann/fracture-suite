@@ -732,7 +732,7 @@ def splinter_orientation_f(
         kernel_width=w_px,
         z_action=mean_orientations,
         clr_label="Mean Orientation Strength $\Delta$",
-        mode='rect',
+        mode=KernelContourMode.FILLED,
         figwidth=FigWidth.ROW2,
         clr_format='{0:.1f}',
         crange=(0,1),
