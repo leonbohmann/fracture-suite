@@ -845,7 +845,8 @@ def fracture_intensity_f(
         w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 50,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
         as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
-        skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
+        skip_edge: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
+        exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
         figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
     ):
     """Plot the intensity of the fracture morphology."""
@@ -865,7 +866,8 @@ def fracture_intensity_f(
         plot_vertices=plot_vertices,
         clr_label="Fracture Intensity [$N_S/A$]", #, $w_A,h_A$={w_mm}mm
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
-        skip_edges=skip_edges,
+        exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
+        skip_edge=skip_edge,
         figwidth=figwidth,
         clr_format='.0f',
     )

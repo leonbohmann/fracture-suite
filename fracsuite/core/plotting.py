@@ -184,11 +184,11 @@ def plot_splinter_movavg(
     plot_vertices: bool = False,
     skip_edge: bool = False,
     mode: KernelContourMode = KernelContourMode.CONTOURS,
+    exclude_points: list[tuple[int,int]] = None,
     figwidth: FigWidth = FigWidth.ROW1,
     clr_format=None,
     normalize: bool = False,
     crange: tuple[float,float] = None,
-    **kwargs
 ) -> StateOutput:
     """
     Plot the results of a kernel operation on a list of objects, using a moving average
@@ -235,7 +235,7 @@ def plot_splinter_movavg(
     assert kw_px < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
     assert figwidth in general.width_factors, f"figwidth {figwidth} not found."
 
-    region = np.array([original_image.shape[1], original_image.shape[0]])
+    region = (original_image.shape[1], original_image.shape[0])
     # print(f'Creating intensity plot with region={region}...')
 
     kernel = ObjectKerneler(
@@ -247,7 +247,7 @@ def plot_splinter_movavg(
         skip_edge_factor=0.02,
     )
 
-    X, Y, Z = kernel.run(z_action, mode="area")
+    X, Y, Z = kernel.run(z_action, mode="area", exclude_points=exclude_points)
 
     if normalize:
         Z = Z / np.max(Z)
@@ -298,13 +298,12 @@ def plot_kernel_results(
             axs.scatter(X, Y, marker='x', c='white', s=3, linewidth=0.5)
 
     if mode == KernelContourMode.CONTOURS:
-        axim = axs.contourf(X-kw_px/2, Y-kw_px/2, results, cmap='turbo', alpha=CONTOUR_ALPHA)
+        axim = axs.contourf(X, Y, results, cmap='turbo', alpha=CONTOUR_ALPHA)
         show_vertices()
         show_img()
     elif mode == KernelContourMode.FILLED:
         show_vertices()
         show_img()
-        # z_im = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR_EXACT)
         results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
         if crange is None:
             axim = axs.imshow(results, cmap='turbo', alpha=CONTOUR_ALPHA)

@@ -1,10 +1,15 @@
 from typing import Any, Callable, TypeVar
 import numpy as np
 from fracsuite.core.image import split_image
+from fracsuite.core.region import RectRegion
 from fracsuite.state import State
 from rich.progress import track
-from rich import print
 from fracsuite.general import GeneralSettings
+import rich
+
+def print(*args, **kwargs):
+    if State.debug:
+        rich.print(*args, **kwargs)
 
 class ImageKerneler():
     def __init__(
@@ -48,7 +53,7 @@ class ImageKerneler():
         # print(result.shape)
         # print(len(xd))
         # print(len(yd))
-        skip_i = int(len(xd)*self.skip_edge_factor) if self.skip_edge else 0
+        skip_i = int(np.ceil(len(xd)*self.skip_edge_factor)) if self.skip_edge else 0
         # Iterate over all points and find splinters in the area of X, Y and intensity_h
         for i in track(range(skip_i,len(xd)-skip_i), transient=True,
                     description="Calculating intensity..."):
@@ -89,7 +94,7 @@ class ObjectKerneler():
         self,
         region: tuple[int, int],
         data_objects: list[T],
-        collector: Callable[[T, tuple[int,int,int,int]], bool],
+        collector: Callable[[T, RectRegion], bool],
         kw_px: int = 200,
         skip_edge: bool = False,
         skip_edge_factor: float = 0.02,
@@ -106,6 +111,7 @@ class ObjectKerneler():
         calculator: Callable[[list[T]], float],
         n_points: int = 50,
         mode: str = "area",
+        exclude_points: list[tuple[int,int]] = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | np.ndarray:
         """Run the kerneler."""
 
@@ -113,14 +119,15 @@ class ObjectKerneler():
             f"Mode must be one of '{ObjectKerneler.__modes}'."
 
         if mode == "area":
-            return self.__run_area(calculator)
+            return self.__run_area(calculator, exclude_points=exclude_points)
         elif mode == "diag":
-            return self.__run_diag(calculator, n_points)
+            return self.__run_diag(calculator, n_points, exclude_points=exclude_points)
 
     def __run_diag(
         self,
         calculator: Callable[[list[T]], float],
         n_points: int,
+        exclude_points: list[tuple[int,int]] = None,
     ) -> np.ndarray:
         assert self.kw_px < self.region[0], \
             "Kernel width must be smaller than the region width."
@@ -165,18 +172,21 @@ class ObjectKerneler():
     def __run_area(
         self,
         calculator: Callable[[list[T]], float],
+        exclude_points: list[tuple[int,int]] = None,
     ):
         print(f'[cyan]KERNELER[/cyan] Kernel Width: {self.kw_px}px')
         print(f'[cyan]KERNELER[/cyan] Region      : {self.region}px')
+
         # Get the ranges for x and y
         minx = 0.0
-        maxx = np.max(self.region[0])
+        maxx = self.region[0]
         miny = 0.0
-        maxy = np.max(self.region[1])
+        maxy = self.region[1]
+
         # xd = np.linspace(minx, maxx, int(np.round(maxx/self.kernel_width)))
         # yd = np.linspace(miny, maxy, int(np.round(maxy/self.kernel_width)))
-        xd = np.linspace(minx, maxx, int(np.round(maxx/self.kw_px)))
-        yd = np.linspace(miny, maxy, int(np.round(maxy/self.kw_px)))
+        xd = np.linspace(minx, maxx, int(np.ceil(maxx/self.kw_px)), endpoint=False)
+        yd = np.linspace(miny, maxy, int(np.ceil(maxy/self.kw_px)), endpoint=False)
         X, Y = np.meshgrid(xd, yd)
 
         # shift the calculated points into the center
@@ -184,9 +194,9 @@ class ObjectKerneler():
         Y = Y + self.kw_px // 2
 
         Z = np.zeros_like(X, dtype=np.float64)
-        print(f'[cyan]KERNELER[/cyan] "{len(X)}x{len(Y)}" Points to process.')
+        print(f'[cyan]KERNELER[/cyan] "{len(xd)}x{len(xd)}" Points to process.')
 
-        skip_i = int(len(xd)*self.edgeskip_factor) if self.skip_edge else 0
+        skip_i = 1 if self.skip_edge else 0
 
         if State.has_progress():
             d = range(skip_i,len(xd) - skip_i)
@@ -196,20 +206,40 @@ class ObjectKerneler():
 
         for i in d:
             for j in range(skip_i,len(yd) - skip_i):
-                x1,y1=xd[i]-self.kw_px//2,yd[j]-self.kw_px//2
-                x2,y2=xd[i]+self.kw_px//2,yd[j]+self.kw_px//2
+                x1,x2=(xd[i],xd[i]+self.kw_px)
+                y1,y2=(yd[j],yd[j]+self.kw_px)
 
                 # Create a region (x1, y1, x2, y2)
-                region_rect = (x1, y1, x2, y2)
+                region = RectRegion(x1, y1, x2, y2)
+                print(f'[cyan]KERNELER[/cyan] Processing region ({region.wh_center()})...')
+
+                is_excluded = False
+                if exclude_points is not None:
+                    for x,y in exclude_points:
+                        if x >= x1 and x <= x2 \
+                            and y >= y1 and y <= y2:
+                            Z[j, i] = 0
+                            is_excluded = True
+                            print('[cyan]KERNELER[/cyan] Region is excluded.')
+                            break
+
+                if is_excluded:
+                    continue
+
 
                 # Collect objects in the current region
                 objects_in_region = [obj for obj in self.data_objects \
-                    if self.collector(obj, region_rect)]
+                    if self.collector(obj, region)]
+                # input('Continue?')
 
+                print(f'[cyan]KERNELER[/cyan] Found {len(objects_in_region)} objects in region.')
                 # Apply z_action to collected splinters
                 Z[j, i] = calculator(objects_in_region) \
                     if len(objects_in_region) > 0 else 0
 
+                print(f'[cyan]KERNELER[/cyan] Result: {Z[j,i]}')
+
+        # input("continue?")
         # this is for testing
         # Z[0,0] = 1000
         # Z[-1,-1] = 1000

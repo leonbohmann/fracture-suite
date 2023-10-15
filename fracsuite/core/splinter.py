@@ -16,6 +16,7 @@ from fracsuite.core.imageprocessing import (
     preprocess_image,
 )
 from fracsuite.core.preps import PreprocessorConfig
+from fracsuite.core.region import RectRegion
 
 
 class Splinter:
@@ -178,11 +179,15 @@ class Splinter:
         x1,y1,x2,y2 = rect
         x,y = self.centroid_mm
         return x1 <= x <= x2 and y1 <= y <= y2
-    def in_region_px(self, rect: tuple[float,float,float,float]) -> bool:
+
+    def in_region_px(self, region: RectRegion) -> bool:
+        return region.is_point_in(self.centroid_px)
+
+    def in_rect_px(self, rect: tuple[int,int,int,int]) -> bool:
         """Check if the splinter is in the given region.
 
         Args:
-            rect (tuple[float,float,float,float]): Region to check. (x1,y1,x2,y2)
+            rect (tuple[int,int,int,int]): Region to check. (x1,y1,x2,y2)
 
         Returns:
             bool: True if the splinter is in the region.
