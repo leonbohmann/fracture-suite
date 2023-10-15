@@ -7,6 +7,8 @@ import tempfile
 from enum import Enum
 from typing import Any, Callable
 
+from rich import print
+
 import cv2
 from deprecated import deprecated
 import matplotlib as mpl
@@ -69,7 +71,7 @@ def get_fig_width(w: FigWidth, hf=None, dimf=1.1) -> float:
     """
     Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.
 
-    The dimension factor is used so that the figures are rendered slightly larger than the actual size,
+    The dimension factor dimf is used so that the figures are rendered slightly larger than the actual size,
     because in Latex the textwidth is not the same as the actual width of the environment.
 
     Args:
@@ -129,7 +131,7 @@ def to_img(fig):
 
 def plot_image_movavg(
     image: np.ndarray,
-    kernel_width: float,
+    kw_px: float,
     z_action: Callable[[list[Splinter]], float] = None,
     clr_label=None,
     plot_vertices: bool = False,
@@ -139,6 +141,7 @@ def plot_image_movavg(
     no_ticks = True,
     figwidth = FigWidth.ROW2,
     clr_format: str = None,
+    normalize: bool = True,
     crange: tuple[float,float] = None,
 ) -> tuple[StateOutput, Axes]:
     """Create an intensity plot of the fracture.
@@ -162,21 +165,24 @@ def plot_image_movavg(
     """
 
     # print(f'Creating intensity plot with region={region}...')
-    kernel = ImageKerneler(image, kernel_width, skip_edge=skip_edge)
+    kernel = ImageKerneler(image, kw_px, skip_edge=skip_edge)
     X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
-    Z = Z / np.max(Z)
+
+    if normalize:
+        Z = Z / np.max(Z)
 
 
-    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figwidth=figwidth, clr_format=clr_format, crange=crange)
+    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, kw_px, figwidth=figwidth, clr_format=clr_format, crange=crange)
 
 def plot_splinter_movavg(
     original_image: np.ndarray,
     splinters: list[Splinter],
-    kernel_width: float,
+    kw_px: int,
     z_action: Callable[[list[Splinter]], float] = None,
     clr_label: str = None,
     no_ticks: bool = True,
     plot_vertices: bool = False,
+    skip_edge: bool = False,
     mode: KernelContourMode = KernelContourMode.CONTOURS,
     figwidth: FigWidth = FigWidth.ROW1,
     clr_format=None,
@@ -195,7 +201,7 @@ def plot_splinter_movavg(
         splinters : list[Splinter]
             A list of Splinter objects representing the regions of interest in the image.
         kernel_width : float
-            The width of the kernel to use in the operation.
+            The width of the kernel to use in the operation in px.
         z_action : Callable[[list[Splinter]], float], optional
             A function that takes a list of Splinter objects and returns a scalar value
             to use as the z-coordinate of the kernel results. If None, the default
@@ -225,8 +231,8 @@ def plot_splinter_movavg(
     """
     assert KernelContourMode.has_value(mode), f"Contour mode must be one of {KernelContourMode.values()}. plot_splinter_movavg."
     assert FigWidth.has_value(figwidth), f"FigWidth must be one of {FigWidth.values()}. plot_splinter_movavg."
-    assert kernel_width > 0, "kernel_width must be greater than 0."
-    assert kernel_width < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
+    assert kw_px > 0, "kernel_width must be greater than 0."
+    assert kw_px < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
     assert figwidth in general.width_factors, f"figwidth {figwidth} not found."
 
     region = np.array([original_image.shape[1], original_image.shape[0]])
@@ -235,9 +241,9 @@ def plot_splinter_movavg(
     kernel = ObjectKerneler(
         region,
         splinters,
-        lambda x,r: x.in_region_px(r),
-        kernel_width,
-        skip_edge=False,
+        collector=lambda x,r: x.in_region_px(r),
+        kw_px=kw_px,
+        skip_edge=skip_edge,
         skip_edge_factor=0.02,
     )
 
@@ -246,8 +252,7 @@ def plot_splinter_movavg(
     if normalize:
         Z = Z / np.max(Z)
 
-
-    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, figwidth=figwidth, clr_format=clr_format, crange=crange)
+    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, kw_px, figwidth=figwidth, clr_format=clr_format, crange=crange)
 
 def plot_kernel_results(
     original_image,
@@ -258,6 +263,7 @@ def plot_kernel_results(
     X,
     Y,
     results,
+    kw_px,
     figwidth: FigWidth,
     clr_format: str = None,
     crange: tuple[float,float] = None
@@ -283,19 +289,29 @@ def plot_kernel_results(
     """
     figsize = get_fig_width(figwidth)
     fig,axs = plt.subplots(figsize=figsize)
-    axs.imshow(original_image)
 
-    if plot_vertices:
-            axs.scatter(X, Y, marker='o', c='red')
+    def show_img():
+        axs.imshow(original_image, interpolation='bilinear')
+
+    def show_vertices():
+        if plot_vertices:
+            axs.scatter(X, Y, marker='x', c='white', s=3, linewidth=0.5)
 
     if mode == KernelContourMode.CONTOURS:
-        axim = axs.contourf(X, Y, results, cmap='turbo', alpha=CONTOUR_ALPHA)
+        axim = axs.contourf(X-kw_px/2, Y-kw_px/2, results, cmap='turbo', alpha=CONTOUR_ALPHA)
+        show_vertices()
+        show_img()
     elif mode == KernelContourMode.FILLED:
-        z_im = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
+        show_vertices()
+        show_img()
+        # z_im = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR_EXACT)
+        results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
         if crange is None:
-            axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA)
+            axim = axs.imshow(results, cmap='turbo', alpha=CONTOUR_ALPHA)
         else:
-            axim = axs.imshow(z_im, cmap='turbo', alpha=CONTOUR_ALPHA, vmin=crange[0], vmax=crange[1])
+            axim = axs.imshow(results, cmap='turbo', alpha=CONTOUR_ALPHA, vmin=crange[0], vmax=crange[1])
+
+
 
 
     if clr_label is not None:
@@ -337,7 +353,7 @@ def plot_kernel_results(
 
 def renew_ticks_cb(cbar):
     manual_ticks = [cbar.vmin, cbar.vmin + (cbar.vmax - cbar.vmin) / 2, cbar.vmax]
-    print(manual_ticks)
+    # print(manual_ticks)
     cbar.ax.set_yticks(manual_ticks)
     labels = cbar.ax.get_yticklabels()
 

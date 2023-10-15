@@ -152,7 +152,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
 
     fig = plot_splinter_movavg(specimen.get_fracture_image(),
                                         splinters=specimen.splinters,
-                                        kernel_width=kernel_width,
+                                        kw_px=kernel_width,
                                         z_action=roughness_function,
                                         clr_label='Mean roughness',
                                         fig_title='Splinter Roughness')
@@ -160,8 +160,10 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     State.output(fig, spec=specimen)
 
 @app.command()
-def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
-                kernel_width: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200,):
+def roundness_f(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
+    w_mm: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 50,
+):
     """Create a contour plot of the roundness on the specimen.
 
     Args:
@@ -174,14 +176,18 @@ def roundness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     specimen = Specimen.get(specimen_name)
     assert specimen is not None, "Specimen not found."
 
-    fig = plot_splinter_movavg(specimen.get_fracture_image(),
-                                        splinters=specimen.splinters,
-                                        kernel_width=kernel_width,
-                                        z_action=roundness_function,
-                                        clr_label='Mean roughness',
-                                        fig_title='Splinter Roughness')
+    fig = plot_splinter_movavg(
+        specimen.get_fracture_image(),
+        splinters=specimen.splinters,
+        kw_px=w_mm / specimen.get_size_factor(),
+        z_action=roundness_function,
+        clr_label='Mean roughness',
+        mode=KernelContourMode.FILLED,
+        figwidth=FigWidth.ROW2,
+        clr_format=".1f",
+    )
 
-    State.output(fig, spec=specimen)
+    State.output(fig, spec=specimen, to_additional=True)
 
 @app.command()
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
@@ -375,7 +381,7 @@ def diag_dist_specimen_intensity_func(
         img.shape[:2],
         specimen.splinters,
         lambda x,r: x.in_region_px(r),
-        kernel_width=kernel_width,
+        kw_px=kernel_width,
         skip_edge=True,
     )
 
@@ -392,7 +398,7 @@ def log2dhist_diag(
     sigmas: Annotated[str, typer.Option(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120" or "all").', metavar='s, s1-s2, all')] = None,
     delta: Annotated[float, typer.Option(help='Additional range for sigmas.')] = 10,
     out: Annotated[str, typer.Option(help='Output file.')] = None,
-    kernel_width: Annotated[int, typer.Option(help='Intensity kernel width.')] = 200,
+    w_mm: Annotated[int, typer.Option(help='Intensity kernel width.')] = 50,
     n_points: Annotated[int, typer.Option(help='Amount of points on the diagonal to evaluate.')] = 100,
     y_stress: Annotated[bool, typer.Option(help='Plot sigma instead of energy on y-axis.')] = False,
 ):
@@ -421,11 +427,15 @@ def log2dhist_diag(
     with get_progress() as progress:
         an_task = progress.add_task("Loading splinters...", total=len(specimens))
 
+        sf = specimens[0].get_size_factor()
+        assert np.all([x.get_size_factor() == sf for x in specimens]), "Not all specimens have the same size factor."
+
+        w_px = w_mm / sf
 
 
         for intensity, specimen in pooled(specimens, diag_dist_specimen_intensity_func,
                                           advance = lambda: progress.advance(an_task),
-                                          kernel_width=kernel_width,
+                                          kernel_width=w_px,
                                           n_points=n_points):
             intensity = intensity / np.max(intensity)
 
@@ -716,7 +726,7 @@ def plot_histograms(xlim: tuple[float,float],
 @app.command()
 def splinter_orientation_f(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
-    w_mm: Annotated[float, typer.Option(help='Width of kernel in mm.')] = 20,
+    w_mm: Annotated[float, typer.Option(help='Width of kernel in mm.')] = 50,
 ):
     specimen = Specimen.get(specimen_name)
     impact_pos = specimen.get_impact_position()
@@ -730,7 +740,7 @@ def splinter_orientation_f(
     fig_output = plot_splinter_movavg(
         specimen.get_fracture_image(),
         specimen.splinters,
-        kernel_width=w_px,
+        kw_px=w_px,
         z_action=mean_orientations,
         clr_label="Mean Orientation Strength $\Delta$",
         mode=KernelContourMode.FILLED,
@@ -788,7 +798,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 @app.command()
 def fracture_intensity_img(
     specimen_name: str,
-    w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 20,
+    w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 50,
     skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = True,
     figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
 ):
@@ -817,7 +827,7 @@ def fracture_intensity_img(
     w_px = int(w_mm / specimen.get_size_factor())
     output = plot_image_movavg(
         img,
-        kernel_width=w_px,
+        kw_px=w_px,
         z_action=mean_img_value,
         clr_label="Black Pixels [$N_{BP}/A/N_t$]",
         mode=KernelContourMode.FILLED,
@@ -832,8 +842,9 @@ def fracture_intensity_img(
 @app.command()
 def fracture_intensity_f(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
-        w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 20,
+        w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 50,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
+        as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
         skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
         figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
     ):
@@ -853,13 +864,18 @@ def fracture_intensity_f(
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
         clr_label="Fracture Intensity [$N_S/A$]", #, $w_A,h_A$={w_mm}mm
-        mode=KernelContourMode.FILLED,
+        mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         skip_edges=skip_edges,
         figwidth=figwidth,
-        clr_format='.0f'
+        clr_format='.0f',
     )
+    mods = []
+    if as_contours:
+        mods.append("contours")
+    if plot_vertices:
+        mods.append("vertices")
 
-    State.output(fig, spec=specimen, to_additional=True)
+    State.output(fig, spec=specimen, to_additional=True, mods=mods)
 
 @app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
@@ -1219,7 +1235,8 @@ def compare_manual(
         State.output(cmp_alg_lab, folder, f'{nr}_compare_contours_watershed_label', to_additional=True)
         State.output_nopen(cmp_alg_leg, folder, f'{nr}_compare_contours_watershed_legacy')
 
-
+        # use this for better visibility
+        hist_bins = 20
         figwidth=FigWidth.ROW3
 
         fig,axs = datahist_plot(
@@ -1234,15 +1251,15 @@ def compare_manual(
         area1 = np.array([x.area for x in manual_splinters])
 
         if x_range is None:
-            _,br, d1 = datahist_to_ax(ax, area0, n_bins=30, label='Algorithm', color='red', plot_mean=False, as_density=False)
+            _,br, d1 = datahist_to_ax(ax, area0, n_bins=hist_bins, label='Algorithm', color='red', plot_mean=False, as_density=False)
         else:
             low, up = [float(x) for x in x_range.split(':')]
             low = low if low > 0 else 1
-            br = np.linspace(np.log10(low) if low > 0 else 1, np.log10(up), 20)
+            br = np.linspace(np.log10(low) if low > 0 else 1, np.log10(up), hist_bins)
             _,_, d1 = datahist_to_ax(ax, area0, binrange=br, label='Algorithm', color='red', plot_mean=False, as_density=False)
 
-        # datahist_to_ax(ax, [x.area for x in manual_splinters], n_bins=20, label='Manual', plot_mean=False)
-        # datahist_to_ax(ax, [x.area for x in legacy_splinters], n_bins=20, label='Legacy', plot_mean=False)
+        # datahist_to_ax(ax, [x.area for x in manual_splinters], n_bins=hist_bins, label='Manual', plot_mean=False)
+        # datahist_to_ax(ax, [x.area for x in legacy_splinters], n_bins=hist_bins, label='Legacy', plot_mean=False)
         _,_,d2 = datahist_to_ax(ax, area1, binrange=br, label='Manual', color='green', plot_mean=False, as_density=False)
         delta_area = np.abs(d1-d2)
         plt.bar(br[:-1], delta_area, width=np.diff(br), align="edge", alpha=1, label="Difference", color="blue")
@@ -1268,10 +1285,10 @@ def compare_manual(
         )
 
         if x_range is None:
-            binrange = np.linspace(np.min(area0), np.max(area0), 20)
+            binrange = np.linspace(np.min(area0), np.max(area0), hist_bins)
         else:
             low, up = [float(x) for x in x_range.split(':')]
-            binrange = np.linspace(low, up, 20)
+            binrange = np.linspace(low, up, hist_bins)
 
         sims=similarity(
             area0,

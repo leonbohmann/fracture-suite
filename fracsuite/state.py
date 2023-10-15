@@ -143,6 +143,7 @@ class State:
         to_additional=False,
         cvt_rgb=False,
         figwidth='row1',
+        mods=None, # modifiers
     ):
         State.output(
             object,
@@ -153,7 +154,8 @@ class State:
             no_print=no_print,
             to_additional=to_additional,
             cvt_rgb=cvt_rgb,
-            figwidth=figwidth
+            figwidth=figwidth,
+            mods=mods
         )
 
     def output(
@@ -166,6 +168,7 @@ class State:
         to_additional=False,
         cvt_rgb=False,
         figwidth=None,
+        mods: list[str]=None, # modifiers
         **kwargs
     ):
         """
@@ -204,6 +207,11 @@ class State:
         # we need a list because we might change the last element
         path_and_name = list(path_and_name)
 
+        # modify name with mods
+        if mods is not None:
+            for mod in mods:
+                path_and_name[-1] += f'_{mod}'
+
         # If a spec is passed, use its output functions to save
         #   the object to the specimen path as well.
         # The name of this output file does not need the specimen ID,
@@ -212,7 +220,7 @@ class State:
             specimen_output_funcs = spec.get_output_funcs()
             for key, func in specimen_output_funcs.items():
                 if key in State.sub_outpath:
-                    spec_out = object.save(func(State.current_subcommand))
+                    spec_out = object.save(func(path_and_name[-1]))
                     if not no_print:
                         print(SAVE_FORMAT.format('SPECIMEN', spec_out))
 

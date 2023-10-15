@@ -18,7 +18,7 @@
         4
     ],
     "output_image_maxsize": 2000,
-    "hist_bins": "30",
+    "hist_bins": 30,
     "output_paths": {
         "test-prep/test-watershed-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
         "test-prep/test-legacy-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
@@ -28,7 +28,8 @@
         "splinters/splinter-orientation-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\orientation",
         "splinters/fracture-intensity-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\frac-intensity",
         "splinters/fracture-intensity-img": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\frac-intensity",
-        "splinters/roundness": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roundness"
+        "splinters/roundness": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roundness",
+        "splinters/roundness-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roundness"
     },
     "document_width_pt": 418.25555,
     "width_factors": {

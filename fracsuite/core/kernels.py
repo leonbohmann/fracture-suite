@@ -3,6 +3,7 @@ import numpy as np
 from fracsuite.core.image import split_image
 from fracsuite.state import State
 from rich.progress import track
+from rich import print
 from fracsuite.general import GeneralSettings
 
 class ImageKerneler():
@@ -89,14 +90,14 @@ class ObjectKerneler():
         region: tuple[int, int],
         data_objects: list[T],
         collector: Callable[[T, tuple[int,int,int,int]], bool],
-        kernel_width: float = 200,
+        kw_px: int = 200,
         skip_edge: bool = False,
         skip_edge_factor: float = 0.02,
     ):
         self.region = region
         self.data_objects = data_objects
         self.collector = collector
-        self.kernel_width = kernel_width
+        self.kw_px = kw_px
         self.skip_edge = skip_edge
         self.edgeskip_factor = skip_edge_factor
 
@@ -121,11 +122,11 @@ class ObjectKerneler():
         calculator: Callable[[list[T]], float],
         n_points: int,
     ) -> np.ndarray:
-        assert self.kernel_width < self.region[0], \
+        assert self.kw_px < self.region[0], \
             "Kernel width must be smaller than the region width."
-        assert self.kernel_width < self.region[1], \
+        assert self.kw_px < self.region[1], \
             "Kernel width must be smaller than the region height."
-        assert self.kernel_width > 10, \
+        assert self.kw_px > 10, \
             "Kernel width must be greater than 10."
         assert len(self.data_objects) > 0, \
             "There must be at least one object in the list."
@@ -146,10 +147,10 @@ class ObjectKerneler():
                 if w != h:
                     continue
 
-                x1 = (w/n_points) * px_w - self.kernel_width // 2
-                y1 = (h/n_points) * px_h - self.kernel_width // 2
-                x2 = x1 + self.kernel_width
-                y2 = y1 + self.kernel_width
+                x1 = (w/n_points) * px_w - self.kw_px // 2
+                y1 = (h/n_points) * px_h - self.kw_px // 2
+                x2 = x1 + self.kw_px
+                y2 = y1 + self.kw_px
 
                 objects_in_region = \
                     [obj for obj in self.data_objects \
@@ -165,17 +166,25 @@ class ObjectKerneler():
         self,
         calculator: Callable[[list[T]], float],
     ):
+        print(f'[cyan]KERNELER[/cyan] Kernel Width: {self.kw_px}px')
+        print(f'[cyan]KERNELER[/cyan] Region      : {self.region}px')
         # Get the ranges for x and y
         minx = 0.0
         maxx = np.max(self.region[0])
         miny = 0.0
         maxy = np.max(self.region[1])
-
-        xd = np.linspace(minx, maxx, int(np.round(maxx/self.kernel_width)))
-        yd = np.linspace(miny, maxy, int(np.round(maxy/self.kernel_width)))
+        # xd = np.linspace(minx, maxx, int(np.round(maxx/self.kernel_width)))
+        # yd = np.linspace(miny, maxy, int(np.round(maxy/self.kernel_width)))
+        xd = np.linspace(minx, maxx, int(np.round(maxx/self.kw_px)))
+        yd = np.linspace(miny, maxy, int(np.round(maxy/self.kw_px)))
         X, Y = np.meshgrid(xd, yd)
 
+        # shift the calculated points into the center
+        X = X + self.kw_px // 2
+        Y = Y + self.kw_px // 2
+
         Z = np.zeros_like(X, dtype=np.float64)
+        print(f'[cyan]KERNELER[/cyan] "{len(X)}x{len(Y)}" Points to process.')
 
         skip_i = int(len(xd)*self.edgeskip_factor) if self.skip_edge else 0
 
@@ -187,8 +196,8 @@ class ObjectKerneler():
 
         for i in d:
             for j in range(skip_i,len(yd) - skip_i):
-                x1,y1=xd[i]-self.kernel_width//2,yd[j]-self.kernel_width//2
-                x2,y2=xd[i]+self.kernel_width//2,yd[j]+self.kernel_width//2
+                x1,y1=xd[i]-self.kw_px//2,yd[j]-self.kw_px//2
+                x2,y2=xd[i]+self.kw_px//2,yd[j]+self.kw_px//2
 
                 # Create a region (x1, y1, x2, y2)
                 region_rect = (x1, y1, x2, y2)
@@ -201,4 +210,7 @@ class ObjectKerneler():
                 Z[j, i] = calculator(objects_in_region) \
                     if len(objects_in_region) > 0 else 0
 
+        # this is for testing
+        # Z[0,0] = 1000
+        # Z[-1,-1] = 1000
         return X,Y,Z
