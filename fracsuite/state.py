@@ -45,12 +45,12 @@ class StateOutput:
         """Saves the output to a file."""
         if self.is_image:
             cv2.imwrite(
-                outfile := path + f'.{general.image_extension}',
+                outfile := path + self.FigWidth + f'.{general.image_extension}',
                 self.Data
             )
         elif self.is_figure:
             self.Data.savefig(
-                outfile := path + f'.{general.plot_extension}',
+                outfile := path + self.FigWidth + f'.{general.plot_extension}',
                 dpi=200,
                 bbox_inches='tight',
                 pad_inches=0

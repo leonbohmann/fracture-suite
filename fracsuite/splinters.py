@@ -729,7 +729,7 @@ def splinter_orientation_f(
 
     w_px = int(w_mm / specimen.get_size_factor())
 
-    fig, axs = plot_splinter_movavg(
+    fig_output = plot_splinter_movavg(
         specimen.get_fracture_image(),
         specimen.splinters,
         kernel_width=w_px,
@@ -741,7 +741,7 @@ def splinter_orientation_f(
         crange=(0,1),
     )
 
-    State.output(fig, spec=specimen, to_additional=True, figwidth=FigWidth.ROW2)
+    State.output(fig_output, spec=specimen, to_additional=True)
 
 @app.command()
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
@@ -776,7 +776,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
                 (255,255,255),
                 5)
 
-    orientation_fig, _ = annotate_image(
+    orientation_fig = annotate_image(
         orientation_image,
         cbar_title='Orientation Strength $\Delta$',
         min_value=0,
@@ -785,7 +785,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         clr_format='{0:.1f}'
     )
 
-    State.output(orientation_fig, spec=specimen, to_additional=True, figwidth=FigWidth.ROW2)
+    State.output(orientation_fig, spec=specimen, to_additional=True)
 
 @app.command()
 def fracture_intensity_img(
@@ -817,7 +817,7 @@ def fracture_intensity_img(
     img = to_gray(img)
     # img = preprocess_image(img, specimen.splinter_config)
     w_px = int(w_mm / specimen.get_size_factor())
-    fig,axs = plot_image_movavg(
+    output = plot_image_movavg(
         img,
         kernel_width=w_px,
         z_action=mean_img_value,
@@ -829,7 +829,7 @@ def fracture_intensity_img(
         clr_format='.1f'
     )
 
-    State.output(fig, spec=specimen, to_additional=True, figwidth=figwidth)
+    State.output(output, spec=specimen, to_additional=True)
 
 @app.command()
 def fracture_intensity_f(
@@ -848,7 +848,7 @@ def fracture_intensity_f(
     original_image = specimen.get_fracture_image()
 
     # this counts the splinters in the kernel by default
-    fig,axs = plot_splinter_movavg(
+    fig = plot_splinter_movavg(
         original_image,
         specimen.splinters,
         w_px,
@@ -861,7 +861,7 @@ def fracture_intensity_f(
         clr_format='.0f'
     )
 
-    State.output(fig, spec=specimen, to_additional=True, figwidth=figwidth)
+    State.output(fig, spec=specimen, to_additional=True)
 
 @app.command()
 def create_voronoi(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],):
