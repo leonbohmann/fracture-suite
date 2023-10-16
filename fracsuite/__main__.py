@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import numpy as np
 
 import typer
 from matplotlib import pyplot as plt
@@ -20,7 +19,7 @@ from fracsuite.test_prep import test_prep_app
 from fracsuite.nominals import nominals_app
 from fracsuite.scalp import scalp_app
 from fracsuite.tester import tester_app
-from cycler import cycler
+from fracsuite.spatial import spatial_app
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
@@ -102,6 +101,7 @@ app.add_typer(scalp_app, name="scalp")
 app.add_typer(test_prep_app, name="test-prep")
 app.add_typer(nominals_app, name="nominals")
 app.add_typer(tester_app, name="tester")
+app.add_typer(spatial_app, name="spatial")
 
 
 # @app.command()
