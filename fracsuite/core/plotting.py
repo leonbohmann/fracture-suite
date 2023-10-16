@@ -21,6 +21,7 @@ from matplotlib.ticker import FuncFormatter
 
 from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
+from fracsuite.core.imageprocessing import make_transparent_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
@@ -178,10 +179,12 @@ def plot_splinter_movavg(
     original_image: np.ndarray,
     splinters: list[Splinter],
     kw_px: int,
+    n_points: int,
     z_action: Callable[[list[Splinter]], float] = None,
     clr_label: str = None,
     no_ticks: bool = True,
     plot_vertices: bool = False,
+    plot_kernel: bool = False,
     skip_edge: bool = False,
     mode: KernelContourMode = KernelContourMode.CONTOURS,
     exclude_points: list[tuple[int,int]] = None,
@@ -242,17 +245,16 @@ def plot_splinter_movavg(
         region,
         splinters,
         collector=lambda x,r: x.in_region_px(r),
-        kw_px=kw_px,
         skip_edge=skip_edge,
         skip_edge_factor=0.02,
     )
 
-    X, Y, Z = kernel.run(z_action, mode="area", exclude_points=exclude_points)
+    X, Y, Z = kernel.run(z_action,kw_px, n_points, mode="area", exclude_points=exclude_points)
 
     if normalize:
         Z = Z / np.max(Z)
 
-    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, kw_px, figwidth=figwidth, clr_format=clr_format, crange=crange)
+    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, kw_px, figwidth=figwidth, clr_format=clr_format, crange=crange, plot_kernel=plot_kernel)
 
 def plot_kernel_results(
     original_image,
@@ -266,7 +268,8 @@ def plot_kernel_results(
     kw_px,
     figwidth: FigWidth,
     clr_format: str = None,
-    crange: tuple[float,float] = None
+    crange: tuple[float,float] = None,
+    plot_kernel: bool = False
 ) -> StateOutput:
     """
     Plot the results of a kernel operation on an image.
@@ -296,6 +299,11 @@ def plot_kernel_results(
     def show_vertices():
         if plot_vertices:
             axs.scatter(X, Y, marker='x', c='white', s=3, linewidth=0.5)
+        if plot_kernel:
+            axs.add_patch(mpatches.Rectangle((kw_px, kw_px), kw_px, kw_px,
+                edgecolor = 'pink',
+                fill=False,
+                lw=1))
 
     if mode == KernelContourMode.CONTOURS:
         axim = axs.contourf(X, Y, results, cmap='turbo', alpha=CONTOUR_ALPHA)
@@ -305,10 +313,16 @@ def plot_kernel_results(
         show_vertices()
         show_img()
         results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
+        # results = cv2.applyColorMap(results.astype(np.uint8), cv2.COLORMAP_TURBO)
+
+        # results = cv2.cvtColor(results, cv2.COLOR_BGR2RGBA)
+        # make the outer edge of 5% of the image transparent
+        mask = make_transparent_border(results, 0.05, CONTOUR_ALPHA)
+
         if crange is None:
-            axim = axs.imshow(results, cmap='turbo', alpha=CONTOUR_ALPHA)
+            axim = axs.imshow(results, cmap='turbo', alpha=mask)
         else:
-            axim = axs.imshow(results, cmap='turbo', alpha=CONTOUR_ALPHA, vmin=crange[0], vmax=crange[1])
+            axim = axs.imshow(results, cmap='turbo', alpha=mask, vmin=crange[0], vmax=crange[1])
 
 
 

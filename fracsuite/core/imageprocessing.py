@@ -2,13 +2,34 @@ import cv2
 import numpy as np
 import numpy.typing as nptyp
 
-from fracsuite.core.image import is_rgb, to_gray, to_rgb
+from fracsuite.core.image import is_rgb, to_gray, to_rgb, to_rgba
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.preps import PrepMode, PreprocessorConfig, defaultPrepConfig
 
 from rich import print
 
 W_FAC = 4000
+
+def make_transparent_border(image, border_percent=0.1, default_alpha=1.0):
+    height, width = image.shape[:2]
+
+    border_width = int(width *  border_percent)
+    border_height = int(height * border_percent)
+
+    mask = np.ones((height, width), dtype=np.uint8) * default_alpha
+
+    for i in range(border_height):
+        alpha_value = i* default_alpha / border_height
+        mask[i, :] = alpha_value
+        mask[-(i + 1), :] = alpha_value
+
+    for i in range(border_width):
+        alpha_value = i* default_alpha / border_width
+        mask[:, i] = np.minimum(mask[:, i], alpha_value)
+        mask[:, -(i + 1)] = np.minimum(mask[:, -(i + 1)], alpha_value)
+
+
+    return mask
 
 def lightcorrect(image, strength=5, size=8):
     # Convert to LAB color space

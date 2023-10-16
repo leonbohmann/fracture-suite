@@ -34,6 +34,7 @@ def to_rgb(img, rgb = False):
 def to_rgba(img):
     if is_rgba(img):
         return img
+    img = to_rgb(img)
     return cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
 
 

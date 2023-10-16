@@ -843,7 +843,9 @@ def fracture_intensity_img(
 def fracture_intensity_f(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
         w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 50,
+        n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = 50,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
+        plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel rectangle.')] = False,
         as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
         skip_edge: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
         exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
@@ -862,8 +864,10 @@ def fracture_intensity_f(
         original_image,
         specimen.splinters,
         w_px,
+        n_points,
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
+        plot_kernel=plot_kernel,
         clr_label="Fracture Intensity [$N_S/A$]", #, $w_A,h_A$={w_mm}mm
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
