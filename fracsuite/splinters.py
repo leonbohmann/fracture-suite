@@ -25,7 +25,6 @@ from fracsuite.core.plotting import (
     KernelContourMode,
     create_splinter_colored_image,
     datahist_plot,
-    get_figure_size_fraction,
     plot_image_movavg,
     plot_splinter_movavg,
     create_splinter_sizes_image,
@@ -473,7 +472,7 @@ def log2dhist_diag(
 
     dt = np.array(data)
     axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-    cbar = fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative Intensity', pad=0.2)
+    fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative Intensity', pad=0.2)
 
     axs.set_xlim((-0.01, n_points+0.01))
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
@@ -558,7 +557,7 @@ def log_2d_histograms(
 
     dt = np.array(data)
     axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-    cbar = fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative PDF', pad=0.2)
+    fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative PDF', pad=0.2)
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
