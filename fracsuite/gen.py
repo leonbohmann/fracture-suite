@@ -8,7 +8,7 @@ from fracsuite.core.imageprocessing import dilateImg
 from fracsuite.core.splinter import Splinter
 
 
-spatial_app = typer.Typer()
+gen_app = typer.Typer()
 
 def strauss_process(region_size, num_points, interaction_radius, interaction_strength):
     points = set()
@@ -31,7 +31,7 @@ def strauss_process(region_size, num_points, interaction_radius, interaction_str
                 break
     return points
 
-@spatial_app.command()
+@gen_app.command()
 def create_spatial():
     image = np.zeros((100,100,3), dtype=np.uint8)
 
