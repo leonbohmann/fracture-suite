@@ -1,4 +1,5 @@
 import cv2
+from matplotlib import pyplot as plt
 import numpy as np
 import numpy.typing as nptyp
 
@@ -10,10 +11,10 @@ from rich import print
 
 W_FAC = 4000
 
-def make_transparent_border(
+def modify_border(
     image,
     border_percent: int = 5,
-    default_alpha=1.0,
+    default_alpha:float = 1.0,
     fill_skipped_with_mean: bool = True,
 ) -> tuple[nptyp.NDArray, nptyp.NDArray]:
     """
@@ -27,7 +28,8 @@ def make_transparent_border(
         image (nd.array): The input image.
         border_percent (int, optional): The width of the border in percent. Defaults to 5.
         default_alpha (float, optional): The alpha value of the image. Defaults to 1.0.
-
+        fill_skipped_with_mean (bool, optional): If true, the transparent pixels are set to the
+            mean value of the image. Defaults to True.
     Returns:
         nd.array: The image with a transparent border.
     """
@@ -40,7 +42,7 @@ def make_transparent_border(
     border_width = int(width *  border_percent)
     border_height = int(height * border_percent)
 
-    mask = np.ones((height, width), dtype=np.uint8) * default_alpha
+    mask = np.ones((height, width), dtype=np.float64) * default_alpha
 
     # set image to mean value with mask
     if fill_skipped_with_mean:
@@ -74,7 +76,10 @@ def make_transparent_border(
             image[:,-(i + 1)] = mean_value + f * (v0 - mean_value)
 
         # mean_img = np.ones(image.shape, dtype=np.uint8) * mean_value
-
+    # print(np.max(mask))
+    # print(np.min(mask))
+    # plt.imshow(mask, cmap='gray')
+    # plt.show()
 
     return mask, image
 

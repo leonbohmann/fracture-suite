@@ -19,6 +19,7 @@
     ],
     "output_image_maxsize": 2000,
     "hist_bins": 30,
+	"n_points_kernel": 25,
     "output_paths": {
         "test-prep/test-watershed-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",
         "test-prep/test-legacy-count": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\fracsuite\\watershed_compare",

@@ -46,6 +46,8 @@ class GeneralSettings:
             'row2': 0.6,  # 204pt, 250 real, f=
             'row3': 0.3, # 153.646pt, 125pt real, f=1.22
         }
+        self.n_points_kernel: int = 25
+        "Amount of points in kernelers."
 
         GeneralSettings.sub_outpath: str = ""
 

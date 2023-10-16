@@ -22,7 +22,7 @@ from matplotlib.ticker import FuncFormatter
 
 from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
-from fracsuite.core.imageprocessing import make_transparent_border
+from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
@@ -367,16 +367,19 @@ def plot_kernel_results(
         show_vertices()
         show_img()
 
-        if crange is None:
-            crange = (np.min(results), np.max(results))
 
         # scale the results up to get a smooth image
-        results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_NEAREST)
+        results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR_EXACT)
+
+        results = results / np.max(results)
         # make the outer edge of 5% of the image transparent
         if make_border_transparent:
-            mask, results = make_transparent_border(results, 5, CONTOUR_ALPHA, fill_skipped_with_mean)
+            mask, results = modify_border(results, 5, 0.85*CONTOUR_ALPHA, fill_skipped_with_mean)
         else:
             mask = CONTOUR_ALPHA
+
+        if crange is None:
+            crange = (np.min(results), np.max(results))
 
         axim = axs.imshow(results, cmap='turbo', vmin=crange[0], vmax=crange[1], alpha=mask) # alpha=mask,
 

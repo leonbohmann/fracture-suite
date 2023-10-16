@@ -5,11 +5,8 @@ from fracsuite.core.region import RectRegion
 from fracsuite.state import State
 from rich.progress import track
 from fracsuite.general import GeneralSettings
-import rich
+from rich import print
 
-def print(*args, **kwargs):
-    if State.debug:
-        rich.print(*args, **kwargs)
 
 def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
     if isinstance(n_points, tuple):
@@ -42,9 +39,13 @@ class ImageKerneler():
         exclude_points: list[tuple[int,int]] = None,
         fill_skipped_with_mean: bool = True,
     ):
+        print('[cyan]IM-KERNELER[/cyan] [green]END[/green]')
+
         px_w, px_h = (self.image.shape[1], self.image.shape[0])
         iw, ih = convert_npoints(n_points, (px_w, px_h), kw_px)
-
+        print(f'[cyan]IM-KERNELER[/cyan] Kernel Width: {kw_px} px')
+        print(f'[cyan]IM-KERNELER[/cyan] Points:       {n_points},{n_points} Points')
+        print(f'[cyan]IM-KERNELER[/cyan] Region:       {px_w},{px_h} px')
         # Get the ranges for x and y
         # Get the ranges for x and y
         minx = kw_px // 2
@@ -108,6 +109,7 @@ class ImageKerneler():
             Z[Z == -1] = mean
         else:
             Z[Z == -1] = 0
+        print('[cyan]IM-KERNELER[/cyan] [green]END[/green]')
 
         return X,Y,Z
 
@@ -233,8 +235,10 @@ class ObjectKerneler():
         assert len(self.data_objects) > 0, \
             "There must be at least one object in the list."
 
+        print(f'[cyan]KERNELER[/cyan] [green]START[/green]')
         print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw_px}px')
-        print(f'[cyan]KERNELER[/cyan] Region      : {self.region}px')
+        print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
+        print(f'[cyan]KERNELER[/cyan] Region:       {self.region}px')
 
         # Get the ranges for x and y
         minx = kw_px // 2
@@ -252,7 +256,8 @@ class ObjectKerneler():
 
 
         Z = np.zeros_like(X, dtype=np.float64)
-        print(f'[cyan]KERNELER[/cyan] "{len(xd)}x{len(xd)}" Points to process.')
+        if State.debug:
+            print(f'[cyan]KERNELER[/cyan] "{len(xd)}x{len(xd)}" Points to process.')
 
         skip_i = 1 if self.skip_edge else 0
 
@@ -273,7 +278,8 @@ class ObjectKerneler():
 
                 # Create a region (x1, y1, x2, y2)
                 region = RectRegion(x1, y1, x2, y2)
-                print(f'[cyan]KERNELER[/cyan] Processing region ({region.wh_center()})...')
+                if State.debug:
+                    print(f'[cyan]KERNELER[/cyan] Processing region ({region.wh_center()})...')
 
                 is_excluded = False
                 if exclude_points is not None:
@@ -281,7 +287,8 @@ class ObjectKerneler():
                         if region.is_point_in(p):
                             Z[j, i] = -1
                             is_excluded = True
-                            print('[cyan]KERNELER[/cyan] Region is excluded.')
+                            if State.debug:
+                                print(f'[cyan]KERNELER[/cyan] Region {region.wh_center()} is excluded.')
                             break
 
                 if is_excluded:
@@ -293,12 +300,14 @@ class ObjectKerneler():
                     if self.collector(obj, region)]
                 # input('Continue?')
 
-                print(f'[cyan]KERNELER[/cyan] Found {len(objects_in_region)} objects in region.')
+                if State.debug:
+                    print(f'[cyan]KERNELER[/cyan] Found {len(objects_in_region)} objects in region.')
                 # Apply z_action to collected splinters
                 Z[j, i] = calculator(objects_in_region) \
                     if len(objects_in_region) > 0 else 0
 
-                print(f'[cyan]KERNELER[/cyan] Result: {Z[j,i]}')
+                if State.debug:
+                    print(f'[cyan]KERNELER[/cyan] Result: {Z[j,i]}')
 
         # input("continue?")
         # this is for testing
@@ -310,5 +319,6 @@ class ObjectKerneler():
             Z[Z == -1] = mean
         else:
             Z[Z == -1] = 0
+        print(f'[cyan]KERNELER[/cyan] [green]END[/green]')
 
         return X,Y,Z

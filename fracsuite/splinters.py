@@ -166,6 +166,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
 def roundness_f(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
     w_mm: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 50,
+    n_points: Annotated[int, typer.Option(help='Amount of points to evaluate.')] = general.n_points_kernel,
 ):
     """Create a contour plot of the roundness on the specimen.
 
@@ -182,7 +183,8 @@ def roundness_f(
     fig = plot_splinter_movavg(
         specimen.get_fracture_image(),
         splinters=specimen.splinters,
-        kw_px=w_mm / specimen.calculate_px_per_mm(),
+        kw_px=w_mm * specimen.calculate_px_per_mm(),
+        n_points=n_points,
         z_action=roundness_function,
         clr_label='Mean roughness',
         mode=KernelContourMode.FILLED,
@@ -730,7 +732,7 @@ def plot_histograms(xlim: tuple[float,float],
 def splinter_orientation_f(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
     w_mm: Annotated[float, typer.Option(help='Width of kernel in mm.')] = 50,
-    n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = 50,
+    n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = general.n_points_kernel,
     as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
     plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
     exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
@@ -815,7 +817,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 def fracture_intensity_img(
     specimen_name: str,
     w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 50,
-    n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = 50,
+    n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = general.n_points_kernel,
     as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
     plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
     exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
@@ -857,7 +859,7 @@ def fracture_intensity_img(
         w_px,
         n_points,
         z_action=mean_img_value,
-        clr_label="Black Pixels [$N_{BP}/A/N_t$]",
+        clr_label="Black Pixels Value [$N_{BP}/A/N_t$]",
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         skip_edge=skip_edge,
         exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
@@ -876,7 +878,7 @@ def fracture_intensity_img(
 def fracture_intensity_f(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
         w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 50,
-        n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = 50,
+        n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = general.n_points_kernel,
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
         plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel rectangle.')] = False,
         as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
