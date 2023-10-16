@@ -4,6 +4,7 @@ from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.preps import PreprocessorConfig
 
 from fracsuite.core.progress import get_spinner
+from fracsuite.core.region import RectRegion
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.core.splinter import Splinter
 from fracsuite.helpers import checkmark, find_file
@@ -293,6 +294,14 @@ class Specimen(Outputtable):
         frac_img = self.get_fracture_image()
         assert frac_img is not None, "Fracture image not found."
         return realsize[0] / frac_img.shape[0]
+
+    def get_splinters_in_region(self, region: RectRegion) -> list[Splinter]:
+        in_region = []
+        for s in self.splinters:
+            if region.is_point_in(s.centroid_px):
+                in_region.append(s)
+
+        return in_region
 
     def __get_energy(self):
         t0 = self.scalp.measured_thickness
