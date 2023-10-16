@@ -166,6 +166,7 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
 def roundness_f(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
     w_mm: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 50,
+    as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
     n_points: Annotated[int, typer.Option(help='Amount of points to evaluate.')] = general.n_points_kernel,
 ):
     """Create a contour plot of the roundness on the specimen.
@@ -186,8 +187,8 @@ def roundness_f(
         kw_px=w_mm * specimen.calculate_px_per_mm(),
         n_points=n_points,
         z_action=roundness_function,
-        clr_label='Mean roughness',
-        mode=KernelContourMode.FILLED,
+        clr_label='Roundness $\lambda_c$',
+        mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         figwidth=FigWidth.ROW2,
         clr_format=".1f",
     )
@@ -244,8 +245,8 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     print(f"Mean roundness: {np.mean(rounds)}")
 
     # scale max and min roundness to +- 60% around mean
-    max_r = np.mean(rounds) + np.mean(rounds) * 0.6
-    min_r = np.mean(rounds) - np.mean(rounds) * 0.6
+    # max_r = np.mean(rounds) + np.mean(rounds) * 0.6
+    # min_r = np.mean(rounds) - np.mean(rounds) * 0.6
 
 
     for splinter in track(specimen.splinters):
@@ -257,8 +258,8 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     out_img = annotate_image(
         out_img,
         cbar_title="Roundness $\lambda_c$",
-        min_value=0,
-        max_value=max_r / 4,
+        min_value=min_r,
+        max_value=max_r,
         figwidth=FigWidth.ROW2,
         clr_format=".1f"
     )
