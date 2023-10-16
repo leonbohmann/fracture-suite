@@ -10,7 +10,31 @@ from rich import print
 
 W_FAC = 4000
 
-def make_transparent_border(image, border_percent=0.1, default_alpha=1.0):
+def make_transparent_border(
+    image,
+    border_percent: int = 5,
+    default_alpha=1.0,
+    fill_skipped_with_mean: bool = True,
+) -> tuple[nptyp.NDArray, nptyp.NDArray]:
+    """
+    Makes the border of an image transparent.
+
+    This method creates a mask with a transparent border around the image. The width of the border
+    is specified in percent of the image width and height. The alpha value of the border is linearly
+    interpolated from the default alpha value to 0 at the edge.
+
+    Args:
+        image (nd.array): The input image.
+        border_percent (int, optional): The width of the border in percent. Defaults to 5.
+        default_alpha (float, optional): The alpha value of the image. Defaults to 1.0.
+
+    Returns:
+        nd.array: The image with a transparent border.
+    """
+    assert border_percent >= 0 and border_percent <= 100, "Border percent must be between 0 and 100"
+    assert default_alpha >= 0 and default_alpha <= 1, "Default alpha must be between 0 and 1"
+
+    border_percent = border_percent / 100
     height, width = image.shape[:2]
 
     border_width = int(width *  border_percent)
@@ -18,18 +42,41 @@ def make_transparent_border(image, border_percent=0.1, default_alpha=1.0):
 
     mask = np.ones((height, width), dtype=np.uint8) * default_alpha
 
+    # set image to mean value with mask
+    if fill_skipped_with_mean:
+        mean_value = np.mean(image)
+
     for i in range(border_height):
-        alpha_value = i* default_alpha / border_height
+        f = i / border_height
+        alpha_value = f * default_alpha
         mask[i, :] = alpha_value
         mask[-(i + 1), :] = alpha_value
 
+        if fill_skipped_with_mean:
+            # modify image data to reach mean_value
+            v0 = image[border_height-1,:]
+            image[i,:] = mean_value + f * (v0 - mean_value)
+            v0 = image[-(border_height-1),:]
+            image[-(i + 1),:] = mean_value + f * (v0 - mean_value)
+
     for i in range(border_width):
-        alpha_value = i* default_alpha / border_width
+        f = i / border_height
+        alpha_value = f * default_alpha
+
         mask[:, i] = np.minimum(mask[:, i], alpha_value)
         mask[:, -(i + 1)] = np.minimum(mask[:, -(i + 1)], alpha_value)
 
+        if fill_skipped_with_mean:
+            # modify image data to reach mean_value
+            v0 = image[:,border_width-1]
+            image[:,i] = mean_value + f * (v0 - mean_value)
+            v0 = image[:,-border_width-1]
+            image[:,-(i + 1)] = mean_value + f * (v0 - mean_value)
 
-    return mask
+        # mean_img = np.ones(image.shape, dtype=np.uint8) * mean_value
+
+
+    return mask, image
 
 def lightcorrect(image, strength=5, size=8):
     # Convert to LAB color space

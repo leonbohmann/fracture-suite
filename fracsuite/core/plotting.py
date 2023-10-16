@@ -14,6 +14,7 @@ from deprecated import deprecated
 import matplotlib as mpl
 import matplotlib.patches as mpatches
 import numpy as np
+import numpy.typing as npt
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -132,10 +133,12 @@ def to_img(fig):
 
 def plot_image_movavg(
     image: np.ndarray,
-    kw_px: float,
-    z_action: Callable[[list[Splinter]], float] = None,
+    kw_px: int,
+    n_points: int,
+    z_action: Callable[[npt.NDArray], float] = None,  # noqa: F821
     clr_label=None,
     plot_vertices: bool = False,
+    plot_kernel: bool = False,
     skip_edge: bool = False,
     mode: KernelContourMode = KernelContourMode.CONTOURS,
     exclude_points: list[tuple[int,int]] = None,
@@ -144,6 +147,8 @@ def plot_image_movavg(
     clr_format: str = None,
     normalize: bool = True,
     crange: tuple[float,float] = None,
+    fill_skipped_with_mean: bool = True,
+    transparent_border: bool = False,
 ) -> tuple[StateOutput, Axes]:
     """Create an intensity plot of the fracture.
 
@@ -166,14 +171,37 @@ def plot_image_movavg(
     """
 
     # print(f'Creating intensity plot with region={region}...')
-    kernel = ImageKerneler(image, kw_px, skip_edge=skip_edge)
-    X, Y, Z = kernel.run(z_action, exclude_points=exclude_points)
+    kernel = ImageKerneler(image, skip_edge=skip_edge)
+    X, Y, Z = kernel.run(
+        n_points,
+        kw_px,
+        z_action,
+        exclude_points=exclude_points,
+        fill_skipped_with_mean=fill_skipped_with_mean
+    )
 
     if normalize:
         Z = Z / np.max(Z)
 
 
-    return plot_kernel_results(image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, kw_px, figwidth=figwidth, clr_format=clr_format, crange=crange)
+    return plot_kernel_results(
+        original_image=image,
+        clr_label=clr_label,
+        no_ticks=no_ticks,
+        plot_vertices=plot_vertices,
+        mode=mode,
+        X=X,
+        Y=Y,
+        results=Z,
+        kw_px=kw_px,
+        figwidth=figwidth,
+        clr_format=clr_format,
+        crange=crange,
+        plot_kernel=plot_kernel,
+        fill_skipped_with_mean=fill_skipped_with_mean,
+        make_border_transparent=transparent_border
+
+    )
 
 def plot_splinter_movavg(
     original_image: np.ndarray,
@@ -192,6 +220,8 @@ def plot_splinter_movavg(
     clr_format=None,
     normalize: bool = False,
     crange: tuple[float,float] = None,
+    fill_skipped_with_mean: bool = True,
+    transparent_border: bool = False,
 ) -> StateOutput:
     """
     Plot the results of a kernel operation on a list of objects, using a moving average
@@ -246,21 +276,43 @@ def plot_splinter_movavg(
         splinters,
         collector=lambda x,r: x.in_region_px(r),
         skip_edge=skip_edge,
-        skip_edge_factor=0.02,
     )
 
-    X, Y, Z = kernel.run(z_action,kw_px, n_points, mode="area", exclude_points=exclude_points)
+    X, Y, Z = kernel.run(
+        z_action,
+        kw_px,
+        n_points,
+        mode="area",
+        exclude_points=exclude_points,
+        fill_skipped_with_mean=fill_skipped_with_mean
+    )
 
     if normalize:
         Z = Z / np.max(Z)
 
-    return plot_kernel_results(original_image, clr_label, no_ticks, plot_vertices, mode, X, Y, Z, kw_px, figwidth=figwidth, clr_format=clr_format, crange=crange, plot_kernel=plot_kernel)
+    return plot_kernel_results(
+        original_image=original_image,
+        clr_label=clr_label,
+        no_ticks=no_ticks,
+        plot_vertices=plot_vertices,
+        mode=mode,
+        X=X,
+        Y=Y,
+        results=Z,
+        kw_px=kw_px,
+        figwidth=figwidth,
+        clr_format=clr_format,
+        crange=crange,
+        plot_kernel=plot_kernel,
+        fill_skipped_with_mean=fill_skipped_with_mean,
+        make_border_transparent=transparent_border
+    )
 
 def plot_kernel_results(
     original_image,
-    clr_label,
-    no_ticks,
-    plot_vertices,
+    clr_label: str,
+    no_ticks: bool,
+    plot_vertices: bool,
     mode: str,
     X,
     Y,
@@ -269,7 +321,9 @@ def plot_kernel_results(
     figwidth: FigWidth,
     clr_format: str = None,
     crange: tuple[float,float] = None,
-    plot_kernel: bool = False
+    plot_kernel: bool = False,
+    fill_skipped_with_mean: bool = True,
+    make_border_transparent: bool = False,
 ) -> StateOutput:
     """
     Plot the results of a kernel operation on an image.
@@ -312,17 +366,19 @@ def plot_kernel_results(
     elif mode == KernelContourMode.FILLED:
         show_vertices()
         show_img()
-        results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR)
-        # results = cv2.applyColorMap(results.astype(np.uint8), cv2.COLORMAP_TURBO)
-
-        # results = cv2.cvtColor(results, cv2.COLOR_BGR2RGBA)
-        # make the outer edge of 5% of the image transparent
-        mask = make_transparent_border(results, 0.05, CONTOUR_ALPHA)
 
         if crange is None:
-            axim = axs.imshow(results, cmap='turbo', alpha=mask)
+            crange = (np.min(results), np.max(results))
+
+        # scale the results up to get a smooth image
+        results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_NEAREST)
+        # make the outer edge of 5% of the image transparent
+        if make_border_transparent:
+            mask, results = make_transparent_border(results, 5, CONTOUR_ALPHA, fill_skipped_with_mean)
         else:
-            axim = axs.imshow(results, cmap='turbo', alpha=mask, vmin=crange[0], vmax=crange[1])
+            mask = CONTOUR_ALPHA
+
+        axim = axs.imshow(results, cmap='turbo', vmin=crange[0], vmax=crange[1], alpha=mask) # alpha=mask,
 
 
 

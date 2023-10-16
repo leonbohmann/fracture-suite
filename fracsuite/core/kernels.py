@@ -29,33 +29,32 @@ class ImageKerneler():
     def __init__(
         self,
         image,
-        grid,
         skip_edge=False,
-        skip_edge_factor=0.05,
     ):
         self.image = image
-        self.grid = grid
         self.skip_edge = skip_edge
-        self.skip_edge_factor = skip_edge_factor
 
     def run(
         self,
+        n_points: int,
+        kw_px: int,
         z_value: Callable[[Any], float] = None,
         exclude_points: list[tuple[int,int]] = None,
+        fill_skipped_with_mean: bool = True,
     ):
         px_w, px_h = (self.image.shape[1], self.image.shape[0])
+        iw, ih = convert_npoints(n_points, (px_w, px_h), kw_px)
 
         # Get the ranges for x and y
-        minx = 0
-        maxx = px_w
-        miny = 0
-        maxy = px_h
-
-        split = split_image(self.image, self.grid)
+        # Get the ranges for x and y
+        minx = kw_px // 2
+        maxx = px_w - kw_px // 2
+        miny = kw_px // 2
+        maxy = px_h - kw_px // 2
 
         # Get 50 linearly spaced points
-        xd = np.linspace(minx, maxx, split.rows)
-        yd = np.linspace(miny, maxy, split.cols)
+        xd = np.linspace(minx, maxx, iw,endpoint=True)
+        yd = np.linspace(miny, maxy, ih,endpoint=True)
         X, Y = np.meshgrid(xd, yd)
 
         # perform the action on every area element
@@ -67,21 +66,29 @@ class ImageKerneler():
         # print(result.shape)
         # print(len(xd))
         # print(len(yd))
-        skip_i = int(np.ceil(len(xd)*self.skip_edge_factor)) if self.skip_edge else 0
+        skip_i = 1 if self.skip_edge else 0
         # Iterate over all points and find splinters in the area of X, Y and intensity_h
-        for i in track(range(skip_i,len(xd)-skip_i), transient=True,
+        for i in track(range(len(xd)), transient=True,
                     description="Calculating intensity..."):
-            for j in range(skip_i,len(yd)-skip_i):
-                part = split.get_part(i,j)
+            for j in range(len(yd)):
+                if (j < skip_i or j >= len(yd) - skip_i) or (i < skip_i or i >= len(xd) - skip_i):
+                    result[j,i] = -1
+                    continue
 
-                loc = part[1]
+                x1,x2=xd[i]-kw_px//2,xd[i]+kw_px//2
+                y1,y2=yd[j]-kw_px//2,yd[j]+kw_px//2
+
+                # Create a region (x1, y1, x2, y2)
+                region = RectRegion(x1, y1, x2, y2)
+
+                part = region.clipImg(self.image)
+
                 is_excluded = False
                 # Skip points that are in the exclude list
                 if exclude_points is not None:
-                    for x,y in exclude_points:
-                        if x >= loc[1] and x <= loc[1] + self.grid \
-                            and y >= loc[0] and y <= loc[0] + self.grid:
-                            result[j, i] = 0
+                    for p in exclude_points:
+                        if region.is_point_in(p):
+                            result[j, i] = -1
                             is_excluded = True
                             break
 
@@ -94,6 +101,13 @@ class ImageKerneler():
                 result[j, i] = value
 
         Z = result.reshape(X.shape)
+
+        # fill Z with skipped_value
+        if fill_skipped_with_mean:
+            mean = np.mean(Z[Z != -1])
+            Z[Z == -1] = mean
+        else:
+            Z[Z == -1] = 0
 
         return X,Y,Z
 
@@ -110,13 +124,11 @@ class ObjectKerneler():
         data_objects: list[T],
         collector: Callable[[T, RectRegion], bool],
         skip_edge: bool = False,
-        skip_edge_factor: float = 0.02,
     ):
         self.region = region
         self.data_objects = data_objects
         self.collector = collector
         self.skip_edge = skip_edge
-        self.edgeskip_factor = skip_edge_factor
 
     def run(
         self,
@@ -125,6 +137,7 @@ class ObjectKerneler():
         n_points: int = -1,
         mode: str = "area",
         exclude_points: list[tuple[int,int]] = None,
+        fill_skipped_with_mean: bool = True,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | np.ndarray:
         """
         Run the kerneler.
@@ -152,9 +165,9 @@ class ObjectKerneler():
             f"Mode must be one of '{ObjectKerneler.__modes}'."
 
         if mode == "area":
-            return self.__run_area(calculator, n_points, kw_px, exclude_points=exclude_points)
+            return self.__run_area(calculator, n_points, kw_px, exclude_points=exclude_points, fill_skipped_with_mean=fill_skipped_with_mean)
         elif mode == "diag":
-            return self.__run_diag(calculator, n_points, kw_px, exclude_points=exclude_points)
+            return self.__run_diag(calculator, n_points, kw_px, exclude_points=exclude_points, fill_skipped_with_mean=fill_skipped_with_mean)
 
     def __run_diag(
         self,
@@ -162,6 +175,7 @@ class ObjectKerneler():
         n_points: int | tuple[int,int],
         kw_px: int,
         exclude_points: list[tuple[int,int]] = None,
+        fill_skipped_with_mean: bool = True
     ) -> np.ndarray:
         assert kw_px < self.region[0], \
             "Kernel width must be smaller than the region width."
@@ -206,6 +220,7 @@ class ObjectKerneler():
         n_points: int | tuple[int,int],
         kw_px: int,
         exclude_points: list[tuple[int,int]] = None,
+        fill_skipped_with_mean: bool = True
     ):
         assert n_points > 0 or n_points == -1, \
             "n_points must be greater than 0."
@@ -242,13 +257,17 @@ class ObjectKerneler():
         skip_i = 1 if self.skip_edge else 0
 
         if State.has_progress():
-            d = range(skip_i,len(xd) - skip_i)
+            d = range(len(xd))
         else:
-            d = track(range(skip_i,len(xd) - skip_i), transient=True,
+            d = track(range(len(xd)), transient=True,
                     description="Running kernel over region...")
 
         for i in d:
-            for j in range(skip_i,len(yd) - skip_i):
+            for j in range(len(yd)):
+                if (j < skip_i or j >= len(yd) - skip_i) or (i < skip_i or i >= len(xd) - skip_i):
+                    Z[j,i] = -1
+                    continue
+
                 x1,x2=(xd[i]-kw_px//2,xd[i]+kw_px//2)
                 y1,y2=(yd[j]-kw_px//2,yd[j]+kw_px//2)
 
@@ -258,10 +277,9 @@ class ObjectKerneler():
 
                 is_excluded = False
                 if exclude_points is not None:
-                    for x,y in exclude_points:
-                        if x >= x1 and x <= x2 \
-                            and y >= y1 and y <= y2:
-                            Z[j, i] = 0
+                    for p in exclude_points:
+                        if region.is_point_in(p):
+                            Z[j, i] = -1
                             is_excluded = True
                             print('[cyan]KERNELER[/cyan] Region is excluded.')
                             break
@@ -286,4 +304,11 @@ class ObjectKerneler():
         # this is for testing
         # Z[0,0] = 1000
         # Z[-1,-1] = 1000
+
+        if fill_skipped_with_mean:
+            mean = np.mean(Z[Z != -1])
+            Z[Z == -1] = mean
+        else:
+            Z[Z == -1] = 0
+
         return X,Y,Z

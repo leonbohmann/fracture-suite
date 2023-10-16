@@ -44,18 +44,25 @@ class StateOutput:
 
     def save(self, path) -> str:
         """Saves the output to a file."""
-        if self.is_image:
-            cv2.imwrite(
-                outfile := f'{path}_{self.FigWidth}.{general.image_extension}',
-                self.Data
-            )
-        elif self.is_figure:
-            self.Data.savefig(
-                outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
-                dpi=200,
-                bbox_inches='tight',
-                pad_inches=0
-            )
+        saved = False
+        while not saved:
+            try:
+                if self.is_image:
+                    cv2.imwrite(
+                        outfile := f'{path}_{self.FigWidth}.{general.image_extension}',
+                        self.Data
+                    )
+                elif self.is_figure:
+                    self.Data.savefig(
+                        outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
+                        dpi=200,
+                        bbox_inches='tight',
+                        pad_inches=0
+                    )
+                saved = True
+            except PermissionError:
+                print("[red]Error: Cannot access file. Waiting for 1 second...[/red]")
+                time.sleep(1)
 
         return outfile
 
@@ -176,7 +183,15 @@ class State:
 
         Args:
             object (Figure | numpy.ndarray): The object to save.
-            names (str | Specimen): Path parts to use to create output file.
+            path_and_name (str): Path parts to use to create output file.
+            open (bool): Whether to open the output file after saving.
+            spec (Outputtable): The specimen to save the object to.
+            force_delete_old (bool): Whether to delete the old output file if it exists.
+            no_print (bool): Whether to suppress printing of output file paths.
+            to_additional (bool): Whether to save the output file to the additional output path.
+            cvt_rgb (bool): Whether to convert the image data to RGB.
+            figwidth (float): The width of the figure.
+            mods (list[str]): A list of modifiers to append to the output file name.
 
         Remarks:
             The current subcommand will be appended to the last path part.

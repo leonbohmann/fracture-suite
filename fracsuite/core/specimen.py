@@ -1,7 +1,7 @@
 from __future__ import annotations
 import sys
 from fracsuite.core.outputtable import Outputtable
-from fracsuite.core.preps import PreprocessorConfig
+from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
@@ -263,12 +263,12 @@ class Specimen(Outputtable):
 
         Origin is top left corner!
         """
-        factor = self.get_size_factor() if in_px else 1
+        factor = self.calculate_px_per_mm() if in_px else 1
 
         if self.settings['break_pos'] == "center":
-            return np.array((250,250)) / factor
+            return np.array((250,250)) * factor
         elif self.settings['break_pos'] == "corner":
-            return np.array((50,50)) / factor
+            return np.array((50,50)) * factor
 
         raise Exception("Invalid break position.")
 
@@ -283,17 +283,22 @@ class Specimen(Outputtable):
                 js = json.load(f)
                 return PreprocessorConfig.from_json(js)
 
-        return None
+        print("[yellow]No prep.json found. Using default.")
+        return defaultPrepConfig
 
-    def get_size_factor(self):
+    def calculate_px_per_mm(self, realsize_mm = None):
         """Returns the size factor of the specimen. mm/px."""
-        realsize = self.settings['real_size_mm']
-        if realsize is None:
-            return 1
+        realsize = realsize_mm or self.settings['real_size_mm']
+        assert realsize is not None, "Real size not found."
+        assert realsize[0] > 0 and realsize[1] > 0, "Real size must be greater than zero."
+
+        if realsize_mm is not None:
+            self.set_setting('real_size_mm', realsize_mm)
+
 
         frac_img = self.get_fracture_image()
         assert frac_img is not None, "Fracture image not found."
-        return realsize[0] / frac_img.shape[0]
+        return frac_img.shape[0] / realsize[0]
 
     def get_splinters_in_region(self, region: RectRegion) -> list[Splinter]:
         in_region = []

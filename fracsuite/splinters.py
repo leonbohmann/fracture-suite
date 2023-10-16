@@ -54,7 +54,10 @@ app = typer.Typer(help=__doc__, callback=main_callback)
 general = GeneralSettings.get()
 
 @app.command()
-def gen(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
+def gen(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    realsize: Annotated[tuple[int,int], typer.Option(help='Real size of specimen in mm.')] = None,
+):
     """Generate a specimen from the original image."""
     specimen = Specimen.get(specimen_name, load=False)
 
@@ -63,7 +66,7 @@ def gen(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to l
             return
 
     fracture_image = specimen.get_fracture_image()
-    px_per_mm = 1/specimen.get_size_factor()
+    px_per_mm = specimen.calculate_px_per_mm(realsize)
     prep = specimen.get_prepconf()
     # generate splinters for the specimen
     print(f'Using  px_per_mm = {px_per_mm:.2f}')
@@ -179,7 +182,7 @@ def roundness_f(
     fig = plot_splinter_movavg(
         specimen.get_fracture_image(),
         splinters=specimen.splinters,
-        kw_px=w_mm / specimen.get_size_factor(),
+        kw_px=w_mm / specimen.calculate_px_per_mm(),
         z_action=roundness_function,
         clr_label='Mean roughness',
         mode=KernelContourMode.FILLED,
@@ -427,8 +430,8 @@ def log2dhist_diag(
     with get_progress() as progress:
         an_task = progress.add_task("Loading splinters...", total=len(specimens))
 
-        sf = specimens[0].get_size_factor()
-        assert np.all([x.get_size_factor() == sf for x in specimens]), "Not all specimens have the same size factor."
+        sf = specimens[0].calculate_px_per_mm()
+        assert np.all([x.calculate_px_per_mm() == sf for x in specimens]), "Not all specimens have the same size factor."
 
         w_px = w_mm / sf
 
@@ -727,26 +730,39 @@ def plot_histograms(xlim: tuple[float,float],
 def splinter_orientation_f(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
     w_mm: Annotated[float, typer.Option(help='Width of kernel in mm.')] = 50,
+    n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = 50,
+    as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
+    plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
+    exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
+    plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel rectangle.')] = False,
+    skip_edge: Annotated[bool, typer.Option(help='Skip one row of the edges when calculating intensities.')] = False,
+    figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
 ):
     specimen = Specimen.get(specimen_name)
     impact_pos = specimen.get_impact_position()
 
-    def mean_orientations(splinters):
+    def mean_orientations(splinters: list[Splinter]):
         orientations = [x.measure_orientation(impact_pos) for x in splinters]
         return np.mean(orientations)
 
-    w_px = int(w_mm / specimen.get_size_factor())
+    w_px = int(w_mm * specimen.calculate_px_per_mm())
 
     fig_output = plot_splinter_movavg(
         specimen.get_fracture_image(),
         specimen.splinters,
+        plot_kernel=plot_kernel,
+        plot_vertices=plot_vertices,
+        exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
+        skip_edge=skip_edge,
+        fill_skipped_with_mean=False,
+        n_points=n_points,
         kw_px=w_px,
         z_action=mean_orientations,
         clr_label="Mean Orientation Strength $\Delta$",
-        mode=KernelContourMode.FILLED,
-        figwidth=FigWidth.ROW2,
+        mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
+        figwidth=figwidth,
         clr_format='.1f',
-        crange=(0,1),
+        normalize=True,
     )
 
     State.output(fig_output, spec=specimen, to_additional=True)
@@ -758,7 +774,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 
     impact_pos = specimen.get_impact_position()
     splinters = specimen.splinters
-    size_fac = specimen.get_size_factor()
+    size_fac = specimen.calculate_px_per_mm()
 
     # analyze splinter orientations
     orientation_image = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
@@ -799,7 +815,12 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 def fracture_intensity_img(
     specimen_name: str,
     w_mm: Annotated[int, typer.Option(help='Kernel width.')] = 50,
-    skip_edges: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = True,
+    n_points: Annotated[int, typer.Option(help='Amount of points to use.')] = 50,
+    as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
+    plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
+    exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
+    plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel rectangle.')] = False,
+    skip_edge: Annotated[bool, typer.Option(help='Skip one row of the edges when calculating intensities.')] = True,
     figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
 ):
     """
@@ -807,6 +828,9 @@ def fracture_intensity_img(
 
     Basically the same as fracture-intensity, but performs operations on the image
     instead of the splinters.
+
+    The edges are skipped by default, because most often the edges are too black because of the
+    glass ply itself. Therefor the edges are not representative of the fracture morphology.
 
     Intensity here is the mean value of the image part (defined by kernel_width).
     Higher Intensity => Darker image part (more cracks)
@@ -819,22 +843,31 @@ def fracture_intensity_img(
     specimen = Specimen.get(specimen_name)
 
     def mean_img_value(img_part):
-        return np.sum(img_part[0] < 120) # np.mean(img_part[0])
+        # return np.mean(img_part)
+        # count black pixels
+        binary_image = (img_part < 127).astype(np.uint8)
+        return np.sum(binary_image == 1)
 
     img = specimen.get_fracture_image()
     img = to_gray(img)
     # img = preprocess_image(img, specimen.splinter_config)
-    w_px = int(w_mm / specimen.get_size_factor())
+    w_px = int(w_mm * specimen.calculate_px_per_mm())
     output = plot_image_movavg(
         img,
-        kw_px=w_px,
+        w_px,
+        n_points,
         z_action=mean_img_value,
         clr_label="Black Pixels [$N_{BP}/A/N_t$]",
-        mode=KernelContourMode.FILLED,
-        skip_edge=skip_edges,
-        exclude_points=[specimen.get_impact_position(True)],
+        mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
+        skip_edge=skip_edge,
+        exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
         figwidth=figwidth,
-        clr_format='.1f'
+        plot_vertices=plot_vertices,
+        plot_kernel=plot_kernel,
+        clr_format='.1f',
+        transparent_border=True,
+        fill_skipped_with_mean=True,
+        normalize=True
     )
 
     State.output(output, spec=specimen, to_additional=True)
@@ -847,14 +880,14 @@ def fracture_intensity_f(
         plot_vertices: Annotated[bool, typer.Option(help='Plot the kernel points.')] = False,
         plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel rectangle.')] = False,
         as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
-        skip_edge: Annotated[bool, typer.Option(help='Skip 10% of the edges when calculating intensities.')] = False,
+        skip_edge: Annotated[bool, typer.Option(help='Skip one row of the edges when calculating intensities.')] = False,
         exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
         figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
     ):
     """Plot the intensity of the fracture morphology."""
 
     specimen = Specimen.get(specimen_name)
-    w_px = int(w_mm / specimen.get_size_factor())
+    w_px = int(w_mm * specimen.calculate_px_per_mm())
     print(f"Kernel width: {w_mm} mm")
 
     original_image = specimen.get_fracture_image()
@@ -874,7 +907,10 @@ def fracture_intensity_f(
         skip_edge=skip_edge,
         figwidth=figwidth,
         clr_format='.0f',
+        fill_skipped_with_mean=False,
+        transparent_border=False,
     )
+
     mods = []
     if as_contours:
         mods.append("contours")
@@ -1019,7 +1055,7 @@ def watershed(
 
     assert image is not None, "No fracture image found."
 
-    size_factor = specimen.get_size_factor()
+    size_factor = specimen.calculate_px_per_mm()
     print(size_factor)
     splinters = Splinter.analyze_image(image, px_per_mm=size_factor)
 
