@@ -164,3 +164,9 @@ cython_debug/
 test-imgs/
 *.xlsx
 log.txt
+.idea/.gitignore
+.idea/fracsuite.iml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/inspectionProfiles/profiles_settings.xml

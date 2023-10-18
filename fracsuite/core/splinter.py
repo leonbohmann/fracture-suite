@@ -38,9 +38,9 @@ class Splinter:
     """
 
     area: float
-    "Area of the splinter."
+    "Area of the splinter in mm²."
     circumfence: float
-    "Circumfence of the splinter."
+    "Circumfence of the splinter in mm."
     centroid_mm: tuple[float, float]
     "Centroid of the splinter in mm."
     centroid_px: tuple[float, float]
@@ -49,19 +49,19 @@ class Splinter:
     "True if the centroid could be calculated."
 
 
-    def __init__(self, contour, index, mm_px: float):
+    def __init__(self, contour, index, px_per_mm: float):
         """Create a splinter from a contour.
 
         Args:
             contour (np.array): Input contour.
             index (int): Index of the splinter.
-            mm_px (float): Scale factor for area. px/mm.
+            px_per_mm (float): Scale factor for area. px/mm.
         """
         self.ID = index
         self.contour = contour
 
-        self.area = cv2.contourArea(self.contour) * mm_px ** 2
-        self.circumfence = cv2.arcLength(self.contour, True) * mm_px
+        self.area = cv2.contourArea(self.contour) / px_per_mm ** 2
+        self.circumfence = cv2.arcLength(self.contour, True) / px_per_mm
 
         # roundness
         self.roundness = self.calculate_roundness()
@@ -75,7 +75,7 @@ class Splinter:
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
 
-            self.centroid_mm =  (cX * mm_px, cY * mm_px)
+            self.centroid_mm =  (cX / px_per_mm, cY / px_per_mm)
             self.centroid_px =  (cX, cY)
             self.has_centroid = True
         except:
@@ -92,12 +92,19 @@ class Splinter:
 
 
     def calculate_roundness(self) -> float:
-        """Calculate the roundness of the contour by comparing the area of the
-        contour to the area of its corresponding circle with the same circumfence.
+        """
+        Calculate the roundness by comparing the actual contour area with the area
+        of a circle with the same circumfence.
 
         Returns:
             float: A value indicating how round the contour is.
         """
+        As = cv2.contourArea(self.contour)
+        Us = cv2.arcLength(self.contour, True)
+
+        Aeq = (Us ** 2) / (4 * np.pi)
+
+        return As / Aeq
 
         # new and simpler approach
         # find enclosing circle circumfence
@@ -202,6 +209,9 @@ class Splinter:
         Returns:
             A value from [0,1] indicating, how much the splinter points into the direction of the given vector.
         """
+        if len(self.contour) < 5:
+            return np.nan
+
         centroid = self.centroid_mm
         Ax = origin[0] - centroid[0]
         Ay = origin[1] - centroid[1]
@@ -226,7 +236,7 @@ class Splinter:
         return self.alignment_score
 
 
-    def measure_orientation(self, impact_position: tuple[float,float]) -> float:
+    def measure_orientation(self, impact_position: tuple[float,float]) -> float | np.nan:
         """Calculate, how much the splinters orientation points to the impactpoint of config.
 
         Args:
@@ -383,7 +393,7 @@ class Splinter:
         return Splinter.analyze_image(label_image, px_per_mm=px_per_mm)
 
     @staticmethod
-    def analyze_contour_image(contour_image, px_per_mm=1):
+    def analyze_contour_image(contour_image, px_per_mm: float = 1.0):
         """Analyze a contour image and return a list of splinters."""
         contour_image = to_gray(contour_image)
         contours = detect_fragments(contour_image, min_area=5, max_area=2000, filter=False)
@@ -428,7 +438,7 @@ class Splinter:
         plotImage(opening, "WS: Opened Image")
 
         # sure background: white is splinter, black is crack
-        sure_bg = cv2.dilate(opening,kernel,iterations=3)
+        sure_bg = cv2.dilate(opening,kernel,iterations=1)
 
         plotImage(sure_bg, "WS: Sure Background")
 

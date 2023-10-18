@@ -245,10 +245,11 @@ class Specimen(Outputtable):
         if filled_file is not None:
             return cv2.imread(filled_file)
 
-    def get_fracture_image(self):
+    def get_fracture_image(self, as_rgb = True):
+        """Gets the grayscale fracture image."""
         transmission_file = find_file(self.fracture_morph_dir, "*Transmission*")
         if transmission_file is not None:
-            return cv2.imread(transmission_file)
+            return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
     def get_acc_outfile(self, name: str) -> str:
         return os.path.join(self.path, 'fracture', 'acceleration', name)
@@ -286,9 +287,9 @@ class Specimen(Outputtable):
         print("[yellow]No prep.json found. Using default.")
         return defaultPrepConfig
 
-    def calculate_px_per_mm(self, realsize_mm = None):
+    def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. mm/px."""
-        realsize = realsize_mm or self.settings['real_size_mm']
+        realsize = realsize_mm if realsize_mm is not None else self.settings['real_size_mm']
         assert realsize is not None, "Real size not found."
         assert realsize[0] > 0 and realsize[1] > 0, "Real size must be greater than zero."
 
@@ -338,7 +339,7 @@ class Specimen(Outputtable):
             return
 
         if file is None:
-            file = self.__splinters_file_legacy
+            file = self.__splinters_file
 
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)

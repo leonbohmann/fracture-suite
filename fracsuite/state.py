@@ -27,6 +27,8 @@ class StateOutput:
     "Data of the output, may be an image or a figure."
     FigWidth: Any
     "If generated using a plot command, the FigWidth of the figure."
+    add_data: dict[str, Any]
+    "Additional data to save."
 
     is_image: bool
     is_figure: bool
@@ -37,7 +39,7 @@ class StateOutput:
         self.Data = data
         self.FigWidth = figwidth
 
-        self.additional_data = additional_data
+        self.add_data = additional_data if len(additional_data) > 0 else None
 
         self.is_image = type(data).__module__ == np.__name__
         self.is_figure = not self.is_image

@@ -7,6 +7,7 @@ from rich.progress import track
 from fracsuite.general import GeneralSettings
 from rich import print
 
+SKIP_VALUE = np.nan
 
 def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
     if isinstance(n_points, tuple):
@@ -73,7 +74,7 @@ class ImageKerneler():
                     description="Calculating intensity..."):
             for j in range(len(yd)):
                 if (j < skip_i or j >= len(yd) - skip_i) or (i < skip_i or i >= len(xd) - skip_i):
-                    result[j,i] = -1
+                    result[j,i] = SKIP_VALUE
                     continue
 
                 x1,x2=xd[i]-kw_px//2,xd[i]+kw_px//2
@@ -89,7 +90,7 @@ class ImageKerneler():
                 if exclude_points is not None:
                     for p in exclude_points:
                         if region.is_point_in(p):
-                            result[j, i] = -1
+                            result[j, i] = SKIP_VALUE
                             is_excluded = True
                             break
 
@@ -105,10 +106,10 @@ class ImageKerneler():
 
         # fill Z with skipped_value
         if fill_skipped_with_mean:
-            mean = np.mean(Z[Z != -1])
-            Z[Z == -1] = mean
+            mean = np.mean(Z[Z != SKIP_VALUE])
+            Z[Z == SKIP_VALUE] = mean
         else:
-            Z[Z == -1] = 0
+            Z[Z == SKIP_VALUE] = 0
         print('[cyan]IM-KERNELER[/cyan] [green]END[/green]')
 
         return X,Y,Z
@@ -225,7 +226,7 @@ class ObjectKerneler():
         fill_skipped_with_mean: bool = True
     ):
         assert n_points > 0 or n_points == -1, \
-            "n_points must be greater than 0."
+            "n_points must be greater than 0 or -1."
         assert kw_px < self.region[0], \
             "Kernel width must be smaller than the region width."
         assert kw_px < self.region[1], \
@@ -270,7 +271,7 @@ class ObjectKerneler():
         for i in d:
             for j in range(len(yd)):
                 if (j < skip_i or j >= len(yd) - skip_i) or (i < skip_i or i >= len(xd) - skip_i):
-                    Z[j,i] = -1
+                    Z[j,i] = SKIP_VALUE
                     continue
 
                 x1,x2=(xd[i]-kw_px//2,xd[i]+kw_px//2)
@@ -285,7 +286,7 @@ class ObjectKerneler():
                 if exclude_points is not None:
                     for p in exclude_points:
                         if region.is_point_in(p):
-                            Z[j, i] = -1
+                            Z[j, i] = SKIP_VALUE
                             is_excluded = True
                             if State.debug:
                                 print(f'[cyan]KERNELER[/cyan] Region {region.wh_center()} is excluded.')
@@ -313,12 +314,12 @@ class ObjectKerneler():
         # this is for testing
         # Z[0,0] = 1000
         # Z[-1,-1] = 1000
-
+        invalid = np.bitwise_or(np.isnan(Z), Z == SKIP_VALUE)
+        mean = np.mean(Z[~invalid])
         if fill_skipped_with_mean:
-            mean = np.mean(Z[Z != -1])
-            Z[Z == -1] = mean
+            Z[invalid] = mean
         else:
-            Z[Z == -1] = 0
-        print(f'[cyan]KERNELER[/cyan] [green]END[/green]')
+            Z[invalid] = 0
+        print('[cyan]KERNELER[/cyan] [green]END[/green]')
 
         return X,Y,Z

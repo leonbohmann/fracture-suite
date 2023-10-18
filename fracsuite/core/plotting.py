@@ -347,6 +347,10 @@ def plot_kernel_results(
     figsize = get_fig_width(figwidth)
     fig,axs = plt.subplots(figsize=figsize)
 
+    if crange is None:
+        crange = (np.min(results), np.max(results))
+        print(f"crange: {crange}")
+
     def show_img():
         axs.imshow(original_image, interpolation='bilinear')
 
@@ -371,15 +375,12 @@ def plot_kernel_results(
         # scale the results up to get a smooth image
         results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR_EXACT)
 
-        results = results / np.max(results)
+        # results = results / np.max(results)
         # make the outer edge of 5% of the image transparent
         if make_border_transparent:
             mask, results = modify_border(results, 5, 0.85*CONTOUR_ALPHA, fill_skipped_with_mean)
         else:
             mask = CONTOUR_ALPHA
-
-        if crange is None:
-            crange = (np.min(results), np.max(results))
 
         axim = axs.imshow(results, cmap='turbo', vmin=crange[0], vmax=crange[1], alpha=mask) # alpha=mask,
 
