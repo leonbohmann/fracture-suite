@@ -1,9 +1,12 @@
 import os
 import sys
 import time
+from matplotlib.colors import ListedColormap
+import numpy as np
 
 import typer
 from matplotlib import pyplot as plt
+import matplotlib as mpl
 from rich import inspect, print
 from rich.theme import Theme
 
@@ -24,6 +27,8 @@ from fracsuite.gen import gen_app
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
 
+from cycler import cycler
+
 custom_theme = Theme({
     "info": "dim cyan",
     "warning": "magenta",
@@ -31,16 +36,12 @@ custom_theme = Theme({
 })
 
 general = GeneralSettings.get()
-    # # Use LaTeX to write all text
-    # "text.usetex": True,
-    # "font.family": "serif",
-    # # Use 10pt font in plots, to match 10pt font in document
-    # "axes.labelsize": 10,
-    # "font.size": 10,
-    # # Make the legend/label fonts a little smaller
-    # "legend.fontsize": 8,
-    # "xtick.labelsize": 8,
-    # "ytick.labelsize": 8
+
+# get colormap
+cmap=plt.cm.Dark2
+# build cycler with 5 equally spaced colors from that colormap
+c = cycler(color=cmap.colors)
+
 params = {
     'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}\usepackage{mathpazo}',
     'text.usetex': True,
@@ -58,11 +59,14 @@ params = {
     'axes.axisbelow': True,
     'grid.linestyle': '--',
     'grid.linewidth': 0.5,
+    # 'axes.grid.which': 'both',
+    # 'xtick.minor.visible': True,
+    # 'ytick.minor.visible': True,
 }
 plt.rcParams.update(params)
-# plt.rc('text', usetex=True)
+plt.rc('axes', prop_cycle=c)
 # plt.rc('text.latex', preamble=r'\usepackage{amsmath}\usepackage{xfrac}')
-# plt.style.use('fast')
+# plt.style.use('bmh')
 
 # cmap = plt.get_cmap('turbo')
 # num_colors = 10

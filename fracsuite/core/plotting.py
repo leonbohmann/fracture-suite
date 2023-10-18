@@ -25,6 +25,7 @@ from fracsuite.core.image import to_rgb
 from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 from fracsuite.core.splinter import Splinter
+from fracsuite.core.stochastics import calculate_dmode
 from fracsuite.general import GeneralSettings
 from fracsuite.state import StateOutput
 
@@ -517,13 +518,20 @@ def hist_abs(data1, data2, binrange):
 
     return np.abs(data1-data2)
 
+
+class DataHistMode(str, Enum):
+    PDF = 'pdf'
+    "Probability density function."
+    CDF = 'cdf'
+    "Cumulative density function."
+
 def datahist_plot(
     ncols:int = 1,
     nrows:int = 1,
     xlim: tuple[float,float] = None,
-    x_format: str = "{0:.00f}",
+    x_format: str = "{0:.0f}",
     y_format: str = "{0:.2f}",
-    data_mode = 'pdf',
+    data_mode : DataHistMode = DataHistMode.PDF,
     figwidth = FigWidth.ROW1,
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
@@ -547,10 +555,10 @@ def datahist_plot(
         ax.yaxis.set_major_formatter(ticksy)
 
         # ax.xaxis.set_major_formatter(ScalarFormatter())
-        if data_mode == 'pdf':
+        if data_mode == DataHistMode.PDF:
             ax.set_xlabel('Splinter Area $A_S$ [mm²]')
             ax.set_ylabel('PDF $P(A_S)$')
-        elif data_mode == 'cdf':
+        elif data_mode == DataHistMode.CDF:
             ax.set_xlabel('Splinter Area $A_S$ [mm²]')
             ax.set_ylabel('CDF $C(A_S)$')
         ax.grid(True, which='both', axis='both')
@@ -567,7 +575,7 @@ def datahist_to_ax(
     color = None,
     as_log:bool = True,
     alpha: float = 0.75,
-    data_mode = 'pdf',
+    data_mode: DataHistMode = DataHistMode.PDF,
     as_density = True
 ) -> tuple[Any, list[float], Any]:
     """
@@ -596,24 +604,38 @@ def datahist_to_ax(
 
     data = cvt(data)
 
-    if binrange is None:
-        binrange = np.linspace(data[0], data[-1], n_bins)
 
-    if data_mode == 'pdf':
+    if data_mode == DataHistMode.PDF:
+        if binrange is None:
+            binrange = np.linspace(data[0], data[-1], n_bins)
         # density: normalize the bins data count to the total amount of data
-        v,_,container = ax.hist(data, bins=binrange,
+        binned_data,edges,bin_container = ax.hist(data, bins=binrange,
                 density=as_density,
                 color=norm_color(color),
                 label=label,
                 edgecolor='gray',
                 linewidth=0.5,
                 alpha=alpha)
-    elif data_mode == 'cdf':
+    elif data_mode == DataHistMode.CDF:
+        if binrange is None:
+            binrange = np.linspace(data[0], data[-1], n_bins * 3)
         alpha = 1.0
-        cumsum = np.cumsum(np.histogram(data, bins=binrange, density=as_density)[0])
+        binned_data, edges = np.histogram(data, bins=binrange, density=as_density)
+        cumsum = np.cumsum(binned_data)
         # density: normalize the bins data count to the total amount of data
-        container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha,
-                            color=color)
+        bin_container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha,
+                            color=norm_color(color))
+
+        # find the maximum increase of the CDF for the most probable area
+        # deriv = np.diff(cumsum)
+        # # find index of maximum derivative
+        # max_deriv_idx = np.argmax(deriv)
+        # # find the corresponding area
+        # max_deriv_area = 10**binrange[max_deriv_idx]
+        # # plot the area
+        # ax.axvline(binrange[max_deriv_idx], linestyle='--', color=color, alpha=alpha)
+
+
         # _,_,container = ax.hist(data, bins=binrange,
         #         density=True,
         #         label=label,
@@ -621,10 +643,11 @@ def datahist_to_ax(
         #         alpha=alpha)
 
     if plot_mean:
-        mean = np.mean(data)
-        ax.axvline(mean, linestyle='--', label=f"Ø={mean:.2f}mm²")
+        most_probable_area = 10**calculate_dmode(data)
+        print(f"Most probable area: {most_probable_area:.2f}mm²")
+        ax.axvline(x=most_probable_area, linestyle='--', label=f"Ø={most_probable_area:.2f}mm²", color='red', alpha=alpha)
 
-    return container, binrange, v
+    return bin_container, binrange, binned_data
 
 
 def label_image(

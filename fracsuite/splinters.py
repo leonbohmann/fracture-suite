@@ -21,6 +21,7 @@ from fracsuite.core.calculate import pooled
 from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
+    DataHistMode,
     FigWidth,
     KernelContourMode,
     create_splinter_colored_image,
@@ -681,14 +682,17 @@ def create_filter_function(name_filter,
 
 
 @app.command()
-def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens to load')],
-                   sigmas: Annotated[str, typer.Argument(
-                       help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')] = None,
-                   xlim: Annotated[tuple[float, float], typer.Option(help='X-Limits for plot')] = (0, 2),
-                   more_data: Annotated[
-                       bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
-                   nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
-                   n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins):
+def log_histograms(
+    names: Annotated[str, typer.Argument(help='Names of specimens to load')],
+    sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')] = None,
+    xlim: Annotated[tuple[float, float], typer.Option(help='X-Limits for plot')] = (0, 2),
+    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
+    nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
+    n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins,
+    mode: Annotated[DataHistMode, typer.Option(help='Mode for histogram. Either pdf or cdf.')] = 'pdf',
+    legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = True,
+    plot_mean: Annotated[bool, typer.Option('--plot-mean', help='Plot mean splinter size.')] = False,
+):
     """Plot logaritmic histograms of splinter sizes for specimens."""
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
     specimens = Specimen.get_all_by(filter, lazyload=False)
@@ -700,19 +704,35 @@ def log_histograms(names: Annotated[str, typer.Argument(help='Names of specimens
     def legend_none(x: Specimen):
         return f'{x.sig_h:.0f} MPa'
 
-    legend = legend_none
+    if legend is None:
+        legend_f = legend_none
+    else:
+        def legend_by_string(x: Specimen):
+            return legend.format(x.name, x.sig_h, x.thickness, np.mean([x.area for x in x.splinters]))
+
+        legend_f = legend_by_string
 
     if more_data:
         def legend_f(x: Specimen):
             return f'{x.name}_{x.scalp.measured_thickness:.2f}_{abs(x.scalp.sig_h):.2f}'
 
-        legend = legend_f
+        legend_f = legend_f
 
-    fig = plot_histograms(xlim, specimens, legend=legend, n=n_bins, has_legend=not nolegend)
+    fig = plot_histograms(
+        xlim,
+        specimens,
+        legend=legend_f,
+        n=n_bins,
+        has_legend=not nolegend,
+        figwidth=FigWidth.ROW2,
+        data_mode=mode,
+        plot_mean=plot_mean,
+    )
+
     if len(specimens) == 1:
-        State.output(fig, 'loghist', spec=specimens[0])
+        State.output(fig, 'loghist', spec=specimens[0], to_additional=True, mods=[mode])
     else:
-        State.output(fig, specimens[0].name)
+        State.output(fig, to_additional=True, mods=[mode])
 
     disp_mean_sizes(specimens)
 
@@ -728,13 +748,17 @@ def disp_mean_sizes(specimens: list[Specimen]):
         print(f"\t '{specimen.name}' ({specimen.scalp.sig_h:.2f}): {np.mean([x.area for x in specimen.splinters]):.2f}")
 
 
-def plot_histograms(xlim: tuple[float, float],
-                    specimens: list[Specimen],
-                    legend=None,
-                    plot_mean=False,
-                    n: int = 30,
-                    has_legend: bool = True) -> Figure:
-    fig, axs = datahist_plot(xlim=xlim)
+def plot_histograms(
+    xlim: tuple[float, float],
+    specimens: list[Specimen],
+    legend: Callable[[str], str] | str = None,
+    plot_mean: bool =False,
+    n: int = 30,
+    has_legend: bool = True,
+    figwidth: FigWidth = FigWidth.ROW2,
+    data_mode: DataHistMode = DataHistMode.PDF,
+) -> Figure:
+    fig, axs = datahist_plot(xlim=xlim, figwidth=figwidth, data_mode=data_mode)
 
     if legend is None:
         def legend(x):
@@ -742,11 +766,20 @@ def plot_histograms(xlim: tuple[float, float],
 
     a = 0.7 if len(specimens) > 1 else 1
 
+    # br is created once, so that the bin-ranges match for all specimens
     br = None
     for specimen in specimens:
         areas = [x.area for x in specimen.splinters]
-        _, br0, _ = datahist_to_ax(axs[0], areas, alpha=a, n_bins=n, binrange=br, plot_mean=plot_mean,
-                                   label=legend(specimen))
+        _, br0, _ = datahist_to_ax(
+            axs[0],
+            areas,
+            alpha=a,
+            n_bins=n,
+            binrange=br,
+            plot_mean=plot_mean,
+            label=legend(specimen),
+            data_mode=data_mode
+        )
         if br is None:
             br = br0
 
@@ -754,7 +787,7 @@ def plot_histograms(xlim: tuple[float, float],
         fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)
 
     fig.tight_layout()
-    return fig
+    return StateOutput(fig, figwidth, axs=axs)
 
 
 @app.command()

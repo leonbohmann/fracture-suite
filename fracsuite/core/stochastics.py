@@ -1,7 +1,7 @@
 from rich import print
 
 import numpy as np
-from scipy.stats import ks_2samp, ttest_ind, chisquare
+from scipy.stats import ks_2samp, ttest_ind, chisquare, gaussian_kde
 
 def to_cdf(data):
     """
@@ -182,3 +182,21 @@ def similarity_count(reference,measure,binrange=100) -> float:
     err = np.mean(err)
 
     return 100 * (1 - err)
+
+
+def calculate_dmode(data, bins: int = 1000):
+    """
+    Finds the most probable value of a distribution by calculating the mode.
+    Applies a Gaussian KDE to the data and finds the maximum value of the KDE.
+
+    Args:
+        data (list): Data to find the most probable value of.
+        bins (int, optional): Number of bins to use for the histogram. Defaults to 100.
+
+    Returns:
+        float: The most probable value of the distribution.
+    """
+    kde = gaussian_kde(data)
+    x_vals = np.linspace(min(data), max(data), bins)
+    y_vals = kde(x_vals)
+    return x_vals[np.argmax(y_vals)]
