@@ -8,7 +8,7 @@ dependencies = ["matplotlib", "opencv-python", "numpy",
         "scipy", "apread==1.1.2a9", "Pillow", "reportlab",
         "pylibdmtx", "pyzbar"]
 name = "fracsuite"
-version = "0.1.8"
+version = "0.1.9"
 authors = [
   { name="Leon Bohmann", email="mail@leonbohmann.de" },
 ]
