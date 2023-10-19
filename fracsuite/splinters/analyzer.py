@@ -670,6 +670,11 @@ class Analyzer(object):
         x2 = x + w // 2
         y1 = y - h // 2
         y2 = y + h // 2
+        # transform to real image size
+        x1 = int(x1 // config.size_factor)
+        x2 = int(x2 // config.size_factor)
+        y1 = int(y1 // config.size_factor)
+        y2 = int(y2 // config.size_factor)
 
         s_count = 0
         splinters_in_region: list[Splinter] = []
@@ -681,7 +686,6 @@ class Analyzer(object):
 
         print(f'Splinters in norm region: {s_count}')
 
-
         # plot splinter PDF
         fig, axs = plt.subplots()
         axs.hist([x.area for x in splinters_in_region], bins=25)
@@ -690,25 +694,34 @@ class Analyzer(object):
         fig.savefig(self.__get_out_file(f"norm_count_pdf.{config.ext_plots}"))
         self.__save_data(config, splinters_in_region, 'norm_count_splinters.csv')
 
+        norm_filled_img = np.zeros((self.original_image.shape[0], self.original_image.shape[1], 3), dtype=np.uint8)
+        print(norm_filled_img.shape)
+        for s in splinters_in_region:
+            clr = rand_col()
+            cv2.drawContours(norm_filled_img, [s.contour], -1, clr, -1)
 
 
-        # transform to real image size
-        x1 = int(x1 // config.size_factor)
-        x2 = int(x2 // config.size_factor)
-        y1 = int(y1 // config.size_factor)
-        y2 = int(y2 // config.size_factor)
-
-        # get norm region from original image (has to be grayscale for masking)
-        norm_region_mask = np.zeros_like(cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY))
-        cv2.rectangle(norm_region_mask, (x1,y1), (x2,y2), 255, -1)
-        # create image parts
-        normed_image = cv2.bitwise_and(self.image_filled, self.image_filled, mask=norm_region_mask)
-        normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
-        # add images together
-        normed_image = cv2.addWeighted(normed_image, 0.3, normed_image_surr, 1.0, 0)
+        # # get norm region from original image (has to be grayscale for masking)
+        # norm_region_mask = np.zeros(self.original_image.shape[:2], dtype=np.uint8)
+        # cv2.rectangle(norm_region_mask, (x1,y1), (x2,y2), 255, -1)
+        # # create image parts
+        # normed_image = cv2.bitwise_and(norm_filled_img, norm_filled_img, mask=norm_region_mask)
+        # normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
+        # # add images together
+        normed_image = cv2.addWeighted(self.original_image, 1, norm_filled_img, 0.5, 0)
         cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)
+
+        # extract image part
+        norm_region_image = normed_image[y1-50:y2+50, x1-50:x2+50]
+        cv2.imwrite(self.__get_out_file(f"norm_region_image.{config.ext_imgs}"), norm_region_image)
+
+        # extract overview image
         cv2.putText(normed_image, f'{s_count}', (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0,0,255), 20)
         cv2.imwrite(self.__get_out_file(f"norm_count.{config.ext_imgs}"), cv2.resize(normed_image, (0,0), fx=0.5, fy=0.5))
+
+
+
+
         return s_count
 
     def __check_detection_ratio(self, config: AnalyzerConfig, doprint = False) -> float:
