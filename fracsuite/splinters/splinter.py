@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 
 
-class Splinter: 
+class Splinter:
 
     angle: float
     "Orientation of the splinter in degrees."
@@ -10,7 +10,7 @@ class Splinter:
     "Normalized orientation vector"
     alignment_score: float = np.nan
     "Score indicating how much the splinter points into the direction of the impact point."
-    
+
     def __init__(self, contour, index, mm_px: float, config = None):
         """Create a splinter from a contour.
 
@@ -21,37 +21,37 @@ class Splinter:
         """
         self.ID = index
         self.contour = contour
-        
+
         self.area = cv2.contourArea(self.contour) * mm_px ** 2
         self.circumfence = cv2.arcLength(self.contour, True) * mm_px
-        
+
         # roundness
         self.roundness = 4 * np.pi * self.area / self.circumfence ** 2
         # roughness
         self.roughness = self.calculate_roughness()
-        
+
         # centroid
         try:
             M = cv2.moments(self.contour)
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
-            
+
             self.centroid_mm =  (cX * mm_px, cY * mm_px)
             self.centroid_px =  (cX, cY)
         except:
             self.centroid_mm = (np.nan, np.nan)
             self.centroid_px = (np.nan, np.nan)
-            
-        
+
+
         self.has_centroid = not any(np.isnan(self.centroid_mm)) and not any(np.isnan(self.centroid_px))
-        
+
 
         self.angle = self.__calculate_orientation()
         # try:
         #     _,_, self.angle = cv2.fitEllipse(self.contour)
         # except:
         #     self.angle = np.nan
-        
+
         if config is not None:
             self.measure_orientation(config)
 
@@ -66,9 +66,9 @@ class Splinter:
         perimeter = cv2.arcLength(contour,True)
         hull = cv2.convexHull(contour)
         hullperimeter = cv2.arcLength(hull,True)
-        
+
         return perimeter / hullperimeter
-    
+
     def __calculate_orientation(self):
         """Calculate the orientation of the splinter in degrees."""
         M = cv2.moments(self.contour)
@@ -99,23 +99,31 @@ class Splinter:
         x,y = self.centroid_mm
         return x1 <= x <= x2 and y1 <= y <= y2
 
+    def in_region_exact(self, rect: tuple[float,float,float,float]) -> bool:
+        x1, y1, x2, y2 = rect
+        for point in self.contour:
+            x, y = point[0]
+            if x < x1 or x > x2 or y < y1 or y > y2:
+                return False
+        return True
+
     def __calculate_orientation_score(self, origin) -> float:
         """Calculate the alignment score of the splinter with the given vector.
-        
+
         Returns:
             A value from [0,1] indicating, how much the splinter points into the direction of the given vector.
         """
         centroid = self.centroid_mm
         dx = origin[0] - centroid[0]
         dy = origin[1] - centroid[1]
-        
+
         angle_radians = np.deg2rad(self.angle)
         line_direction = np.array([dx, dy])
         angle_vector = np.array([np.cos(angle_radians), np.sin(angle_radians)])
         dot_product = np.dot(line_direction, angle_vector)
         magnitude_line = np.linalg.norm(line_direction)
         self.alignment_score = np.abs(dot_product) / magnitude_line
-        return self.alignment_score 
+        return self.alignment_score
 
 
 
@@ -132,5 +140,5 @@ class Splinter:
             return np.nan
 
         # calculate the angle between the centroid and the impact point
-        
+
         return self.__calculate_orientation_score(config.impact_position)

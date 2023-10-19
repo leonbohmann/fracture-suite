@@ -638,18 +638,27 @@ class Analyzer(object):
 
         return image
 
-    def __save_data(self, config: AnalyzerConfig) -> None:
+    def __save_data(
+        self,
+        config: AnalyzerConfig,
+        splinters: list[Splinter] = None,
+        fname: str = 'splinter_data.csv'
+
+    ) -> None:
         """Save splinter data to a csv file.
 
         Args:
             config (AnalyzerConfig): Configuration.
         """
 
+        if splinters is None:
+            splinters = self.splinters
+
         # save data to csv file
-        with open(self.__get_out_file("splinter_data.csv"), 'w', newline='') as csvfile:
+        with open(self.__get_out_file(fname), 'w', newline='') as csvfile:
             writer = csv.writer(csvfile, delimiter=';')
             writer.writerow(['id', 'area', 'circumfence', 'alignment_score', 'angle', 'roughness', 'roundness', 'c_x [px]', 'c_y [px]', 'c_x [mm]', 'c_y [mm]'])
-            for i, s in tqdm(enumerate(self.splinters), desc='Saving data...', leave=False):
+            for i, s in tqdm(enumerate(splinters), desc='Saving data...', leave=False):
                 writer.writerow([i, s.area, s.circumfence, s.alignment_score, s.angle, s.roughness, s.roundness, s.centroid_px[0], s.centroid_px[1], s.centroid_mm[0], s.centroid_mm[1]])
 
     def __count_splinters_in_norm_region(self, config: AnalyzerConfig) -> float:
@@ -663,12 +672,25 @@ class Analyzer(object):
         y2 = y + h // 2
 
         s_count = 0
+        splinters_in_region: list[Splinter] = []
         # count splinters in norm region
         for s in self.splinters:
-            if s.in_region((x1,y1,x2,y2)):
+            if s.in_region_exact((x1,y1,x2,y2)):
                 s_count += 1
+                splinters_in_region.append(s)
 
         print(f'Splinters in norm region: {s_count}')
+
+
+        # plot splinter PDF
+        fig, axs = plt.subplots()
+        axs.hist([x.area for x in splinters_in_region], bins=25)
+        axs.set_xlabel('Splinter area [mm²]')
+        axs.set_ylabel('PDF P(A)')
+        fig.savefig(self.__get_out_file(f"norm_count_pdf.{config.ext_plots}"))
+        self.__save_data(config, splinters_in_region, 'norm_count_splinters.csv')
+
+
 
         # transform to real image size
         x1 = int(x1 // config.size_factor)
