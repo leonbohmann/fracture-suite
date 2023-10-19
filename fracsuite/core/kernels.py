@@ -104,12 +104,12 @@ class ImageKerneler():
 
         Z = result.reshape(X.shape)
 
-        # fill Z with skipped_value
+        invalid = np.bitwise_or(np.isnan(Z), Z == SKIP_VALUE)
+        mean = np.mean(Z[~invalid])
         if fill_skipped_with_mean:
-            mean = np.mean(Z[Z != SKIP_VALUE])
-            Z[Z == SKIP_VALUE] = mean
+            Z[invalid] = mean
         else:
-            Z[Z == SKIP_VALUE] = 0
+            Z[invalid] = 0
         print('[cyan]IM-KERNELER[/cyan] [green]END[/green]')
 
         return X,Y,Z

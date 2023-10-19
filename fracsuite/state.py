@@ -73,6 +73,33 @@ class StateOutput:
         if self.is_image:
             self.Data = cv2.cvtColor(self.Data, cv2.COLOR_BGR2RGB)
 
+    def overlayImpact(self, specimen, impact_pos, size_fac):
+        if self.is_figure:
+            assert self.add_data is not None, "add_data must not be None."
+            assert 'ax' in self.add_data, "add_data must contain 'axs' to overlay impact point."
+
+        # overlay impact point
+        orientation_image = np.zeros_like(specimen.get_fracture_image(False), dtype=np.uint8)
+        orientation_image = cv2.cvtColor(orientation_image, cv2.COLOR_GRAY2BGRA)
+        orientation_image[:, :, 3] = 0
+        cv2.circle(orientation_image,
+                (np.array(impact_pos) * size_fac).astype(np.uint32),
+                np.min(orientation_image.shape[:2]) // 50,
+                (255, 0, 0, 255),
+                -1)
+
+        cv2.circle(orientation_image,
+                (np.array(impact_pos) * size_fac).astype(np.uint32),
+                np.min(orientation_image.shape[:2]) // 50,
+                (255, 255, 255, 255),
+                5)
+
+        if self.is_figure:
+            ax = self.add_data['ax']
+            ax.imshow(orientation_image, alpha=1)
+        elif self.is_image:
+            self.Data = cv2.addWeighted(self.Data, 1, orientation_image, 1, 0)
+
 class State:
     """Contains static variables that are set during execution of a command."""
     start_time: float = time.time()

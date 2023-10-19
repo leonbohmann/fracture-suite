@@ -423,7 +423,7 @@ def plot_kernel_results(
     # current_size = fig.get_size_inches()
     # new_width = current_size[0] * (height_desired / current_size[1])
     # fig.set_size_inches(new_width, height_desired)
-    return StateOutput(fig, figwidth, axs=axs)
+    return StateOutput(fig, figwidth, ax=axs)
 
 def renew_ticks_cb(cbar):
     manual_ticks = [cbar.vmin, cbar.vmin + (cbar.vmax - cbar.vmin) / 2, cbar.vmax]
@@ -701,7 +701,7 @@ def label_image(
         fig.tight_layout()
         return StateOutput(fig, figwidth)
 
-    return StateOutput(to_img(fig), figwidth)
+    return StateOutput(to_img(fig), figwidth, ax = ax)
 
 
 def annotate_image(
@@ -752,9 +752,9 @@ def annotate_image(
 
     if return_fig:
         fig.tight_layout()
-        return StateOutput(fig, figwidth)
+        return StateOutput(fig, figwidth, ax=ax)
 
-    return StateOutput(to_img(fig), figwidth)
+    return StateOutput(to_img(fig), figwidth, ax=ax)
 
 def annotate_images(
     images,

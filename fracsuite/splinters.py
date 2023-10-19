@@ -830,24 +830,7 @@ def splinter_orientation_f(
         normalize=True,
     )
 
-    # overlay impact point
-    orientation_image = np.zeros_like(specimen.get_fracture_image(False), dtype=np.uint8)
-    orientation_image = cv2.cvtColor(orientation_image, cv2.COLOR_GRAY2BGRA)
-    orientation_image[:, :, 3] = 0
-    cv2.circle(orientation_image,
-               (np.array(impact_pos) * size_fac).astype(np.uint32),
-               np.min(orientation_image.shape[:2]) // 50,
-               (255, 0, 0, 255),
-               -1)
-
-    cv2.circle(orientation_image,
-               (np.array(impact_pos) * size_fac).astype(np.uint32),
-               np.min(orientation_image.shape[:2]) // 50,
-               (255, 255, 255, 255),
-               5)
-
-    ax = fig_output.add_data['axs']
-    ax.imshow(orientation_image, alpha=1)
+    fig_output.overlayImpact(specimen, impact_pos, size_fac)
     State.output(fig_output, spec=specimen, to_additional=True)
 
 
@@ -870,18 +853,6 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
     # draw splinter contour lines
     cv2.drawContours(orientation_image, [x.contour for x in splinters], -1, (0, 0, 0), 1)
 
-    cv2.circle(orientation_image,
-               (np.array(impact_pos) * size_fac).astype(np.uint32),
-               np.min(orientation_image.shape[:2]) // 50,
-               (255, 0, 0),
-               -1)
-
-    cv2.circle(orientation_image,
-               (np.array(impact_pos) * size_fac).astype(np.uint32),
-               np.min(orientation_image.shape[:2]) // 50,
-               (255, 255, 255),
-               5)
-
     orientation_fig = annotate_image(
         orientation_image,
         cbar_title='Orientation Strength $\Delta$',
@@ -890,6 +861,8 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         figwidth=FigWidth.ROW2,
         clr_format='.1f'
     )
+
+    orientation_fig.overlayImpact(specimen, impact_pos, size_fac)
 
     State.output(orientation_fig, spec=specimen, to_additional=True)
 
@@ -952,7 +925,7 @@ def fracture_intensity_img(
         fill_skipped_with_mean=True,
         normalize=True
     )
-
+    output.overlayImpact(specimen, specimen.get_impact_position(), specimen.calculate_px_per_mm())
     State.output(output, spec=specimen, to_additional=True)
 
 
@@ -1002,6 +975,7 @@ def fracture_intensity_f(
     if plot_vertices:
         mods.append("vertices")
 
+    fig.overlayImpact(specimen, specimen.get_impact_position(), specimen.calculate_px_per_mm())
     State.output(fig, spec=specimen, to_additional=True, mods=mods)
 
 

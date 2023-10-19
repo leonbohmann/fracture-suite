@@ -1,33 +1,27 @@
 import os
 import sys
 import time
-from matplotlib.colors import ListedColormap
-import numpy as np
 
 import typer
+from cycler import cycler
 from matplotlib import pyplot as plt
-import matplotlib as mpl
-from rich import inspect, print
+from rich import print
 from rich.theme import Theme
-
-from fracsuite.core.progress import get_progress
-
-from fracsuite.state import State
-from fracsuite.config import app as config_app
-from fracsuite.splinters import app as splinter_app
-from fracsuite.acc import app as acc_app
-from fracsuite.general import GeneralSettings
-from fracsuite.specimen import app as specimen_app
-from fracsuite.test_prep import test_prep_app
-from fracsuite.nominals import nominals_app
-from fracsuite.scalp import scalp_app
-from fracsuite.tester import tester_app
-from fracsuite.gen import gen_app
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
-
-from cycler import cycler
+from fracsuite.acc import app as acc_app
+from fracsuite.config import app as config_app
+from fracsuite.core.progress import get_progress
+from fracsuite.gen import gen_app
+from fracsuite.general import GeneralSettings
+from fracsuite.nominals import nominals_app
+from fracsuite.scalp import scalp_app
+from fracsuite.specimen import app as specimen_app
+from fracsuite.splinters import app as splinter_app
+from fracsuite.state import State
+from fracsuite.test_prep import test_prep_app
+from fracsuite.tester import tester_app
 
 custom_theme = Theme({
     "info": "dim cyan",
