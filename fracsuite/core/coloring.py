@@ -35,4 +35,6 @@ def norm_color(color):
     if color is None:
         return color
 
+    if isinstance(color, str) and color.startswith('#'):
+        return tuple(int(color.lstrip('#')[i:i+2], 16) / 255.0 for i in (0, 2, 4))
     return color if isinstance(color, str) else tuple(x/255 for x in color)
