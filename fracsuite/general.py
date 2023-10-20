@@ -40,11 +40,11 @@ class GeneralSettings:
         self.output_image_maxsize: int = 2000
         self.hist_bins = 30
         self.output_paths: dict[str,str] = {}
-        self.document_width_pt: float = 418.25555
-        self.width_factors: dict[str,float] = {
-            'row1': 0.8,
-            'row2': 0.6,  # 204pt, 250 real, f=
-            'row3': 0.3, # 153.646pt, 125pt real, f=1.22
+        # self.document_width_pt: float = 418.25555
+        self.figure_sizes_mm: dict[str,float] = {
+            "row1": (108,81),
+            "row2": (81,60.75),
+            "row3": (54,40.5)
         }
         self.n_points_kernel: int = 25
         "Amount of points in kernelers."

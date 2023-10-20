@@ -32,11 +32,19 @@
         "splinters/roundness-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roundness",
         "splinters/log-histograms": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist"
     },
-    "document_width_pt": 512,
-    "width_factors": {
-        "row1": 0.8,
-        "row2": 0.45,
-        "row3": 0.3
+    "figure_sizes_mm": {
+        "row1": [
+			108,
+			81
+		],
+        "row2": [
+			81,
+			60.75
+		],
+        "row3": [
+			54,
+			40.5
+		]
     },
     "n_points_kernel": 25
 }

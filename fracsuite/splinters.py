@@ -22,6 +22,7 @@ from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
     DataHistMode,
+    DataHistPlotMode,
     FigWidth,
     KernelContourMode,
     create_splinter_colored_image,
@@ -205,6 +206,7 @@ def roundness_f(
         clr_format=".2f",
     )
 
+    fig.overlayImpact(specimen)
     State.output(fig, spec=specimen, to_additional=True)
 
 
@@ -236,7 +238,7 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
     out_img = annotate_image(out_img, cbar_title="Roughness", min_value=min_r, max_value=max_r)
-    specimen.put_splinter_output(out_img)
+    out_img.overlayImpact(specimen)
     State.output(out_img, specimen.name)
 
 
@@ -275,6 +277,8 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
         clr_format=".2f"
     )
 
+
+    out_img.overlayImpact(specimen)
     State.output(out_img, spec=specimen, to_additional=True)
 
 
@@ -685,13 +689,12 @@ def create_filter_function(name_filter,
 def log_histograms(
     names: Annotated[str, typer.Argument(help='Names of specimens to load')],
     sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')] = None,
-    xlim: Annotated[tuple[float, float], typer.Option(help='X-Limits for plot')] = (0, 2),
-    more_data: Annotated[bool, typer.Option(help='Write specimens sig_h and thickness into legend.')] = False,
-    nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins,
-    mode: Annotated[DataHistMode, typer.Option(help='Mode for histogram. Either pdf or cdf.')] = 'pdf',
-    legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = None,
     plot_mean: Annotated[bool, typer.Option('--plot-mean', help='Plot mean splinter size.')] = False,
+    data_mode: Annotated[DataHistMode, typer.Option(help='Mode for histogram. Either pdf or cdf.')] = 'pdf',
+    plot_mode: Annotated[DataHistPlotMode, typer.Option(help='Data mode.')] = DataHistPlotMode.HIST,
+    legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = None,
+    xlim: Annotated[tuple[float, float], typer.Option(help='X-Limits for plot')] = (0, 2),
     figwidth: Annotated[FigWidth, typer.Option(help='Width of the figure.')] = FigWidth.ROW2,
 ):
     """Plot logaritmic histograms of splinter sizes for specimens."""
@@ -702,38 +705,44 @@ def log_histograms(
         print("[red]No specimens loaded.[/red]")
         return
 
-    def legend_none(x: Specimen):
-        return f'{x.sig_h:.0f} MPa'
-
-    if legend is None:
-        legend_f = legend_none
-    else:
+    if legend is not None:
         def legend_by_string(x: Specimen):
             return legend.format(x.name, x.sig_h, x.thickness, np.mean([x.area for x in x.splinters]))
 
         legend_f = legend_by_string
+    else:
+        def legend_f(x):
+            return ''
 
-    if more_data:
-        def legend_f(x: Specimen):
-            return f'{x.name}_{x.scalp.measured_thickness:.2f}_{abs(x.scalp.sig_h):.2f}'
+    fig, axs = datahist_plot(xlim=xlim, figwidth=figwidth, data_mode=data_mode)
 
-        legend_f = legend_f
+    a = 0.7 if len(specimens) > 1 else 1
 
-    fig = plot_histograms(
-        xlim,
-        specimens,
-        legend=legend_f,
-        n=n_bins,
-        has_legend=not nolegend,
-        figwidth=figwidth,
-        data_mode=mode,
-        plot_mean=plot_mean,
-    )
+    # br is created once, so that the bin-ranges match for all specimens
+    br = None
+    for specimen in specimens:
+        areas = [x.area for x in specimen.splinters]
+        _, br0, _ = datahist_to_ax(
+            axs[0],
+            areas,
+            alpha=a,
+            n_bins=n_bins,
+            binrange=br,
+            plot_mean=plot_mean,
+            label=legend_f(specimen),
+            data_mode=data_mode,
+            plot_mode=plot_mode
+        )
+        if br is None:
+            br = br0
+
+    if legend is not None and len(specimens) > 1:
+        fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)
 
     if len(specimens) == 1:
-        State.output(fig, 'loghist', spec=specimens[0], to_additional=True, mods=[mode])
+        State.output(fig, 'loghist', spec=specimens[0], to_additional=True, mods=[data_mode])
     else:
-        State.output(fig, to_additional=True, mods=[mode])
+        State.output(fig, to_additional=True, mods=[data_mode])
 
     disp_mean_sizes(specimens)
 
@@ -747,48 +756,6 @@ def disp_mean_sizes(specimens: list[Specimen]):
     print("* Mean splinter sizes:")
     for specimen in specimens:
         print(f"\t '{specimen.name}' ({specimen.scalp.sig_h:.2f}): {np.mean([x.area for x in specimen.splinters]):.2f}")
-
-
-def plot_histograms(
-    xlim: tuple[float, float],
-    specimens: list[Specimen],
-    legend: Callable[[str], str] | str = None,
-    plot_mean: bool =False,
-    n: int = 30,
-    has_legend: bool = True,
-    figwidth: FigWidth = FigWidth.ROW2,
-    data_mode: DataHistMode = DataHistMode.PDF,
-) -> Figure:
-    fig, axs = datahist_plot(xlim=xlim, figwidth=figwidth, data_mode=data_mode)
-
-    if legend is None:
-        def legend(x):
-            return f'{x.name}'
-
-    a = 0.7 if len(specimens) > 1 else 1
-
-    # br is created once, so that the bin-ranges match for all specimens
-    br = None
-    for specimen in specimens:
-        areas = [x.area for x in specimen.splinters]
-        _, br0, _ = datahist_to_ax(
-            axs[0],
-            areas,
-            alpha=a,
-            n_bins=n,
-            binrange=br,
-            plot_mean=plot_mean,
-            label=legend(specimen),
-            data_mode=data_mode
-        )
-        if br is None:
-            br = br0
-
-    if has_legend and len(specimens) > 1:
-        fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)
-
-    fig.tight_layout()
-    return StateOutput(fig, figwidth, axs=axs)
 
 
 @app.command()
@@ -831,7 +798,7 @@ def splinter_orientation_f(
         normalize=True,
     )
 
-    fig_output.overlayImpact(specimen, impact_pos, size_fac)
+    fig_output.overlayImpact(specimen)
     State.output(fig_output, spec=specimen, to_additional=True)
 
 
@@ -863,7 +830,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         clr_format='.1f'
     )
 
-    orientation_fig.overlayImpact(specimen, impact_pos, size_fac)
+    orientation_fig.overlayImpact(specimen)
 
     State.output(orientation_fig, spec=specimen, to_additional=True)
 
@@ -926,7 +893,7 @@ def fracture_intensity_img(
         fill_skipped_with_mean=True,
         normalize=True
     )
-    output.overlayImpact(specimen, specimen.get_impact_position(), specimen.calculate_px_per_mm())
+    output.overlayImpact(specimen)
     State.output(output, spec=specimen, to_additional=True)
 
 
@@ -976,7 +943,7 @@ def fracture_intensity_f(
     if plot_vertices:
         mods.append("vertices")
 
-    fig.overlayImpact(specimen, specimen.get_impact_position(), specimen.calculate_px_per_mm())
+    fig.overlayImpact(specimen)
     State.output(fig, spec=specimen, to_additional=True, mods=mods)
 
 
@@ -1346,17 +1313,17 @@ def compare_manual(
 
     if x_range is None:
         _, br, d1 = datahist_to_ax(ax, area0, n_bins=hist_bins, label='Algorithm', color='red', plot_mean=False,
-                                   as_density=False)
+                                   as_density=False, plot_mode=DataHistPlotMode.HIST)
     else:
         low, up = [float(x) for x in x_range.split(':')]
         low = low if low > 0 else 1
         br = np.linspace(np.log10(low) if low > 0 else 1, np.log10(up), hist_bins)
         _, _, d1 = datahist_to_ax(ax, area0, binrange=br, label='Algorithm', color='red', plot_mean=False,
-                                  as_density=False)
+                                  as_density=False, plot_mode=DataHistPlotMode.HIST)
 
     # datahist_to_ax(ax, [x.area for x in manual_splinters], n_bins=hist_bins, label='Manual', plot_mean=False)
     # datahist_to_ax(ax, [x.area for x in legacy_splinters], n_bins=hist_bins, label='Legacy', plot_mean=False)
-    _, _, d2 = datahist_to_ax(ax, area1, binrange=br, label='Manual', color='green', plot_mean=False, as_density=False)
+    _, _, d2 = datahist_to_ax(ax, area1, binrange=br, label='Manual', color='green', plot_mean=False, as_density=False, plot_mode=DataHistPlotMode.HIST)
     delta_area = np.abs(d1 - d2)
     plt.bar(br[:-1], delta_area, width=np.diff(br), align="edge", alpha=1, label="Difference", color="blue")
     ax.autoscale()

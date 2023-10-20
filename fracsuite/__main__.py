@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import time
 
@@ -180,6 +181,29 @@ app.add_typer(gen_app, name="gen")
 #                 if "Transmission" in file2 and num not in file2:
 #                     os.rename(os.path.join(morph_path, file2), os.path.join(morph_path, num + " " + file2))
 #                     break
+
+@app.command()
+def replot(
+    tex_file,
+):
+    plot_command = "%pltcmd:"
+
+    with open(tex_file, "r") as f:
+        lines = f.readlines()
+    print(f'Read {len(lines)} lines from {tex_file}.')
+    commands = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(plot_command):
+            command = stripped[len(plot_command)+1:]
+            commands.append(command)
+
+    for command in commands:
+        print(f"Running: [green]{command}")
+        subprocess.run(["cmd", "/c", command], shell=True)
+        print()
+        print()
+
 
 @app.command()
 def test(input: list[str]):

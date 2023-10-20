@@ -55,6 +55,7 @@ class StateOutput:
                         self.Data
                     )
                 elif self.is_figure:
+                    self.Data.tight_layout(pad=0)
                     self.Data.savefig(
                         outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
                         dpi=200,
@@ -73,10 +74,13 @@ class StateOutput:
         if self.is_image:
             self.Data = cv2.cvtColor(self.Data, cv2.COLOR_BGR2RGB)
 
-    def overlayImpact(self, specimen, impact_pos, size_fac):
+    def overlayImpact(self, specimen):
         if self.is_figure:
             assert self.add_data is not None, "add_data must not be None."
             assert 'ax' in self.add_data, "add_data must contain 'axs' to overlay impact point."
+
+        impact_pos = specimen.get_impact_position()
+        size_fac = specimen.calculate_px_per_mm()
 
         # overlay impact point
         orientation_image = np.zeros_like(specimen.get_fracture_image(False), dtype=np.uint8)
@@ -131,44 +135,6 @@ class State:
     def stop_progress():
         State.progress.stop()
         State.__progress_started = False
-
-
-
-    def __save_object(object, dir, *sub_path):
-        saved = False
-        out_path = os.path.join(dir, *sub_path)  + f'_{object[1]}'
-        object = object[0]
-        while not saved:
-            try:
-                # check how to save object
-                if isinstance(object, tuple):
-                    if isinstance(object[0], Figure):
-                        out_path += f'.{general.plot_extension}'
-                        object[0].savefig(out_path, dpi=200, bbox_inches='tight', pad_inches=0)
-                elif isinstance(object, Figure):
-                    out_path += f'.{general.plot_extension}'
-                    object.savefig(out_path, dpi=200, bbox_inches='tight', pad_inches=0)
-                elif type(object).__module__ == np.__name__:
-                    out_path += f'.{general.image_extension}'
-                    image = object
-                    # f = np.max(image.shape[:2]) / general.output_image_maxsize
-
-                    # h,w = image.shape[:2] / f
-                    # w = int(w)
-                    # h = int(h)
-
-                    # image = cv2.resize(image, (w,h))
-                    cv2.imwrite(out_path, image)
-                else:
-                    raise Exception("Object must be a matplotlib figure or a numpy array.")
-
-                saved = True
-                return out_path
-            except Exception as e:
-                print(e)
-                print("[red]Error while saving. Waiting for 1 second...[/red]")
-                time.sleep(1)
-                continue
 
     def output_nopen(
         object: Figure | npt.ArrayLike,

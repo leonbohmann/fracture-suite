@@ -70,7 +70,7 @@ class KernelContourMode(str, Enum):
         return list(map(lambda c: c.value, KernelContourMode))
 
 
-def get_fig_width(w: FigWidth, hf=None, dimf=1.1) -> float:
+def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
     """
     Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.
 
@@ -87,17 +87,19 @@ def get_fig_width(w: FigWidth, hf=None, dimf=1.1) -> float:
     """
     assert FigWidth.has_value(w), f"FigWidth must be one of {FigWidth.values()}."
 
-    factor = general.width_factors[w]
-    w_pt = general.document_width_pt * factor
+    mm_per_pt = 2.834645668
+    mm_per_inch = 1 / 25.4
 
-    inches_per_pt = 1 / 72.27
+    w_mm,h_mm = general.figure_sizes_mm[w]
+    w_inch = mm_per_inch * w_mm
+    h_inch = mm_per_inch * h_mm
 
     # Golden ratio to set aesthetic figure height
     # https://disq.us/p/2940ij3
-    golden_ratio = (5**.5 - 1) / 2
+    # golden_ratio = (5**.5 - 1) / 2
 
-    fig_width_in = w_pt * inches_per_pt * dimf
-    fig_height_in = fig_width_in * (hf if hf is not None else golden_ratio)
+    fig_width_in = w_inch * dimf
+    fig_height_in = h_inch * dimf
 
     return (fig_width_in, fig_height_in)
 
@@ -150,7 +152,7 @@ def plot_image_movavg(
     crange: tuple[float,float] = None,
     fill_skipped_with_mean: bool = True,
     transparent_border: bool = False,
-) -> tuple[StateOutput, Axes]:
+) -> StateOutput:
     """Create an intensity plot of the fracture.
 
     Args:
@@ -267,7 +269,7 @@ def plot_splinter_movavg(
     assert FigWidth.has_value(figwidth), f"FigWidth must be one of {FigWidth.values()}. plot_splinter_movavg."
     assert kw_px > 0, "kernel_width must be greater than 0."
     assert kw_px < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
-    assert figwidth in general.width_factors, f"figwidth {figwidth} not found."
+    assert figwidth in general.figure_sizes_mm, f"figwidth {figwidth} not found."
 
     region = (original_image.shape[1], original_image.shape[0])
     # print(f'Creating intensity plot with region={region}...')
@@ -418,7 +420,6 @@ def plot_kernel_results(
         axs.set_xticks([])
         axs.set_yticks([])
 
-    fig.tight_layout()
     # height_desired = figsize[1]  # For example, 6 inches. Adjust as needed.
     # current_size = fig.get_size_inches()
     # new_width = current_size[0] * (height_desired / current_size[1])
@@ -631,6 +632,7 @@ def datahist_to_ax(
             color = gauss_kde_plot[0].get_color()
             ax.fill_between(x, y, 0.001, color=color, alpha=0.9, zorder=1)
             ax.set_ylim((0, ax.get_ylim()[1]))
+            binned_data = x
     elif data_mode == DataHistMode.CDF:
         if binrange is None:
             binrange = np.linspace(data[0], data[-1], n_bins * 3)
