@@ -7,6 +7,7 @@ from cycler import cycler
 from matplotlib import pyplot as plt
 from rich import print
 from rich.theme import Theme
+from fracsuite.core.coloring import norm_color
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
@@ -31,10 +32,41 @@ custom_theme = Theme({
 
 general = GeneralSettings.get()
 
+cmap1 = [
+    norm_color((38, 70, 83)),
+    norm_color((42, 157, 143)),
+    norm_color((233, 196, 106)),
+    norm_color((244, 162, 97)),
+    norm_color((231, 111, 81))
+]
+
+cmap2 = [
+    norm_color((255, 190, 11)),
+    norm_color((251, 86, 7)),
+    norm_color((255, 0, 110)),
+    norm_color((131, 56, 236)),
+    norm_color((58, 134, 255))
+]
+
+cmap3 = [
+    norm_color('#2E4057'),
+    norm_color('#FFA07A'),
+    norm_color('#5F9EA0'),
+    norm_color('#4682B4'),
+    norm_color('#FAD02E'),
+]
+cmap4 = [
+    norm_color('#4E79A7'),  # Blue
+    norm_color('#F28E2B'),  # Orange
+    norm_color('#E15759'),  # Red
+    norm_color('#76B7B2'),  # Teal
+    norm_color('#59A14F')   # Green
+]
 # get colormap
 cmap=plt.cm.Dark2
 # build cycler with 5 equally spaced colors from that colormap
-c = cycler(color=cmap.colors)
+# c = cycler(color=cmap.colors)
+c = cycler(color=cmap3)
 
 params = {
     'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}\usepackage{mathpazo}',

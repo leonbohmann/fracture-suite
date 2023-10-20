@@ -184,6 +184,13 @@ def similarity_count(reference,measure,binrange=100) -> float:
     return 100 * (1 - err)
 
 
+def calculate_kde(data, bins=1000):
+    kde = gaussian_kde(data)
+    x_vals = np.linspace(min(data), max(data), bins)
+    y_vals = kde(x_vals)
+
+    return x_vals, y_vals
+
 def calculate_dmode(data, bins: int = 1000):
     """
     Finds the most probable value of a distribution by calculating the mode.
@@ -196,7 +203,5 @@ def calculate_dmode(data, bins: int = 1000):
     Returns:
         float: The most probable value of the distribution.
     """
-    kde = gaussian_kde(data)
-    x_vals = np.linspace(min(data), max(data), bins)
-    y_vals = kde(x_vals)
+    x_vals, y_vals = calculate_kde(data, bins)
     return x_vals[np.argmax(y_vals)]

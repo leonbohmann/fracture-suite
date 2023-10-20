@@ -690,8 +690,9 @@ def log_histograms(
     nolegend: Annotated[bool, typer.Option(help='Dont display the legend on the plot.')] = False,
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins,
     mode: Annotated[DataHistMode, typer.Option(help='Mode for histogram. Either pdf or cdf.')] = 'pdf',
-    legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = True,
+    legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = None,
     plot_mean: Annotated[bool, typer.Option('--plot-mean', help='Plot mean splinter size.')] = False,
+    figwidth: Annotated[FigWidth, typer.Option(help='Width of the figure.')] = FigWidth.ROW2,
 ):
     """Plot logaritmic histograms of splinter sizes for specimens."""
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
@@ -724,7 +725,7 @@ def log_histograms(
         legend=legend_f,
         n=n_bins,
         has_legend=not nolegend,
-        figwidth=FigWidth.ROW2,
+        figwidth=figwidth,
         data_mode=mode,
         plot_mean=plot_mean,
     )
