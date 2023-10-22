@@ -329,7 +329,8 @@ class State:
             pickle.dump(State.__checkpoint_data, f)
     def checkpoint_clear():
         tmpFile = os.path.join(tempfile.gettempdir(), State.current_subcommand + ".checkpoint")
-        os.remove(tmpFile)
+        if os.path.exists(tmpFile):
+            os.remove(tmpFile)
 
     def from_checkpoint(key: str, default):
         """Loads data from a checkpoint file."""
@@ -339,6 +340,9 @@ class State:
                 with open(tmpFile, 'rb') as f:
                     print("[yellow]Loaded checkpoint data from previous run.[/yellow]")
                     State.__checkpoint_data = pickle.load(f)
+            else:
+                State.__checkpoint_data = {}
+                return default
 
         if State.__checkpoint_data is not None and key in State.__checkpoint_data:
             return State.__checkpoint_data[key]
