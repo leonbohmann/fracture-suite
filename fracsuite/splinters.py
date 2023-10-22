@@ -2,7 +2,9 @@
 Splinter analyzation tools.
 """
 
+from functools import partial
 from multiprocessing import Pool
+import multiprocessing.shared_memory as sm
 import os
 from itertools import combinations, groupby
 import pickle
@@ -54,7 +56,7 @@ from fracsuite.core.specimen import Specimen
 app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
-
+IMNAME = "fracture_image"
 
 @app.command()
 def gen(
@@ -93,102 +95,124 @@ def check_touching(x):
         i.touching_splinters.append(j)
         j.touching_splinters.append(i)
 
+def check_splinter_touches(i, splinters: list[Splinter], imsize):
+    shm = sm.SharedMemory(name=IMNAME)
+    splImage0 = np.ndarray(imsize, dtype=np.uint8, buffer=shm.buf)
+
+    s = splinters[i]
+    splImage = splImage0.copy()
+    splImage = cv2.drawContours(splImage, [s.contour], 0, 255, 2)
+
+    plotImage(255-splImage, "splImage")
+
+    # find contours in splinter image
+    contours = detect_fragments(255-splImage, filter = False)
+
+    sContour = None
+    # find contour that has s.centroid_px inside
+    for c in contours:
+        if cv2.pointPolygonTest(c, s.centroid_px, False) >= 0:
+            sContour = c
+            break
+
+    if sContour is None:
+        return None
+
+    closest_splinters = sorted(splinters, key=lambda x: np.linalg.norm(np.asarray(x.centroid_mm) - np.asarray(s.centroid_mm)))[:100]
+    # now check all other contours, if they are contained within sCountour
+    for j in range(i+1, len(splinters)):
+        s0 = splinters[j]
+
+        if s0 not in closest_splinters:
+            continue
+        if s0 is s:
+            continue
+        c = s0.centroid_px
+        if cv2.pointPolygonTest(sContour, c, False) >= 0:
+            return (i,j)
+
+    return None
+
 @app.command()
 def gen_adjacent(
     specimen_name,
     override_file = False,
-    clear_checkpoint: bool = False
+    clear_checkpoint: bool = False,
+    plot_only: bool = False
 ):
     if clear_checkpoint:
         State.checkpoint_clear()
+
     # load specimen
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
-    # load splinters
-    splinters = State.from_checkpoint('splinters', specimen.splinters)
-    # splinters = splinters[len(splinters)//5:]
-    # create adjacency matrix
-    # n_splinters = len(splinters)
-    # adjacency = np.zeros((n_splinters, n_splinters), dtype=bool)
-    fimage = specimen.get_fracture_image()
-    print('Creating adjacency image...')
-    splImage0 = cv2.drawContours(np.ones(fimage.shape[:2], dtype=np.uint8)*255, [x.contour for x in splinters], -1, 0, 1)
-    splImage0 = to_gray(splImage0)
+    splinters = specimen.splinters
 
-    p = get_progress()
-    p.start()
-    sTask = p.add_task("Iterating splinters...", total=len(splinters))
+    if not plot_only:
+        # load splinters
+        splinters = State.from_checkpoint('splinters', specimen.splinters)
+        # splinters = splinters[len(splinters)//5:]
+        # create adjacency matrix
+        # n_splinters = len(splinters)
+        # adjacency = np.zeros((n_splinters, n_splinters), dtype=bool)
+        fimage = specimen.get_fracture_image()
+        print('Creating adjacency image...')
+        splImage0 = cv2.drawContours(np.ones(fimage.shape[:2], dtype=np.uint8)*255, [x.contour for x in splinters], -1, 0, 1)
+        splImage0 = to_gray(splImage0)
 
-    i0 = State.from_checkpoint('i', 0)
+        shm = sm.SharedMemory(create=True, size=splImage0.nbytes, name=IMNAME)
+        shm_img = np.ndarray(splImage0.shape, dtype=splImage0.dtype, buffer=shm.buf)
+        shm_img[:] = splImage0[:]
 
-    p.advance(sTask, advance=i0)
-    print('Iterating splinters...')
-    for i in range(i0,len(splinters)):
-        s = splinters[i]
-        p.advance(sTask)
-        splImage = splImage0.copy()
-        splImage = cv2.drawContours(splImage, [s.contour], 0, 255, 2)
+        i0 = State.from_checkpoint('i', 0)
 
-        plotImage(255-splImage, "splImage")
 
-        # find contours in splinter image
-        contours = detect_fragments(255-splImage, filter = False)
+        irange = range(i0, len(splinters))
+        func = partial(check_splinter_touches, splinters=splinters, imsize=splImage0.shape)
+        print('Iterating splinters...')
+        with get_progress() as p:
 
-        sContour = None
-        sSplinter = None
+            sTask = p.add_task("Iterating splinters...", total=len(splinters))
+            p.advance(sTask, advance=i0)
+            with Pool() as pool:
+                for result in pool.imap_unordered(func, irange):
+                    p.advance(sTask)
+                    if result is None:
+                        print("[gray]Some splinter could not be analyzed.")
+                        continue
 
-        cTask = p.add_task("Searching for current splinter contour...", total=len(contours))
-        # find contour that has s.centroid_px inside
-        for c in contours:
-            p.advance(cTask)
-            if cv2.pointPolygonTest(c, s.centroid_px, False) >= 0:
-                sContour = c
-                break
-        p.remove_task(cTask)
+                    i,j = result
+                    s1: Splinter = splinters[i]
+                    s0: Splinter = splinters[j]
+                    if s0 not in s1.touching_splinters:
+                        s1.touching_splinters.append(j)
+                    if s1 not in s0.touching_splinters:
+                        s0.touching_splinters.append(i)
 
-        if sContour is None:
-            print(f"Could not find contour for splinter {s}.")
-            continue
+                    State.checkpoint(splinters=splinters)
+                    State.checkpoint(i=i)
+                    # print(f"Found {len(s.touching_splinters)} touching splinters.")
 
-        ssTask = p.add_task("Searching for splinters...", total=len(splinters))
-        # now check all other contours, if they are contained within sCountour
-        for j in range(i+1, len(splinters)):
-            s0 = splinters[j]
-            p.advance(ssTask)
-            if s0 is s:
-                continue
-            c = s0.centroid_px
-            if cv2.pointPolygonTest(sContour, c, False) >= 0:
-                if s0 not in s.touching_splinters:
-                    s.touching_splinters.append(j)
-                if s not in s0.touching_splinters:
-                    s0.touching_splinters.append(i)
-        p.remove_task(ssTask)
+        with open(specimen.get_splinter_outfile('splinters_v2.pkl'), 'wb') as f:
+            pickle.dump(splinters, f)
 
-        State.checkpoint(splinters=splinters)
-        State.checkpoint(i=i)
-        # print(f"Found {len(s.touching_splinters)} touching splinters.")
-
-    with open(specimen.get_splinter_outfile('splinters_v2.pkl'), 'wb') as f:
-        pickle.dump(splinters, f)
-
-    # with get_progress() as progress:
-    #     task1  = progress.add_task("Checking splinters...", total=len(ops))
-    #     with Pool() as pool:
-    #         for result in pool.imap_unordered(check_touching, ops):
-    #             progress.advance(task1)
+        # with get_progress() as progress:
+        #     task1  = progress.add_task("Checking splinters...", total=len(ops))
+        #     with Pool() as pool:
+        #         for result in pool.imap_unordered(check_touching, ops):
+        #             progress.advance(task1)
+        p.stop()
 
     out_img = specimen.get_fracture_image()
     touches = [len(x.touching_splinters) for x in splinters]
     max_adj = np.max(touches)
     min_adj = np.min(touches)
 
-    plotTask = p.add_task("Plotting splinters...", total=len(splinters))
-    for splinter in splinters:
-        p.advance(plotTask)
+
+    for splinter in track(splinters):
         clr = get_color(len(splinter.touching_splinters), min_adj, max_adj)
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
-    p.remove_task(plotTask)
+
 
     out_img = annotate_image(
         out_img,
@@ -213,6 +237,38 @@ def gen_adjacent(
 
     if override_file:
         output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
+
+
+@app.command()
+def gen_adjacent2(
+    specimen_name,
+    override_file = False,
+    clear_checkpoint: bool = False
+):
+    # load specimen
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+
+    # create contour image
+    fimage = specimen.get_fracture_image()
+    print('Creating contour image...')
+    splImage0 = cv2.drawContours(np.ones(fimage.shape[:2], dtype=np.uint8)*255, [x.contour for x in specimen.splinters], -1, 0, 1)
+    splImage0 = to_gray(splImage0)
+
+    # perform harris corner detection
+    print('Performing harris corner detection...')
+    corners = cv2.cornerHarris(splImage0, 2, 3, 0.1)
+    # corners = cv2.dilate(corners, None)
+
+    # mark corner red in a new image
+    print('Marking corners...')
+    cornersImage = splImage0.copy()
+    cornersImage = to_rgb(cornersImage)
+
+    cornersImage[corners > 0.01 * corners.max()] = [0, 0, 255]
+
+    plotImage(cornersImage, "corners", force=True)
+
 
 @app.command()
 def show_prep():
