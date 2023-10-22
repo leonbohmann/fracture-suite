@@ -23,7 +23,7 @@ class AnalyzerConfig:
     "minimum fragment area"
     fragment_max_area_px: int = 25000
     "maximum fragment area"
-    
+
     size_factor: float = 1.0
     "factor to scale fragment size in mm/px"
     real_image_size: tuple[int,int] = None
@@ -74,7 +74,7 @@ class AnalyzerConfig:
 
     def get_parser(descr) -> argparse.ArgumentParser:
         """
-        Create and return an argumentParser, that can be used to initialize a new 
+        Create and return an argumentParser, that can be used to initialize a new
         AnalyzerConfig with `AnalyzerConfig.from_args(args)` method.
 
         This can be used, if the argumentparser should be extended. I.e. if highspeed
@@ -120,7 +120,7 @@ class AnalyzerConfig:
         prep.add_argument('-thresh-sens', help='Adaptive threshold sensitivity',\
             type=float, default=6)
         prep.add_argument('-thresh-block', help='Adaptive threshold block size',\
-            type=int, default=11, choices=[1,3,5,7,9,11,13,15,17,19,21])
+            type=int, default=11)
         prep.add_argument('-resize-fac', help='Image resize factor before adaptive th.',\
             type=float, default=1.0)
 
@@ -133,7 +133,7 @@ class AnalyzerConfig:
             action="store_true", default=False)
         post.add_argument('-intensity-width', help='Pixel width for intensity calculation.',\
             type=int, default=500)
-        post.add_argument('-impactposition', nargs=2, metavar=('X', 'Y'), type=float, 
+        post.add_argument('-impactposition', nargs=2, metavar=('X', 'Y'), type=float,
             help='Impact position in mm [X Y]', default=(50,50))
         post.add_argument('-normregioncenter', nargs=2, metavar=('X', 'Y'), type=float, default=None,
             help='Center for evaluation region according to DIN in mm [X Y]')
@@ -166,7 +166,7 @@ class AnalyzerConfig:
         cfg.debug_experimental = args.exp_debug
         cfg.printconfig = args.printconfig
         cfg.displayplots = args.displayplots
-        
+
         cfg.gauss_size = (args.gauss_size,args.gauss_size)
         cfg.gauss_sigma = args.gauss_sigma
         cfg.fragment_min_area_px = args.min_area

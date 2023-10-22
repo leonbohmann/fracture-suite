@@ -191,6 +191,10 @@ def crop_perspective(img, cropped_image_size: tuple[int,int], debug: bool):
     # and return the transformed image
     return img_original
 
+def to_rgb(img):
+    if isgray(img):
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    return img
 
 
 def filter_contours(contours, hierarchy, config: AnalyzerConfig) \
@@ -708,7 +712,7 @@ class Analyzer(object):
         # normed_image = cv2.bitwise_and(norm_filled_img, norm_filled_img, mask=norm_region_mask)
         # normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
         # # add images together
-        normed_image = cv2.addWeighted(self.original_image, 1, norm_filled_img, 0.5, 0)
+        normed_image = cv2.addWeighted(to_rgb(self.original_image), 1, norm_filled_img, 0.5, 0)
         cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)
 
         # extract image part
@@ -954,7 +958,7 @@ class Analyzer(object):
         cv2.imwrite(self.__get_out_file("img_splintersizes", config.ext_imgs), img)
         combined = cv2.addWeighted(255-self.original_image, 1.0, img, 0.75, 0.0)
         cv2.imwrite(self.__get_out_file(f"img_splintersizes_combined.{self.config.ext_imgs}"), combined)
-        combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, img, 0.6, 0.0)
+        combined = cv2.addWeighted(self.image_skeleton_rgb, 1.0, to_rgb(img), 0.6, 0.0)
         cv2.imwrite(self.__get_out_file(f"debug_skeleton_sizes_combined.{self.config.ext_imgs}"), combined)
 
 
