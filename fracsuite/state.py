@@ -1,3 +1,4 @@
+import pickle
 import tempfile
 from typing import Any
 from fracsuite.core.image import to_rgb
@@ -32,6 +33,7 @@ class StateOutput:
 
     is_image: bool
     is_figure: bool
+
 
     def __init__(self, data, figwidth, **additional_data):
         assert isinstance(data, Figure) or type(data).__module__ == np.__name__, "Data must be a matplotlib figure or a numpy array."
@@ -104,6 +106,7 @@ class StateOutput:
         elif self.is_image:
             self.Data = cv2.addWeighted(self.Data, 1, orientation_image, 1, 0)
 
+
 class State:
     """Contains static variables that are set during execution of a command."""
     start_time: float = time.time()
@@ -124,6 +127,8 @@ class State:
     to_temp: bool = False
     "Redirect all output to the temp folder."
     __progress_started: bool = False
+
+    __checkpoint_data: dict = None
 
     def has_progress():
         return State.__progress_started
@@ -310,3 +315,32 @@ class State:
 
 
         return p
+
+    def checkpoint(**kwargs):
+        """Saves data to a checkpoint file."""
+        if State.__checkpoint_data is None:
+            State.__checkpoint_data = {}
+
+        for k in kwargs:
+            State.__checkpoint_data[k] = kwargs[k]
+    def checkpoint_save():
+        tmpFile = os.path.join(tempfile.gettempdir(), State.current_subcommand + ".checkpoint")
+        with open(tmpFile, 'wb') as f:
+            pickle.dump(State.__checkpoint_data, f)
+    def checkpoint_clear():
+        tmpFile = os.path.join(tempfile.gettempdir(), State.current_subcommand + ".checkpoint")
+        os.remove(tmpFile)
+
+    def from_checkpoint(key: str, default):
+        """Loads data from a checkpoint file."""
+        if State.__checkpoint_data is None:
+            tmpFile = os.path.join(tempfile.gettempdir(), State.current_subcommand + ".checkpoint")
+            if os.path.exists(tmpFile):
+                with open(tmpFile, 'rb') as f:
+                    print("[yellow]Loaded checkpoint data from previous run.[/yellow]")
+                    State.__checkpoint_data = pickle.load(f)
+
+        if State.__checkpoint_data is not None and key in State.__checkpoint_data:
+            return State.__checkpoint_data[key]
+        else:
+            return default

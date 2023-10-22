@@ -67,7 +67,7 @@ cmap4 = [
 cmap=plt.cm.Dark2
 # build cycler with 5 equally spaced colors from that colormap
 # c = cycler(color=cmap.colors)
-c = cycler(color=cmap3)
+# c = cycler(color=cmap1)
 
 params = {
     'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}\usepackage{mathpazo}',
@@ -91,7 +91,7 @@ params = {
     # 'ytick.minor.visible': True,
 }
 plt.rcParams.update(params)
-plt.rc('axes', prop_cycle=c)
+# plt.rc('axes', prop_cycle=c)
 # plt.rc('text.latex', preamble=r'\usepackage{amsmath}\usepackage{xfrac}')
 # plt.style.use('bmh')
 
@@ -209,4 +209,10 @@ def replot(
 def test(input: list[str]):
     print(input)
 
-app()
+try:
+    app()
+except Exception as e:
+    print("Error occured.")
+    raise
+finally:
+    State.checkpoint_save()

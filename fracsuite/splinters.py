@@ -2,8 +2,9 @@
 Splinter analyzation tools.
 """
 
+from multiprocessing import Pool
 import os
-from itertools import groupby
+from itertools import combinations, groupby
 import pickle
 import re
 import sys
@@ -18,12 +19,13 @@ from matplotlib.figure import Figure
 from rich import inspect, print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
+from fracsuite.core.detection import detect_fragments
 from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
     DataHistMode,
     DataHistPlotMode,
-    FigWidth,
+    FigureSize,
     KernelContourMode,
     create_splinter_colored_image,
     datahist_plot,
@@ -85,6 +87,132 @@ def gen(
         pickle.dump(splinters, f)
     print(f'Saved splinters to "{output_file}"')
 
+def check_touching(x):
+    i,j = x
+    if i.touches(j):
+        i.touching_splinters.append(j)
+        j.touching_splinters.append(i)
+
+@app.command()
+def gen_adjacent(
+    specimen_name,
+    override_file = False,
+    clear_checkpoint: bool = False
+):
+    if clear_checkpoint:
+        State.checkpoint_clear()
+    # load specimen
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    # load splinters
+    splinters = State.from_checkpoint('splinters', specimen.splinters)
+    # splinters = splinters[len(splinters)//5:]
+    # create adjacency matrix
+    # n_splinters = len(splinters)
+    # adjacency = np.zeros((n_splinters, n_splinters), dtype=bool)
+    fimage = specimen.get_fracture_image()
+    print('Creating adjacency image...')
+    splImage0 = cv2.drawContours(np.ones(fimage.shape[:2], dtype=np.uint8)*255, [x.contour for x in splinters], -1, 0, 1)
+    splImage0 = to_gray(splImage0)
+
+    p = get_progress()
+    p.start()
+    sTask = p.add_task("Iterating splinters...", total=len(splinters))
+
+    i0 = State.from_checkpoint('i', 0)
+
+    p.advance(sTask, advance=i0)
+    print('Iterating splinters...')
+    for i in range(i0,len(splinters)):
+        s = splinters[i]
+        p.advance(sTask)
+        splImage = splImage0.copy()
+        splImage = cv2.drawContours(splImage, [s.contour], 0, 255, 2)
+
+        plotImage(255-splImage, "splImage")
+
+        # find contours in splinter image
+        contours = detect_fragments(255-splImage, filter = False)
+
+        sContour = None
+        sSplinter = None
+
+        cTask = p.add_task("Searching for current splinter contour...", total=len(contours))
+        # find contour that has s.centroid_px inside
+        for c in contours:
+            p.advance(cTask)
+            if cv2.pointPolygonTest(c, s.centroid_px, False) >= 0:
+                sContour = c
+                break
+        p.remove_task(cTask)
+
+        if sContour is None:
+            print(f"Could not find contour for splinter {s}.")
+            continue
+
+        ssTask = p.add_task("Searching for splinters...", total=len(splinters))
+        # now check all other contours, if they are contained within sCountour
+        for j in range(i+1, len(splinters)):
+            s0 = splinters[j]
+            p.advance(ssTask)
+            if s0 is s:
+                continue
+            c = s0.centroid_px
+            if cv2.pointPolygonTest(sContour, c, False) >= 0:
+                if s0 not in s.touching_splinters:
+                    s.touching_splinters.append(j)
+                if s not in s0.touching_splinters:
+                    s0.touching_splinters.append(i)
+        p.remove_task(ssTask)
+
+        State.checkpoint(splinters=splinters)
+        State.checkpoint(i=i)
+        # print(f"Found {len(s.touching_splinters)} touching splinters.")
+
+    with open(specimen.get_splinter_outfile('splinters_v2.pkl'), 'wb') as f:
+        pickle.dump(splinters, f)
+
+    # with get_progress() as progress:
+    #     task1  = progress.add_task("Checking splinters...", total=len(ops))
+    #     with Pool() as pool:
+    #         for result in pool.imap_unordered(check_touching, ops):
+    #             progress.advance(task1)
+
+    out_img = specimen.get_fracture_image()
+    touches = [len(x.touching_splinters) for x in splinters]
+    max_adj = np.max(touches)
+    min_adj = np.min(touches)
+
+    plotTask = p.add_task("Plotting splinters...", total=len(splinters))
+    for splinter in splinters:
+        p.advance(plotTask)
+        clr = get_color(len(splinter.touching_splinters), min_adj, max_adj)
+        cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
+    p.remove_task(plotTask)
+
+    out_img = annotate_image(
+        out_img,
+        cbar_title="Amount of touching splinters",
+        clr_format=".2f",
+        min_value=min_adj,
+        max_value=max_adj,
+        figwidth=FigureSize.ROW2,
+    )
+
+    out_img.overlayImpact(specimen)
+    State.output(out_img, spec=specimen, to_additional=True)
+
+    # # check for intersections between each pair of splinters
+    # for i in track(range(n_splinters)):
+    #     for j in range(i+1, n_splinters):
+    #         if splinters[i].touches(splinters[j]):
+    #             adjacency[i, j] = True
+    #             adjacency[j, i] = True
+    #             splinters[i].touching_splinters.append(splinters[j])
+    #             splinters[j].touching_splinters.append(splinters[i])
+
+    if override_file:
+        output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
 
 @app.command()
 def show_prep():
@@ -148,9 +276,11 @@ def count_splinters_in_norm_region(
 
 
 @app.command()
-def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
-                kernel_width: Annotated[
-                    int, typer.Option(help='Size of the region to calculate the roughness on.')] = 200, ):
+def roughness_f(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
+    w_mm: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 50,
+    n_points: Annotated[int, typer.Option(help='Amount of points in kerneler.')] = 50,
+):
     """Create a contour plot of the roughness on the specimen.
 
     Args:
@@ -164,14 +294,19 @@ def roughness_f(specimen_name: Annotated[str, typer.Argument(help='Name of speci
     specimen = Specimen.get(specimen_name)
     assert specimen is not None, "Specimen not found."
 
-    fig = plot_splinter_movavg(specimen.get_fracture_image(),
-                               splinters=specimen.splinters,
-                               kw_px=kernel_width,
-                               z_action=roughness_function,
-                               clr_label='Mean roughness',
-                               fig_title='Splinter Roughness')
+    fig = plot_splinter_movavg(
+        specimen.get_fracture_image(),
+        splinters=specimen.splinters,
+        kw_px=w_mm * specimen.calculate_px_per_mm(),
+        n_points=n_points,
+        z_action=roughness_function,
+        clr_label='Mean roughness $\\bar{\lambda}_r$',
+        figwidth=FigureSize.ROW2,
+        clr_format=".2f",
+        mode=KernelContourMode.FILLED,
+    )
 
-    State.output(fig, spec=specimen)
+    State.output(fig, spec=specimen, to_additional=True)
 
 
 @app.command()
@@ -202,7 +337,7 @@ def roundness_f(
         z_action=roundness_function,
         clr_label='Mean Roundness $\\bar{\lambda}_c$',
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
-        figwidth=FigWidth.ROW2,
+        figwidth=FigureSize.ROW2,
         clr_format=".2f",
     )
 
@@ -237,9 +372,17 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
-    out_img = annotate_image(out_img, cbar_title="Roughness", min_value=min_r, max_value=max_r)
+    out_img = annotate_image(
+        out_img,
+        cbar_title="Roughness $\lambda_r$",
+        clr_format=".2f",
+        min_value=min_r,
+        max_value=max_r,
+        figwidth=FigureSize.ROW2,
+    )
+
     out_img.overlayImpact(specimen)
-    State.output(out_img, specimen.name)
+    State.output(out_img, spec=specimen, to_additional=True)
 
 
 @app.command()
@@ -273,7 +416,7 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
         cbar_title="Roundness $\lambda_c$",
         min_value=min_r,
         max_value=max_r,
-        figwidth=FigWidth.ROW2,
+        figwidth=FigureSize.ROW2,
         clr_format=".2f"
     )
 
@@ -442,7 +585,7 @@ def log2dhist_diag(
 
     specimens: list[Specimen] = Specimen.get_all_by(filter, lazyload=False)
 
-    fig, axs = plt.subplots(figsize=get_fig_width(FigWidth.ROW2))
+    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
 
     # check that all specimens have the same size
     size0 = specimens[0].splinters_data['cropsize']
@@ -536,7 +679,7 @@ def log_2d_histograms(
     assert len(specimens) > 0, "[red]No specimens loaded.[/red]"
 
     binrange = np.linspace(0, 2, n_bins)
-    fig, axs = plt.subplots(figsize=(9, 3))
+    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1H))
 
     data = []
     stress = []
@@ -567,7 +710,7 @@ def log_2d_histograms(
     stress, data = sort_two_arrays(stress, data, True)
     names = [x[1] for x in data]
     data = [x[0] for x in data]
-    axs.set_xlabel("Splinter Area [mm²]")
+    axs.set_xlabel("Splinter Area $A_S$ [mm²]")
     if not y_stress:
         axs.set_ylabel("Strain Energy [J/m²]")
     else:
@@ -585,7 +728,7 @@ def log_2d_histograms(
 
     dt = np.array(data)
     axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-    fig.colorbar(axim, ax=axs, orientation='vertical', label='Relative PDF', pad=0.2)
+    fig.colorbar(axim, ax=axs, orientation='vertical', label='PDF $P(A_S)$', pad=0.2)
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
@@ -597,7 +740,9 @@ def log_2d_histograms(
     elif names is not None:
         out_name = f"{names[0]}"
 
-    State.output(fig, out_name)
+    axs.grid(False)
+
+    State.output(fig, f'loghist2d_{out_name}', to_additional=True)
 
 
 def create_filter_function(name_filter,
@@ -695,7 +840,7 @@ def log_histograms(
     plot_mode: Annotated[DataHistPlotMode, typer.Option(help='Data mode.')] = DataHistPlotMode.HIST,
     legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = None,
     xlim: Annotated[tuple[float, float], typer.Option(help='X-Limits for plot')] = (0, 2),
-    figwidth: Annotated[FigWidth, typer.Option(help='Width of the figure.')] = FigWidth.ROW2,
+    figwidth: Annotated[FigureSize, typer.Option(help='Width of the figure.')] = FigureSize.ROW2,
 ):
     """Plot logaritmic histograms of splinter sizes for specimens."""
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
@@ -736,13 +881,15 @@ def log_histograms(
         if br is None:
             br = br0
 
+
     if legend is not None and len(specimens) > 1:
         fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)
 
+    output = StateOutput(fig, figwidth)
     if len(specimens) == 1:
-        State.output(fig, 'loghist', spec=specimens[0], to_additional=True, mods=[data_mode])
+        State.output(output, 'loghist', spec=specimens[0], to_additional=True, mods=[data_mode])
     else:
-        State.output(fig, to_additional=True, mods=[data_mode])
+        State.output(output, to_additional=True, mods=[data_mode])
 
     disp_mean_sizes(specimens)
 
@@ -769,7 +916,7 @@ def splinter_orientation_f(
         plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel rectangle.')] = False,
         skip_edge: Annotated[
             bool, typer.Option(help='Skip one row of the edges when calculating intensities.')] = False,
-        figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
+        figwidth: Annotated[FigureSize, typer.Option(help='Fraction of kernel width to use.')] = FigureSize.ROW2,
 ):
     specimen = Specimen.get(specimen_name)
     impact_pos = specimen.get_impact_position()
@@ -826,7 +973,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         cbar_title='Orientation Strength $\Delta$',
         min_value=0,
         max_value=1,
-        figwidth=FigWidth.ROW2,
+        figwidth=FigureSize.ROW2,
         clr_format='.1f'
     )
 
@@ -845,7 +992,7 @@ def fracture_intensity_img(
         exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
         plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel rectangle.')] = False,
         skip_edge: Annotated[bool, typer.Option(help='Skip one row of the edges when calculating intensities.')] = True,
-        figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
+        figwidth: Annotated[FigureSize, typer.Option(help='Fraction of kernel width to use.')] = FigureSize.ROW2,
 ):
     """
     Plot the intensity of the fracture image.
@@ -908,7 +1055,7 @@ def fracture_intensity_f(
         skip_edge: Annotated[
             bool, typer.Option(help='Skip one row of the edges when calculating intensities.')] = False,
         exclude_points: Annotated[bool, typer.Option(help='Exclude points from the kernel.')] = False,
-        figwidth: Annotated[FigWidth, typer.Option(help='Fraction of kernel width to use.')] = FigWidth.ROW2,
+        figwidth: Annotated[FigureSize, typer.Option(help='Fraction of kernel width to use.')] = FigureSize.ROW2,
 ):
     """Plot the intensity of the fracture morphology."""
 
@@ -1298,7 +1445,7 @@ def compare_manual(
 
     # use this for better visibility
     hist_bins = 20
-    figwidth = FigWidth.ROW3
+    figwidth = FigureSize.ROW3
 
     fig, axs = datahist_plot(
         y_format='{0:.0f}',

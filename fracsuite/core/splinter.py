@@ -89,7 +89,10 @@ class Splinter:
         self.angle = self.__calculate_orientation()
 
 
-
+        self.touching_splinters: list[int] = []
+        "List of adjacent splinters."
+        self.contour_set = None
+        "Set of contour points for faster membership testing."
 
     def calculate_roundness(self) -> float:
         """
@@ -155,7 +158,7 @@ class Splinter:
         hull = cv2.convexHull(contour)
         hullperimeter = cv2.arcLength(hull,True)
 
-        return perimeter / hullperimeter - 1
+        return hullperimeter / perimeter
 
     def __calculate_orientation(self):
         """Calculate the orientation of the splinter in degrees."""
@@ -202,6 +205,24 @@ class Splinter:
         x1,y1,x2,y2 = rect
         x,y = self.centroid_px
         return x1 <= x <= x2 and y1 <= y <= y2
+
+
+    def touches(self, other: Splinter):
+        # Calculate centroid distance
+        # dist = np.linalg.norm(np.array(self.centroid_mm) - np.array(other.centroid_mm))
+        # if dist > 100:
+        #     return False
+
+        # Convert contour points to sets for faster membership testing
+        if self.contour_set is None:
+            self.contour_set = set((int(p[0][1]), int(p[0][0])) for p in self.contour)
+        if other.contour_set is None:
+            other.contour_set = set((int(p[0][1]), int(p[0][0])) for p in other.contour)
+
+        # Check if there are common points in the contours
+        common_points = self.contour_set.intersection(other.contour_set)
+
+        return len(common_points) > 0
 
     def __calculate_orientation_score(self, origin) -> float:
         """Calculate the alignment score of the splinter with the given vector.

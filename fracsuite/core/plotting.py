@@ -39,7 +39,7 @@ modified_turbo = mpl.colors.LinearSegmentedColormap.from_list('modified_turbo', 
 "Turbo but with starting color white."
 
 
-class FigWidth(str, Enum):
+class FigureSize(str, Enum):
     """ Figwidth factor for different figure configurations! """
     ROW1 = 'row1'
     "The width of a figure in a row with one figure."
@@ -47,10 +47,12 @@ class FigWidth(str, Enum):
     "The width of a figure in a row with two figures."
     ROW3 = 'row3'
     "The width of a figure in a row with three figures."
+    ROW1H = 'row1h'
+    "The width of a figure in one row in landscape."
 
     @staticmethod
     def has_value(value):
-        return value in FigWidth.values()
+        return value in FigureSize.values()
 
     @classmethod
     def values(cls):
@@ -70,7 +72,7 @@ class KernelContourMode(str, Enum):
         return list(map(lambda c: c.value, KernelContourMode))
 
 
-def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
+def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     """
     Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.
 
@@ -85,9 +87,12 @@ def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
     Returns:
         Tuple[float, float]: The figure width and height in inches.
     """
-    assert FigWidth.has_value(w), f"FigWidth must be one of {FigWidth.values()}."
+    is_landscape = False
+    if w.endswith('h'):
+        is_landscape = True
 
-    mm_per_pt = 2.834645668
+    assert FigureSize.has_value(w), f"FigWidth must be one of {FigureSize.values()}."
+
     mm_per_inch = 1 / 25.4
 
     w_mm,h_mm = general.figure_sizes_mm[w]
@@ -96,10 +101,11 @@ def get_fig_width(w: FigWidth, hf=None, dimf=1.0) -> float:
 
     # Golden ratio to set aesthetic figure height
     # https://disq.us/p/2940ij3
-    # golden_ratio = (5**.5 - 1) / 2
+    golden_ratio = (5**.5 - 1) / 2
+    wfac = 1 if not is_landscape else golden_ratio
 
     fig_width_in = w_inch * dimf
-    fig_height_in = h_inch * dimf
+    fig_height_in = h_inch * dimf * wfac
 
     return (fig_width_in, fig_height_in)
 
@@ -146,7 +152,7 @@ def plot_image_movavg(
     mode: KernelContourMode = KernelContourMode.CONTOURS,
     exclude_points: list[tuple[int,int]] = None,
     no_ticks = True,
-    figwidth = FigWidth.ROW2,
+    figwidth = FigureSize.ROW2,
     clr_format: str = None,
     normalize: bool = True,
     crange: tuple[float,float] = None,
@@ -219,7 +225,7 @@ def plot_splinter_movavg(
     skip_edge: bool = False,
     mode: KernelContourMode = KernelContourMode.CONTOURS,
     exclude_points: list[tuple[int,int]] = None,
-    figwidth: FigWidth = FigWidth.ROW1,
+    figwidth: FigureSize = FigureSize.ROW1,
     clr_format=None,
     normalize: bool = False,
     crange: tuple[float,float] = None,
@@ -266,7 +272,7 @@ def plot_splinter_movavg(
         The resulting figure object.
     """
     assert KernelContourMode.has_value(mode), f"Contour mode must be one of {KernelContourMode.values()}. plot_splinter_movavg."
-    assert FigWidth.has_value(figwidth), f"FigWidth must be one of {FigWidth.values()}. plot_splinter_movavg."
+    assert FigureSize.has_value(figwidth), f"FigWidth must be one of {FigureSize.values()}. plot_splinter_movavg."
     assert kw_px > 0, "kernel_width must be greater than 0."
     assert kw_px < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
     assert figwidth in general.figure_sizes_mm, f"figwidth {figwidth} not found."
@@ -321,7 +327,7 @@ def plot_kernel_results(
     Y,
     results,
     kw_px,
-    figwidth: FigWidth,
+    figwidth: FigureSize,
     clr_format: str = None,
     crange: tuple[float,float] = None,
     plot_kernel: bool = False,
@@ -539,7 +545,7 @@ def datahist_plot(
     x_format: str = "{0:.0f}",
     y_format: str = "{0:.2f}",
     data_mode : DataHistMode = DataHistMode.PDF,
-    figwidth = FigWidth.ROW1,
+    figwidth = FigureSize.ROW1,
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
     figsize = get_fig_width(figwidth)
@@ -660,7 +666,7 @@ def label_image(
     title = None,
     nums=None,
     return_fig=True,
-    figwidth=FigWidth.ROW1,
+    figwidth=FigureSize.ROW1,
 ):
     """
     Add labels to an image.
@@ -714,7 +720,7 @@ def annotate_image(
     cbar_title = None,
     min_value = 0,
     max_value = 1,
-    figwidth = FigWidth.ROW1,
+    figwidth = FigureSize.ROW1,
     return_fig=True,
     clr_format: str = None,
 ) -> StateOutput:
@@ -748,8 +754,8 @@ def annotate_image(
 
     if cbar_title is not None:
         cbar = fig.colorbar(mappable=im, ax=ax, label=cbar_title)
+        renew_ticks_cb(cbar)
         if clr_format is not None:
-            renew_ticks_cb(cbar)
 
             formatter = FuncFormatter(lambda x, p: f"{{0:{clr_format}}}".format(x))
             cbar.ax.yaxis.set_major_formatter(formatter)

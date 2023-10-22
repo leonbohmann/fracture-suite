@@ -30,21 +30,27 @@
         "splinters/fracture-intensity-img": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\frac-intensity",
         "splinters/roundness": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roundness",
         "splinters/roundness-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roundness",
-        "splinters/log-histograms": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist"
+        "splinters/log-histograms": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist",
+        "splinters/log2dhist": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist",
+        "splinters/roughness": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roughness"
     },
     "figure_sizes_mm": {
         "row1": [
-			108,
-			81
-		],
+            108,
+            81
+        ],
         "row2": [
-			81,
-			60.75
-		],
+            81,
+            60.75
+        ],
         "row3": [
-			54,
-			40.5
-		]
+            54,
+            40.5
+        ],
+        "row1h": [
+            115,
+            70
+        ]
     },
     "n_points_kernel": 25
 }
