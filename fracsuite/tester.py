@@ -230,7 +230,10 @@ def best_params(image):
     return best_params, results
 
 @tester_app.command()
-def threshold(image):
+def threshold(
+    image,
+    region: tuple[int,int,int,int] = None
+):
     # Initialize GUI
     root = tk.Tk()
     root.title("Adaptive Threshold GUI")
@@ -246,7 +249,17 @@ def threshold(image):
         image = specimen.get_splinter_outfile("dummy")
         img = specimen.get_fracture_image()
         # take a small portion of the image
-        img = img[500:1000, 500:1000]
+        if region is None:
+            region = np.array((250,250,500,500)) * specimen.calculate_px_per_mm()
+        else:
+            region = np.array(region) * specimen.calculate_px_per_mm()
+        print(region)
+        region = region.astype(np.uint32)
+        print(region)
+        # get region cx cy w h from image
+        img = img[region[1]-region[3]//2:region[1]+region[3]//2, region[0]-region[2]//2:region[0]+region[2]//2]
+
+        # img = img[region[0]-region[2]//2:region[0]+region[2]//2, region[1]-region[3]//2:region[1]-region[3]//2]
         is_specimen = True
     else:
         # Load image and convert to grayscale
