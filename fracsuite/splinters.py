@@ -89,6 +89,45 @@ def gen(
         pickle.dump(splinters, f)
     print(f'Saved splinters to "{output_file}"')
 
+# @app.command()
+# def simplify(
+#     specimen_name: str
+# ):
+#     specimen = Specimen.get(specimen_name)
+#     assert specimen.has_splinters, "Specimen has no splinters."
+
+#     splinters = specimen.splinters
+#     c = 0
+#     tc = 0
+#     less_area = 0
+
+#     ctrs = []
+#     for splinter in splinters:
+#         contour = splinter.contour
+#         eps = 0.01 * cv2.arcLength(contour, True)
+#         ctr = cv2.approxPolyDP(contour, eps, True)
+#         ctrs.append(ctr)
+
+#         tc += len(contour)
+#         c += len(contour) - len(ctr)
+#         # compare contour areas
+#         darea = np.abs(cv2.contourArea(contour) - cv2.contourArea(ctr))
+#         less_area += darea
+#         if darea > 1:
+#             print(f"Contour area changed from {cv2.contourArea(contour)} to {cv2.contourArea(ctr)}")
+
+#     print(f"Removed {c} from {tc} points.")
+#     print(f"Area changed by {less_area/(specimen.calculate_px_per_mm()**2)}.")
+
+#     im0 = specimen.get_fracture_image()
+#     cv2.drawContours(im0, ctrs, -1, (0, 0, 255), 1)
+
+#     plotImage(im0, "contours", force=True)
+
+
+#     # with open(specimen.get_splinter_outfile("splinters_v2.pkl"), 'wb') as f:
+#     #     pickle.dump(splinters, f)
+
 def check_touching(x):
     i,j = x
     if i.touches(j):
@@ -147,6 +186,7 @@ def gen_adjacent(
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
     splinters = specimen.splinters
+    inspect(splinters[0].contour.shape)
 
     if not plot_only:
         # load splinters
@@ -178,7 +218,6 @@ def gen_adjacent(
                 for result in pool.imap_unordered(func, irange):
                     p.advance(sTask)
                     if result is None:
-                        print("[gray]Some splinter could not be analyzed.")
                         continue
 
                     i,j = result
@@ -203,25 +242,7 @@ def gen_adjacent(
         #             progress.advance(task1)
         p.stop()
 
-    out_img = specimen.get_fracture_image()
-    touches = [len(x.touching_splinters) for x in splinters]
-    max_adj = np.max(touches)
-    min_adj = np.min(touches)
-
-
-    for splinter in track(splinters):
-        clr = get_color(len(splinter.touching_splinters), min_adj, max_adj)
-        cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
-
-
-    out_img = annotate_image(
-        out_img,
-        cbar_title="Amount of touching splinters",
-        clr_format=".2f",
-        min_value=min_adj,
-        max_value=max_adj,
-        figwidth=FigureSize.ROW2,
-    )
+    out_img = plot_touching_len(specimen, splinters)
 
     out_img.overlayImpact(specimen)
     State.output(out_img, spec=specimen, to_additional=True)
@@ -237,6 +258,32 @@ def gen_adjacent(
 
     if override_file:
         output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
+
+def plot_touching_len(specimen, splinters):
+    out_img = specimen.get_fracture_image()
+    touches = [len(x.touching_splinters) for x in splinters]
+    max_adj = np.max(touches)
+    min_adj = np.min(touches)
+
+    print(f"Max touching splinters: {max_adj}")
+    print(f"Min touching splinters: {min_adj}")
+    print(f"Mean touching splinters: {np.mean(touches)}")
+
+    for splinter in track(splinters):
+        clr = get_color(len(splinter.touching_splinters), min_adj, max_adj)
+        cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
+
+
+    out_img = annotate_image(
+        out_img,
+        cbar_title="Amount of touching splinters",
+        clr_format=".2f",
+        min_value=min_adj,
+        max_value=max_adj,
+        figwidth=FigureSize.ROW2,
+    )
+
+    return out_img
 
 
 @app.command()
@@ -257,7 +304,7 @@ def gen_adjacent2(
 
     # perform harris corner detection
     print('Performing harris corner detection...')
-    corners = cv2.cornerHarris(splImage0, 2, 3, 0.1)
+    corners = cv2.cornerHarris(255-splImage0, 2, 3, 0.2)
     # corners = cv2.dilate(corners, None)
 
     # mark corner red in a new image
@@ -268,6 +315,65 @@ def gen_adjacent2(
     cornersImage[corners > 0.01 * corners.max()] = [0, 0, 255]
 
     plotImage(cornersImage, "corners", force=True)
+
+def check_point_2(i, p_size):
+    p_shm = sm.SharedMemory(name='points')
+    points = np.ndarray(p_size, dtype=np.uint8, buffer=p_shm.buf)
+
+    matches = []
+    for j in range(i+1, points.shape[0]):
+
+        p1 = points[i]
+        p2 = points[j]
+        if p1[0] == p2[0] and p1[1] == p2[1]:
+            matches.append((i,j))
+
+    return matches
+
+
+
+@app.command()
+def gen_adjacent3(
+    specimen_name,
+    override_file = False,
+    clear_checkpoint: bool = False
+):
+    # load specimen
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    splinters = specimen.splinters
+
+    # get array
+    ids,points = specimen.get_splinters_asarray()
+    # print splinters shape
+    print(f"IDs shape: {ids.shape}")
+    print(f"Points shape: {points.shape}")
+
+    p_mem = sm.SharedMemory(create=True, size=points.nbytes, name="points")
+
+    # save points to sharedmem
+    points_shared = np.ndarray(points.shape, dtype=points.dtype, buffer=p_mem.buf)
+    points_shared[:] = points[:]
+
+    func = partial(check_point_2, p_size=points.shape)
+    ops = list(range(len(points)))
+
+    print(f'Total operations: {len(ops)}')
+    with get_progress() as progress:
+        task = progress.add_task("Checking points...", total=len(ops))
+        with Pool() as pool:
+            for matches in pool.imap_unordered(func, ops):
+                progress.advance(task)
+                for result in matches:
+                    i,j = result
+                    si, sj = ids[i,1], ids[j,1]
+                    if sj not in splinters[si].touching_splinters:
+                        splinters[si].touching_splinters.append(sj)
+                    if si not in splinters[sj].touching_splinters:
+                        splinters[sj].touching_splinters.append(si)
+
+    output = plot_touching_len(specimen, splinters)
+    State.output(output, spec=specimen)
 
 
 @app.command()

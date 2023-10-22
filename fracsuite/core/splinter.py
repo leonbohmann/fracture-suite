@@ -159,6 +159,9 @@ class Splinter:
         hullperimeter = cv2.arcLength(hull,True)
 
         return hullperimeter / perimeter
+    def as_array(self) -> np.ndarray:
+        """Return the contour as a numpy array."""
+        return np.array(self.contour)
 
     def __calculate_orientation(self):
         """Calculate the orientation of the splinter in degrees."""

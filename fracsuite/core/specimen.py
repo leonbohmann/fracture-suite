@@ -287,6 +287,23 @@ class Specimen(Outputtable):
         print("[yellow]No prep.json found. Using default.")
         return defaultPrepConfig
 
+    def get_splinters_asarray(self) -> np.ndarray:
+        """
+        Returns two arrays.
+
+        First array (id): Contains id connectors (point, splinter).
+        Second array (p): Contains points (x,y).
+        """
+        id_list: list[tuple[int,int]] = []
+        p_list: list[tuple[int,int]] = []
+
+        for i, s in enumerate(self.splinters):
+            for j, p in enumerate(s.contour):
+                p_list.append(p[0])
+                id_list.append((j,i))
+
+        return np.array(id_list), np.array(p_list)
+
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. mm/px."""
         realsize = realsize_mm if realsize_mm is not None else self.settings['real_size_mm']
