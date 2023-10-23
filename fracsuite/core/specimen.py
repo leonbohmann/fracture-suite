@@ -291,16 +291,19 @@ class Specimen(Outputtable):
         """
         Returns two arrays.
 
-        First array (id): Contains id connectors (point, splinter).
+        First array (id): Contains id connectors [id](splinter).
         Second array (p): Contains points (x,y).
+
+        Example:
+            To get the splinter for point p, use id[p] and p[p].
         """
         id_list: list[tuple[int,int]] = []
         p_list: list[tuple[int,int]] = []
 
         for i, s in enumerate(self.splinters):
-            for j, p in enumerate(s.contour):
+            for p in s.contour:
                 p_list.append(p[0])
-                id_list.append((j,i))
+                id_list.append(i)
 
         return np.array(id_list), np.array(p_list)
 

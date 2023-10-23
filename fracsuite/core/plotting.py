@@ -543,7 +543,9 @@ def datahist_plot(
     nrows:int = 1,
     xlim: tuple[float,float] = None,
     x_format: str = "{0:.0f}",
+    x_label: str = 'Splinter Area $A_S$ [mm²]',
     y_format: str = "{0:.2f}",
+    y_label: str = None,
     data_mode : DataHistMode = DataHistMode.PDF,
     figwidth = FigureSize.ROW1,
 ) -> tuple[Figure, list[Axes]]:
@@ -567,13 +569,14 @@ def datahist_plot(
         ax.xaxis.set_major_formatter(ticks)
         ax.yaxis.set_major_formatter(ticksy)
 
-        # ax.xaxis.set_major_formatter(ScalarFormatter())
-        if data_mode == DataHistMode.PDF:
-            ax.set_xlabel('Splinter Area $A_S$ [mm²]')
-            ax.set_ylabel('PDF $P(A_S)$')
-        elif data_mode == DataHistMode.CDF:
-            ax.set_xlabel('Splinter Area $A_S$ [mm²]')
-            ax.set_ylabel('CDF $C(A_S)$')
+        ax.set_xlabel(x_label)
+        if y_label is not None:
+            ax.set_ylabel(y_label)
+        else:
+            if data_mode == DataHistMode.PDF:
+                ax.set_ylabel('PDF $P(A_S)$')
+            elif data_mode == DataHistMode.CDF:
+                ax.set_ylabel('CDF $C(A_S)$')
         ax.grid(True, which='both', axis='both')
 
     return fig, axs
@@ -591,6 +594,7 @@ def datahist_to_ax(
     data_mode: DataHistMode = DataHistMode.PDF,
     as_density = True,
     plot_mode: DataHistPlotMode = DataHistPlotMode.HIST,
+    unit: str = "mm²"
 ) -> tuple[Any, list[float], Any]:
     """
     Plot a histogram of the data to axes ax.
@@ -651,12 +655,12 @@ def datahist_to_ax(
 
     if plot_mean:
         most_probable_area = calculate_dmode(data)
-        print(f"Most probable area: {10**most_probable_area:.2f}mm²")
-        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"Ø={most_probable_area:.2f}mm²", color='red', alpha=alpha)
+        print(f"Most probable area: {10**most_probable_area:.2f}{unit}")
+        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"Ø={most_probable_area:.2f}{unit}", color='red', alpha=alpha)
 
         axd = ax.get_xlim()[1] - ax.get_xlim()[0]
         ayd = ax.get_ylim()[1] - ax.get_ylim()[0]
-        ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{10**most_probable_area:.2f}mm²", color='red', alpha=alpha, ha='left', va='center', zorder=2)
+        ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{10**most_probable_area:.2f}{unit}", color='red', alpha=alpha, ha='left', va='center', zorder=2)
     return None, binrange, binned_data
 
 

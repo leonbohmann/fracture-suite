@@ -377,6 +377,124 @@ def gen_adjacent3(
 
 
 @app.command()
+def gen_adj_rust(
+    specimen_name,
+    override_file = False,
+    use_checkpoint: bool = False,
+    sequential:bool = False
+):
+    if not use_checkpoint:
+        State.checkpoint_clear()
+
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    splinters = specimen.splinters
+
+    matching_points = State.from_checkpoint('matching_points', None)
+    # get array
+    ids,points = specimen.get_splinters_asarray()
+    # print splinters shape
+    print(f"IDs shape: {ids.shape}")
+    print(f"Points shape: {points.shape}")
+
+    if matching_points is None:
+
+
+        import conner
+        if not sequential:
+            matching_points = conner.check_points(points)
+        else:
+            matching_points = conner.check_points_seq(points)
+
+        State.checkpoint(matching_points=matching_points)
+        # inspect(matching_points)
+
+    # matching_points to txt file
+    with open(State.get_output_file("matching_points.txt"), 'w') as f:
+        for s in matching_points:
+            f.write(f"{s}\n")
+
+    # connect points to contours
+    for i in track(range(len(matching_points))):
+        contour_points = matching_points[i]
+
+        si = ids[i]
+        for j in contour_points:
+            sj = ids[j]
+            if sj not in splinters[si].touching_splinters:
+                splinters[si].touching_splinters.append(sj)
+            if si not in splinters[sj].touching_splinters:
+                splinters[sj].touching_splinters.append(si)
+
+
+    outp = plot_touching_len(specimen, splinters)
+    State.output(outp, spec=specimen, to_additional=True)
+
+    fig, axs = datahist_plot(
+        x_label='Amount of edges $N_e$',
+        y_label='Probability Density $p(N_e)$',
+    )
+    datahist_to_ax(
+        axs[0],
+        [len(x.touching_splinters) for x in splinters],
+        data_mode=DataHistMode.PDF,
+        plot_mode=DataHistPlotMode.HIST,
+        alpha = 1.0,
+        unit = "",
+    )
+    axs[0].autoscale()
+    State.output(fig, spec=specimen, to_additional=True)
+
+
+def check_chunk(i, chunksize, p_len):
+    points_sm = sm.SharedMemory(name='points')
+    points = np.ndarray(p_len, dtype=np.uint8, buffer=points_sm.buf)
+
+    i0 = i * chunksize
+    matches = []
+    for j in range(i0, i0+chunksize):
+        if j >= len(points):
+            break
+
+        p1 = points[j]
+        for k in range(j+1, len(points)):
+            p2 = points[k]
+            if p1[0] == p2[0] and p1[1] == p2[1]:
+                matches.append((j,k))
+
+    return matches
+
+
+
+@app.command()
+def gen_adj_rust_cmp(
+    specimen_name,
+    override_file = False,
+    clear_checkpoint: bool = False
+):
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    splinters = specimen.splinters
+
+    # get array
+    ids,points = specimen.get_splinters_asarray()
+
+    # put points in shared mem
+    points_sm = sm.SharedMemory(create=True, size=points.nbytes, name="points")
+    points_shared = np.ndarray(points.shape, dtype=points.dtype, buffer=points_sm.buf)
+    points_shared[:] = points[:]
+
+    n_chunks = 20
+    chunk_size = len(points) // n_chunks
+
+    func = partial(check_chunk, chunksize=chunk_size, p_len=points.shape)
+    with get_progress() as progress:
+        task = progress.add_task("Checking points...", total=n_chunks)
+        with Pool() as pool:
+            for result in pool.imap_unordered(func, range(n_chunks)):
+                progress.advance(task)
+
+@app.command()
 def show_prep():
     """Show the default preprocessing configuration."""
     inspect(defaultPrepConfig)
