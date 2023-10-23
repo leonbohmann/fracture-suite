@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 dependencies = ["matplotlib", "opencv-python", "numpy",
         "tqdm", "scikit-image", "rich", "scikit-learn",
         "scipy", "apread==1.1.2a9", "Pillow", "reportlab",
-        "pylibdmtx", "pyzbar", "conner>0.0.1a1"]
+        "pylibdmtx", "pyzbar", "conner==0.0.2a2"]
 
 name = "fracsuite"
 version = "0.2.0a1"
