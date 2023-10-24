@@ -63,7 +63,7 @@ def gen(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
         realsize: Annotated[tuple[float, float], typer.Option(help='Real size of specimen in mm.')] = (-1, -1),
 ):
-    """Generate a specimen from the original image."""
+    """Generate the splinter data for a specific specimen."""
     if realsize[0] == -1 or realsize[1] == -1:
         realsize = None
 
@@ -128,137 +128,6 @@ def gen(
 #     # with open(specimen.get_splinter_outfile("splinters_v2.pkl"), 'wb') as f:
 #     #     pickle.dump(splinters, f)
 
-def check_touching(x):
-    i,j = x
-    if i.touches(j):
-        i.touching_splinters.append(j)
-        j.touching_splinters.append(i)
-
-def check_splinter_touches(i, splinters: list[Splinter], imsize):
-    shm = sm.SharedMemory(name=IMNAME)
-    splImage0 = np.ndarray(imsize, dtype=np.uint8, buffer=shm.buf)
-
-    s = splinters[i]
-    splImage = splImage0.copy()
-    splImage = cv2.drawContours(splImage, [s.contour], 0, 255, 2)
-
-    plotImage(255-splImage, "splImage")
-
-    # find contours in splinter image
-    contours = detect_fragments(255-splImage, filter = False)
-
-    sContour = None
-    # find contour that has s.centroid_px inside
-    for c in contours:
-        if cv2.pointPolygonTest(c, s.centroid_px, False) >= 0:
-            sContour = c
-            break
-
-    if sContour is None:
-        return None
-
-    closest_splinters = sorted(splinters, key=lambda x: np.linalg.norm(np.asarray(x.centroid_mm) - np.asarray(s.centroid_mm)))[:100]
-    # now check all other contours, if they are contained within sCountour
-    for j in range(i+1, len(splinters)):
-        s0 = splinters[j]
-
-        if s0 not in closest_splinters:
-            continue
-        if s0 is s:
-            continue
-        c = s0.centroid_px
-        if cv2.pointPolygonTest(sContour, c, False) >= 0:
-            return (i,j)
-
-    return None
-
-@app.command()
-def gen_adjacent(
-    specimen_name,
-    override_file = False,
-    clear_checkpoint: bool = False,
-    plot_only: bool = False
-):
-    if clear_checkpoint:
-        State.checkpoint_clear()
-
-    # load specimen
-    specimen = Specimen.get(specimen_name)
-    assert specimen.has_splinters, "Specimen has no splinters."
-    splinters = specimen.splinters
-    inspect(splinters[0].contour.shape)
-
-    if not plot_only:
-        # load splinters
-        splinters = State.from_checkpoint('splinters', specimen.splinters)
-        # splinters = splinters[len(splinters)//5:]
-        # create adjacency matrix
-        # n_splinters = len(splinters)
-        # adjacency = np.zeros((n_splinters, n_splinters), dtype=bool)
-        fimage = specimen.get_fracture_image()
-        print('Creating adjacency image...')
-        splImage0 = cv2.drawContours(np.ones(fimage.shape[:2], dtype=np.uint8)*255, [x.contour for x in splinters], -1, 0, 1)
-        splImage0 = to_gray(splImage0)
-
-        shm = sm.SharedMemory(create=True, size=splImage0.nbytes, name=IMNAME)
-        shm_img = np.ndarray(splImage0.shape, dtype=splImage0.dtype, buffer=shm.buf)
-        shm_img[:] = splImage0[:]
-
-        i0 = State.from_checkpoint('i', 0)
-
-
-        irange = range(i0, len(splinters))
-        func = partial(check_splinter_touches, splinters=splinters, imsize=splImage0.shape)
-        print('Iterating splinters...')
-        with get_progress() as p:
-
-            sTask = p.add_task("Iterating splinters...", total=len(splinters))
-            p.advance(sTask, advance=i0)
-            with Pool() as pool:
-                for result in pool.imap_unordered(func, irange):
-                    p.advance(sTask)
-                    if result is None:
-                        continue
-
-                    i,j = result
-                    s1: Splinter = splinters[i]
-                    s0: Splinter = splinters[j]
-                    if s0 not in s1.touching_splinters:
-                        s1.touching_splinters.append(j)
-                    if s1 not in s0.touching_splinters:
-                        s0.touching_splinters.append(i)
-
-                    State.checkpoint(splinters=splinters)
-                    State.checkpoint(i=i)
-                    # print(f"Found {len(s.touching_splinters)} touching splinters.")
-
-        with open(specimen.get_splinter_outfile('splinters_v2.pkl'), 'wb') as f:
-            pickle.dump(splinters, f)
-
-        # with get_progress() as progress:
-        #     task1  = progress.add_task("Checking splinters...", total=len(ops))
-        #     with Pool() as pool:
-        #         for result in pool.imap_unordered(check_touching, ops):
-        #             progress.advance(task1)
-        p.stop()
-
-    out_img = plot_touching_len(specimen, splinters)
-
-    out_img.overlayImpact(specimen)
-    State.output(out_img, spec=specimen, to_additional=True)
-
-    # # check for intersections between each pair of splinters
-    # for i in track(range(n_splinters)):
-    #     for j in range(i+1, n_splinters):
-    #         if splinters[i].touches(splinters[j]):
-    #             adjacency[i, j] = True
-    #             adjacency[j, i] = True
-    #             splinters[i].touching_splinters.append(splinters[j])
-    #             splinters[j].touching_splinters.append(splinters[i])
-
-    if override_file:
-        output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
-
 def plot_touching_len(specimen, splinters):
     out_img = specimen.get_fracture_image()
     touches = [len(x.touching_splinters) for x in splinters]
@@ -287,108 +156,32 @@ def plot_touching_len(specimen, splinters):
 
 
 @app.command()
-def gen_adjacent2(
-    specimen_name,
-    override_file = False,
-    clear_checkpoint: bool = False
+def gen_adjacent(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    override_file: Annotated[bool, typer.Option(help='Override the splinter file of the specimen.')] = False,
+    use_checkpoint: Annotated[bool, typer.Option(help='Use the checkpoints from previous run.')] = False,
+    sequential: Annotated[bool, typer.Option(help='Use the sequential algorithm to determine equal points. Not advised!')] = False,
+    simplify_first: Annotated[bool, typer.Option(
+        help=
+            'Simplify the contours prior to analyzing their points. This option can make the'
+            'algorithm be much faster, but it can also lead to wrong results. Use with caution!'
+            )]
+        = False,
 ):
-    # load specimen
-    specimen = Specimen.get(specimen_name)
-    assert specimen.has_splinters, "Specimen has no splinters."
-
-    # create contour image
-    fimage = specimen.get_fracture_image()
-    print('Creating contour image...')
-    splImage0 = cv2.drawContours(np.ones(fimage.shape[:2], dtype=np.uint8)*255, [x.contour for x in specimen.splinters], -1, 0, 1)
-    splImage0 = to_gray(splImage0)
-
-    # perform harris corner detection
-    print('Performing harris corner detection...')
-    corners = cv2.cornerHarris(255-splImage0, 2, 3, 0.2)
-    # corners = cv2.dilate(corners, None)
-
-    # mark corner red in a new image
-    print('Marking corners...')
-    cornersImage = splImage0.copy()
-    cornersImage = to_rgb(cornersImage)
-
-    cornersImage[corners > 0.01 * corners.max()] = [0, 0, 255]
-
-    plotImage(cornersImage, "corners", force=True)
-
-def check_point_2(i, p_size):
-    p_shm = sm.SharedMemory(name='points')
-    points = np.ndarray(p_size, dtype=np.uint8, buffer=p_shm.buf)
-
-    matches = []
-    for j in range(i+1, points.shape[0]):
-
-        p1 = points[i]
-        p2 = points[j]
-        if p1[0] == p2[0] and p1[1] == p2[1]:
-            matches.append((i,j))
-
-    return matches
-
-
-
-@app.command()
-def gen_adjacent3(
-    specimen_name,
-    override_file = False,
-    clear_checkpoint: bool = False
-):
-    # load specimen
-    specimen = Specimen.get(specimen_name)
-    assert specimen.has_splinters, "Specimen has no splinters."
-    splinters = specimen.splinters
-
-    # get array
-    ids,points = specimen.get_splinters_asarray()
-    # print splinters shape
-    print(f"IDs shape: {ids.shape}")
-    print(f"Points shape: {points.shape}")
-
-    p_mem = sm.SharedMemory(create=True, size=points.nbytes, name="points")
-
-    # save points to sharedmem
-    points_shared = np.ndarray(points.shape, dtype=points.dtype, buffer=p_mem.buf)
-    points_shared[:] = points[:]
-
-    func = partial(check_point_2, p_size=points.shape)
-    ops = list(range(len(points)))
-
-    print(f'Total operations: {len(ops)}')
-    with get_progress() as progress:
-        task = progress.add_task("Checking points...", total=len(ops))
-        with Pool() as pool:
-            for matches in pool.imap_unordered(func, ops):
-                progress.advance(task)
-                for result in matches:
-                    i,j = result
-                    si, sj = ids[i,1], ids[j,1]
-                    if sj not in splinters[si].touching_splinters:
-                        splinters[si].touching_splinters.append(sj)
-                    if si not in splinters[sj].touching_splinters:
-                        splinters[sj].touching_splinters.append(si)
-
-    output = plot_touching_len(specimen, splinters)
-    State.output(output, spec=specimen)
-
-
-@app.command()
-def gen_adj_rust(
-    specimen_name,
-    override_file = False,
-    use_checkpoint: bool = False,
-    sequential:bool = False
-):
+    """Create a list of adjacent splinters for each splinter in the specimen."""
     if not use_checkpoint:
         State.checkpoint_clear()
 
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
     splinters = specimen.splinters
+
+    if simplify_first:
+        for splinter in track(splinters):
+            contour = splinter.contour
+            eps = 0.01 * cv2.arcLength(contour, True)
+            ctr = cv2.approxPolyDP(contour, eps, True)
+            splinter.contour = ctr
 
     matching_points = State.from_checkpoint('matching_points', None)
     # get array
@@ -398,8 +191,6 @@ def gen_adj_rust(
     print(f"Points shape: {points.shape}")
 
     if matching_points is None:
-
-
         import conner
         if not sequential:
             matching_points = conner.check_points(points)
@@ -444,6 +235,21 @@ def gen_adj_rust(
     )
     axs[0].autoscale()
     State.output(fig, spec=specimen, to_additional=True)
+
+
+    # create example images
+    im0 = specimen.get_fracture_image()
+    im1 = specimen.get_fracture_image()
+
+    rnd_i = np.random.randint(0, len(splinters))
+    splinter = splinters[rnd_i]
+    print(f'Random splinter: {rnd_i}, Touching Splinters: {len(splinter.touching_splinters)}')
+    cv2.drawContours(im0, [splinter.contour], 0, (0, 0, 255), -1)
+
+    for j in splinter.touching_splinters:
+        cv2.drawContours(im0, [splinters[j].contour], 0, (0, 125, 255), 1)
+
+    State.output(im0, spec=specimen, to_additional=True)
 
 
 def check_chunk(i, chunksize, p_len):
