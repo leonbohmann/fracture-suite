@@ -11,6 +11,11 @@ from rich import print
 
 W_FAC = 4000
 
+def simplify_contour(contour, epsilon=0.01):
+    perimeter = cv2.arcLength(contour, True)
+    return cv2.approxPolyDP(contour, epsilon * perimeter, True)
+
+
 def modify_border(
     image,
     border_percent: int = 5,

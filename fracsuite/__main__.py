@@ -220,7 +220,7 @@ def replot(
 ):
     plot_command = "%pltcmd:"
 
-    if tex_file.endswith("/"):
+    if os.path.isdir(tex_file) and not tex_file.endswith(".tex"):
         # find all tex files in folder
         tex_files = []
         for file in os.listdir(tex_file):
@@ -231,11 +231,11 @@ def replot(
 
     all_lines = []
     for f in tex_files:
-        with open(tex_file, "r") as f_io:
+        with open(f, "r") as f_io:
             lines = f_io.readlines()
         all_lines.append((os.path.basename(f), lines))
 
-        print(f'Read {len(lines)} lines from {tex_file}.')
+        print(f'Read {len(lines)} lines from {os.path.basename(f)}.')
     commands = []
 
     for file, lines in all_lines:
@@ -243,7 +243,7 @@ def replot(
             stripped = line.strip()
             if stripped.startswith(plot_command):
                 command = stripped[len(plot_command)+1:]
-                commands.append((f'{file} (L{li})',command))
+                commands.append((f'[cyan]{file}[/cyan] ([dim white]L{li}[/dim white])',command))
 
     with Progress(
             TextColumn("[progress.description]{task.description:<50}"),
@@ -251,16 +251,16 @@ def replot(
 
         tasks = []
         for file, command in commands:
-            cmd_task_descr = f"[cyan]{file}[/cyan] {command}"
+            cmd_task_descr = f"{file} {command}"
             cmd_task = progress.add_task(cmd_task_descr)
             tasks.append((file, command, cmd_task))
 
         for file, command, task in tasks:
             if not dry:
-                progress.update(task, description=f"[cyan]{file}[/cyan] [green]> [/green] {command}")
+                progress.update(task, description=f"{file} [green]> [/green] {command}")
                 proc = subprocess.Popen(["cmd", "/c", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 out,err = proc.communicate()
-                progress.update(task, description=f"[cyan]{file}[/cyan] [green]{command}")
+                progress.update(task, description=f"{file} [green]{command}")
             else:
                 print(f"DRY: Running {command}")
                 time.sleep(1)

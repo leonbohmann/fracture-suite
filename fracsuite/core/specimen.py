@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sys
+from fracsuite.core.imageprocessing import simplify_contour
 from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 
@@ -33,6 +34,9 @@ class SpecimenException(Exception):
 
 class Specimen(Outputtable):
     """ Container class for a specimen. """
+    adjacency_file: str = "adjacency.pkl"
+    "Name of the adjacency info file."
+
 
     @property
     def splinters(self) -> list[Splinter]:
@@ -115,6 +119,13 @@ class Specimen(Outputtable):
             self.__load_splinters()
         elif log_missing_data:
             print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite splinters gen[/green].")
+
+        if self.has_adjacency:
+            with open(self.__adjacency_file, "rb") as f:
+                adjacency = pickle.load(f)
+                self.__load_adjacency(*adjacency)
+        else:
+            print(f"Could not find adjacency file for '{self.name}'. Create it using [green]fracsuite splinters gen-adjacent[/green].")
 
         if self.has_scalp:
             self.__load_scalp()
@@ -222,6 +233,10 @@ class Specimen(Outputtable):
 
         self.has_splinters = self.__splinters_file is not None
 
+        self.__adjacency_file = find_file(self.splinters_path, self.adjacency_file)
+        self.has_adjacency = self.__adjacency_file is not None
+
+        # init done, load data
         if not lazy:
             self.load(log_missing)
 
@@ -287,7 +302,7 @@ class Specimen(Outputtable):
         print("[yellow]No prep.json found. Using default.")
         return defaultPrepConfig
 
-    def get_splinters_asarray(self) -> np.ndarray:
+    def get_splinters_asarray(self, simplify: bool = False, eps: float = 0.003) -> np.ndarray:
         """
         Returns two arrays.
 
@@ -301,7 +316,10 @@ class Specimen(Outputtable):
         p_list: list[tuple[int,int]] = []
 
         for i, s in enumerate(self.splinters):
-            for p in s.contour:
+
+            contour = s.contour if not simplify else simplify_contour(s.contour, eps)
+
+            for p in contour:
                 p_list.append(p[0])
                 id_list.append(i)
 
@@ -363,6 +381,19 @@ class Specimen(Outputtable):
 
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
+
+    def __load_adjacency(self, ids, points):
+        # connect points to contours
+        for i in range(len(points)):
+            contour_points = points[i]
+
+            si = ids[i]
+            for j in contour_points:
+                sj = ids[j]
+                if sj not in self.splinters[si].touching_splinters:
+                    self.splinters[si].touching_splinters.append(sj)
+                if si not in self.splinters[sj].touching_splinters:
+                    self.splinters[sj].touching_splinters.append(si)
 
     @staticmethod
     def get(name: str | Specimen, load: bool = True) -> Specimen:

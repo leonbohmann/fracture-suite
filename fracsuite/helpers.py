@@ -83,8 +83,8 @@ def checkmark(value: bool) -> str:
 def img_part(im, x, y, w, h):
     return im[y:y+h, x:x+w]
 
-def bin_data(data, binrange) -> tuple[list[float], list[float]]:
-    return np.histogram(data, binrange, density=True, range=(np.min(binrange), np.max(binrange)))
+def bin_data(data, binrange,density=True) -> tuple[list[float], list[float]]:
+    return np.histogram(data, binrange, density=density, range=(np.min(binrange), np.max(binrange)))
 
 
 def dispImage(roi, title = ""):

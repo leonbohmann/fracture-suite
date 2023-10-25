@@ -62,6 +62,7 @@ IMNAME = "fracture_image"
 def gen(
         specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
         realsize: Annotated[tuple[float, float], typer.Option(help='Real size of specimen in mm.')] = (-1, -1),
+        quiet: Annotated[bool, typer.Option(help='Do not ask for confirmation.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""
     if realsize[0] == -1 or realsize[1] == -1:
@@ -70,7 +71,7 @@ def gen(
     specimen = Specimen.get(specimen_name, load=False)
 
     if specimen.has_splinters:
-        if not typer.confirm(f"> Specimen '{specimen.name}' already has splinters. Overwrite?"):
+        if not quiet and not typer.confirm(f"> Specimen '{specimen.name}' already has splinters. Overwrite?"):
             return
 
     fracture_image = specimen.get_fracture_image()
@@ -158,10 +159,9 @@ def plot_touching_len(specimen, splinters):
 @app.command()
 def gen_adjacent(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load or a pkl file.')],
-    override_file: Annotated[bool, typer.Option(help='Override the splinter file of the specimen.')] = False,
     use_checkpoint: Annotated[bool, typer.Option(help='Use the checkpoints from previous run.')] = False,
     sequential: Annotated[bool, typer.Option(help='Use the sequential algorithm to determine equal points. Not advised!')] = False,
-    simplify_first: Annotated[bool, typer.Option(
+    simplify: Annotated[bool, typer.Option(
         help=
             'Simplify the contours prior to analyzing their points. This option can make the'
             'algorithm be much faster, but it can also lead to wrong results. Use with caution!'
@@ -172,27 +172,37 @@ def gen_adjacent(
     if not use_checkpoint:
         State.checkpoint_clear()
 
+    output_splinter_file = ""
+
     if re.match(r'.*\..*\..*\..*', specimen_name):
         specimen = Specimen.get(specimen_name)
         assert specimen.has_splinters, "Specimen has no splinters."
         splinters = specimen.splinters
+        output_splinter_file = specimen.get_splinter_outfile(Specimen.adjacency_file)
     elif specimen_name.endswith(".pkl"):
         with open(specimen_name, 'rb') as f:
             splinters = pickle.load(f)
+        output_splinter_file = os.path.join(os.path.dirname(specimen_name), Specimen.adjacency_file)
     else:
         raise Exception("Invalid input. Neither .pkl file nor specimen name.")
 
 
-    if simplify_first:
-        for splinter in track(splinters, description="Simplifying contours...", transient=True):
-            contour = splinter.contour
-            eps = 0.005 * cv2.arcLength(contour, True)
-            ctr = cv2.approxPolyDP(contour, eps, True)
-            splinter.contour = ctr
+    # if simplify:
+    #     len_before = 0
+    #     len_after = 0
+    #     for splinter in track(splinters, description="Simplifying contours...", transient=True):
+    #         contour = splinter.contour
+    #         len_before += len(contour)
+    #         eps = 0.003 * cv2.arcLength(contour, True)
+    #         ctr = cv2.approxPolyDP(contour, eps, True)
+    #         splinter.contour = ctr
+    #         len_after += len(ctr)
+
+    #     print(f"Removed {len_before-len_after} points from {len_before} points.")
 
     matching_points = State.from_checkpoint('matching_points', None)
     # get array
-    ids,points = specimen.get_splinters_asarray()
+    ids,points = specimen.get_splinters_asarray(simplify=simplify)
     # print splinters shape
     print(f"IDs shape: {ids.shape}")
     print(f"Points shape: {points.shape}")
@@ -207,23 +217,18 @@ def gen_adjacent(
         State.checkpoint(matching_points=matching_points)
         # inspect(matching_points)
 
-    # matching_points to txt file
-    with open(State.get_output_file("matching_points.txt"), 'w') as f:
-        for s in matching_points:
-            f.write(f"{s}\n")
+    with open(output_splinter_file, 'wb') as f:
+        pickle.dump((ids,matching_points), f)
 
-    # connect points to contours
-    for i in track(range(len(matching_points)), description="Connecting points to contours...", transient=True):
-        contour_points = matching_points[i]
 
-        si = ids[i]
-        for j in contour_points:
-            sj = ids[j]
-            if sj not in splinters[si].touching_splinters:
-                splinters[si].touching_splinters.append(sj)
-            if si not in splinters[sj].touching_splinters:
-                splinters[sj].touching_splinters.append(si)
-
+@app.command()
+def plot_adjacent(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+):
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    assert specimen.has_adjacency, "Specimen has no adjacency data."
+    splinters = specimen.splinters
 
     outp = plot_touching_len(specimen, splinters)
     State.output(outp, spec=specimen, to_additional=True)
@@ -843,7 +848,7 @@ def log_2d_histograms(
 
     dt = np.array(data)
     axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-    fig.colorbar(axim, ax=axs, orientation='vertical', label='PDF $P(A_S)$', pad=0.2)
+    fig.colorbar(axim, ax=axs, orientation='vertical', label='PD $p(A_S)$', pad=0.2)
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
