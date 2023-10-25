@@ -13,14 +13,14 @@ def default_progress(start = False):
     return prog
 
 
-def get_progress():
+def get_progress(expand = True, bw = 80):
     return Progress(
                 TextColumn("[progress.description]{task.description:<50}"),
-                BarColumn(bar_width=80),
+                BarColumn(bar_width=bw),
                 TaskProgressColumn(justify="right"),
                 TimeRemainingColumn(),
                 TimeElapsedColumn(),
-            transient=True, refresh_per_second=3)
+            transient=True, refresh_per_second=3, expand=expand)
 
 class ProgSpinner():
 
@@ -36,7 +36,10 @@ class ProgSpinner():
         self.progress.update(self.task, completed=completed)
     def advance(self):
         self.progress.advance(self.task)
-
+    def add_task(self, description: str, total: int = None):
+        return self.progress.add_task(description=description, total=total)
+    def remove_task(self, task_id):
+        self.progress.remove_task(task_id)
     def __enter__(self):
         self.progress.__enter__()
         return self

@@ -574,9 +574,9 @@ def datahist_plot(
             ax.set_ylabel(y_label)
         else:
             if data_mode == DataHistMode.PDF:
-                ax.set_ylabel('PDF $P(A_S)$')
+                ax.set_ylabel('Probability density $p(A_S)$')
             elif data_mode == DataHistMode.CDF:
-                ax.set_ylabel('CDF $C(A_S)$')
+                ax.set_ylabel('Cumulative Distr. Func. $C(A_S)$')
         ax.grid(True, which='both', axis='both')
 
     return fig, axs

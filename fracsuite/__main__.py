@@ -1,4 +1,5 @@
 import os
+import io
 import subprocess
 import sys
 import time
@@ -14,7 +15,7 @@ from fracsuite.core.coloring import norm_color
 import fracsuite.core.splinter as splt
 from fracsuite.acc import app as acc_app
 from fracsuite.config import app as config_app
-from fracsuite.core.progress import get_progress
+from fracsuite.core.progress import get_progress, get_spinner
 from fracsuite.gen import gen_app
 from fracsuite.general import GeneralSettings
 from fracsuite.nominals import nominals_app
@@ -135,6 +136,35 @@ app.add_typer(tester_app, name="tester")
 app.add_typer(gen_app, name="gen")
 
 
+class PrintWrapper():
+
+    def __init__(self, func, index):
+        """Setup the object with a logger and a loglevel
+        and start the thread
+        """
+        self.func = func
+        self.index = index
+        self.fdRead, self.fdWrite = os.pipe()
+        self.pipeReader = os.fdopen(self.fdRead)
+
+    def fileno(self):
+        """Return the write file descriptor of the pipe
+        """
+        return self.fdWrite
+
+    def run(self):
+        """Run the thread, logging everything.
+        """
+        for line in iter(self.pipeReader.readline, ''):
+            print(f'[green]{self.index}[/green]> {line}')
+
+        self.pipeReader.close()
+
+    def close(self):
+        """Close the write end of the pipe.
+        """
+        os.close(self.fdWrite)
+
 # @app.command()
 # def marina_organize(path: str):
 #     # find all folders in path that contain three dots
@@ -185,6 +215,7 @@ app.add_typer(gen_app, name="gen")
 @app.command()
 def replot(
     tex_file,
+    dry: bool = False
 ):
     plot_command = "%pltcmd:"
 
@@ -192,17 +223,24 @@ def replot(
         lines = f.readlines()
     print(f'Read {len(lines)} lines from {tex_file}.')
     commands = []
+
+
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith(plot_command):
             command = stripped[len(plot_command)+1:]
             commands.append(command)
 
-    for command in commands:
+    for i,command in enumerate(commands):
         print(f"Running: [green]{command}")
-        subprocess.run(["cmd", "/c", command], shell=True)
-        print()
-        print()
+        if not dry:
+            proc = subprocess.Popen(["cmd", "/c", command])
+            out,err = proc.communicate()
+            print ('stdout: ', out)
+        else:
+            print(f"DRY: Running {command}")
+            time.sleep(1)
+
 
 
 @app.command()
