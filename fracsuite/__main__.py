@@ -9,6 +9,7 @@ from cycler import cycler
 from matplotlib import pyplot as plt
 from rich import print
 from rich.theme import Theme
+from rich.progress import Progress, TextColumn, SpinnerColumn
 from fracsuite.core.coloring import norm_color
 
 # used for redirection of pickling
@@ -214,32 +215,55 @@ class PrintWrapper():
 
 @app.command()
 def replot(
-    tex_file,
+    tex_file: str,
     dry: bool = False
 ):
     plot_command = "%pltcmd:"
 
-    with open(tex_file, "r") as f:
-        lines = f.readlines()
-    print(f'Read {len(lines)} lines from {tex_file}.')
+    if tex_file.endswith("/"):
+        # find all tex files in folder
+        tex_files = []
+        for file in os.listdir(tex_file):
+            if file.endswith(".tex"):
+                tex_files.append(os.path.join(tex_file, file))
+    else:
+        tex_files = [tex_file]
+
+    all_lines = []
+    for f in tex_files:
+        with open(tex_file, "r") as f_io:
+            lines = f_io.readlines()
+        all_lines.append((os.path.basename(f), lines))
+
+        print(f'Read {len(lines)} lines from {tex_file}.')
     commands = []
 
+    for file, lines in all_lines:
+        for li, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith(plot_command):
+                command = stripped[len(plot_command)+1:]
+                commands.append((f'{file} (L{li})',command))
 
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith(plot_command):
-            command = stripped[len(plot_command)+1:]
-            commands.append(command)
+    with Progress(
+            TextColumn("[progress.description]{task.description:<50}"),
+        ) as progress:
 
-    for i,command in enumerate(commands):
-        print(f"Running: [green]{command}")
-        if not dry:
-            proc = subprocess.Popen(["cmd", "/c", command])
-            out,err = proc.communicate()
-            print ('stdout: ', out)
-        else:
-            print(f"DRY: Running {command}")
-            time.sleep(1)
+        tasks = []
+        for file, command in commands:
+            cmd_task_descr = f"[cyan]{file}[/cyan] {command}"
+            cmd_task = progress.add_task(cmd_task_descr)
+            tasks.append((file, command, cmd_task))
+
+        for file, command, task in tasks:
+            if not dry:
+                progress.update(task, description=f"[cyan]{file}[/cyan] [green]> [/green] {command}")
+                proc = subprocess.Popen(["cmd", "/c", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                out,err = proc.communicate()
+                progress.update(task, description=f"[cyan]{file}[/cyan] [green]{command}")
+            else:
+                print(f"DRY: Running {command}")
+                time.sleep(1)
 
 
 
