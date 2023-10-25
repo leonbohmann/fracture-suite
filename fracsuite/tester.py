@@ -6,6 +6,7 @@ from functools import partial
 from itertools import product
 from multiprocessing import Pool
 from tkinter import Checkbutton, Frame, IntVar, Scale
+from typing import Annotated
 
 import cv2
 import numpy as np
@@ -232,7 +233,8 @@ def best_params(image):
 @tester_app.command()
 def threshold(
     image,
-    region: tuple[int,int,int,int] = None
+    region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = (250,250,100,100),
+    realsize: tuple[int,int] = (500,500),
 ):
     # Initialize GUI
     root = tk.Tk()
@@ -250,9 +252,9 @@ def threshold(
         img = specimen.get_fracture_image()
         # take a small portion of the image
         if region is None:
-            region = np.array((250,250,500,500)) * specimen.calculate_px_per_mm()
+            region = np.array((250,250,500,500)) * specimen.calculate_px_per_mm(realsize_mm=realsize)
         else:
-            region = np.array(region) * specimen.calculate_px_per_mm()
+            region = np.array(region) * specimen.calculate_px_per_mm(realsize_mm=realsize)
         print(region)
         region = region.astype(np.uint32)
         print(region)

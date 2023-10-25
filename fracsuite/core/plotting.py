@@ -655,12 +655,13 @@ def datahist_to_ax(
 
     if plot_mean:
         most_probable_area = calculate_dmode(data)
-        print(f"Most probable area: {10**most_probable_area:.2f}{unit}")
+        most_probable_area_value = 10**most_probable_area if as_log else most_probable_area
+        print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
         ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"Ø={most_probable_area:.2f}{unit}", color='red', alpha=alpha)
 
         axd = ax.get_xlim()[1] - ax.get_xlim()[0]
         ayd = ax.get_ylim()[1] - ax.get_ylim()[0]
-        ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{10**most_probable_area:.2f}{unit}", color='red', alpha=alpha, ha='left', va='center', zorder=2)
+        ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{most_probable_area_value:.2f}{unit}", color='red', alpha=alpha, ha='left', va='center', zorder=2)
     return None, binrange, binned_data
 
 

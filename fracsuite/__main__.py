@@ -213,6 +213,6 @@ try:
     app()
 except Exception as e:
     print("Error occured.")
-    raise
+    raise e
 finally:
     State.checkpoint_save()

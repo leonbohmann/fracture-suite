@@ -138,7 +138,7 @@ def plot_touching_len(specimen, splinters):
     print(f"Min touching splinters: {min_adj}")
     print(f"Mean touching splinters: {np.mean(touches)}")
 
-    for splinter in track(splinters):
+    for splinter in track(splinters, description="Drawing touching splinters...", transient=True):
         clr = get_color(len(splinter.touching_splinters), min_adj, max_adj)
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
@@ -157,7 +157,7 @@ def plot_touching_len(specimen, splinters):
 
 @app.command()
 def gen_adjacent(
-    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load or a pkl file.')],
     override_file: Annotated[bool, typer.Option(help='Override the splinter file of the specimen.')] = False,
     use_checkpoint: Annotated[bool, typer.Option(help='Use the checkpoints from previous run.')] = False,
     sequential: Annotated[bool, typer.Option(help='Use the sequential algorithm to determine equal points. Not advised!')] = False,
@@ -172,14 +172,21 @@ def gen_adjacent(
     if not use_checkpoint:
         State.checkpoint_clear()
 
-    specimen = Specimen.get(specimen_name)
-    assert specimen.has_splinters, "Specimen has no splinters."
-    splinters = specimen.splinters
+    if re.match(r'.*\..*\..*\..*', specimen_name):
+        specimen = Specimen.get(specimen_name)
+        assert specimen.has_splinters, "Specimen has no splinters."
+        splinters = specimen.splinters
+    elif specimen_name.endswith(".pkl"):
+        with open(specimen_name, 'rb') as f:
+            splinters = pickle.load(f)
+    else:
+        raise Exception("Invalid input. Neither .pkl file nor specimen name.")
+
 
     if simplify_first:
-        for splinter in track(splinters):
+        for splinter in track(splinters, description="Simplifying contours...", transient=True):
             contour = splinter.contour
-            eps = 0.01 * cv2.arcLength(contour, True)
+            eps = 0.005 * cv2.arcLength(contour, True)
             ctr = cv2.approxPolyDP(contour, eps, True)
             splinter.contour = ctr
 
@@ -206,7 +213,7 @@ def gen_adjacent(
             f.write(f"{s}\n")
 
     # connect points to contours
-    for i in track(range(len(matching_points))):
+    for i in track(range(len(matching_points)), description="Connecting points to contours...", transient=True):
         contour_points = matching_points[i]
 
         si = ids[i]
@@ -221,35 +228,57 @@ def gen_adjacent(
     outp = plot_touching_len(specimen, splinters)
     State.output(outp, spec=specimen, to_additional=True)
 
+
+    lens = [len(x.touching_splinters) for x in splinters]
     fig, axs = datahist_plot(
         x_label='Amount of edges $N_e$',
         y_label='Probability Density $p(N_e)$',
     )
+
+    br = np.linspace(np.min(lens)-0.5, np.max(lens)+0.5, np.max(lens)-np.min(lens)+2)
     datahist_to_ax(
         axs[0],
-        [len(x.touching_splinters) for x in splinters],
+        lens,
+        binrange=br,
         data_mode=DataHistMode.PDF,
         plot_mode=DataHistPlotMode.HIST,
         alpha = 1.0,
         unit = "",
+        as_log=False
     )
     axs[0].autoscale()
     State.output(fig, spec=specimen, to_additional=True)
 
 
     # create example images
-    im0 = specimen.get_fracture_image()
-    im1 = specimen.get_fracture_image()
+    for i in range(5):
+        im0 = specimen.get_fracture_image()
+        rnd_i = np.random.randint(0, len(splinters))
+        splinter = splinters[rnd_i]
+        print(f'Random splinter: {rnd_i}, Touching Splinters: {len(splinter.touching_splinters)}')
 
-    rnd_i = np.random.randint(0, len(splinters))
-    splinter = splinters[rnd_i]
-    print(f'Random splinter: {rnd_i}, Touching Splinters: {len(splinter.touching_splinters)}')
-    cv2.drawContours(im0, [splinter.contour], 0, (0, 0, 255), -1)
+        for j in splinter.touching_splinters:
+            cv2.drawContours(im0, [splinters[j].contour], 0, (0, 125, 255), 1)
 
-    for j in splinter.touching_splinters:
-        cv2.drawContours(im0, [splinters[j].contour], 0, (0, 125, 255), 1)
+        # draw splinter in red
+        cv2.drawContours(im0, [splinter.contour], 0, (0, 0, 255), 2)
 
-    State.output(im0, spec=specimen, to_additional=True)
+        # retrieve region around splinter
+        x, y, w, h = cv2.boundingRect(splinter.contour)
+        # enlarge bounding rect and make sure that it is inside the image
+        x -= 50
+        y -= 50
+        w += 100
+        h += 100
+        w = min(im0.shape[1], w)
+        h = min(im0.shape[0], h)
+        x = max(0, x)
+        x = min(im0.shape[1]-w, x)
+        y = max(0, y)
+        y = min(im0.shape[0]-h, y)
+        im0 = im0[y:y+h, x:x+w]
+
+        State.output(im0, 'splinter_detail',spec=specimen, to_additional=True, mods=[i])
 
 
 def check_chunk(i, chunksize, p_len):
