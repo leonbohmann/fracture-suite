@@ -238,6 +238,7 @@ def plot_adjacent(
     fig, axs = datahist_plot(
         x_label='Amount of edges $N_e$',
         y_label='Probability Density $p(N_e)$',
+        figwidth=FigureSize.ROW1,
     )
 
     br = np.linspace(np.min(lens)-0.5, np.max(lens)+0.5, np.max(lens)-np.min(lens)+2)

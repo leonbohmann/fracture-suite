@@ -32,7 +32,8 @@
         "splinters/roundness-f": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roundness",
         "splinters/log-histograms": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist",
         "splinters/log2dhist": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist",
-        "splinters/roughness": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roughness"
+        "splinters/roughness": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roughness",
+        "splinters/plot-adjacent": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\adjacency"
     },
     "figure_sizes_mm": {
         "row1": [
