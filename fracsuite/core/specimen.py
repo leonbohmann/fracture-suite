@@ -122,8 +122,9 @@ class Specimen(Outputtable):
 
         if self.has_adjacency:
             with open(self.__adjacency_file, "rb") as f:
-                adjacency = pickle.load(f)
-                self.__load_adjacency(*adjacency)
+                pass
+                # adjacency = pickle.load(f)
+                # self.__load_adjacency(*adjacency)
         else:
             print(f"Could not find adjacency file for '{self.name}'. Create it using [green]fracsuite splinters gen-adjacent[/green].")
 
@@ -302,7 +303,7 @@ class Specimen(Outputtable):
         print("[yellow]No prep.json found. Using default.")
         return defaultPrepConfig
 
-    def get_splinters_asarray(self, simplify: bool = False, eps: float = 0.003) -> np.ndarray:
+    def get_splinters_asarray(self, simplify: float = -1) -> np.ndarray:
         """
         Returns two arrays.
 
@@ -317,7 +318,7 @@ class Specimen(Outputtable):
 
         for i, s in enumerate(self.splinters):
 
-            contour = s.contour if not simplify else simplify_contour(s.contour, eps)
+            contour = s.contour if simplify > 0 else simplify_contour(s.contour, simplify)
 
             for p in contour:
                 p_list.append(p[0])
@@ -383,6 +384,10 @@ class Specimen(Outputtable):
             self.__splinters = pickle.load(f)
 
     def __load_adjacency(self, ids, points):
+        if ids is None or points is None:
+            self.has_adjacency = False
+            return
+
         # connect points to contours
         for i in range(len(points)):
             contour_points = points[i]

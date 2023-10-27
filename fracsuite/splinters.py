@@ -6,7 +6,7 @@ from functools import partial
 from multiprocessing import Pool
 import multiprocessing.shared_memory as sm
 import os
-from itertools import combinations, groupby
+from itertools import groupby
 import pickle
 import re
 import sys
@@ -17,11 +17,10 @@ import numpy as np
 import numpy.typing as npt
 import typer
 from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
 from rich import inspect, print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
-from fracsuite.core.detection import detect_fragments
+from fracsuite.core.detection import get_adjacent_splinters_parallel
 from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
@@ -161,12 +160,14 @@ def gen_adjacent(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load or a pkl file.')],
     use_checkpoint: Annotated[bool, typer.Option(help='Use the checkpoints from previous run.')] = False,
     sequential: Annotated[bool, typer.Option(help='Use the sequential algorithm to determine equal points. Not advised!')] = False,
-    simplify: Annotated[bool, typer.Option(
+    simplify: Annotated[float, typer.Option(
         help=
             'Simplify the contours prior to analyzing their points. This option can make the'
             'algorithm be much faster, but it can also lead to wrong results. Use with caution!'
+            'Value is the percentage of error to the original contour length. -1 is no simplification.'
             )]
-        = False,
+        = -1,
+    legacy: Annotated[bool, typer.Option(help='Use the legacy algorithm to determine equal points. Not advised!')] = False,
 ):
     """Create a list of adjacent splinters for each splinter in the specimen."""
     if not use_checkpoint:
@@ -177,12 +178,12 @@ def gen_adjacent(
     if re.match(r'.*\..*\..*\..*', specimen_name):
         specimen = Specimen.get(specimen_name)
         assert specimen.has_splinters, "Specimen has no splinters."
-        splinters = specimen.splinters
         output_splinter_file = specimen.get_splinter_outfile(Specimen.adjacency_file)
     elif specimen_name.endswith(".pkl"):
-        with open(specimen_name, 'rb') as f:
-            splinters = pickle.load(f)
-        output_splinter_file = os.path.join(os.path.dirname(specimen_name), Specimen.adjacency_file)
+        raise Exception("Generating adjacency from .pkl file is not supported yet.")
+        # with open(specimen_name, 'rb') as f:
+        #     splinters = pickle.load(f)
+        # output_splinter_file = os.path.join(os.path.dirname(specimen_name), Specimen.adjacency_file)
     else:
         raise Exception("Invalid input. Neither .pkl file nor specimen name.")
 
@@ -202,17 +203,20 @@ def gen_adjacent(
 
     matching_points = State.from_checkpoint('matching_points', None)
     # get array
-    ids,points = specimen.get_splinters_asarray(simplify=simplify)
+    ids,points = specimen.get_splinters_asarray(simplify=simplify/100)
     # print splinters shape
     print(f"IDs shape: {ids.shape}")
     print(f"Points shape: {points.shape}")
 
     if matching_points is None:
-        import conner
-        if not sequential:
-            matching_points = conner.check_points(points)
+        if legacy:
+            matching_points = get_adjacent_splinters_parallel(specimen.splinters, specimen.get_fracture_image().shape[:2])
         else:
-            matching_points = conner.check_points_seq(points)
+            import conner
+            if not sequential:
+                matching_points = conner.check_points(points)
+            else:
+                matching_points = conner.check_points_seq(points)
 
         State.checkpoint(matching_points=matching_points)
         # inspect(matching_points)
@@ -224,6 +228,7 @@ def gen_adjacent(
 @app.command()
 def plot_adjacent(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    n_range: Annotated[tuple[int, int], typer.Option(help='Range of splinters to analyze.')] = (0, 20),
 ):
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
@@ -250,9 +255,12 @@ def plot_adjacent(
         plot_mode=DataHistPlotMode.HIST,
         alpha = 1.0,
         unit = "",
-        as_log=False
+        as_log=False,
+        mean_format=".0f",
     )
     axs[0].autoscale()
+    axs[0].set_xlim(n_range)
+
     State.output(fig, spec=specimen, to_additional=True)
 
 

@@ -71,7 +71,7 @@ class KernelContourMode(str, Enum):
     def values():
         return list(map(lambda c: c.value, KernelContourMode))
 
-
+@deprecated(action='always')
 def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     """
     Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.
@@ -538,6 +538,7 @@ class DataHistPlotMode(str, Enum):
     HIST = 'hist'
     "Histogram."
 
+@deprecated(action='always')
 def datahist_plot(
     ncols:int = 1,
     nrows:int = 1,
@@ -581,6 +582,7 @@ def datahist_plot(
 
     return fig, axs
 
+@deprecated(action='always')
 def datahist_to_ax(
     ax: Axes,
     data: list[float],
@@ -594,7 +596,8 @@ def datahist_to_ax(
     data_mode: DataHistMode = DataHistMode.PDF,
     as_density = True,
     plot_mode: DataHistPlotMode = DataHistPlotMode.HIST,
-    unit: str = "mm²"
+    unit: str = "mm²",
+    mean_format: str = ".2f"
 ) -> tuple[Any, list[float], Any]:
     """
     Plot a histogram of the data to axes ax.
@@ -654,14 +657,17 @@ def datahist_to_ax(
         color = bin_container.get_color()
 
     if plot_mean:
+        mean_format = f'{{0:{mean_format}}}'
+
         most_probable_area = calculate_dmode(data)
         most_probable_area_value = 10**most_probable_area if as_log else most_probable_area
+        most_probable_area_string = mean_format.format(most_probable_area_value)
         print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
-        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"Ø={most_probable_area:.2f}{unit}", color='red', alpha=alpha)
+        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"Ø={most_probable_area_string}{unit}", color='red', alpha=alpha)
 
         axd = ax.get_xlim()[1] - ax.get_xlim()[0]
         ayd = ax.get_ylim()[1] - ax.get_ylim()[0]
-        ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{most_probable_area_value:.2f}{unit}", color='red', alpha=alpha, ha='left', va='center', zorder=2)
+        ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{most_probable_area_string}{unit}", color='red', alpha=alpha, ha='left', va='center', zorder=2)
     return None, binrange, binned_data
 
 

@@ -1,12 +1,16 @@
-from multiprocessing import Pool
-import cv2
-import numpy.typing as nptyp
-from fracsuite.core.image import to_rgb
 import multiprocessing.shared_memory as sm
+from multiprocessing import Pool
+
+import cv2
 import numpy as np
+import numpy.typing as nptyp
+from rich import inspect
+from rich.progress import track
+from fracsuite.core.image import to_rgb
 from fracsuite.core.imageplotting import plotImage
 
 from fracsuite.core.imageprocessing import preprocess_spot_detect
+from fracsuite.core.progress import get_progress
 
 SM_IMAGE = "IMAGE_SM_SPLINT_DETECT"
 
@@ -287,3 +291,173 @@ def remove_dark_spots(
         progress.remove_task(task)
 
     return skeleton_image
+
+def check_splinter_adj(
+    data
+):
+    # i0: startindex
+    # i1: endindex
+    # splinters: list of contours and their centroids
+    # im_shape: shape of the image
+    i0, i1, splinters, im_shape = data
+
+
+    connected_splinters: np.ndarray = [[]] * (i1-i0)
+
+    for i in range(i0, i1):
+        # first contour
+        ctr1 = splinters[i][0]
+        # first centroid
+        cen1 = np.asarray(splinters[i][1])
+
+        distances: list[int,float] = [(0,0)] * (len(splinters)-i)
+        # calculate distance to other splinters
+        for j in range(i,len(splinters)):
+            # second centroid
+            cen2 = np.asarray(splinters[j][1])
+
+            distance = np.linalg.norm(cen1 - cen2)
+            distances[j-i] = (j, distance)
+
+        # find the closest splinters
+        distances = sorted(distances, key=lambda x: x[1])
+        # use 20 nearest splinters
+        nearest_splinters = [(i, splinters[i]) for i,d in distances[:20]]
+
+        # create empty image
+        img = np.zeros(im_shape, dtype=np.uint8)
+        # draw nearest splinters into it
+        cv2.drawContours(img, [ctr[0] for i,ctr in nearest_splinters], -1, 255, 1)
+        # draw current splinter a second time
+        cv2.drawContours(img, [ctr1], -1, 0, 2)
+
+        # detect contours in the image
+        ctrs = detect_fragments(img, filter=False)
+        # find contour that has current centroid inside
+        current_contour = None
+        for c in ctrs:
+            if cv2.pointPolygonTest(c, splinters[i][1], False) == 1:
+                current_contour = c
+                break
+        # if contour cant be found proceed
+        if current_contour is None:
+            continue
+
+        # check all adjacent splinters if they are inside
+        for j, splinter2 in nearest_splinters:
+            if j == i:
+                continue
+
+            # check if centroid of second splinter is inside the contour of first splinter
+            if cv2.pointPolygonTest(current_contour, splinters[j][1], False) == 1:
+                connected_splinters[i-i0].append(j)
+
+
+
+
+    return i0,i1,connected_splinters
+
+def chunk_len(length, n):
+    indices = np.linspace(0, length, n+1, dtype=int)
+    return [(indices[i], indices[i+1]) for i in range(n)]
+
+def get_adjacent_splinters_parallel(splinters, im_shape):
+    """
+    This function calculates adjacent splinters by using their contours and centroids.
+
+    Args:
+        splinters (List[Splinter]): Splinter list.
+        simplify (float): Percentage to simplify the splinter contours.
+    """
+    print("Starting parallel splinter check")
+    # create list of splinters and their centroids
+    splinters = [(s.contour, s.centroid_px) for s in splinters]
+    # create empty list of connected splinters
+    connected_splinters: np.ndarray = [[]] * len(splinters)
+
+    # split splinters into n chunks
+    print("Chunking")
+    chunks = chunk_len(len(splinters), 8)
+    print("Creating tasks")
+    tasks = []
+    for chunk in chunks:
+        tasks.append((chunk[0], chunk[1], splinters, im_shape))
+
+    # create 4 processes
+    with Pool() as pool:
+        results = []
+        with get_progress() as progress:
+            task = progress.add_task("Check splinters", total=len(tasks))
+            for result in pool.imap_unordered(check_splinter_adj, tasks):
+                progress.advance(task)
+                results.append(result)
+
+    # merge results
+    for i0,i1,cs in results:
+        for i in range(i0,i1):
+            connected_splinters[i] = cs[i-i0]
+
+    return splinters
+
+def get_adjacent_splinters(splinters, im_shape):
+    """
+    This function calculates adjacent splinters by using their contours and centroids.
+
+    Args:
+        splinters (List[Splinter]): Splinter list.
+        simplify (float): Percentage to simplify the splinter contours.
+    """
+    for s1 in track(splinters):
+        # calculate distances to all other splinters
+        c1 = np.asarray(s1.centroid_px)
+        distances = [(None,0)] * len(splinters)
+        for i, s2 in enumerate(splinters):
+            # calculate distances to all other centroids
+            c2 = np.asarray(s2.centroid_px)
+            distances[i] = (s2, np.linalg.norm(c1 - c2))
+
+        # sort distances
+        distances = sorted(distances, key=lambda x: x[1])
+
+        # use 20 nearest splinters
+        nearest_splinters = [x[0] for x in distances[:20]]
+
+        # create an image like the original and draw nearest splinters into it
+        img = np.zeros(im_shape, dtype=np.uint8)
+        cv2.drawContours(img, [s.contour for s in nearest_splinters], -1, 255, 1)
+
+        # draw the current splinter a second time
+        cv2.drawContours(img, [s1.contour], -1, 0, 2)
+
+
+        # find contours in the image
+        ctrs = detect_fragments(img, filter=False)
+
+        # print(len(ctrs))
+        # im1 = to_rgb(img.copy())
+        # cv2.drawContours(im1, ctrs, -1, (0,255,0), 1)
+        # cv2.drawContours(im1, [s1.contour], -1, (255,255,0), 2)
+        # plotImage(im1, "adjacent splinters", force=True)
+        # find the contour that is the current splinter
+        current_contour = None
+        for c in ctrs:
+            # print(c)
+            if cv2.pointPolygonTest(c, s1.centroid_px, False) == 1:
+                current_contour = c
+                break
+
+        # sometime, the contour is not enclosed by other contours so we have to skip it
+        if current_contour is None:
+            continue
+
+        s1_adjacent_splinters = []
+        # now, check all adjacent splinters if they are inside
+        for s2 in nearest_splinters:
+            if s2 == s1:
+                continue
+
+            # check if the centroid of s2 is inside the contour of s1
+            if cv2.pointPolygonTest(current_contour, s2.centroid_px, False) == 1:
+                s1_adjacent_splinters.append(s2)
+
+        s1.touching_splinters = [1 for _ in s1_adjacent_splinters]
