@@ -125,7 +125,7 @@ def end_callback(*args, **kwargs):
     d = time.time() - State.start_time
     print(f"Finished in {d:.2f}s.")
 
-app = typer.Typer(pretty_exceptions_short=False, result_callback=end_callback, callback=main_callback)
+app = typer.Typer(pretty_exceptions_short=True, pretty_exceptions_show_locals=False, result_callback=end_callback, callback=main_callback)
 app.add_typer(splinter_app, name="splinters")
 app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
@@ -273,8 +273,5 @@ def test(input: list[str]):
 
 try:
     app()
-except Exception as e:
-    print("Error occured.")
-    raise e
 finally:
     State.checkpoint_save()

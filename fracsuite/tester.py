@@ -348,9 +348,33 @@ def threshold(
     correct_light_check = tk.Checkbutton(threshold_frame, text="Correct light", variable=correct_light_var, command=lambda: update_image())
     correct_light_check.pack()
 
+    def load_state(prep: PreprocessorConfig):
+        block_size_slider.set(prep.athresh_block_size)
+        c_slider.set(prep.athresh_c)
+        sz_slider.set(prep.gauss_size[0])
+        sig_slider.set(prep.gauss_sigma)
+
+        lum_slider.set(prep.lum)
+        clahe_strength.set(prep.clahe_strength)
+        clahe_size.set(prep.clahe_size)
+
+        if prep.mode == PrepMode.NORMAL:
+            normal_thresh_filter_var.set(True)
+        else:
+            normal_thresh_filter_var.set(False)
+
+        if prep.correct_light:
+            correct_light_var.set(True)
+        else:
+            correct_light_var.set(False)
+
+        lower_slider.set(prep.nthresh_lower)
+        upper_slider.set(prep.nthresh_upper)
+
+
     def save_state():
         blockSize = block_size_slider.get()
-        C = (float(c_slider.get()) / 50.0 )* 2.0
+        C = c_slider.get()
         sz = sz_slider.get()
         sig = sig_slider.get()
         if blockSize % 2 == 0:  # Ensure it's odd

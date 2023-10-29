@@ -271,8 +271,8 @@ class Analyzer(object):
         # initial contour operations
         update_main(2, 'Analyzing contours...')
         all_contours = detect_fragments(self.preprocessed_image,
-                                        min_area=config.fragment_min_area_px,
-                                        max_area=config.fragment_max_area_px,
+                                        min_area_px=config.fragment_min_area_px,
+                                        max_area_px=config.fragment_max_area_px,
                                     )
         stencil = np.zeros((self.preprocessed_image.shape[0], \
             self.preprocessed_image.shape[1]), dtype=np.uint8)
@@ -323,8 +323,8 @@ class Analyzer(object):
         # detect fragments on the closed skeleton
         update_main(3, 'Preliminary contour analysis...')
         self.contours = detect_fragments(skeleton,
-                                         min_area=config.fragment_min_area_px,
-                                        max_area=config.fragment_max_area_px,)
+                                         min_area_px=config.fragment_min_area_px,
+                                        max_area_px=config.fragment_max_area_px,)
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
 
         if splinters_only:
@@ -343,8 +343,8 @@ class Analyzer(object):
         # detect fragments on the closed and possibly filtered skeleton
         update_main(5, 'Final contour analysis')
         self.contours = detect_fragments(self.image_skeleton,
-                                         min_area=config.fragment_min_area_px,
-                                        max_area=config.fragment_max_area_px,)
+                                         min_area_px=config.fragment_min_area_px,
+                                        max_area_px=config.fragment_max_area_px,)
         self.splinters = [Splinter(x,i,size_f) for i,x in enumerate(self.contours)]
 
         self.image_skeleton_rgb = to_rgb(self.image_skeleton)

@@ -2,6 +2,7 @@
 Image conversion functions.
 """
 
+from enum import Enum
 from typing import Any
 import cv2
 import numpy as np
@@ -111,3 +112,33 @@ def split_image(img, grid_size) -> SplitImage:
 
     # Das resultierende Bild zurückgeben
     return SplitImage(parts, grid_size, cols, rows)
+
+class FontSize(int, Enum):
+    MEDIUM = 1
+    SMALL = MEDIUM + 0.3
+    LARGE = MEDIUM - 0.3
+
+def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0)):
+    """
+    Puts text on an image at a specified point.
+
+    Args:
+        text (str): The text to put on the image.
+        img (numpy.ndarray): The image to put the text on.
+        pt (tuple): The point on the image where the text should be placed.
+        sz (FontSize, optional): The size of the font to use. Defaults to FontSize.MEDIUM.
+        clr (tuple, optional): The color of the text. Defaults to (0,0,0).
+    """
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = sz
+    thickness = 2
+
+    # calculate text size
+    text_size, _ = cv2.getTextSize(text, font, font_scale, thickness)
+
+    # calculate text position
+    text_x = int(pt[0] - text_size[0] / 2)
+    text_y = int(pt[1] + text_size[1] / 2)
+
+    # draw text on image
+    cv2.putText(img, text, (text_x, text_y), font, font_scale, clr, thickness, cv2.LINE_AA)

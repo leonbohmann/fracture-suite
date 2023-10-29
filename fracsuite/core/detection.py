@@ -1,16 +1,19 @@
+import multiprocessing
 import multiprocessing.shared_memory as sm
 from multiprocessing import Pool
+from typing import Literal
 
 import cv2
 import numpy as np
 import numpy.typing as nptyp
-from rich import inspect
+from rich import inspect, print
 from rich.progress import track
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageplotting import plotImage
 
 from fracsuite.core.imageprocessing import preprocess_spot_detect
 from fracsuite.core.progress import get_progress
+from fracsuite.state import State
 
 SM_IMAGE = "IMAGE_SM_SPLINT_DETECT"
 
@@ -81,7 +84,7 @@ def filter_contours(contours, hierarchy, min_area = 1, max_area=25000) \
             contour_area = 0.00001
 
         # small size
-        if contour_perim < min_area:
+        if contour_area < min_area:
             to_delete.append(i)
 
     # def reject_outliers(data, m = 2.):
@@ -114,8 +117,8 @@ def filter_contours(contours, hierarchy, min_area = 1, max_area=25000) \
 
 def detect_fragments(
     binary_image,
-    min_area:float = 1.0,
-    max_area:float = 25000,
+    min_area_px: int = 1,
+    max_area_px: int = 25000,
     filter = True,
 ) -> list[nptyp.ArrayLike]:
     """Detects fragments in a binary image.
@@ -146,7 +149,7 @@ def detect_fragments(
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
         contours = list(contours)[1:]
         if filter:
-            contours = filter_contours(contours, hierar, min_area=min_area, max_area=max_area)
+            contours = filter_contours(contours, hierar, min_area=min_area_px, max_area=max_area_px)
         return contours
     except Exception as e:
         raise ValueError(f"Error in fragment detection: {e}")
@@ -299,67 +302,84 @@ def check_splinter_adj(
     # i1: endindex
     # splinters: list of contours and their centroids
     # im_shape: shape of the image
-    i0, i1, splinters, im_shape = data
+    all_contours: list[tuple[list,tuple[int,int]]]
+    i0: int
+    i1: int
+    im_shape: tuple[int,int]
+
+    i0, i1, all_contours, im_shape = data
 
 
-    connected_splinters: np.ndarray = [[]] * (i1-i0)
+    print(f"{i0} - {i1}: Running...")
+    all_ctrs = [c[0] for c in all_contours]
+
+    connected_contours = [None] * (i1-i0)
 
     for i in range(i0, i1):
-        # first contour
-        ctr1 = splinters[i][0]
-        # first centroid
-        cen1 = np.asarray(splinters[i][1])
+        i_connections = connected_contours[i-i0] = []
 
-        distances: list[int,float] = [(0,0)] * (len(splinters)-i)
+        # first contour
+        ctr1 = all_contours[i][0]
+        # first centroid
+        cen1 = np.asarray(all_contours[i][1])
+
+        distances: list[int,float] = []
         # calculate distance to other splinters
-        for j in range(i,len(splinters)):
+        for j in range(len(all_contours)):
             # second centroid
-            cen2 = np.asarray(splinters[j][1])
+            cen2 = np.asarray(all_contours[j][1])
 
             distance = np.linalg.norm(cen1 - cen2)
-            distances[j-i] = (j, distance)
+            distances.append((j, distance))
 
         # find the closest splinters
         distances = sorted(distances, key=lambda x: x[1])
-        # use 20 nearest splinters
-        nearest_splinters = [(i, splinters[i]) for i,d in distances[:20]]
+        # use nearest splinters
+        nearest_contours = [(ii, all_contours[ii][0], all_contours[ii][1]) for ii,_ in distances[:30]]
 
         # create empty image
         img = np.zeros(im_shape, dtype=np.uint8)
         # draw nearest splinters into it
-        cv2.drawContours(img, [ctr[0] for i,ctr in nearest_splinters], -1, 255, 1)
+        img = cv2.drawContours(img, [ctr[1] for ctr in nearest_contours], -1, 255, 1)
         # draw current splinter a second time
-        cv2.drawContours(img, [ctr1], -1, 0, 2)
+        img = cv2.drawContours(img, [ctr1], 0, 0, 2)
 
         # detect contours in the image
         ctrs = detect_fragments(img, filter=False)
         # find contour that has current centroid inside
         current_contour = None
         for c in ctrs:
-            if cv2.pointPolygonTest(c, splinters[i][1], False) == 1:
+            if cv2.pointPolygonTest(c, all_contours[i][1], False) >= 0:
                 current_contour = c
                 break
+
         # if contour cant be found proceed
         if current_contour is None:
+            if State.debug:
+                cimg = to_rgb(img.copy())
+                cv2.drawContours(cimg, all_ctrs, -1, (255,255,255), 1)
+                cv2.ellipse(cimg, cen1, (5,5), 0, 0, 360, (0,255,0), 1)
+                cv2.drawContours(cimg, [ctr1], 0, (255,0,0), 1)
+                cv2.drawContours(cimg, ctrs, -1, (0,100,255), 1)
+                cv2.drawContours(img, [ctr[1] for ctr in nearest_contours], -1, (120,0,120), 1)
+                State.output(cimg, "faulty_splinters", f"splinter_adj_err_{i}", force=True)
             continue
 
         # check all adjacent splinters if they are inside
-        for j, splinter2 in nearest_splinters:
-            if j == i:
+        for j, _, cen3 in nearest_contours:
+            if i == j:
                 continue
-
             # check if centroid of second splinter is inside the contour of first splinter
-            if cv2.pointPolygonTest(current_contour, splinters[j][1], False) == 1:
-                connected_splinters[i-i0].append(j)
+            if cv2.pointPolygonTest(current_contour, cen3, False) >= 0:
+                i_connections.append(j)
 
 
-
-
-    return i0,i1,connected_splinters
+    print(f"{i0} - {i1}: Finished.")
+    return (i0,i1,connected_contours)
 
 def chunk_len(length, n):
     indices = np.linspace(0, length, n+1, dtype=int)
-    return [(indices[i], indices[i+1]) for i in range(n)]
+    return [(int(indices[i]), int(indices[i+1])) for i in range(n)]
 
 def get_adjacent_splinters_parallel(splinters, im_shape):
     """
@@ -371,33 +391,32 @@ def get_adjacent_splinters_parallel(splinters, im_shape):
     """
     print("Starting parallel splinter check")
     # create list of splinters and their centroids
-    splinters = [(s.contour, s.centroid_px) for s in splinters]
+    contour_centroids = [(s.contour, s.centroid_px) for s in splinters]
     # create empty list of connected splinters
-    connected_splinters: np.ndarray = [[]] * len(splinters)
+    connected_splinters = [None] * len(contour_centroids)
 
     # split splinters into n chunks
-    print("Chunking")
-    chunks = chunk_len(len(splinters), 8)
-    print("Creating tasks")
+    chunks = chunk_len(len(contour_centroids), multiprocessing.cpu_count()*2)
+    print(f"Chunked into [cyan]{len(chunks)}[/cyan] chunks.")
+    print(chunks)
+
     tasks = []
     for chunk in chunks:
-        tasks.append((chunk[0], chunk[1], splinters, im_shape))
+        tasks.append((chunk[0], chunk[1], contour_centroids, im_shape))
 
     # create 4 processes
     with Pool() as pool:
-        results = []
         with get_progress() as progress:
-            task = progress.add_task("Check splinters", total=len(tasks))
+            task = progress.add_task("Check adjacency...", total=len(tasks))
             for result in pool.imap_unordered(check_splinter_adj, tasks):
                 progress.advance(task)
-                results.append(result)
+                i0 = result[0]
+                i1 = result[1]
+                connected_splinters[i0:i1] = result[2]
 
-    # merge results
-    for i0,i1,cs in results:
-        for i in range(i0,i1):
-            connected_splinters[i] = cs[i-i0]
 
-    return splinters
+
+    return connected_splinters
 
 def get_adjacent_splinters(splinters, im_shape):
     """

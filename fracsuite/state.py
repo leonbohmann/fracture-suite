@@ -41,10 +41,12 @@ class StateOutput:
         self.Data = data
         self.FigWidth = figwidth
 
-        self.add_data = additional_data if len(additional_data) > 0 else None
+        self.add_data = additional_data if len(additional_data) > 0 else {}
 
         self.is_image = type(data).__module__ == np.__name__
         self.is_figure = not self.is_image
+
+        self.has_detailed_image = 'img_detailed' in additional_data
 
     def save(self, path) -> str:
         """Saves the output to a file."""

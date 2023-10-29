@@ -420,7 +420,7 @@ class Splinter:
     def analyze_contour_image(contour_image, px_per_mm: float = 1.0):
         """Analyze a contour image and return a list of splinters."""
         contour_image = to_gray(contour_image)
-        contours = detect_fragments(contour_image, min_area=5, max_area=2000, filter=False)
+        contours = detect_fragments(contour_image, min_area_px=5, max_area_px=25000, filter=True)
         return [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
 
     @staticmethod
@@ -504,7 +504,7 @@ class Splinter:
         preprocess = preprocess_image(image)
         plotImage(preprocess, "Preprocessed Image")
 
-        prelim_contours = detect_fragments(preprocess, min_area=5, max_area=2000, filter=False)
+        prelim_contours = detect_fragments(preprocess, min_area_px=5, max_area_px=2000, filter=False)
         stencil = np.zeros((preprocess.shape[0], preprocess.shape[1]), dtype=np.uint8)
         cv2.drawContours(stencil, prelim_contours, -1, 255, -1)
         plotImage(stencil, "Preliminary Contours")
@@ -520,7 +520,7 @@ class Splinter:
         skeleton = skeletonize(skeleton).astype(np.uint8) * 255
         plotImage(skeleton, "Before detection")
 
-        contours = detect_fragments(skeleton, min_area=5, max_area=2000, filter=False)
+        contours = detect_fragments(skeleton, min_area_px=5, max_area_px=2000, filter=False)
 
         filtered_img = remove_dark_spots(
             original_image=image,
@@ -529,7 +529,7 @@ class Splinter:
         )
         plotImage(filtered_img, "After detection")
 
-        contours = detect_fragments(filtered_img, min_area=5, max_area=2000, filter=False)
+        contours = detect_fragments(filtered_img, min_area_px=5, max_area_px=2000, filter=False)
 
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
         contours = [x for x in contours if cv2.contourArea(x) > 0 and len(x) > 5]

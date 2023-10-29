@@ -38,11 +38,11 @@ from fracsuite.core.plotting import (
 )
 
 from fracsuite.core.preps import defaultPrepConfig
-from fracsuite.core.image import to_gray, to_rgb
+from fracsuite.core.image import FontSize, put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
 from fracsuite.core.plotting import modified_turbo, annotate_image, label_image
-from fracsuite.core.coloring import get_color
+from fracsuite.core.coloring import get_color, rand_col
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import similarity
@@ -59,9 +59,9 @@ IMNAME = "fracture_image"
 
 @app.command()
 def gen(
-        specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
-        realsize: Annotated[tuple[float, float], typer.Option(help='Real size of specimen in mm.')] = (-1, -1),
-        quiet: Annotated[bool, typer.Option(help='Do not ask for confirmation.')] = False,
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    realsize: Annotated[tuple[float, float], typer.Option(help='Real size of specimen in mm.')] = (-1, -1),
+    quiet: Annotated[bool, typer.Option(help='Do not ask for confirmation.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""
     if realsize[0] == -1 or realsize[1] == -1:
@@ -176,8 +176,9 @@ def gen_adjacent(
     output_splinter_file = ""
 
     if re.match(r'.*\..*\..*\..*', specimen_name):
-        specimen = Specimen.get(specimen_name)
+        specimen = Specimen.get(specimen_name, load=False)
         assert specimen.has_splinters, "Specimen has no splinters."
+        specimen.load_splinters()
         output_splinter_file = specimen.get_splinter_outfile(Specimen.adjacency_file)
     elif specimen_name.endswith(".pkl"):
         raise Exception("Generating adjacency from .pkl file is not supported yet.")
@@ -187,42 +188,32 @@ def gen_adjacent(
     else:
         raise Exception("Invalid input. Neither .pkl file nor specimen name.")
 
-
-    # if simplify:
-    #     len_before = 0
-    #     len_after = 0
-    #     for splinter in track(splinters, description="Simplifying contours...", transient=True):
-    #         contour = splinter.contour
-    #         len_before += len(contour)
-    #         eps = 0.003 * cv2.arcLength(contour, True)
-    #         ctr = cv2.approxPolyDP(contour, eps, True)
-    #         splinter.contour = ctr
-    #         len_after += len(ctr)
-
-    #     print(f"Removed {len_before-len_after} points from {len_before} points.")
-
     matching_points = State.from_checkpoint('matching_points', None)
-    # get array
-    ids,points = specimen.get_splinters_asarray(simplify=simplify/100)
-    # print splinters shape
-    print(f"IDs shape: {ids.shape}")
-    print(f"Points shape: {points.shape}")
 
     if matching_points is None:
         if legacy:
-            matching_points = get_adjacent_splinters_parallel(specimen.splinters, specimen.get_fracture_image().shape[:2])
+            adjacent_ids = get_adjacent_splinters_parallel(
+                specimen.splinters,
+                specimen.get_fracture_image().shape[:2]
+            )
+            with open(output_splinter_file, 'wb') as f:
+                pickle.dump(adjacent_ids, f)
         else:
+            # get array
+            ids,points = specimen.get_splinters_asarray(simplify=simplify/100)
+            # print splinters shape
+            print(f"IDs shape: {ids.shape}")
+            print(f"Points shape: {points.shape}")
             import conner
             if not sequential:
                 matching_points = conner.check_points(points)
             else:
                 matching_points = conner.check_points_seq(points)
 
-        State.checkpoint(matching_points=matching_points)
-        # inspect(matching_points)
+            State.checkpoint(matching_points=matching_points)
+            with open(output_splinter_file, 'wb') as f:
+                pickle.dump((ids,matching_points), f)
 
-    with open(output_splinter_file, 'wb') as f:
-        pickle.dump((ids,matching_points), f)
 
 
 @app.command()
@@ -263,37 +254,75 @@ def plot_adjacent(
 
     State.output(fig, spec=specimen, to_additional=True)
 
+@app.command()
+def plot_adjacent_detail(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    n: Annotated[int, typer.Option(help='Splinter to analyze.')] = 5,
+):
+    """
+    Plots the adjacent detail of a splinter in a specimen.
+
+    Args:
+        specimen_name (str): Name of the specimen to load.
+        n (int, optional): Amount of splinters to analyze. Defaults to 5.
+    """
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    assert specimen.has_adjacency, "Specimen has no adjacency data."
+    splinters = specimen.splinters
 
     # create example images
-    for i in range(5):
+    for i in range(n):
         im0 = specimen.get_fracture_image()
         rnd_i = np.random.randint(0, len(splinters))
         splinter = splinters[rnd_i]
         print(f'Random splinter: {rnd_i}, Touching Splinters: {len(splinter.touching_splinters)}')
 
-        for j in splinter.touching_splinters:
+        for ij, j in enumerate(splinter.touching_splinters):
             cv2.drawContours(im0, [splinters[j].contour], 0, (0, 125, 255), 1)
 
         # draw splinter in red
         cv2.drawContours(im0, [splinter.contour], 0, (0, 0, 255), 2)
 
+
         # retrieve region around splinter
-        x, y, w, h = cv2.boundingRect(splinter.contour)
+        x0, y0, w, h = cv2.boundingRect(splinter.contour)
         # enlarge bounding rect and make sure that it is inside the image
-        x -= 50
-        y -= 50
+        x0 -= 50
+        y0 -= 50
         w += 100
         h += 100
         w = min(im0.shape[1], w)
         h = min(im0.shape[0], h)
-        x = max(0, x)
+        x = max(0, x0)
         x = min(im0.shape[1]-w, x)
-        y = max(0, y)
+        y = max(0, y0)
         y = min(im0.shape[0]-h, y)
         im0 = im0[y:y+h, x:x+w]
+        im0 = cv2.resize(im0, (0, 0), fx=1.5, fy=1.5)
+
+        for ij, j in enumerate(splinter.touching_splinters):
+            t_point = ((splinters[j].centroid_px[0]-x)*1.5, (splinters[j].centroid_px[1]-y)*1.5)
+            text = f'{ij+1}'
+            # calculate text size so its always the same size
+            put_text(text, im0, t_point, clr = (255,255,255))
 
         State.output(im0, 'splinter_detail',spec=specimen, to_additional=True, mods=[i])
 
+@app.command()
+def draw_contours(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+):
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    splinters = specimen.splinters
+
+    out_img = specimen.get_fracture_image()
+    for splinter in track(splinters, description="Drawing contours...", transient=True):
+        clr = rand_col()
+        cv2.drawContours(out_img, [splinter.contour], 0, clr, 1)
+
+    State.output(out_img, 'contours',spec=specimen, to_additional=True)
 
 def check_chunk(i, chunksize, p_len):
     points_sm = sm.SharedMemory(name='points')
