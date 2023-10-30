@@ -1,23 +1,4 @@
 from __future__ import annotations
-import sys
-from fracsuite.core.imageprocessing import simplify_contour
-from fracsuite.core.outputtable import Outputtable
-from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
-
-from fracsuite.core.progress import get_spinner
-from fracsuite.core.region import RectRegion
-from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
-from fracsuite.core.splinter import Splinter
-from fracsuite.helpers import checkmark, find_file
-from fracsuite.state import State
-from fracsuite.general import GeneralSettings
-
-import cv2
-import numpy as np
-from matplotlib.figure import Figure
-from rich import print
-from rich.progress import Progress, track
-
 
 import json
 import os
@@ -25,6 +6,20 @@ import pickle
 import re
 from typing import Any, Callable, ClassVar, List, TypeVar
 
+import cv2
+import numpy as np
+from rich import print
+from rich.progress import track
+
+from fracsuite.core.imageprocessing import simplify_contour
+from fracsuite.core.outputtable import Outputtable
+from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
+from fracsuite.core.progress import get_spinner
+from fracsuite.core.region import RectRegion
+from fracsuite.core.splinter import Splinter
+from fracsuite.general import GeneralSettings
+from fracsuite.helpers import checkmark, find_file
+from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 
 general: GeneralSettings = GeneralSettings.get()
 
@@ -41,7 +36,7 @@ class Specimen(Outputtable):
     @property
     def splinters(self) -> list[Splinter]:
         "Splinters on the glass ply."
-        assert self.__splinters is not None, "Splinters are empty. Specimen not loaded?"
+        assert self.__splinters is not None, f"Splinters are empty. Specimen {self.name} not loaded?"
         return self.__splinters
 
     @property
@@ -117,18 +112,10 @@ class Specimen(Outputtable):
 
         if self.has_splinters:
             self.load_splinters()
+            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
         elif log_missing_data:
             print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite splinters gen[/green].")
 
-        if self.has_adjacency:
-            with open(self.__adjacency_file, "rb") as f:
-                adjacency = pickle.load(f)
-                if isinstance(adjacency, tuple):
-                    self.load_adjacency(*adjacency)
-                else:
-                    self.load_adjacencyp(adjacency)
-        else:
-            print(f"Could not find adjacency file for '{self.name}'. Create it using [green]fracsuite splinters gen-adjacent[/green].")
 
         if self.has_scalp:
             self.load_scalp()
@@ -139,8 +126,8 @@ class Specimen(Outputtable):
 
     def print_loaded(self):
         name = f"'{self.name}'"
-        print(f"Loaded {name:>30} ({checkmark(self.has_scalp)}, "
-                f"{checkmark(self.has_splinters)}).")
+        print(f"Loaded {name:>30} (Scalp: {checkmark(self.has_scalp)}, "
+                f"Splinters: {checkmark(self.has_splinters)}).")
 
 
     def __init__(self, path: str, log_missing = True, lazy = False):
@@ -231,13 +218,14 @@ class Specimen(Outputtable):
         self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
             and find_file(self.fracture_morph_dir, "*.bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
-        self.__splinters_file_legacy = find_file(self.splinters_path, "splinters.pkl")
-        self.__splinters_file = find_file(self.splinters_path, "splinters_v2.pkl")
-
-        self.has_splinters = self.__splinters_file is not None
-
-        self.__adjacency_file = find_file(self.splinters_path, self.adjacency_file)
-        self.has_adjacency = self.__adjacency_file is not None
+        "Path to the splinter output folder."
+        self.__splinters_file_legacy = find_file(self.splinters_path, "splinters_v1.pkl")
+        self.splinters_file = find_file(self.splinters_path, "splinters_v2.pkl")
+        "File that contains splinter information."
+        self.has_splinters = self.splinters_file is not None
+        "States wether there is a file with splinter information or not."
+        self.has_adjacency = False
+        "States wether adjacency information are present or not."
 
         # init done, load data
         if not lazy:
@@ -272,8 +260,12 @@ class Specimen(Outputtable):
     def get_acc_outfile(self, name: str) -> str:
         return os.path.join(self.path, 'fracture', 'acceleration', name)
 
-    def get_splinter_outfile(self, name: str) -> str:
-        return os.path.join(self.splinters_path, name)
+    def get_splinter_outfile(self, name: str, create = True) -> str:
+        path = os.path.join(self.splinters_path, name)
+
+        if create:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        return path
 
     def get_impact_position(self, in_px = False):
         """
@@ -376,47 +368,13 @@ class Specimen(Outputtable):
         self.__U = self.__get_energy()
 
     def load_splinters(self, file = None):
-        if not self.has_splinters:
-            return
+        assert self.has_splinters, f"Splinters not found in specimen {self.name}."
 
         if file is None:
-            file = self.__splinters_file
+            file = self.splinters_file
 
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
-
-    def load_adjacencyp(self, connections: list[list[int]]):
-        """Load adjacency info generated by python implementation."""
-        with open(self.get_splinter_outfile("adj_temp.txt"), "w") as f:
-            for i in range(len(connections)):
-                f.write(f"{i} {connections[i]}\n")
-        # os.system(self.get_splinter_outfile("adj_temp.txt"))
-
-        for i in track(range(len(self.splinters))):
-            for j in connections[i]:
-                if j not in self.splinters[i].touching_splinters:
-                    self.splinters[i].touching_splinters.append(j)
-                if i not in self.splinters[j].touching_splinters:
-                    self.splinters[j].touching_splinters.append(i)
-
-    def load_adjacency(self, ids, points):
-        """Load adjacency info generated by rust implementation."""
-
-        if ids is None or points is None:
-            self.has_adjacency = False
-            return
-
-        # connect points to contours
-        for i in range(len(points)):
-            contour_points = points[i]
-
-            si = ids[i]
-            for j in contour_points:
-                sj = ids[j]
-                if sj not in self.splinters[si].touching_splinters:
-                    self.splinters[si].touching_splinters.append(sj)
-                if si not in self.splinters[sj].touching_splinters:
-                    self.splinters[sj].touching_splinters.append(si)
 
     @staticmethod
     def get(name: str | Specimen, load: bool = True) -> Specimen:
@@ -431,7 +389,7 @@ class Specimen(Outputtable):
         return Specimen(path, lazy=not load)
 
     @staticmethod
-    def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None) \
+    def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = False) \
         -> List[Specimen]:
         """
         Get a list of specimens by name. Raises exception, if any is not found.
@@ -445,7 +403,7 @@ class Specimen(Outputtable):
         specimens: list[Specimen] = []
 
         if names is None:
-            return Specimen.get_all_by(lambda x: True)
+            return Specimen.get_all_by(lambda x: True, lazyload=not load)
         elif isinstance(names, Specimen):
             return [names]
         elif isinstance(names, list) and len(names) > 0 and isinstance(names[0], Specimen):

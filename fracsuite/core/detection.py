@@ -406,10 +406,9 @@ def get_adjacent_splinters_parallel(splinters, im_shape):
 
     # create 4 processes
     with Pool() as pool:
-        with get_progress() as progress:
-            task = progress.add_task("Check adjacency...", total=len(tasks))
+        with get_progress(title="Checking adjacency...") as progress:
             for result in pool.imap_unordered(check_splinter_adj, tasks):
-                progress.advance(task)
+                progress.advance()
                 i0 = result[0]
                 i1 = result[1]
                 connected_splinters[i0:i1] = result[2]
@@ -480,3 +479,12 @@ def get_adjacent_splinters(splinters, im_shape):
                 s1_adjacent_splinters.append(s2)
 
         s1.touching_splinters = [1 for _ in s1_adjacent_splinters]
+
+
+def attach_connections(splinters, connections):
+    for i in range(len(splinters)):
+        for j in connections[i]:
+            if j not in splinters[i].adjacent_splinter_ids:
+                splinters[i].adjacent_splinter_ids.append(j)
+            if i not in splinters[j].adjacent_splinter_ids:
+                splinters[j].adjacent_splinter_ids.append(i)

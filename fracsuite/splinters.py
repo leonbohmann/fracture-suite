@@ -11,6 +11,7 @@ import pickle
 import re
 import sys
 from typing import Annotated, Any, Callable
+import shutil
 
 import cv2
 import numpy as np
@@ -20,7 +21,7 @@ from matplotlib import pyplot as plt
 from rich import inspect, print
 from rich.progress import track
 from fracsuite.core.calculate import pooled
-from fracsuite.core.detection import get_adjacent_splinters_parallel
+from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
 from fracsuite.core.kernels import ObjectKerneler
 
 from fracsuite.core.plotting import (
@@ -62,32 +63,61 @@ def gen(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
     realsize: Annotated[tuple[float, float], typer.Option(help='Real size of specimen in mm.')] = (-1, -1),
     quiet: Annotated[bool, typer.Option(help='Do not ask for confirmation.')] = False,
+    all: Annotated[bool, typer.Option(help='Generate splinters for all specimens.')] = False,
+    all_exclude: Annotated[str, typer.Option(help='Exclude specimens from all.')] = None,
+    all_skip_existing: Annotated[bool, typer.Option(help='Skip specimens that already have splinters.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""
     if realsize[0] == -1 or realsize[1] == -1:
         realsize = None
 
-    specimen = Specimen.get(specimen_name, load=False)
+    if not all:
+        specimen = Specimen.get(specimen_name, load=False)
+        specimens = [specimen]
+    else:
+        def exclude(specimen: Specimen):
+            if not specimen.has_fracture_scans:
+                return False
+            if specimen.has_splinters and all_skip_existing:
+                return False
+            return re.search(all_exclude, specimen.name) is None
+        specimens = Specimen.get_all_by(decider=exclude, lazyload=True)
 
-    if specimen.has_splinters:
-        if not quiet and not typer.confirm(f"> Specimen '{specimen.name}' already has splinters. Overwrite?"):
-            return
+    for specimen in track(specimens, description='Analyzing specimens...', transient=True):
+        if specimen.has_splinters:
+            if not quiet and not typer.confirm(f"> Specimen '{specimen.name}' already has splinters. Overwrite?"):
+                return
 
-    fracture_image = specimen.get_fracture_image()
-    px_per_mm = specimen.calculate_px_per_mm(realsize)
-    prep = specimen.get_prepconf()
-    # generate splinters for the specimen
-    print(f'Using  px_per_mm = {px_per_mm:.2f}')
-    print(f'            prep = "{prep.name}"')
+        fracture_image = specimen.get_fracture_image()
+        px_per_mm = specimen.calculate_px_per_mm(realsize)
+        prep = specimen.get_prepconf()
+        # generate splinters for the specimen
+        print(f'Using  px_per_mm = {px_per_mm:.2f}')
+        print(f'            prep = "{prep.name}"')
 
-    print('Running analysis...')
-    splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
+        print('Running analysis...')
+        splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
 
-    # save splinters to specimen
-    output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
-    with open(output_file, 'wb') as f:
-        pickle.dump(splinters, f)
-    print(f'Saved splinters to "{output_file}"')
+        # save splinters to specimen
+        output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
+        with open(output_file, 'wb') as f:
+            pickle.dump(splinters, f)
+        print(f'Saved splinters to "{output_file}"')
+
+
+# @app.command()
+# def clean():
+#     """Remove all splinter output folders."""
+#     # get all specimens with splinters
+#     func = create_filter_function("*", needs_splinters=True)
+#     specimens = Specimen.get_all_by(func, lazyload=True)
+
+#     for s in specimens:
+#         folder = s.get_splinter_outfile("")
+#         if os.path.exists(folder):
+#             shutil.rmtree(folder)
+#             print(f"Removed {folder}")
+
 
 # @app.command()
 # def simplify(
@@ -130,7 +160,7 @@ def gen(
 
 def plot_touching_len(specimen, splinters):
     out_img = specimen.get_fracture_image()
-    touches = [len(x.touching_splinters) for x in splinters]
+    touches = [len(x.adjacent_splinter_ids) for x in splinters]
     max_adj = np.max(touches)
     min_adj = np.min(touches)
 
@@ -139,7 +169,7 @@ def plot_touching_len(specimen, splinters):
     print(f"Mean touching splinters: {np.mean(touches)}")
 
     for splinter in track(splinters, description="Drawing touching splinters...", transient=True):
-        clr = get_color(len(splinter.touching_splinters), min_adj, max_adj)
+        clr = get_color(len(splinter.adjacent_splinter_ids), min_adj, max_adj)
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
 
@@ -154,32 +184,38 @@ def plot_touching_len(specimen, splinters):
 
     return out_img
 
+@app.command()
+def gen_adjacent_all(
+    input_folder: str
+):
+    """
+    Loads all splinters from the input folder, generates adjacent ids
+    and overwrites the original file with the new data.
+    """
+    # get all pkl files in input_folder
+    files = find_files(input_folder, "*.pkl")
+    for file in files:
+        with open(file, 'rb') as f:
+            splinters = pickle.load(f)
+
+        adjacent_ids = get_adjacent_splinters_parallel(splinters, (4000,4000))
+
+        # output file is the same as input file but with _adjacent appended
+        attach_connections(splinters, adjacent_ids)
+
+        with open(file, 'wb') as f:
+            pickle.dump(splinters, f)
 
 @app.command()
 def gen_adjacent(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load or a pkl file.')],
-    use_checkpoint: Annotated[bool, typer.Option(help='Use the checkpoints from previous run.')] = False,
-    sequential: Annotated[bool, typer.Option(help='Use the sequential algorithm to determine equal points. Not advised!')] = False,
-    simplify: Annotated[float, typer.Option(
-        help=
-            'Simplify the contours prior to analyzing their points. This option can make the'
-            'algorithm be much faster, but it can also lead to wrong results. Use with caution!'
-            'Value is the percentage of error to the original contour length. -1 is no simplification.'
-            )]
-        = -1,
-    legacy: Annotated[bool, typer.Option(help='Use the legacy algorithm to determine equal points. Not advised!')] = False,
 ):
-    """Create a list of adjacent splinters for each splinter in the specimen."""
-    if not use_checkpoint:
-        State.checkpoint_clear()
-
-    output_splinter_file = ""
+    """Modify the existing splinters and attach adjacent splinters into them."""
 
     if re.match(r'.*\..*\..*\..*', specimen_name):
         specimen = Specimen.get(specimen_name, load=False)
         assert specimen.has_splinters, "Specimen has no splinters."
         specimen.load_splinters()
-        output_splinter_file = specimen.get_splinter_outfile(Specimen.adjacency_file)
     elif specimen_name.endswith(".pkl"):
         raise Exception("Generating adjacency from .pkl file is not supported yet.")
         # with open(specimen_name, 'rb') as f:
@@ -188,32 +224,13 @@ def gen_adjacent(
     else:
         raise Exception("Invalid input. Neither .pkl file nor specimen name.")
 
-    matching_points = State.from_checkpoint('matching_points', None)
-
-    if matching_points is None:
-        if legacy:
-            adjacent_ids = get_adjacent_splinters_parallel(
-                specimen.splinters,
-                specimen.get_fracture_image().shape[:2]
-            )
-            with open(output_splinter_file, 'wb') as f:
-                pickle.dump(adjacent_ids, f)
-        else:
-            # get array
-            ids,points = specimen.get_splinters_asarray(simplify=simplify/100)
-            # print splinters shape
-            print(f"IDs shape: {ids.shape}")
-            print(f"Points shape: {points.shape}")
-            import conner
-            if not sequential:
-                matching_points = conner.check_points(points)
-            else:
-                matching_points = conner.check_points_seq(points)
-
-            State.checkpoint(matching_points=matching_points)
-            with open(output_splinter_file, 'wb') as f:
-                pickle.dump((ids,matching_points), f)
-
+    adjacent_ids = get_adjacent_splinters_parallel(
+        specimen.splinters,
+        specimen.get_fracture_image().shape[:2]
+    )
+    attach_connections(specimen.splinters, adjacent_ids)
+    with open(specimen.splinters_file, 'wb') as f:
+        pickle.dump(specimen.splinters, f)
 
 
 @app.command()
@@ -223,14 +240,13 @@ def plot_adjacent(
 ):
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
-    assert specimen.has_adjacency, "Specimen has no adjacency data."
     splinters = specimen.splinters
 
     outp = plot_touching_len(specimen, splinters)
     State.output(outp, spec=specimen, to_additional=True)
 
 
-    lens = [len(x.touching_splinters) for x in splinters]
+    lens = [len(x.adjacent_splinter_ids) for x in splinters]
     fig, axs = datahist_plot(
         x_label='Amount of edges $N_e$',
         y_label='Probability Density $p(N_e)$',
@@ -276,9 +292,9 @@ def plot_adjacent_detail(
         im0 = specimen.get_fracture_image()
         rnd_i = np.random.randint(0, len(splinters))
         splinter = splinters[rnd_i]
-        print(f'Random splinter: {rnd_i}, Touching Splinters: {len(splinter.touching_splinters)}')
+        print(f'Random splinter: {rnd_i}, Touching Splinters: {len(splinter.adjacent_splinter_ids)}')
 
-        for ij, j in enumerate(splinter.touching_splinters):
+        for ij, j in enumerate(splinter.adjacent_splinter_ids):
             cv2.drawContours(im0, [splinters[j].contour], 0, (0, 125, 255), 1)
 
         # draw splinter in red
@@ -301,7 +317,7 @@ def plot_adjacent_detail(
         im0 = im0[y:y+h, x:x+w]
         im0 = cv2.resize(im0, (0, 0), fx=1.5, fy=1.5)
 
-        for ij, j in enumerate(splinter.touching_splinters):
+        for ij, j in enumerate(splinter.adjacent_splinter_ids):
             t_point = ((splinters[j].centroid_px[0]-x)*1.5, (splinters[j].centroid_px[1]-y)*1.5)
             text = f'{ij+1}'
             # calculate text size so its always the same size
@@ -342,35 +358,34 @@ def check_chunk(i, chunksize, p_len):
 
     return matches
 
+@app.command()
+def export_files(
+    output_path: Annotated[str, typer.Argument(help='Path to output file.')],
+):
+    specimens: list[Specimen] = Specimen.get_all_by(lambda x: x.has_splinters)
 
+    for specimen in specimens:
+        print(f"Loaded splinters for {specimen.name}")
+
+        out_file = specimen.get_splinter_outfile("splinters_v2.pkl")
+        # copy the file to the output_path
+        shutil.copy(out_file, output_path)
+        os.rename(f"{output_path}/splinters_v2.pkl", f"{output_path}/{specimen.name}.pkl")
 
 @app.command()
-def gen_adj_rust_cmp(
-    specimen_name,
-    override_file = False,
-    clear_checkpoint: bool = False
+def import_files(
+    input_folder: Annotated[str, typer.Argument(help='Path to input folder.')],
 ):
-    specimen = Specimen.get(specimen_name)
-    assert specimen.has_splinters, "Specimen has no splinters."
-    splinters = specimen.splinters
+    # get all pkl files in input_folder
+    files = find_files(input_folder, "*.pkl")
+    for file in files:
+        specimen_name = os.path.basename(file).replace(".pkl", "")
+        specimen = Specimen.get(specimen_name, False)
+        assert specimen.has_splinters, "Specimen has no splinters."
 
-    # get array
-    ids,points = specimen.get_splinters_asarray()
-
-    # put points in shared mem
-    points_sm = sm.SharedMemory(create=True, size=points.nbytes, name="points")
-    points_shared = np.ndarray(points.shape, dtype=points.dtype, buffer=points_sm.buf)
-    points_shared[:] = points[:]
-
-    n_chunks = 20
-    chunk_size = len(points) // n_chunks
-
-    func = partial(check_chunk, chunksize=chunk_size, p_len=points.shape)
-    with get_progress() as progress:
-        task = progress.add_task("Checking points...", total=n_chunks)
-        with Pool() as pool:
-            for result in pool.imap_unordered(func, range(n_chunks)):
-                progress.advance(task)
+        # copy the file into specimen splinter folder
+        shutil.copy(file, specimen.get_splinter_outfile(Specimen.adjacency_file))
+        print(f"Imported adjacency file for {specimen_name}.")
 
 @app.command()
 def show_prep():

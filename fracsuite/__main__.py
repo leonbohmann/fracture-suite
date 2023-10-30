@@ -26,6 +26,7 @@ from fracsuite.splinters import app as splinter_app
 from fracsuite.state import State
 from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
+from fracsuite.over_nrg import over_nrg
 
 custom_theme = Theme({
     "info": "dim cyan",
@@ -135,7 +136,7 @@ app.add_typer(test_prep_app, name="test-prep")
 app.add_typer(nominals_app, name="nominals")
 app.add_typer(tester_app, name="tester")
 app.add_typer(gen_app, name="gen")
-
+app.add_typer(over_nrg, name="over-nrg")
 
 class PrintWrapper():
 

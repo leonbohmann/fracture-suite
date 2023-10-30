@@ -1,9 +1,8 @@
 import pickle
 import tempfile
 from typing import Any
-from fracsuite.core.image import to_rgb
+from fracsuite.core.ProgWrapper import ProgWrapper
 from fracsuite.core.outputtable import Outputtable
-from fracsuite.core.progress import get_progress
 from fracsuite.general import GeneralSettings
 
 
@@ -112,7 +111,7 @@ class StateOutput:
 class State:
     """Contains static variables that are set during execution of a command."""
     start_time: float = time.time()
-    progress: Progress = get_progress()
+    progress: ProgWrapper = None
     debug: bool = False
 
     sub_outpath: str = ""

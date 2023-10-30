@@ -89,7 +89,7 @@ class Splinter:
         self.angle = self.__calculate_orientation()
 
 
-        self.touching_splinters: list[int] = []
+        self.adjacent_splinter_ids: list[int] = []
         "List of adjacent splinters."
         self.contour_set = None
         "Set of contour points for faster membership testing."
