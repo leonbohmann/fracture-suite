@@ -2,16 +2,14 @@
 Splinter analyzation tools.
 """
 
-from functools import partial
-from multiprocessing import Pool
 import multiprocessing.shared_memory as sm
 import os
-from itertools import groupby
 import pickle
 import re
-import sys
-from typing import Annotated, Any, Callable
 import shutil
+import sys
+from itertools import groupby
+from typing import Annotated, Any, Callable
 
 import cv2
 import numpy as np
@@ -20,38 +18,39 @@ import typer
 from matplotlib import pyplot as plt
 from rich import inspect, print
 from rich.progress import track
-from fracsuite.core.calculate import pooled
-from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
-from fracsuite.core.kernels import ObjectKerneler
 
+from fracsuite.callbacks import main_callback
+from fracsuite.core.calculate import pooled
+from fracsuite.core.coloring import get_color, rand_col
+from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
+from fracsuite.core.image import put_text, to_gray, to_rgb
+from fracsuite.core.imageplotting import plotImage, plotImages
+from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
+from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.plotting import (
     DataHistMode,
     DataHistPlotMode,
     FigureSize,
     KernelContourMode,
+    annotate_image,
     create_splinter_colored_image,
+    create_splinter_sizes_image,
     datahist_plot,
+    datahist_to_ax,
     get_fig_width,
+    label_image,
+    modified_turbo,
     plot_image_movavg,
     plot_splinter_movavg,
-    create_splinter_sizes_image,
-    datahist_to_ax,
 )
-
 from fracsuite.core.preps import defaultPrepConfig
-from fracsuite.core.image import FontSize, put_text, to_gray, to_rgb
-from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.progress import get_progress
-from fracsuite.core.plotting import modified_turbo, annotate_image, label_image
-from fracsuite.core.coloring import get_color, rand_col
-from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
+from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import similarity
-from fracsuite.state import State, StateOutput
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
-from fracsuite.callbacks import main_callback
-from fracsuite.core.specimen import Specimen
+from fracsuite.state import State, StateOutput
 
 app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -104,59 +103,6 @@ def gen(
             pickle.dump(splinters, f)
         print(f'Saved splinters to "{output_file}"')
 
-
-# @app.command()
-# def clean():
-#     """Remove all splinter output folders."""
-#     # get all specimens with splinters
-#     func = create_filter_function("*", needs_splinters=True)
-#     specimens = Specimen.get_all_by(func, lazyload=True)
-
-#     for s in specimens:
-#         folder = s.get_splinter_outfile("")
-#         if os.path.exists(folder):
-#             shutil.rmtree(folder)
-#             print(f"Removed {folder}")
-
-
-# @app.command()
-# def simplify(
-#     specimen_name: str
-# ):
-#     specimen = Specimen.get(specimen_name)
-#     assert specimen.has_splinters, "Specimen has no splinters."
-
-#     splinters = specimen.splinters
-#     c = 0
-#     tc = 0
-#     less_area = 0
-
-#     ctrs = []
-#     for splinter in splinters:
-#         contour = splinter.contour
-#         eps = 0.01 * cv2.arcLength(contour, True)
-#         ctr = cv2.approxPolyDP(contour, eps, True)
-#         ctrs.append(ctr)
-
-#         tc += len(contour)
-#         c += len(contour) - len(ctr)
-#         # compare contour areas
-#         darea = np.abs(cv2.contourArea(contour) - cv2.contourArea(ctr))
-#         less_area += darea
-#         if darea > 1:
-#             print(f"Contour area changed from {cv2.contourArea(contour)} to {cv2.contourArea(ctr)}")
-
-#     print(f"Removed {c} from {tc} points.")
-#     print(f"Area changed by {less_area/(specimen.calculate_px_per_mm()**2)}.")
-
-#     im0 = specimen.get_fracture_image()
-#     cv2.drawContours(im0, ctrs, -1, (0, 0, 255), 1)
-
-#     plotImage(im0, "contours", force=True)
-
-
-#     # with open(specimen.get_splinter_outfile("splinters_v2.pkl"), 'wb') as f:
-#     #     pickle.dump(splinters, f)
 
 def plot_touching_len(specimen, splinters):
     out_img = specimen.get_fracture_image()
@@ -1093,7 +1039,6 @@ def splinter_orientation_f(
 ):
     specimen = Specimen.get(specimen_name)
     impact_pos = specimen.get_impact_position()
-    size_fac = specimen.calculate_px_per_mm()
     def mean_orientations(splinters: list[Splinter]):
         orientations = np.array([x.measure_orientation(impact_pos) for x in splinters ])
         return np.mean(orientations[~np.isnan(orientations)])
@@ -1129,7 +1074,6 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 
     impact_pos = specimen.get_impact_position()
     splinters = specimen.splinters
-    size_fac = specimen.calculate_px_per_mm()
 
     # analyze splinter orientations
     orientation_image = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
