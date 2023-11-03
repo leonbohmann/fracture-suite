@@ -193,6 +193,15 @@ class Splinter:
         x,y = self.centroid_mm
         return x1 <= x <= x2 and y1 <= y <= y2
 
+    def in_region_exact(self, rect: tuple[float,float,float,float]) -> float:
+        x1, y1, x2, y2 = rect
+        n = 0.0
+        for point in self.contour:
+            x, y = point[0]
+            if not (x < x1 or x > x2 or y < y1 or y > y2):
+                n += 1
+        return float(n / len(self.contour))
+
     def in_region_px(self, region: RectRegion) -> bool:
         return region.is_point_in(self.centroid_px)
 

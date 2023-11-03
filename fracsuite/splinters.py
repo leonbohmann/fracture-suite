@@ -330,8 +330,8 @@ def import_files(
         assert specimen.has_splinters, "Specimen has no splinters."
 
         # copy the file into specimen splinter folder
-        shutil.copy(file, specimen.get_splinter_outfile(Specimen.adjacency_file))
-        print(f"Imported adjacency file for {specimen_name}.")
+        shutil.copy(file, specimen.get_splinter_outfile("splinters_v2.pkl"))
+        print(f"Imported adjacent file for {specimen_name}.")
 
 @app.command()
 def show_prep():
@@ -352,46 +352,70 @@ def count_splinters_in_norm_region(
 
     # create rectangle around args.normregioncenter with 5x5cm size
     # and count splinters in it
-    x, y = norm_region_center
-    w, h = norm_region_size
+    x,y = norm_region_center
+    w,h = norm_region_size
     x1 = x - w // 2
     x2 = x + w // 2
     y1 = y - h // 2
     y2 = y + h // 2
 
+    f = specimen.calculate_px_per_mm()
+    # transform to real image size
+    x1 = int(x1 * f)
+    x2 = int(x2 * f)
+    y1 = int(y1 * f)
+    y2 = int(y2 * f)
+
     s_count = 0
+    splinters_in_region: list[Splinter] = []
     # count splinters in norm region
     for s in specimen.splinters:
-        if s.in_region((x1, y1, x2, y2)):
+        sc =  s.in_region_exact((x1,y1,x2,y2))
+        if sc == 1:
             s_count += 1
+        if sc > 0.5:
+            s_count += 0.5
+            splinters_in_region.append(s)
 
-    # print(f'Splinters in norm region: {s_count}')
+    print(f'Splinters in norm region: {s_count}')
 
-    # transform to real image size
-    x1 = int(x1 // specimen.splinter_config.size_factor)
-    x2 = int(x2 // specimen.splinter_config.size_factor)
-    y1 = int(y1 // specimen.splinter_config.size_factor)
-    y2 = int(y2 // specimen.splinter_config.size_factor)
+    # plot splinter PDF
+    fig, axs = plt.subplots()
+    axs.hist([x.area for x in splinters_in_region], bins=25)
+    axs.set_xlabel('Splinter area [mm²]')
+    axs.set_ylabel('PDF P(A)')
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), spec=specimen, to_additional=True)
 
-    orig_image = to_rgb(specimen.get_fracture_image())
-    filled_image = to_rgb(specimen.get_filled_image())
+    frac_img = specimen.get_fracture_image()
+    norm_filled_img = np.zeros((frac_img.shape[0], frac_img.shape[1], 3), dtype=np.uint8)
+    print(norm_filled_img.shape)
+    for s in splinters_in_region:
+        clr = rand_col()
+        cv2.drawContours(norm_filled_img, [s.contour], -1, clr, -1)
 
-    # get norm region from original image (has to be grayscale for masking)
-    norm_region_mask = np.zeros_like(cv2.cvtColor(orig_image, cv2.COLOR_BGR2GRAY))
-    cv2.rectangle(norm_region_mask, (x1, y1), (x2, y2), 255, -1)
-    # create image parts
-    normed_image = cv2.bitwise_and(filled_image, filled_image, mask=norm_region_mask)
-    normed_image_surr = orig_image  # cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
-    # add images together
-    normed_image = cv2.addWeighted(normed_image, 0.3, normed_image_surr, 1.0, 0)
-    cv2.rectangle(normed_image, (x1, y1), (x2, y2), (255, 0, 0), 5)
-    cv2.putText(normed_image, f'{s_count}', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0, 0, 255), 20)
 
-    output_image = cv2.resize(normed_image, (0, 0), fx=0.5, fy=0.5)
-    specimen.set_setting('esg_count', s_count)
+    # # get norm region from original image (has to be grayscale for masking)
+    # norm_region_mask = np.zeros(self.original_image.shape[:2], dtype=np.uint8)
+    # cv2.rectangle(norm_region_mask, (x1,y1), (x2,y2), 255, -1)
+    # # create image parts
+    # normed_image = cv2.bitwise_and(norm_filled_img, norm_filled_img, mask=norm_region_mask)
+    # normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
+    # # add images together
+    normed_image = cv2.addWeighted(frac_img, 1, norm_filled_img, 0.5, 0)
+    cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)
 
-    specimen.put_splinter_output(output_image, 'norm_region')
-    State.output(output_image, specimen.name)
+    # extract image part
+    norm_region_image = normed_image[y1-50:y2+50, x1-50:x2+50]
+    State.output(norm_region_image, spec=specimen, to_additional=True)
+
+    # extract overview image
+    cv2.putText(normed_image, f'{s_count}', (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0,0,255), 20)
+    State.output(normed_image, spec=specimen, to_additional=True, mods=['overview'])
+
+
+
+
+    return s_count
 
 
 @app.command()
@@ -1639,6 +1663,7 @@ def extract_labels(
         out_dir: Annotated[str, typer.Argument(help='Output directory.')],
         n_side: Annotated[int, typer.Option(help='Amount of images per side to extract.')] = 10,
 ):
+    """Splits the specimen fracture image into n_side x n_side images and extracts the labels."""
     specimen = Specimen.get(specimen_name)
 
     frac_image = specimen.get_fracture_image()
