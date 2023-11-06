@@ -321,7 +321,7 @@ class Specimen(Outputtable):
         return np.array(id_list), np.array(p_list)
 
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
-        """Returns the size factor of the specimen. mm/px."""
+        """Returns the size factor of the specimen. px/mm."""
         realsize = realsize_mm if realsize_mm is not None else self.settings['real_size_mm']
         assert realsize is not None, "Real size not found."
         assert realsize[0] > 0 and realsize[1] > 0, "Real size must be greater than zero."
@@ -341,6 +341,54 @@ class Specimen(Outputtable):
                 in_region.append(s)
 
         return in_region
+
+    def calculate_esg_norm(
+        self: Specimen,
+        norm_region_center: tuple[int, int] = (400, 400),
+        norm_region_size: tuple[int, int] = (50, 50),
+    ) -> tuple[float, list[Splinter]]:
+        """
+        Count the number of splinters in a specified norm region.
+
+        Splinters, are counted as follows, where a percentage of contour points lie within the region:
+            - 100%: 1
+            - 50-99%: 0.5
+            - <50%: 0
+
+        Args:
+            specimen (Specimen): The specimen to analyze.
+            norm_region_center (tuple[int, int], optional): Center of the norm region in mm. Defaults to (400, 400).
+            norm_region_size (tuple[int, int], optional): Size of the norm region in mm. Defaults to (50, 50).
+
+        Returns:
+            tuple[float, list[Splinter]]: The count of splinters in the norm region and a list of splinters in that region.
+        """
+        x, y = norm_region_center
+        w, h = norm_region_size
+        x1 = x - w // 2
+        x2 = x + w // 2
+        y1 = y - h // 2
+        y2 = y + h // 2
+
+        f = self.calculate_px_per_mm()
+        # transform to real image size
+        x1 = int(x1 * f)
+        x2 = int(x2 * f)
+        y1 = int(y1 * f)
+        y2 = int(y2 * f)
+
+        s_count = 0
+        splinters_in_region: list[Splinter] = []
+        # count splinters in norm region
+        for s in self.splinters:
+            sc = s.in_region_exact((x1, y1, x2, y2))
+            if sc == 1:
+                s_count += 1
+            if sc > 0.5:
+                s_count += 0.5
+                splinters_in_region.append(s)
+
+        return s_count, splinters_in_region
 
     def __get_energy(self):
         t0 = self.scalp.measured_thickness

@@ -33,7 +33,8 @@
         "splinters/log-histograms": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist",
         "splinters/log2dhist": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\loghist",
         "splinters/roughness": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\roughness",
-        "splinters/plot-adjacent": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\adjacency"
+        "splinters/plot-adjacent": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\adjacency",
+        "splinters/norm": "a:\\OneDrive\\TU Darmstadt\\M2_Masterthesis\\00_Dokument\\Content\\Auswertung\\esg-norm"
     },
     "figure_sizes_mm": {
         "row1": [

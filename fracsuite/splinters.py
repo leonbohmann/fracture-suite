@@ -12,6 +12,8 @@ from itertools import groupby
 from typing import Annotated, Any, Callable
 
 import cv2
+from matplotlib.patches import Circle, PathPatch, Rectangle
+from matplotlib.path import Path
 import numpy as np
 import numpy.typing as npt
 import typer
@@ -350,41 +352,18 @@ def count_splinters_in_norm_region(
     specimen = Specimen.get(specimen_name)
     assert specimen is not None, "Specimen not found."
 
-    # create rectangle around args.normregioncenter with 5x5cm size
-    # and count splinters in it
-    x,y = norm_region_center
-    w,h = norm_region_size
+    s_count, splinters_in_region = specimen.calculate_esg_norm(norm_region_center, norm_region_size)
+
+    print(f'Splinters in norm region: {s_count}')
+
+    # calculate points
+    x, y = norm_region_center
+    w, h = norm_region_size
     x1 = x - w // 2
     x2 = x + w // 2
     y1 = y - h // 2
     y2 = y + h // 2
-
     f = specimen.calculate_px_per_mm()
-    # transform to real image size
-    x1 = int(x1 * f)
-    x2 = int(x2 * f)
-    y1 = int(y1 * f)
-    y2 = int(y2 * f)
-
-    s_count = 0
-    splinters_in_region: list[Splinter] = []
-    # count splinters in norm region
-    for s in specimen.splinters:
-        sc =  s.in_region_exact((x1,y1,x2,y2))
-        if sc == 1:
-            s_count += 1
-        if sc > 0.5:
-            s_count += 0.5
-            splinters_in_region.append(s)
-
-    print(f'Splinters in norm region: {s_count}')
-
-    # plot splinter PDF
-    fig, axs = plt.subplots()
-    axs.hist([x.area for x in splinters_in_region], bins=25)
-    axs.set_xlabel('Splinter area [mm²]')
-    axs.set_ylabel('PDF P(A)')
-    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), spec=specimen, to_additional=True)
 
     frac_img = specimen.get_fracture_image()
     norm_filled_img = np.zeros((frac_img.shape[0], frac_img.shape[1], 3), dtype=np.uint8)
@@ -406,11 +385,51 @@ def count_splinters_in_norm_region(
 
     # extract image part
     norm_region_image = normed_image[y1-50:y2+50, x1-50:x2+50]
-    State.output(norm_region_image, spec=specimen, to_additional=True)
+    State.output(norm_region_image, spec=specimen, to_additional=True, figwidth=FigureSize.ROW2, mods=['detail'])
 
     # extract overview image
     cv2.putText(normed_image, f'{s_count}', (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0,0,255), 20)
-    State.output(normed_image, spec=specimen, to_additional=True, mods=['overview'])
+    # draw a circle of 100mm around the impactpoint
+    impact_pos = specimen.get_impact_position(True).astype(int)
+    print(impact_pos)
+
+    annotations = np.zeros((normed_image.shape[0], normed_image.shape[1], 3), dtype=np.uint8)
+    cv2.circle(annotations, impact_pos, int(100 * f), (0,0,255), -1)
+    # mark all edges with 25mm wide rectangles
+    cv2.rectangle(annotations, (0,0), (int(25 * f), annotations.shape[0]), (0,0,255), -1)
+    cv2.rectangle(annotations, (annotations.shape[1]-int(25 * f),0), (annotations.shape[1], annotations.shape[0]), (0,0,255), -1)
+    cv2.rectangle(annotations, (0,0), (annotations.shape[1], int(25 * f)), (0,0,255), -1)
+    cv2.rectangle(annotations, (0,annotations.shape[0]-int(25 * f)), (annotations.shape[1], annotations.shape[0]), (0,0,255), -1)
+
+    normed_image = cv2.addWeighted(normed_image, 1, annotations, 0.5, 0)
+    State.output(normed_image, spec=specimen, to_additional=True, figwidth=FigureSize.ROW2, mods=['overview'], resize_factor=0.3)
+
+
+
+    # w0, h0 = int(25*f), int(25*f)
+    # w, h = int(normed_image.shape[1]), int(normed_image.shape[0])
+
+    # circ = Circle(impact_pos, 100*f, fill=False)
+    # rect0 = Rectangle((0,0), w0, h, fill=False)
+    # rect1 = Rectangle((0,0), w, h0, fill=False)
+    # rect2 = Rectangle((w-w0,0), w0, h, fill=False)
+    # rect3 = Rectangle((0,h-h0), w, h0, fill=False)
+
+    # hatches = [circ, rect0, rect1, rect2, rect3]
+
+    # for h in hatches:
+    #     h.set_hatch('x')
+    #     h.set_alpha(0.5)
+    #     h.set_edgecolor('red')
+    #     h.set_linewidth(20)
+
+
+    # fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+    # axs.axis('off')
+    # axs.imshow(normed_image)
+    # for h in hatches:
+    #     axs.add_patch(h)
+    # State.output(StateOutput(fig, figwidth=FigureSize.ROW2), spec=specimen, to_additional=True, mods=['overview'])
 
 
 

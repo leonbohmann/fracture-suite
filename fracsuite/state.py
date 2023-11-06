@@ -47,15 +47,16 @@ class StateOutput:
 
         self.has_detailed_image = 'img_detailed' in additional_data
 
-    def save(self, path) -> str:
+    def save(self, path, resize_factor:float =1) -> str:
         """Saves the output to a file."""
         saved = False
         while not saved:
             try:
                 if self.is_image:
+                    data = cv2.resize(self.Data, (0, 0), fx=resize_factor, fy=resize_factor)
                     cv2.imwrite(
                         outfile := f'{path}_{self.FigWidth}.{general.image_extension}',
-                        self.Data
+                        data
                     )
                 elif self.is_figure:
                     self.Data.tight_layout(pad=0)
@@ -177,6 +178,7 @@ class State:
         cvt_rgb=False,
         figwidth=None,
         mods: list[str]=None, # modifiers
+        resize_factor: float = 1,
         **kwargs
     ):
         """
@@ -210,7 +212,8 @@ class State:
             if figwidth is not None:
                 print("[yellow]Warning: 'figwidth' is ignored when passing StateOutput.[/yellow]")
         else:
-            object = StateOutput(object, 'row1')
+            assert figwidth is not None, "figwidth must be set when passing a figure or image."
+            object = StateOutput(object, figwidth)
 
         # use the subcommand as file name if no name is passed
         if len(path_and_name) == 0:
@@ -236,7 +239,7 @@ class State:
             specimen_output_funcs = spec.get_output_funcs()
             for key, func in specimen_output_funcs.items():
                 if key in State.sub_outpath:
-                    spec_out = object.save(func(path_and_name[-1]))
+                    spec_out = object.save(func(path_and_name[-1]), resize_factor=resize_factor)
                     if not no_print:
                         print(SAVE_FORMAT.format('SPECIMEN', spec_out))
 
@@ -246,7 +249,7 @@ class State:
 
         # save to COMMAND output
         out = State.get_output_file(*path_and_name)
-        out = object.save(out)
+        out = object.save(out, resize_factor=resize_factor)
         if not no_print:
             print(SAVE_FORMAT.format('COMMAND', os.path.join(State.sub_outpath, os.path.basename(out))))
 
@@ -255,7 +258,7 @@ class State:
         if (additional_path := State.additional_output_path) is not None \
             and to_additional and not State.to_temp:
             add_path = os.path.join(additional_path, path_and_name[-1])
-            add_path = object.save(add_path)
+            add_path = object.save(add_path, resize_factor=resize_factor)
             if not no_print:
                 print(SAVE_FORMAT.format('ADDITIONAL', add_path))
 
