@@ -42,7 +42,7 @@ ns = {
     -1: 3,
 }
 
-def urr(A: float, h: float, n: int = -1):
+def relative_remaining_stress(A: float, h: float, n: int = -1):
     """
     Logarithmically interpolates value for A/h² from URR-Data taken from Nielsen et. al. (2016), 10.1007/s40940-016-0036-z.
 
