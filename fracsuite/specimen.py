@@ -173,7 +173,7 @@ def nfifty(name):
     nfifty = np.mean(nfifties)
 
     print(f"NFifty: {nfifty:.2f} (+- {np.std(nfifties):.2f})")
-    specimen.update_data("nfifty", nfifty)
-    specimen.update_data("nfifty_dev", np.std(nfifties))
+    specimen.update_simdata("nfifty", nfifty)
+    specimen.update_simdata("nfifty_dev", np.std(nfifties))
 
     State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)

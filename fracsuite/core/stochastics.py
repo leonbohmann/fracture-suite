@@ -2,6 +2,7 @@ from rich import print
 
 import numpy as np
 from scipy.stats import ks_2samp, ttest_ind, chisquare, gaussian_kde
+from scipy.spatial.distance import pdist, squareform
 
 def to_cdf(data):
     """
@@ -205,3 +206,17 @@ def calculate_dmode(data, bins: int = 1000):
     """
     x_vals, y_vals = calculate_kde(data, bins)
     return x_vals[np.argmax(y_vals)]
+
+def distances(events: list[tuple[float,float]]):
+    """
+    Calculates the distances between events.
+    """
+    # create array for events
+    events = np.asarray(events)
+
+    # calculate distances between all events
+    distances = pdist(events, 'euclidean')
+
+    distances = squareform(distances)
+
+    return distances

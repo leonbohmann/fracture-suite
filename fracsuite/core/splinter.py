@@ -180,7 +180,7 @@ class Splinter:
         self.angle_vector = np.array((x, y))
         return angle_degrees
 
-    def in_region(self, rect: tuple[float,float,float,float]) -> bool:
+    def in_rect(self, rect: tuple[float,float,float,float]) -> bool:
         """Check if the splinter is in the given region.
 
         Args:
@@ -192,6 +192,8 @@ class Splinter:
         x1,y1,x2,y2 = rect
         x,y = self.centroid_mm
         return x1 <= x <= x2 and y1 <= y <= y2
+    def in_region(self, region: RectRegion):
+        return region.is_point_in(self.centroid_mm)
 
     def in_region_exact(self, rect: tuple[float,float,float,float]) -> float:
         x1, y1, x2, y2 = rect
@@ -429,6 +431,10 @@ class Splinter:
     @staticmethod
     def analyze_contour_image(contour_image, px_per_mm: float = 1.0, prep: PreprocessorConfig = None):
         """Analyze a contour image and return a list of splinters."""
+        if prep is None:
+            from fracsuite.core.preps import defaultPrepConfig
+            prep = defaultPrepConfig
+
         contour_image = to_gray(contour_image)
         contours = detect_fragments(contour_image, min_area_px=prep.min_area, max_area_px=prep.max_area, filter=True)
         return [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]

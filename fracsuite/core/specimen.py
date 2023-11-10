@@ -13,6 +13,7 @@ from rich.progress import track
 from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.imageprocessing import simplify_contour
+from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
@@ -32,7 +33,8 @@ class Specimen(Outputtable):
     """ Container class for a specimen. """
     adjacency_file: str = "adjacency.pkl"
     "Name of the adjacency info file."
-
+    KEY_FRACINTENSITY: str = "frac_intensity"
+    "Key for the fracture intensity in the simdata file."
 
     @property
     def splinters(self) -> list[Splinter]:
@@ -246,7 +248,7 @@ class Specimen(Outputtable):
         self.settings[key] = value
         self.__save_settings()
 
-    def update_data(self, key: str, value):
+    def update_simdata(self, key: str, value):
         self.simdata[key] = value
         self.__save_simdata()
 
@@ -291,7 +293,12 @@ class Specimen(Outputtable):
             os.makedirs(os.path.dirname(path), exist_ok=True)
         return path
 
-    def get_impact_position(self, in_px = False):
+    def get_fall_height_m(self):
+        return self.settings['fall_height_m']
+
+    def get_impact_position_name(self):
+        return self.settings['break_pos']
+    def get_impact_position(self, in_px = False, as_tuple = False):
         """
         Returns the impact position of the specimen in mm.
         Depends on the setting break_pos.
@@ -301,11 +308,16 @@ class Specimen(Outputtable):
         factor = self.calculate_px_per_mm() if in_px else 1
 
         if self.settings['break_pos'] == "center":
-            return np.array((250,250)) * factor
+            arr =  np.array((250,250)) * factor
         elif self.settings['break_pos'] == "corner":
-            return np.array((50,50)) * factor
+            arr = np.array((50,50)) * factor
+        else:
+            raise Exception("Invalid break position.")
 
-        raise Exception("Invalid break position.")
+        if as_tuple:
+            return tuple(arr.astype(int))
+        else:
+            return arr
 
     def get_prepconf(self) -> PreprocessorConfig | None:
         """
@@ -343,6 +355,51 @@ class Specimen(Outputtable):
                 id_list.append(i)
 
         return np.array(id_list), np.array(p_list)
+
+    def calculate_fracintensity(self, force_recalc: bool = False) -> int:
+        """Calculates the mean fracture intensity of the fracture image."""
+
+        f_intensity = self.simdata.get(Specimen.KEY_FRACINTENSITY, None)
+        if force_recalc or f_intensity is None:
+            region = self.settings['real_size_mm']
+            kernel = ObjectKerneler(
+                region,
+                self.splinters,
+                collector=lambda x,r: x.in_region(r),
+                skip_edge=True,
+            )
+
+            X, Y, Z = kernel.run(
+                lambda x: len(x),
+                50,
+                50,
+                mode="area",
+                exclude_points=[self.get_impact_position()],
+                fill_skipped_with_mean=True
+            )
+            f_intensity = int(np.mean(Z))
+            self.update_simdata(Specimen.KEY_FRACINTENSITY, f_intensity)
+
+        return f_intensity
+
+    def calculate_break_lambda(self, force_recalc: bool = False) -> float:
+        """
+        Calculate the fracture intensity parameter according to the BREAK approach.
+
+        Args:
+            force_recalc (bool, optional): Recalculate. Defaults to False.
+
+        Returns:
+            float: The fracture intensity parameter in 1/mm².
+        """
+        return self.calculate_fracintensity(force_recalc=force_recalc) / 50**2
+
+    def calculate_break_r1(self, force_recalc: bool = False) -> float:
+        """Use ripleys K-Function and L-Function to estimate the hard core radius between centroids."""
+        events = [x.centroid_mm for x in self.splinters]
+
+        # calculate ripleys K-Function
+        
 
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. px/mm."""

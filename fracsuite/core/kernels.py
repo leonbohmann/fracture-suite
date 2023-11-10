@@ -221,33 +221,33 @@ class ObjectKerneler():
         self,
         calculator: Callable[[list[T]], float],
         n_points: int | tuple[int,int],
-        kw_px: int,
+        kw: int,
         exclude_points: list[tuple[int,int]] = None,
         fill_skipped_with_mean: bool = True
     ):
         assert n_points > 0 or n_points == -1, \
             "n_points must be greater than 0 or -1."
-        assert kw_px < self.region[0], \
+        assert kw < self.region[0], \
             "Kernel width must be smaller than the region width."
-        assert kw_px < self.region[1], \
+        assert kw < self.region[1], \
             "Kernel width must be smaller than the region height."
-        assert kw_px > 10, \
+        assert kw > 10, \
             "Kernel width must be greater than 10."
         assert len(self.data_objects) > 0, \
             "There must be at least one object in the list."
 
         print(f'[cyan]KERNELER[/cyan] [green]START[/green]')
-        print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw_px}px')
+        print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
         print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
-        print(f'[cyan]KERNELER[/cyan] Region:       {self.region}px')
+        print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
 
         # Get the ranges for x and y
-        minx = kw_px // 2
-        maxx = self.region[0] - kw_px // 2
-        miny = kw_px // 2
-        maxy = self.region[1] - kw_px // 2
+        minx = kw // 2
+        maxx = self.region[0] - kw // 2
+        miny = kw // 2
+        maxy = self.region[1] - kw // 2
 
-        i_w, i_h = convert_npoints(n_points, self.region, kw_px)
+        i_w, i_h = convert_npoints(n_points, self.region, kw)
 
         # xd = np.linspace(minx, maxx, int(np.round(maxx/self.kernel_width)))
         # yd = np.linspace(miny, maxy, int(np.round(maxy/self.kernel_width)))
@@ -274,8 +274,8 @@ class ObjectKerneler():
                     Z[j,i] = SKIP_VALUE
                     continue
 
-                x1,x2=(xd[i]-kw_px//2,xd[i]+kw_px//2)
-                y1,y2=(yd[j]-kw_px//2,yd[j]+kw_px//2)
+                x1,x2=(xd[i]-kw//2,xd[i]+kw//2)
+                y1,y2=(yd[j]-kw//2,yd[j]+kw//2)
 
                 # Create a region (x1, y1, x2, y2)
                 region = RectRegion(x1, y1, x2, y2)

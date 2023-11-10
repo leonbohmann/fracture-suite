@@ -1664,5 +1664,59 @@ def extract_labels(
             y = j * d_h
             img = frac_image[x:x + d_w, y:y + d_h]
             ctr_img = ctr_image[x:x + d_w, y:y + d_h]
-            cv2.imwrite(os.path.join(out_dir, f"img_{i}_{j}.png"), img)
-            cv2.imwrite(os.path.join(out_dir, f"lab_{i}_{j}.png"), ctr_img)
+            cv2.imwrite(os.path.join(out_dir, f"img_{i}_{j}.jpg"), img)
+            cv2.imwrite(os.path.join(out_dir, f"lab_{i}_{j}.jpg"), ctr_img)
+
+@app.command()
+def extract_all_labels(
+        out_dir: Annotated[str, typer.Argument(help='Output directory.')],
+        n_side: Annotated[int, typer.Option(help='Amount of images per side to extract.')] = 10,
+):
+    specimens = Specimen.get_all()
+
+    for spec in specimens:
+        if not spec.has_fracture_scans or not spec.has_splinters:
+            continue
+
+        out_dir2 = os.path.join(out_dir, spec.name)
+        os.makedirs(out_dir2, exist_ok=True)
+        extract_labels(spec.name, out_dir2, n_side)
+
+@app.command()
+def annotate_impact(
+    specimen_name: str
+):
+    """Annotate the impact position on the fracture image."""
+    specimen = Specimen.get(specimen_name)
+
+    frac_image = specimen.get_fracture_image()
+    impact_pos = specimen.get_impact_position(in_px=True, as_tuple=True)
+    fall_height = specimen.get_fall_height_m()
+
+    f = specimen.calculate_px_per_mm()
+
+    # cv2.circle(frac_image, impact_pos, 10, (0, 0, 255), -1)
+    # extract 100px around impact position
+    d_mm = 150
+    x, y = impact_pos
+    w,h = int(d_mm * f), int(d_mm * f)
+    print(w,h)
+
+    # clip x y w and h so it does not exceed image bounds
+    x = max(w//2, x)
+    y = max(h//2, y)
+    x = min(frac_image.shape[1], x)
+    y = min(frac_image.shape[0], y)
+
+    impact_image = frac_image[y-h//2:y+h//2, x-w//2:x+w//2]
+
+    # draw white rectangle to put text on
+    cv2.rectangle(impact_image, (0, 0), (350, 120), (255, 255, 255), -1)
+    # annotate fall height
+    cv2.putText(impact_image, f"Thickness: {specimen.measured_thickness:.2f}mm", (5, 25), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    cv2.putText(impact_image, f"Pre-Stress: {np.abs(specimen.sig_h):.0f}MPa", (5, 55), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    cv2.putText(impact_image, f"Fall Height: {fall_height:.2f}m", (5, 85), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    cv2.putText(impact_image, f"Impact: {specimen.get_impact_position_name()}", (5, 115), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+
+
+    State.output(impact_image, spec=specimen, override_name="impact_annotated", figwidth=FigureSize.ROW1)

@@ -17,7 +17,6 @@ import fracsuite.core.splinter as splt
 from fracsuite.acc import app as acc_app
 from fracsuite.config import app as config_app
 from fracsuite.core.progress import get_progress, get_spinner
-from fracsuite.gen import gen_app
 from fracsuite.general import GeneralSettings
 from fracsuite.nominals import nominals_app
 from fracsuite.scalp import scalp_app
@@ -27,7 +26,7 @@ from fracsuite.state import State
 from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
 from fracsuite.over_nrg import over_nrg
-
+from fracsuite.simulate import sim_app
 custom_theme = Theme({
     "info": "dim cyan",
     "warning": "magenta",
@@ -135,8 +134,8 @@ app.add_typer(scalp_app, name="scalp")
 app.add_typer(test_prep_app, name="test-prep")
 app.add_typer(nominals_app, name="nominals")
 app.add_typer(tester_app, name="tester")
-app.add_typer(gen_app, name="gen")
 app.add_typer(over_nrg, name="over-nrg")
+app.add_typer(sim_app, name="simulate")
 
 class PrintWrapper():
 
