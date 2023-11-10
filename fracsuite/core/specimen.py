@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 from rich import print
 from rich.progress import track
+from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.imageprocessing import simplify_contour
 from fracsuite.core.outputtable import Outputtable
@@ -227,6 +228,16 @@ class Specimen(Outputtable):
         self.has_adjacency = False
         "States wether adjacency information are present or not."
 
+
+        self.simdata_path = self.get_splinter_outfile("simdata.json")
+        "Path to the simulation data file."
+        if os.path.exists(self.simdata_path):
+            with open(self.simdata_path, "r") as f:
+                self.simdata = json.load(f)
+        else:
+            self.simdata = {}
+            self.__save_simdata()
+
         # init done, load data
         if not lazy:
             self.load(log_missing)
@@ -234,6 +245,14 @@ class Specimen(Outputtable):
     def set_setting(self, key, value):
         self.settings[key] = value
         self.__save_settings()
+
+    def update_data(self, key: str, value):
+        self.simdata[key] = value
+        self.__save_simdata()
+
+    def __save_simdata(self):
+        with open(self.simdata_path, "w") as f:
+            json.dump(self.simdata, f, indent=4)
 
     def __save_settings(self):
         with open(self.__cfg_path, "w") as f:
@@ -250,6 +269,11 @@ class Specimen(Outputtable):
         filled_file = find_file(self.splinters_path, "img_filled.png")
         if filled_file is not None:
             return cv2.imread(filled_file)
+
+    def get_label_image(self, as_rgb=True):
+        label_file = find_file(self.fracture_morph_dir, "label*")
+        if label_file is not None:
+            return cv2.imread(label_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
     def get_fracture_image(self, as_rgb = True):
         """Gets the grayscale fracture image."""
@@ -578,3 +602,59 @@ class Specimen(Outputtable):
         specimen = Specimen(path, log_missing=True)
 
         return specimen
+
+    def plot_region_count(self, region_center, region_size, splinters_in_region, nfifty, frac_img = None):
+        # calculate points
+        x, y = region_center
+        w, h = region_size
+        x1 = x - w // 2
+        x2 = x + w // 2
+        y1 = y - h // 2
+        y2 = y + h // 2
+        f = self.calculate_px_per_mm()
+        # transform to real image size
+        x1 = int(x1 * f)
+        x2 = int(x2 * f)
+        y1 = int(y1 * f)
+        y2 = int(y2 * f)
+
+        if frac_img is None:
+            frac_img = self.get_fracture_image()
+
+        norm_filled_img = np.zeros((frac_img.shape[0], frac_img.shape[1], 3), dtype=np.uint8)
+        print(norm_filled_img.shape)
+        for s in splinters_in_region:
+            clr = rand_col()
+            cv2.drawContours(norm_filled_img, [s.contour], -1, clr, -1)
+
+
+        # # get norm region from original image (has to be grayscale for masking)
+        # norm_region_mask = np.zeros(self.original_image.shape[:2], dtype=np.uint8)
+        # cv2.rectangle(norm_region_mask, (x1,y1), (x2,y2), 255, -1)
+        # # create image parts
+        # normed_image = cv2.bitwise_and(norm_filled_img, norm_filled_img, mask=norm_region_mask)
+        # normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
+        # # add images together
+        normed_image = cv2.addWeighted(frac_img, 1, norm_filled_img, 0.5, 0)
+        cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)
+
+        # extract image part
+        norm_region_detail = normed_image[y1-50:y2+50, x1-50:x2+50].copy()
+
+        # extract overview image
+        cv2.putText(normed_image, f'{nfifty}', (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0,0,255), 20)
+        # draw a circle of 100mm around the impactpoint
+        impact_pos = self.get_impact_position(True).astype(int)
+        print(impact_pos)
+
+        annotations = np.zeros((normed_image.shape[0], normed_image.shape[1], 3), dtype=np.uint8)
+        cv2.circle(annotations, impact_pos, int(100 * f), (0,0,255), -1)
+        # mark all edges with 25mm wide rectangles
+        cv2.rectangle(annotations, (0,0), (int(25 * f), annotations.shape[0]), (0,0,255), -1)
+        cv2.rectangle(annotations, (annotations.shape[1]-int(25 * f),0), (annotations.shape[1], annotations.shape[0]), (0,0,255), -1)
+        cv2.rectangle(annotations, (0,0), (annotations.shape[1], int(25 * f)), (0,0,255), -1)
+        cv2.rectangle(annotations, (0,annotations.shape[0]-int(25 * f)), (annotations.shape[1], annotations.shape[0]), (0,0,255), -1)
+
+        norm_region_overview = cv2.addWeighted(normed_image, 1, annotations, 0.5, 0)
+
+        return norm_region_detail, norm_region_overview

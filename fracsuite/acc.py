@@ -467,10 +467,14 @@ def plot_impact(
     reader.printSummary()
 
     # get the channels
-    g_channels = reader.collectChannelsLike('Acc')
+    g_channels = reader.collectChannelsLike('Acc_')
     drop_channels = reader.collectChannelsLike('Fall_g')
     # g_channels = reader.collectChannelsLike('shock')
     # drop_channels = reader.collectChannelsLike('Force')
+
+
+    # reader.plotGroup(0)
+    reader.plot(sameAxis=True)
 
     impact_time_i, impact_time = get_impact_time(drop_channels[0])
     drop_time_i, drop_time = get_drop_time(drop_channels[0])

@@ -39,6 +39,9 @@ class PreprocessorConfig:
     clahe_size: int
     "CLAHE size"
 
+    min_area: int
+    max_area: int
+
     def __init__(
         self,
         name="default",
@@ -74,6 +77,9 @@ class PreprocessorConfig:
         self.correct_light = correct_light
         self.clahe_strength = clahe_strength
         self.clahe_size = clahe_size
+
+        self.min_area = 10
+        self.max_area = 25000
 
     def print(self):
         print(self.__dict__)

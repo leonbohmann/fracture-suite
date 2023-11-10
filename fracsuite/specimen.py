@@ -9,11 +9,14 @@ import numpy as np
 import typer
 from rich import print
 from rich.progress import track
+from fracsuite.callbacks import main_callback
+from fracsuite.core.plotting import FigureSize
 
 from fracsuite.core.specimen import Specimen
 from fracsuite.general import GeneralSettings
+from fracsuite.state import State
 
-app = typer.Typer(help=__doc__)
+app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
 
@@ -143,3 +146,34 @@ def disp(filter: str = None):
 @app.command()
 def create(name):
     Specimen.create(name)
+
+
+@app.command()
+def nfifty(name):
+    specimen = Specimen.get(name)
+
+
+    locations = [
+        [400,100],
+        [400,400],
+        [100,400],
+    ]
+
+    nfifties = []
+
+    output_image = specimen.get_fracture_image()
+
+    for loc in locations:
+        nfifty_l,spl_l = specimen.calculate_esg_norm(tuple(loc))
+        nfifties.append(nfifty_l)
+
+        detail, output_image = specimen.plot_region_count(tuple(loc), (50,50), spl_l, nfifty_l, output_image)
+
+
+    nfifty = np.mean(nfifties)
+
+    print(f"NFifty: {nfifty:.2f} (+- {np.std(nfifties):.2f})")
+    specimen.update_data("nfifty", nfifty)
+    specimen.update_data("nfifty_dev", np.std(nfifties))
+
+    State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)

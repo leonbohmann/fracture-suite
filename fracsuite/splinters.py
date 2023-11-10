@@ -67,6 +67,7 @@ def gen(
     all: Annotated[bool, typer.Option(help='Generate splinters for all specimens.')] = False,
     all_exclude: Annotated[str, typer.Option(help='Exclude specimens from all.')] = None,
     all_skip_existing: Annotated[bool, typer.Option(help='Skip specimens that already have splinters.')] = False,
+    from_label: Annotated[bool, typer.Option(help='Generate splinters from labeled image.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""
     if realsize[0] == -1 or realsize[1] == -1:
@@ -97,7 +98,13 @@ def gen(
         print(f'            prep = "{prep.name}"')
 
         print('Running analysis...')
-        splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
+        if not from_label:
+            splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
+        elif from_label:
+            label_img = specimen.get_label_image()
+            p = defaultPrepConfig
+            p.max_area = 1e15
+            splinters = Splinter.analyze_label_image(label_img, px_per_mm=px_per_mm, prep=p)
 
         # save splinters to specimen
         output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
@@ -286,7 +293,7 @@ def draw_contours(
         clr = rand_col()
         cv2.drawContours(out_img, [splinter.contour], 0, clr, 1)
 
-    State.output(out_img, 'contours',spec=specimen, to_additional=True)
+    State.output(out_img, 'contours',spec=specimen, to_additional=True, figwidth=FigureSize.ROW1)
 
 def check_chunk(i, chunksize, p_len):
     points_sm = sm.SharedMemory(name='points')
@@ -356,56 +363,10 @@ def count_splinters_in_norm_region(
 
     print(f'Splinters in norm region: {s_count}')
 
-    # calculate points
-    x, y = norm_region_center
-    w, h = norm_region_size
-    x1 = x - w // 2
-    x2 = x + w // 2
-    y1 = y - h // 2
-    y2 = y + h // 2
-    f = specimen.calculate_px_per_mm()
+    detail, overview = specimen.plot_region_count(norm_region_center, norm_region_size, splinters_in_region, s_count)
 
-    frac_img = specimen.get_fracture_image()
-    norm_filled_img = np.zeros((frac_img.shape[0], frac_img.shape[1], 3), dtype=np.uint8)
-    print(norm_filled_img.shape)
-    for s in splinters_in_region:
-        clr = rand_col()
-        cv2.drawContours(norm_filled_img, [s.contour], -1, clr, -1)
-
-
-    # # get norm region from original image (has to be grayscale for masking)
-    # norm_region_mask = np.zeros(self.original_image.shape[:2], dtype=np.uint8)
-    # cv2.rectangle(norm_region_mask, (x1,y1), (x2,y2), 255, -1)
-    # # create image parts
-    # normed_image = cv2.bitwise_and(norm_filled_img, norm_filled_img, mask=norm_region_mask)
-    # normed_image_surr = self.original_image #cv2.bitwise_and(self.original_image, self.original_image, mask=norm_region_inv)
-    # # add images together
-    normed_image = cv2.addWeighted(frac_img, 1, norm_filled_img, 0.5, 0)
-    cv2.rectangle(normed_image, (x1,y1), (x2,y2), (255,0,0), 5)
-
-    # extract image part
-    norm_region_image = normed_image[y1-50:y2+50, x1-50:x2+50]
-    State.output(norm_region_image, spec=specimen, to_additional=True, figwidth=FigureSize.ROW2, mods=['detail'])
-
-    # extract overview image
-    cv2.putText(normed_image, f'{s_count}', (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 6, (0,0,255), 20)
-    # draw a circle of 100mm around the impactpoint
-    impact_pos = specimen.get_impact_position(True).astype(int)
-    print(impact_pos)
-
-    annotations = np.zeros((normed_image.shape[0], normed_image.shape[1], 3), dtype=np.uint8)
-    cv2.circle(annotations, impact_pos, int(100 * f), (0,0,255), -1)
-    # mark all edges with 25mm wide rectangles
-    cv2.rectangle(annotations, (0,0), (int(25 * f), annotations.shape[0]), (0,0,255), -1)
-    cv2.rectangle(annotations, (annotations.shape[1]-int(25 * f),0), (annotations.shape[1], annotations.shape[0]), (0,0,255), -1)
-    cv2.rectangle(annotations, (0,0), (annotations.shape[1], int(25 * f)), (0,0,255), -1)
-    cv2.rectangle(annotations, (0,annotations.shape[0]-int(25 * f)), (annotations.shape[1], annotations.shape[0]), (0,0,255), -1)
-
-    normed_image = cv2.addWeighted(normed_image, 1, annotations, 0.5, 0)
-    State.output(normed_image, spec=specimen, to_additional=True, figwidth=FigureSize.ROW2, mods=['overview'], resize_factor=0.3)
-
-
-
+    State.output(detail, figwidth=FigureSize.ROW2, spec=specimen, to_additional=True, mods=['detail'])
+    State.output(overview, figwidth=FigureSize.ROW2, spec=specimen, to_additional=True, mods=['overview'])
     # w0, h0 = int(25*f), int(25*f)
     # w, h = int(normed_image.shape[1]), int(normed_image.shape[0])
 
@@ -1202,6 +1163,7 @@ def fracture_intensity_img(
     )
     output.overlayImpact(specimen)
     State.output(output, spec=specimen, to_additional=True)
+
 
 
 @app.command()

@@ -394,7 +394,8 @@ class Splinter:
     @staticmethod
     def analyze_label_image(
         label_image,
-        px_per_mm: float = 1
+        px_per_mm: float = 1,
+        prep: PreprocessorConfig = None,
     ):
         """
         Analyze a labeled image and return a list of splinters.
@@ -423,13 +424,13 @@ class Splinter:
                   "Remember that cracks=black, splinters=white!")
 
         label_image = to_rgb(label_image)
-        return Splinter.analyze_image(label_image, px_per_mm=px_per_mm)
+        return Splinter.analyze_image(label_image, px_per_mm=px_per_mm, prep=prep)
 
     @staticmethod
-    def analyze_contour_image(contour_image, px_per_mm: float = 1.0):
+    def analyze_contour_image(contour_image, px_per_mm: float = 1.0, prep: PreprocessorConfig = None):
         """Analyze a contour image and return a list of splinters."""
         contour_image = to_gray(contour_image)
-        contours = detect_fragments(contour_image, min_area_px=5, max_area_px=25000, filter=True)
+        contours = detect_fragments(contour_image, min_area_px=prep.min_area, max_area_px=prep.max_area, filter=True)
         return [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
 
     @staticmethod
@@ -455,6 +456,10 @@ class Splinter:
         Returns:
             (list[Splinter]): A list of Splinter objects representing the splinters detected in the input image.
         """
+        if prep is None:
+            from fracsuite.core.preps import defaultPrepConfig
+            prep = defaultPrepConfig
+
         if not skip_preprocessing:
             # here we need a rgb image!
             thresh = preprocess_image(image, prep)
@@ -506,7 +511,7 @@ class Splinter:
         m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         m_img[markers == -1] = 255
 
-        return Splinter.analyze_contour_image(m_img, px_per_mm=px_per_mm)
+        return Splinter.analyze_contour_image(m_img, px_per_mm=px_per_mm, prep=prep)
 
     @staticmethod
     def analyze_image_legacy(image, px_per_mm=1):
