@@ -283,6 +283,15 @@ class Specimen(Outputtable):
         if transmission_file is not None:
             return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
+    def get_image_size(self):
+        """Returns the size of the specimen in px."""
+        img = self.get_fracture_image()
+        return img.shape[0], img.shape[1]
+
+    def get_real_size(self):
+        """Returns the real size of the specimen in mm."""
+        return self.settings['real_size_mm']
+
     def get_acc_outfile(self, name: str) -> str:
         return os.path.join(self.path, 'fracture', 'acceleration', name)
 
@@ -399,7 +408,7 @@ class Specimen(Outputtable):
         events = [x.centroid_mm for x in self.splinters]
 
         # calculate ripleys K-Function
-        
+
 
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. px/mm."""

@@ -2,7 +2,7 @@ import random
 from typing import Annotated
 import cv2
 from matplotlib import pyplot as plt
-from rich import print
+from rich import inspect, print
 from rich.progress import track
 import typer
 import numpy as np
@@ -15,6 +15,7 @@ from fracsuite.core.point_process import CSR_process, strauss_process, gibbs_str
 from fracsuite.core.region import RectRegion
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
+from fracsuite.core.stochastics import calculate_khat, calculate_fhat, calculate_ghat
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
 
@@ -55,6 +56,8 @@ def est_break(
     specimen_name: Annotated[str, typer.Argument(help="Specimen name.")],
     force_recalc: Annotated[bool, typer.Option(help="Force recalculation of parameters.")] = False,
 ):
+    from fracsuite.core.stochastics import calculate_lhat
+
     specimen = Specimen.get(specimen_name)
 
     # find fracture intensity from first order statistics
@@ -63,6 +66,76 @@ def est_break(
     # find the hard core radius using second order statistics
     r1 = specimen.calculate_break_r1(force_recalc=force_recalc)
     print(f'Fracture intensity: {intensity:.2f} [1/mm²]')
+
+    p0 = np.array((200,200))
+    splinters = specimen.get_splinters_in_region(RectRegion(p0[0],p0[1],600,600))
+    # get centroids of splinters
+    centroids = [np.asarray(s.centroid_px) for s in splinters]
+    centroids = np.asarray(centroids)
+    all_centroids = [np.asarray(s.centroid_px) for s in specimen.splinters]
+    pane_size = specimen.get_image_size()
+    distances = np.linspace(0, 50, 150)
+
+    def Kpois(d):
+        # see Baddeley et al. S.206 K_pois
+        return np.pi*d**2
+
+    d_max = 100
+    from spazial import k_test as k_test2
+    from spazial import l_test as l_test2
+    x,y = k_test2(all_centroids, pane_size[0]*pane_size[1], d_max)
+    plt.figure()
+    plt.title("K Function")
+    plt.plot(x,y, label='$\hat{K}$')
+    plt.plot(x,Kpois(np.asarray(x)), label='$\hat{K}_{t}$')
+    plt.legend()
+    plt.show()
+
+
+    x2,y2 = l_test2(all_centroids, pane_size[0]*pane_size[1], d_max)
+    plt.figure()
+    plt.title("L Function")
+    plt.plot(x2,y2, label='$\hat{L}$')
+    plt.legend()
+    plt.show()
+
+
+
+
+
+
+    from pointpats import k_test, f_test, g_test
+    from pointpats.random import poisson
+    from pointpats.process import PoissonPointProcess
+
+    # calculate lhat
+    lhat = calculate_lhat(centroids, pane_size[0]*pane_size[1],distances)
+
+    # plot lhat
+    plt.figure()
+    plt.title("L Function (python)")
+    plt.plot(lhat)
+    # plt.axline((0,0),slope=1, linestyle='--', color='k')
+    plt.show()
+    plt.close('all')
+    # supp, khat, pval, sim = k_test(centroids, support=distances)
+    # p = poisson(np.array([0,0,100,100]))
+
+    # def khat_p(x):
+    #     return np.pi * x**2
+
+    # plt.figure()
+    # plt.plot(khat)
+    # plt.plot(distances, khat_p(distances))
+    # plt.plot()
+    # plt.show()
+    # plt.figure()
+    # plt.plot(khat)
+    # plt.plot(khat_p)
+    # plt.show()
+
+
+
 
 
 @sim_app.command()
