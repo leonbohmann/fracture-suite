@@ -482,9 +482,8 @@ class Splinter:
         plotImage(opening, "WS: Opened Image")
 
         # sure background: white is splinter, black is crack
-        sure_bg = cv2.dilate(opening,kernel,iterations=1)
-
-        plotImage(sure_bg, "WS: Sure Background")
+        # sure_bg = cv2.dilate(opening,kernel,iterations=1)
+        # plotImage(sure_bg, "WS: Sure Background")
 
         # Finding sure foreground area
         dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,0,)
@@ -496,7 +495,7 @@ class Splinter:
 
         # Finding unknown region
         sure_fg = np.uint8(sure_fg)
-        unknown = cv2.subtract(sure_bg,sure_fg)
+        # unknown = cv2.subtract(sure_bg,sure_fg)
 
         # Marker labelling
         ret, markers = cv2.connectedComponents(sure_fg)
@@ -506,9 +505,9 @@ class Splinter:
         markers[sure_fg!=255] = 0
 
         plotImages([
-                ("WS: Sure Background", sure_bg),
+                # ("WS: Sure Background", sure_bg),
                 ("WS: Sure Foreground", sure_fg),
-                ("WS: Back - Foreground", unknown),
+                # ("WS: Back - Foreground", unknown),
                 ("WS: Markers", np.abs(markers).astype(np.uint8)),
             ])
 

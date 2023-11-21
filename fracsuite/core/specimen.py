@@ -23,6 +23,8 @@ from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 
+from spazial import k_test, l_test
+
 general: GeneralSettings = GeneralSettings.get()
 
 class SpecimenException(Exception):
@@ -35,6 +37,10 @@ class Specimen(Outputtable):
     "Name of the adjacency info file."
     KEY_FRACINTENSITY: str = "frac_intensity"
     "Key for the fracture intensity in the simdata file."
+    KEY_HCRADIUS: str = "hc_radius"
+    "Key for the hard core radius in the simdata file."
+    KEY_LAMBDA: str = "lambda"
+    "Key for the fracture intensity parameter in the simdata file."
 
     @property
     def splinters(self) -> list[Splinter]:
@@ -70,6 +76,27 @@ class Specimen(Outputtable):
     def settings(self):
         return self.__settings
 
+    @property
+    def break_lambda(self):
+        "Fracture intensity parameter."
+        return self.simdata.get(Specimen.KEY_LAMBDA, None)
+
+    @property
+    def break_rhc(self):
+        "Hard core radius."
+        return self.simdata.get(Specimen.KEY_HCRADIUS, None)
+
+    @property
+    def mean_splinter_area(self):
+        "Mean splinter area in mm²."
+        assert self.splinters is not None, "Splinters not loaded."
+        return np.mean([s.area for s in self.splinters])
+
+    @property
+    def mean_splinter_area_px(self):
+        "Mean splinter area in px²."
+        assert self.splinters is not None, "Splinters not loaded."
+        return np.mean([s.area for s in self.splinters]) * self.calculate_px_per_mm()**2
 
     path: str
     "Specimen folder."
@@ -365,8 +392,17 @@ class Specimen(Outputtable):
 
         return np.array(id_list), np.array(p_list)
 
-    def calculate_fracintensity(self, force_recalc: bool = False) -> int:
-        """Calculates the mean fracture intensity of the fracture image."""
+    def calculate_NperWindow(self, force_recalc: bool = False, D_mm: float = 50) -> int:
+        """
+        Calculates the mean splinter count in a observation window of D_mm*D_mm on the fracture image.
+
+        Arguments:
+            force_recalc (bool, optional): Recalculate. Defaults to False.
+            D (float, optional): Window width in mm. Defaults to 50.
+
+        Returns:
+            int: The mean fracture intensity, Amount of Splinters in observation field N.
+        """
 
         f_intensity = self.simdata.get(Specimen.KEY_FRACINTENSITY, None)
         if force_recalc or f_intensity is None:
@@ -378,9 +414,9 @@ class Specimen(Outputtable):
                 skip_edge=True,
             )
 
-            X, Y, Z = kernel.run(
+            _, _, Z = kernel.run(
                 lambda x: len(x),
-                50,
+                D_mm,
                 50,
                 mode="area",
                 exclude_points=[self.get_impact_position()],
@@ -391,7 +427,7 @@ class Specimen(Outputtable):
 
         return f_intensity
 
-    def calculate_break_lambda(self, force_recalc: bool = False) -> float:
+    def calculate_break_lambda(self, force_recalc: bool = False, D_mm: float = 50.0) -> float:
         """
         Calculate the fracture intensity parameter according to the BREAK approach.
 
@@ -401,14 +437,34 @@ class Specimen(Outputtable):
         Returns:
             float: The fracture intensity parameter in 1/mm².
         """
-        return self.calculate_fracintensity(force_recalc=force_recalc) / 50**2
+        lam = self.calculate_NperWindow(force_recalc=force_recalc, D_mm=D_mm) / D_mm**2
+        self.update_simdata(Specimen.KEY_LAMBDA, lam)
+        return lam
 
-    def calculate_break_r1(self, force_recalc: bool = False) -> float:
-        """Use ripleys K-Function and L-Function to estimate the hard core radius between centroids."""
-        events = [x.centroid_mm for x in self.splinters]
+    def calculate_break_rhc(self, force_recalc: bool = False, d_max: float = 50) -> float:
+        """
+        Use ripleys K-Function and L-Function to estimate the hard core radius between centroids.
 
-        # calculate ripleys K-Function
+        Arguments:
+            force_recalc (bool, optional): Recalculate. Defaults to False.
+            d_max (float, optional): Maximum distance in mm. Defaults to 50.
 
+        Returns:
+            float: The hard core radius in mm.
+        """
+
+        r1 = self.simdata.get(Specimen.KEY_HCRADIUS, None)
+
+        if force_recalc or r1 is None:
+            all_centroids = np.array([s.centroid_px for s in self.splinters])
+            pane_size = self.get_image_size()
+            x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], d_max)
+            min_idx = np.argmin(y2)
+            r1 = x2[min_idx]
+
+            self.update_simdata(Specimen.KEY_HCRADIUS, r1)
+
+        return r1
 
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. px/mm."""
@@ -423,6 +479,37 @@ class Specimen(Outputtable):
         frac_img = self.get_fracture_image()
         assert frac_img is not None, "Fracture image not found."
         return frac_img.shape[0] / realsize[0]
+
+    def kfun(self, max_d = 50):
+        """
+        Calculate the K function for a range of distances.
+
+        Arguments:
+            max_d: Maximum distance in mm.
+
+        Returns:
+            tuple[d,K(d)]: Tuple of distances and K(d) values.
+        """
+        all_centroids = np.array([s.centroid_px for s in self.splinters])
+        pane_size = self.get_image_size()
+        x2,y2 = k_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        return x2,y2
+
+    def lfun(self, max_d = 50):
+        """
+        Calculates the L function for a range of distances.
+
+        Arguments:
+            max_d: Maximum distance in mm.
+
+        Returns:
+            tuple[d,L(d)]: Tuple of distances and L(d) values.
+        """
+
+        all_centroids = np.array([s.centroid_px for s in self.splinters])
+        pane_size = self.get_image_size()
+        x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        return x2,y2
 
     def get_splinters_in_region(self, region: RectRegion) -> list[Splinter]:
         in_region = []

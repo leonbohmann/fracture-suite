@@ -2,6 +2,7 @@ import random
 from typing import Annotated
 import cv2
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 from rich import inspect, print
 from rich.progress import track
 import typer
@@ -11,6 +12,7 @@ from fracsuite.core.contours import center
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.imageprocessing import dilateImg
+from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.core.point_process import CSR_process, strauss_process, gibbs_strauss_process
 from fracsuite.core.region import RectRegion
 from fracsuite.core.specimen import Specimen
@@ -19,120 +21,98 @@ from fracsuite.core.stochastics import calculate_khat, calculate_fhat, calculate
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
 
+from fracsuite.state import State
+
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
 
 @sim_app.command()
 def sim_break(
-    sig_h: Annotated[float, typer.Argument(help="Homogenized surface stress.")],
-    radius: Annotated[float, typer.Argument(help="Hardcore radius.")],
-    intensity: Annotated[float, typer.Argument(help="Mean fracture intensity n50.")],
-    thickness: Annotated[float, typer.Argument(help="Glass thickness.")],
+    specimen_name: Annotated[str, typer.Argument(help="Specimen name.")],
     nue: Annotated[float, typer.Option(help="Poissons ratio.")] = 0.23,
     E: Annotated[float, typer.Option(help="Youngs modulus [MPa].")] = 70e3,
 ):
-    """Create a voronoi tesselation using the BREAK approach."""
+    """
+    Create a voronoi tesselation using the BREAK approach.
+
+    The created voronoi plot should have similar statistical properties as the
+    real specimen.
+    """
+    specimen = Specimen.get(specimen_name)
+
+    thickness = specimen.measured_thickness
+    sig_h = specimen.sig_h
+
+    lam = specimen.break_lambda
+    rhc = specimen.break_rhc
+
+    mean_area = specimen.mean_splinter_area
+
+    # estimate relative remaining stress
+    urr = relative_remaining_stress(mean_area, thickness)
+    # relaxation factor
+    nue = 1 - urr
 
     # calculate initial strain energy U0 or U_D (in navid diss)
     U0 = (1-nue)/5/E * sig_h**2 * thickness
-
-    # estimate relative remaining stress
-    urr = relative_remaining_stress(radius, thickness)
-    # relaxation factor
-    nue = 1 - urr
     # remaining strain energy
     U1 = urr * U0
 
-    area = (100, 100)
+    area = specimen.get_real_size()
     A = area[0] * area[1]
-    n_points = intensity * A
-    points = gibbs_strauss_process(n_points, radius, 1, area=area)
+    n_points = lam * A
+    points = gibbs_strauss_process(n_points, rhc, nue, area=area)
     fig,axs = plt.subplots()
     axs.scatter(*zip(*points))
+    plt.show()
+
+
+    # create voronoi of points
+    vor = Voronoi(points)
+    fig,axs = plt.subplots()
+    voronoi_plot_2d(vor, ax=axs, show_points=False, show_vertices=False)
     plt.show()
 
 @sim_app.command()
 def est_break(
     specimen_name: Annotated[str, typer.Argument(help="Specimen name.")],
-    force_recalc: Annotated[bool, typer.Option(help="Force recalculation of parameters.")] = False,
 ):
-    from fracsuite.core.stochastics import calculate_lhat
-
     specimen = Specimen.get(specimen_name)
 
     # find fracture intensity from first order statistics
-    intensity = specimen.calculate_break_lambda(force_recalc=force_recalc)
+    intensity = specimen.calculate_break_lambda(force_recalc=True)
 
     # find the hard core radius using second order statistics
-    r1 = specimen.calculate_break_r1(force_recalc=force_recalc)
-    print(f'Fracture intensity: {intensity:.2f} [1/mm²]')
-
-    p0 = np.array((200,200))
-    splinters = specimen.get_splinters_in_region(RectRegion(p0[0],p0[1],600,600))
-    # get centroids of splinters
-    centroids = [np.asarray(s.centroid_px) for s in splinters]
-    centroids = np.asarray(centroids)
-    all_centroids = [np.asarray(s.centroid_px) for s in specimen.splinters]
-    pane_size = specimen.get_image_size()
-    distances = np.linspace(0, 50, 150)
+    rhc = specimen.calculate_break_rhc(force_recalc=True)
+    print(f'Fracture intensity: {intensity:.2f} 1/mm²')
+    print(f'HC Radius: {rhc:.2f} mm')
 
     def Kpois(d):
         # see Baddeley et al. S.206 K_pois
         return np.pi*d**2
 
-    d_max = 100
-    from spazial import k_test as k_test2
-    from spazial import l_test as l_test2
-    x,y = k_test2(all_centroids, pane_size[0]*pane_size[1], d_max)
-    plt.figure()
-    plt.title("K Function")
-    plt.plot(x,y, label='$\hat{K}$')
-    plt.plot(x,Kpois(np.asarray(x)), label='$\hat{K}_{t}$')
-    plt.legend()
-    plt.show()
+    x,y = specimen.kfun()
+    fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+    ax.plot(x,y, label='$\hat{K}$')
+    ax.plot(x,Kpois(np.asarray(x)), label='$\hat{K}_{t}$')
+    ax.legend()
+    ax.set_ylabel('$\hat{K}(d)$')
+    ax.set_xlabel('$d$ [mm]')
+    State.output(fig,'kfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
 
-    x2,y2 = l_test2(all_centroids, pane_size[0]*pane_size[1], d_max)
-    plt.figure()
-    plt.title("L Function")
-    plt.plot(x2,y2, label='$\hat{L}$')
-    plt.legend()
-    plt.show()
+    x2,y2 = specimen.lfun()
+    min_L = rhc
 
+    ax: Axes
+    fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+    ax.plot(x2,y2, label='$\hat{L}$')
+    ax.axvline(rhc, linestyle='--', color='r', label=f'$r_{{hc}}={min_L:.1f}mm$')
+    ax.legend()
+    ax.set_ylabel('$\hat{L}(d)$')
+    ax.set_xlabel('$d$ [mm]')
+    State.output(fig, 'lfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
-
-
-
-
-    from pointpats import k_test, f_test, g_test
-    from pointpats.random import poisson
-    from pointpats.process import PoissonPointProcess
-
-    # calculate lhat
-    lhat = calculate_lhat(centroids, pane_size[0]*pane_size[1],distances)
-
-    # plot lhat
-    plt.figure()
-    plt.title("L Function (python)")
-    plt.plot(lhat)
-    # plt.axline((0,0),slope=1, linestyle='--', color='k')
-    plt.show()
-    plt.close('all')
-    # supp, khat, pval, sim = k_test(centroids, support=distances)
-    # p = poisson(np.array([0,0,100,100]))
-
-    # def khat_p(x):
-    #     return np.pi * x**2
-
-    # plt.figure()
-    # plt.plot(khat)
-    # plt.plot(distances, khat_p(distances))
-    # plt.plot()
-    # plt.show()
-    # plt.figure()
-    # plt.plot(khat)
-    # plt.plot(khat_p)
-    # plt.show()
 
 
 

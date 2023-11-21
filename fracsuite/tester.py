@@ -498,5 +498,14 @@ def threshold(
 
     root.mainloop()
 
+
+@tester_app.command()
+def preprocess(name):
+    specimen = Specimen.get(name)
+    fracture_image = specimen.get_fracture_image()
+    px_per_mm = specimen.calculate_px_per_mm()
+    prep = specimen.get_prepconf()
+    splinters = Splinter.analyze_image(fracture_image, prep=prep, px_per_mm=px_per_mm)
+
 if __name__ == "__main__":
     typer.run(threshold)

@@ -84,33 +84,38 @@ def gen(
                 return False
             return re.search(all_exclude, specimen.name) is None
         specimens = Specimen.get_all_by(decider=exclude, lazyload=True)
+    with get_progress(total=len(specimens)) as progress:
+        progress.set_total(len(specimens))
+        for specimen in specimens:
+            if specimen.has_splinters:
+                progress.pause()
+                if not quiet and not typer.confirm(f"> Specimen '{specimen.name}' already has splinters. Overwrite?"):
+                    progress.resume()
+                    return
+                progress.resume()
 
-    for specimen in track(specimens, description='Analyzing specimens...', transient=True):
-        if specimen.has_splinters:
-            if not quiet and not typer.confirm(f"> Specimen '{specimen.name}' already has splinters. Overwrite?"):
-                return
+            fracture_image = specimen.get_fracture_image()
+            px_per_mm = specimen.calculate_px_per_mm(realsize)
+            prep = specimen.get_prepconf()
+            # generate splinters for the specimen
+            print(f'Using  px_per_mm = {px_per_mm:.2f}')
+            print(f'            prep = "{prep.name}"')
 
-        fracture_image = specimen.get_fracture_image()
-        px_per_mm = specimen.calculate_px_per_mm(realsize)
-        prep = specimen.get_prepconf()
-        # generate splinters for the specimen
-        print(f'Using  px_per_mm = {px_per_mm:.2f}')
-        print(f'            prep = "{prep.name}"')
+            print('Running analysis...')
+            if not from_label:
+                splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
+            elif from_label:
+                label_img = specimen.get_label_image()
+                p = defaultPrepConfig
+                p.max_area = 1e15
+                splinters = Splinter.analyze_label_image(label_img, px_per_mm=px_per_mm, prep=p)
 
-        print('Running analysis...')
-        if not from_label:
-            splinters = Splinter.analyze_image(fracture_image, px_per_mm=px_per_mm, prep=prep)
-        elif from_label:
-            label_img = specimen.get_label_image()
-            p = defaultPrepConfig
-            p.max_area = 1e15
-            splinters = Splinter.analyze_label_image(label_img, px_per_mm=px_per_mm, prep=p)
-
-        # save splinters to specimen
-        output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
-        with open(output_file, 'wb') as f:
-            pickle.dump(splinters, f)
-        print(f'Saved splinters to "{output_file}"')
+            # save splinters to specimen
+            output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
+            with open(output_file, 'wb') as f:
+                pickle.dump(splinters, f)
+            print(f'Saved splinters to "{output_file}"')
+            progress.advance()
 
 
 def plot_touching_len(specimen, splinters):

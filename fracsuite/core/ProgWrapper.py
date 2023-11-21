@@ -22,6 +22,13 @@ class ProgWrapper():
         return self.progress.add_task(description=description, total=total)
     def remove_task(self, task_id):
         self.progress.remove_task(task_id)
+
+    def pause(self):
+        self.progress.stop()
+
+    def resume(self):
+        self.progress.start()
+
     def __enter__(self):
         if not self.entered:
             self.entered = True

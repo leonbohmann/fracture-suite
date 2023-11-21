@@ -9,6 +9,9 @@ def gibbs_strauss_process(
     area=(100, 100),
     max_iterations=10000
 ):
+    # make sure npoints is an integer
+    n_points = int(n_points)
+
     points = []
     width, height = area
     hardcore_radius_squared = hardcore_radius ** 2

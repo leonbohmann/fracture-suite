@@ -9,6 +9,8 @@ from fracsuite.core.preps import PrepMode, PreprocessorConfig, defaultPrepConfig
 
 from rich import print
 
+from fracsuite.state import State
+
 W_FAC = 4000
 
 def simplify_contour(contour, epsilon=0.01):
@@ -176,8 +178,18 @@ def preprocess_image(
             image = cv2.threshold(image, prep.nthresh_lower, prep.nthresh_upper, \
             cv2.THRESH_BINARY)[1]
 
-    if interest_region is not None:
+    if interest_region is not None or State.debug:
         plotImage(image, 'PREP: ... -> Adaptive Thresh', region=interest_region)
+
+    # # remove noise
+    # image = cv2.GaussianBlur(image, (5,5), 3)
+    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # image = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+
+
+
+    # plotImage(image, 'PREP: Preprocessed image', region=interest_region)
 
     return image
 
