@@ -1652,6 +1652,7 @@ def extract_labels(
     """Splits the specimen fracture image into n_side x n_side images and extracts the labels."""
     specimen = Specimen.get(specimen_name)
 
+    transmission_image = specimen.get_transmission_image()
     frac_image = specimen.get_fracture_image()
     # draw contours onto contour image
     ctr_image = np.zeros(frac_image.shape[:2], dtype=np.uint8)
@@ -1669,8 +1670,11 @@ def extract_labels(
             y = j * d_h
             img = frac_image[x:x + d_w, y:y + d_h]
             ctr_img = ctr_image[x:x + d_w, y:y + d_h]
+            orig_img = transmission_image[x:x + d_w, y:y + d_h]
+
             cv2.imwrite(os.path.join(out_dir, f"img_{i}_{j}.jpg"), img)
             cv2.imwrite(os.path.join(out_dir, f"lab_{i}_{j}.jpg"), ctr_img)
+            cv2.imwrite(os.path.join(out_dir, f"orig_{i}_{j}.jpg"), orig_img)
 
 @app.command()
 def extract_all_labels(

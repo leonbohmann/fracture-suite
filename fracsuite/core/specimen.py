@@ -309,6 +309,10 @@ class Specimen(Outputtable):
         transmission_file = find_file(self.fracture_morph_dir, "*Transmission*")
         if transmission_file is not None:
             return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
+    def get_transmission_image(self, as_rgb = True):
+        transmission_file = find_file(os.path.join(self.path, "anisotropy"), "*Transmission*")
+        if transmission_file is not None:
+            return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
     def get_image_size(self):
         """Returns the size of the specimen in px."""
