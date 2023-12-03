@@ -18,6 +18,7 @@ from fracsuite.core.imageprocessing import (
 from fracsuite.core.preps import PreprocessorConfig
 from fracsuite.core.region import RectRegion
 
+from fracsuite.core.vectors import alignment_between
 
 class Splinter:
 
@@ -286,6 +287,40 @@ class Splinter:
         # calculate the angle between the centroid and the impact point
 
         return self.__calculate_orientation_score(impact_position)
+
+    def measure_size(self, impact_position: tuple[float,float]) -> tuple[float,float]:
+        """
+        Measure the main and secondary axis of a fitting ellipse.
+
+        Arguments:
+            impact_position (tuple[float,float]): Impact position in mm.
+
+        Returns:
+            tuple[float,float]: The main and secondary axis of the ellipse.
+        """
+        ellipse = cv2.fitEllipse(self.contour)
+
+        major_axis_angle = ellipse[2]
+        major_axis_angle_rad = np.deg2rad(major_axis_angle)
+
+        # greater axis
+        major_axis_vector = (np.cos(major_axis_angle_rad), np.sin(major_axis_angle_rad))
+        # smaller axis
+        minor_axis_vector = (-major_axis_vector[1], major_axis_vector[0])
+
+        # check wich angle has a greater alignment strength to
+        A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
+
+        alignment_major = alignment_between(A, major_axis_vector)
+        alignment_minor = alignment_between(A, minor_axis_vector)
+
+        # l1=w, l2=h, when major axis is towards impact, height is major length!
+        l1,l2 = ellipse[1]
+
+        if alignment_major < alignment_minor:
+            return l1,l2
+        else:
+            return l2,l1
 
     @staticmethod
     def analyze_marked_image(

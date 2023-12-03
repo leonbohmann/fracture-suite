@@ -322,3 +322,46 @@ def calculate_lhat(X, area, d):
     # supp,stats,pvalue,sims = k_test(X,support=d)
     stats = calculate_khat(X, area, d)
     return np.sqrt(stats / np.pi) - d
+
+
+def moving_average(x, y, w):
+    """
+    Berechnet den gleitenden Durchschnitt eines Arrays.
+
+    Parameter:
+        x : ndarray
+            Ein Array von Werten.
+        w : int
+            Die Fensterbreite.
+
+    Rückgabe:
+        tuple(ndarray, list[ndarray]):
+            Stützstellen des Durchschnitts und der Durchschnitt selbst.
+    """
+    if not isinstance(y, list):
+        y = [y]
+    x = np.asarray(x)
+    x_raw = x[np.isfinite(x)]
+
+    dr = np.max(x_raw) / w
+    r0 = np.min(x_raw)
+    n = int(np.ceil((np.max(x_raw) - np.min(x_raw)) / dr))
+    rs = [r0 + i * dr for i in range(n + 1)]
+
+    # create result structure for every input y
+    R = []
+    for i in range(len(y)):
+        Ri = np.zeros(n)
+        R.append(Ri)
+
+    # calculate moving average
+    for i in range(n):
+        mask = (x >= rs[i]) & (x < rs[i + 1]) & ~np.isnan(x)
+
+        # calculate average for every input y
+        for ii, yi in enumerate(y):
+            y_r = yi[mask]
+
+            R[ii][i] = np.mean(y_r)
+
+    return rs[:-1], *R

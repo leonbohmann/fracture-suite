@@ -23,7 +23,7 @@ from rich.progress import track
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.calculate import pooled
-from fracsuite.core.coloring import get_color, rand_col
+from fracsuite.core.coloring import get_color, rand_col, norm_color
 from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
 from fracsuite.core.image import put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
@@ -49,7 +49,7 @@ from fracsuite.core.preps import defaultPrepConfig
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import similarity
+from fracsuite.core.stochastics import similarity, moving_average
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
 from fracsuite.state import State, StateOutput
@@ -1106,6 +1106,300 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
     orientation_fig.overlayImpact(specimen)
 
     State.output(orientation_fig, spec=specimen, to_additional=True)
+
+@app.command()
+def ud(sigma: float, thickness: float) -> float:
+    nue = 0.23
+    E = 70e6
+    print(f"U_d={1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
+
+@app.command()
+def aspect_ratio_vs_radius_cluster(
+    break_pos: Annotated[str, typer.Option(help='Break position.')] = None,
+    bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+    boundaries = {
+        1: '--',
+        2: '-',
+        3: ':',
+    }
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+
+        if bound is not None and specimen.boundary != bound:
+            return False
+
+        if specimen.boundary == "":
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        return True
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
+
+    if bound is None:
+        bound = 'all'
+
+    # find aspect over R on every specimen
+    n = 25
+    r_min = 0
+    r_max = np.sqrt(500**2 + 500**2)
+    r = np.linspace(r_min, r_max, n)
+
+    results = np.zeros((len(specimens)+1, len(r)+2))
+    # first row: r
+    # all other rows: u_d, boundary, aspect ratios
+    results[0,2:] = r
+
+    d_rand = 50 #mm
+
+    for si, specimen in track(list(enumerate(specimens))):
+        # now, find aspect ratio of all splinters
+        aspects = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
+        ip = specimen.get_impact_position()
+        for i, s in enumerate(specimen.splinters):
+            if s.centroid_mm[0] > 500-d_rand or s.centroid_mm[0] < d_rand or s.centroid_mm[1] > 500-d_rand or s.centroid_mm[1] < d_rand:
+                aspects[i,:] = (np.nan, -1)
+                continue
+
+            r = np.linalg.norm(np.asarray(s.centroid_mm) - specimen.get_impact_position())
+            a = s.measure_orientation(ip) # s.area # l1, l2 = s.measure_size(specimen.get_impact_position())
+
+            aspects[i,:] = (r, a) # np.abs(l1/l2)
+        print('before', len(aspects))
+        # sort after the radius
+        aspects = aspects[aspects[:,0].argsort()]
+        print('after', len(aspects))
+
+        # take moving average
+        try:
+            r1,l1 = moving_average(aspects[:,0], aspects[:,1], n)
+            results[si+1,0] = specimen.U_d
+            results[si+1,1] = bid[specimen.boundary]
+            results[si+1,2:] = l1
+        except:
+            results[si+1,0] = specimen.U_d
+            results[si+1,1] = bid[specimen.boundary]
+            results[si+1,2:] = np.zeros_like(r)
+
+    r = results[0,2:]
+
+    fig = plt.figure(figsize=get_fig_width(FigureSize.ROW2))
+
+    # sort results after U_d
+    results = results[results[:,0].argsort()]
+
+    n_ud = 20
+    ud_min = np.min(results[:,0])
+    ud_max = np.max(results[:,0])
+    uds = np.linspace(ud_min, ud_max, n_ud)
+
+    for i in range(n_ud-1):
+        for b in boundaries:
+            mask = (results[:,0] >= uds[i]) & (results[:,0] < uds[i+1]) & (results[:,1] == b)
+
+            # dont use first row
+            mask[0] = False
+
+            # get mean of all results in this range
+            mean = np.mean(results[mask,2:], axis=0)
+
+            clr = norm_color(get_color(uds[i], ud_min, ud_max))
+
+            # plot all masked results as scatter plots
+            for j in range(len(results)):
+                if mask[j]:
+                    plt.scatter(r, results[j,2:], c=clr, marker='x', alpha=1, linewidth=0.5)
+
+            ls = boundaries[b]
+            plt.plot(r, mean,  c=clr, linestyle=ls)
+            # label=f"{uds[i]:.2f} - {uds[i+1]:.2f} J/m²",
+
+
+    plt.xlabel("Distance from impact R [mm]")
+    plt.ylabel("Splinter Orientation Strength $\Delta$ [-]")
+    # plt.ylabel("Splinter aspect ratio $L/L_p$ [mm]")
+    # create legend for boundaries
+    plt.plot([], [], label="A", linestyle=boundaries[1], color='k')
+    plt.plot([], [], label="B", linestyle=boundaries[2], color='k')
+    plt.plot([], [], label="Z", linestyle=boundaries[3], color='k')
+    plt.legend(loc='upper right')
+    plt.show()
+
+    State.output(StateOutput(fig,FigureSize.ROW2), f'ud{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_n{n_ud}', to_additional=True)
+
+
+@app.command()
+def aspect_ratio_vs_radius(
+    u_d: Annotated[float, typer.Option(help='Strain energy density.')] = None,
+    bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
+    output_name: Annotated[str, typer.Option(help='Output name.')] = None,
+    break_pos: Annotated[str, typer.Option(help='Break position.')] = None,
+):
+    color = {
+        'A': 'tab:blue',
+        'B': 'tab:orange',
+        'Z': 'tab:green',
+    }
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+        if specimen.boundary == "":
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if bound is not None and specimen.boundary != bound:
+            return False
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        if u_d is not None:
+            f = specimen.U_d / u_d - 1
+            if f > 0.2 or f < -0.2:
+                return False
+
+        return True
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
+
+    if break_pos is None:
+        break_pos = 'all'
+
+    fig = plt.figure(figsize=get_fig_width(FigureSize.ROW2))
+
+    results: dict[Specimen, Any] = {}
+    n = 20
+
+    A = []
+    B = []
+    Z = []
+
+    for specimen in specimens:
+    # specimen = Specimen.get(specimen_name)
+        impact_pos = specimen.get_impact_position()
+
+        splinters = specimen.splinters
+
+        data = np.zeros((len(splinters), 3))
+
+        for i, s in enumerate(splinters):
+            r = np.linalg.norm(np.asarray(s.centroid_mm) - impact_pos)
+            l1, l2 = s.measure_size(impact_pos)
+
+            l1 = np.abs(l1/l2)
+            data[i,:] = (r, l1, l2)
+
+        data = data[data[:, 0].argsort()]
+
+        R = data[:,0]
+        L1 = data[:,1]
+        L2 = data[:,2]
+
+
+        # Rm, Lm1, Lm2 = R, L1, L2
+        Rm, Lm1, Lm2 = moving_average(R, [L1, L2], n)
+
+        if specimen.boundary == 'A':
+            # extract Rm,Lm1 into tuples and append to A
+            A.extend(zip(Rm,Lm1))
+        elif specimen.boundary == 'B':
+            B.extend(zip(Rm,Lm1))
+        elif specimen.boundary == 'Z':
+            Z.extend(zip(Rm,Lm1))
+
+        print(len(Rm), len(Lm1), len(Lm2))
+        results[specimen] = (Rm, Lm1, Lm2)
+
+        # plt.scatter(Rm, Lm1, label=specimen.name, marker='x', color=color[specimen.boundary])
+        # plt.plot(Rm, Lm2, label="$L_{\perp}$")
+
+
+
+
+    plt.xlabel("Distance from impact R [mm]")
+    plt.ylabel("Splinter aspect ratio $L/L_p$ [mm]")
+
+
+    A = np.array(A)
+    B = np.array(B)
+    Z = np.array(Z)
+
+    A = A[A[:,0].argsort()]
+    B = B[B[:,0].argsort()]
+    Z = Z[Z[:,0].argsort()]
+
+    plt.scatter(A[:,0], A[:,1], color=color['A'])
+    plt.scatter(B[:,0], B[:,1], color=color['B'])
+    plt.scatter(Z[:,0], Z[:,1], color=color['Z'])
+
+    ra, A = moving_average(A[:,0], A[:,1], n)
+    rb, B = moving_average(B[:,0], B[:,1], n)
+    rz, Z = moving_average(Z[:,0], Z[:,1], n)
+
+
+    plt.plot(ra, A, label="A", color=color['A'])
+    plt.plot(rb, B, label="B", color=color['B'])
+    plt.plot(rz, Z, label="Z", color=color['Z'])
+    # xa,ya = zip(*A)
+    # xb,yb = zip(*B)
+    # xz,yz = zip(*Z)
+
+    # plt.scatter(xa, ya, label="A", color=color['A'])
+    # plt.scatter(xb, yb, label="B", color=color['B'])
+    # plt.scatter(xz, yz, label="Z", color=color['Z'])
+
+    plt.legend()
+    plt.show()
+
+    State.output(StateOutput(fig,FigureSize.ROW2), f'ud{u_d}_{break_pos}', to_additional=True)
+
+
+
+
+    # fig = plt.figure(figsize=get_fig_width(FigureSize.ROW2))
+    # plt.plot(R, A, label="A")
+    # plt.plot(R, B, label="B")
+    # # plt.plot(R, Z, label="Z")
+
+    # plt.xlabel("Distance from impact R [mm]")
+    # plt.ylabel("Splinter aspect ratio $L/L_p$ [mm]")
+    # plt.legend()
+    # plt.show()
+
+
+
+
+
+    # RmA = []
+    # L1A = []
+    # L2A = []
+    # for result in results:
+    #     Rm, Lm1, Lm2 = results[result]
+
+    #     if result.boundary == 'A':
+    #         RmA.append(Rm)
+    #         L1A.append(Lm1)
+    #         L2A.append(Lm2)
+    #     plt.plot(Rm, Lm1, label=result.name)
+
+
+
+
 
 
 @app.command()
