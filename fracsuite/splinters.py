@@ -1125,6 +1125,7 @@ def u(sigma: float, thickness: float) -> float:
 def aspect_ratio_vs_radius_cluster(
     break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
+    mode: Annotated[str, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
 ):
     bid = {
         'A': 1,
@@ -1198,9 +1199,20 @@ def aspect_ratio_vs_radius_cluster(
                 continue
 
             r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
-            l1, l2 = s.measure_size(ip) #a = s.area # s.measure_orientation(ip) # s.area #
 
-            aspects[i,:] = (r, np.abs(l1/l2)) # (r, a)
+            if mode == 'asp':
+
+                l1, l2 = s.measure_size(ip) #a = s.area # s.measure_orientation(ip) # s.area #
+                a = np.abs(l1/l2)
+            elif mode == 'area':
+                a = s.area
+            elif mode == 'orientation':
+                a = s.measure_orientation(ip)
+            elif mode == 'roundness':
+                a = s.calculate_roundness()
+            elif mode == 'roughness':
+                a = s.calculate_roughness()
+            aspects[i,:] = (r, a) # (r, a)
 
             cv2.drawContours(img, [s.contour], -1, (255,0,0), -1)
 
@@ -1246,7 +1258,7 @@ def aspect_ratio_vs_radius_cluster(
             # dont use first row
             mask[0] = False
 
-            # get mean of all results in this range
+            # get mean of all results (specimens) in this range
             mean = np.mean(results[mask,3:], axis=0)
 
             clr = norm_color(get_color(uds[i], ud_min, ud_max))
@@ -1280,9 +1292,11 @@ def aspect_ratio_vs_radius_cluster(
     renew_ticks_cb(cbar)
     if bound == 'all':
         plt.legend(loc='upper right')
-    plt.ylim((0.9, 2.6))
-
-    State.output(StateOutput(fig,sz), f'u{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_n{n}_nud{n_ud}', to_additional=True)
+    if mode == 'asp':
+        plt.ylim((0.9, 2.6))
+    elif mode == 'area':
+        plt.ylim((0, 30))
+    State.output(StateOutput(fig,sz), f'u{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_n{n}_nud{n_ud}_{mode}', to_additional=True)
 
 
 @app.command()
