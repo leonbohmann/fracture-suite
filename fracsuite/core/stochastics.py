@@ -326,7 +326,7 @@ def calculate_lhat(X, area, d):
 
 def moving_average(x, y, w):
     """
-    Berechnet den gleitenden Durchschnitt eines Arrays.
+    Berechnet den gleitenden Durchschnitt eines Arrays. Werte, deren x-Wert NaN ist, werden ignoriert.
 
     Parameter:
         x : ndarray

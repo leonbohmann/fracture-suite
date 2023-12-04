@@ -18,6 +18,7 @@ import numpy as np
 import numpy.typing as npt
 import typer
 from matplotlib import pyplot as plt
+from matplotlib import colors as pltc
 from rich import inspect, print
 from rich.progress import track
 
@@ -35,6 +36,7 @@ from fracsuite.core.plotting import (
     FigureSize,
     KernelContourMode,
     annotate_image,
+    renew_ticks_cb,
     create_splinter_colored_image,
     create_splinter_sizes_image,
     datahist_plot,
@@ -1114,8 +1116,14 @@ def ud(sigma: float, thickness: float) -> float:
     print(f"U_d={1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
 
 @app.command()
+def u(sigma: float, thickness: float) -> float:
+    nue = 0.23
+    E = 70e6
+    print(f"U_d={thickness * 1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
+
+@app.command()
 def aspect_ratio_vs_radius_cluster(
-    break_pos: Annotated[str, typer.Option(help='Break position.')] = None,
+    break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
 ):
     bid = {
@@ -1151,21 +1159,36 @@ def aspect_ratio_vs_radius_cluster(
 
     if bound is None:
         bound = 'all'
+        sz = FigureSize.ROW1
+        xlabel = "Distance from impact R [mm]"
+        ylabel = "Splinter aspect ratio $L/L_p$ [mm]"
+        clabel = "Strain Energy U [J/m²]"
+    else:
+        sz = FigureSize.ROW3
+        xlabel = "R [mm]"
+        ylabel = "$L/L_p$ [mm]"
+        clabel = "U [J/m²]"
+        boundaries = {
+            1: '-',
+            2: '-',
+            3: '-',
+        }
 
     # find aspect over R on every specimen
-    n = 25
+    n = 30
     r_min = 0
     r_max = np.sqrt(500**2 + 500**2)
     r = np.linspace(r_min, r_max, n)
 
-    results = np.zeros((len(specimens)+1, len(r)+2))
+    results = np.zeros((len(specimens)+1, len(r)+3))
     # first row: r
     # all other rows: u_d, boundary, aspect ratios
-    results[0,2:] = r
+    results[0,3:] = r
 
-    d_rand = 50 #mm
+    d_rand = 15 #mm
 
     for si, specimen in track(list(enumerate(specimens))):
+        img = specimen.get_fracture_image(True)
         # now, find aspect ratio of all splinters
         aspects = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
         ip = specimen.get_impact_position()
@@ -1174,10 +1197,15 @@ def aspect_ratio_vs_radius_cluster(
                 aspects[i,:] = (np.nan, -1)
                 continue
 
-            r = np.linalg.norm(np.asarray(s.centroid_mm) - specimen.get_impact_position())
-            a = s.measure_orientation(ip) # s.area # l1, l2 = s.measure_size(specimen.get_impact_position())
+            r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
+            l1, l2 = s.measure_size(ip) #a = s.area # s.measure_orientation(ip) # s.area #
 
-            aspects[i,:] = (r, a) # np.abs(l1/l2)
+            aspects[i,:] = (r, np.abs(l1/l2)) # (r, a)
+
+            cv2.drawContours(img, [s.contour], -1, (255,0,0), -1)
+
+        # State.output(StateOutput(img, FigureSize.ROW2), f'{specimen.name}_ud{specimen.U_d:.0f}_{specimen.boundary}_{specimen.name}', to_additional=True)
+
         print('before', len(aspects))
         # sort after the radius
         aspects = aspects[aspects[:,0].argsort()]
@@ -1186,25 +1214,30 @@ def aspect_ratio_vs_radius_cluster(
         # take moving average
         try:
             r1,l1 = moving_average(aspects[:,0], aspects[:,1], n)
-            results[si+1,0] = specimen.U_d
+            results[si+1,0] = specimen.U
             results[si+1,1] = bid[specimen.boundary]
-            results[si+1,2:] = l1
+            results[si+1,2] = si
+            results[si+1,3:] = l1
         except:
-            results[si+1,0] = specimen.U_d
+            results[si+1,0] = specimen.U
             results[si+1,1] = bid[specimen.boundary]
-            results[si+1,2:] = np.zeros_like(r)
+            results[si+1,2] = si
+            results[si+1,3:] = np.zeros_like(r)
 
-    r = results[0,2:]
+    r = results[0,3:]
 
-    fig = plt.figure(figsize=get_fig_width(FigureSize.ROW2))
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
 
     # sort results after U_d
     results = results[results[:,0].argsort()]
 
-    n_ud = 20
+    n_ud = 10
     ud_min = np.min(results[:,0])
     ud_max = np.max(results[:,0])
+    # ud_min = 10
+    # ud_max = 50
     uds = np.linspace(ud_min, ud_max, n_ud)
+
 
     for i in range(n_ud-1):
         for b in boundaries:
@@ -1214,31 +1247,42 @@ def aspect_ratio_vs_radius_cluster(
             mask[0] = False
 
             # get mean of all results in this range
-            mean = np.mean(results[mask,2:], axis=0)
+            mean = np.mean(results[mask,3:], axis=0)
 
             clr = norm_color(get_color(uds[i], ud_min, ud_max))
 
             # plot all masked results as scatter plots
             for j in range(len(results)):
                 if mask[j]:
-                    plt.scatter(r, results[j,2:], c=clr, marker='x', alpha=1, linewidth=0.5)
+                    plt.scatter(r, results[j,3:], color=clr, marker='x', linewidth=0.5, s=1.5)
+
+                    id = int(results[j,2])
+                    s = specimens[id]
+                    print(f"{s.name} ({np.mean(results[j,3:]):.1f})")
 
             ls = boundaries[b]
-            plt.plot(r, mean,  c=clr, linestyle=ls)
+            alpha = 1 if bound != 'all' else 0.7
+            plt.plot(r, mean,  color=clr, linestyle=ls, alpha=alpha)
             # label=f"{uds[i]:.2f} - {uds[i+1]:.2f} J/m²",
 
 
-    plt.xlabel("Distance from impact R [mm]")
-    plt.ylabel("Splinter Orientation Strength $\Delta$ [-]")
-    # plt.ylabel("Splinter aspect ratio $L/L_p$ [mm]")
+    plt.xlabel(xlabel)
+    # plt.ylabel("Splinter Orientation Strength $\Delta$ [-]")
+    plt.ylabel(ylabel)
     # create legend for boundaries
     plt.plot([], [], label="A", linestyle=boundaries[1], color='k')
     plt.plot([], [], label="B", linestyle=boundaries[2], color='k')
     plt.plot([], [], label="Z", linestyle=boundaries[3], color='k')
-    plt.legend(loc='upper right')
-    plt.show()
+    colors = [norm_color(get_color(x, ud_min, ud_max)) for x in uds]
+    cmap = pltc.ListedColormap(colors)
+    norm = pltc.Normalize(np.min(uds), np.max(uds))
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=axs)
+    renew_ticks_cb(cbar)
+    if bound == 'all':
+        plt.legend(loc='upper right')
+    plt.ylim((0.9, 2.6))
 
-    State.output(StateOutput(fig,FigureSize.ROW2), f'ud{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_n{n_ud}', to_additional=True)
+    State.output(StateOutput(fig,sz), f'u{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_n{n}_nud{n_ud}', to_additional=True)
 
 
 @app.command()
