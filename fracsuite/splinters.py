@@ -2,6 +2,7 @@
 Splinter analyzation tools.
 """
 
+from enum import Enum
 import multiprocessing.shared_memory as sm
 import os
 import pickle
@@ -815,7 +816,6 @@ def log_2d_histograms(
     stress = []
 
     with get_progress() as progress:
-        an_task = progress.add_task("Loading splinters...", total=len(specimens))
         for specimen in specimens:
 
             areas = [np.log10(x.area) for x in specimen.splinters if x.area > 0]
@@ -830,11 +830,11 @@ def log_2d_histograms(
 
             data.append((hist, specimen.name))
             if not y_stress:
-                stress.append(specimen.U_d)
+                stress.append(specimen.U)
             else:
                 stress.append(specimen.sig_h)
 
-            progress.update(an_task, advance=1)
+            progress.advance()
 
     # sort data and names for ascending stress
     stress, data = sort_two_arrays(stress, data, True)
@@ -872,7 +872,7 @@ def log_2d_histograms(
 
     axs.grid(False)
 
-    State.output(fig, f'loghist2d_{out_name}', to_additional=True)
+    State.output(fig, f'loghist2d_{out_name}', to_additional=True, figwidth=FigureSize.ROW1H)
 
 
 def create_filter_function(name_filter,
@@ -1121,11 +1121,20 @@ def u(sigma: float, thickness: float) -> float:
     E = 70e6
     print(f"U_d={thickness * 1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
 
+
+class ModeChoices(str,Enum):
+    AREA = 'area'
+    ORIENTATION = 'orientation'
+    ROUNDNESS = 'roundness'
+    ROUGHNESS = 'roughness'
+    ASP = 'asp'
+    ASP0 = 'asp0'
+
 @app.command()
 def aspect_ratio_vs_radius_cluster(
     break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
-    mode: Annotated[str, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
+    mode: Annotated[ModeChoices, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
 ):
     bid = {
         'A': 1,
@@ -1158,17 +1167,44 @@ def aspect_ratio_vs_radius_cluster(
 
     specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
 
+
+    xlabel = "R [mm]"
+    ylabel = "$L/L_p$ [mm]"
+    clabel = "U [J/m²]"
+
+    if mode == 'area':
+        ylabel = "$A_S$ [mm²]"
+    elif mode == 'orientation':
+        ylabel = "$\Delta$ [-]"
+    elif mode == 'roundness':
+        ylabel = "$\lambda_c$ [-]"
+    elif mode == 'roughness':
+        ylabel = "$\lambda_r$ [-]"
+    elif mode == 'asp':
+        ylabel = "$L/L_p$ [-]"
+    elif mode == 'asp0':
+        ylabel = "$L_1/L_2$ [-]"
+
     if bound is None:
         bound = 'all'
         sz = FigureSize.ROW1
-        xlabel = "Distance from impact R [mm]"
-        ylabel = "Splinter aspect ratio $L/L_p$ [mm]"
-        clabel = "Strain Energy U [J/m²]"
+
+        xlabel = "Distance from impact " + xlabel
+        clabel = "Strain Energy " + clabel
+        if mode == 'area':
+            ylabel = "Splinter area " + ylabel
+        elif mode == 'orientation':
+            ylabel = "Splinter orientation strength " + ylabel
+        elif mode == 'roundness':
+            ylabel = "Splinter roundness " + ylabel
+        elif mode == 'roughness':
+            ylabel = "Splinter roughness " + ylabel
+        elif mode == 'asp':
+            ylabel = "Splinter aspect ratio " + ylabel
+        elif mode == 'asp0':
+            ylabel = "Splinter aspect ratio " + ylabel
     else:
         sz = FigureSize.ROW3
-        xlabel = "R [mm]"
-        ylabel = "$L/L_p$ [mm]"
-        clabel = "U [J/m²]"
         boundaries = {
             1: '-',
             2: '-',
@@ -1212,6 +1248,10 @@ def aspect_ratio_vs_radius_cluster(
                 a = s.calculate_roundness()
             elif mode == 'roughness':
                 a = s.calculate_roughness()
+            elif mode == 'asp0':
+                l1, l2 = s.measure_size()
+                a = np.abs(l1/l2)
+
             aspects[i,:] = (r, a) # (r, a)
 
             cv2.drawContours(img, [s.contour], -1, (255,0,0), -1)
@@ -1296,7 +1336,84 @@ def aspect_ratio_vs_radius_cluster(
         plt.ylim((0.9, 2.6))
     elif mode == 'area':
         plt.ylim((0, 30))
-    State.output(StateOutput(fig,sz), f'u{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_n{n}_nud{n_ud}_{mode}', to_additional=True)
+    State.output(StateOutput(fig,sz), f'u{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_{break_pos}_n{n}_nud{n_ud}_{mode}', to_additional=True)
+
+@app.command()
+def nfifty(
+    bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
+    break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner'
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+
+    boundaries = {
+        1: 'green',
+        2: 'red',
+        3: 'blue',
+    }
+    bname = {
+        1: 'A',
+        2: 'B',
+        3: 'Z',
+    }
+
+    thicknesses = [4, 8, 12]
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+        if specimen.boundary == "":
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if bound is not None and specimen.boundary != bound:
+            return False
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        return True
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter , lazyload=False)
+
+    centers = [
+        [450,450]
+    ]
+
+    results = np.zeros((len(specimens), 5), dtype=np.float64)
+    for i, specimen in enumerate(track(specimens)):
+        nfifty = specimen.calculate_nfifty(centers, (50,50))
+        results[i,:] = (specimen.U, specimen.U_d, specimen.thickness, bid[specimen.boundary], nfifty)
+
+    inspect(results)
+
+    id = 0
+
+    id_name ={
+        0: "U [J/m²]",
+        1: "U_d [J/m³]",
+        2: "Thickness [mm]",
+    }
+
+    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    # for b in boundaries:
+        # mask = results[:,-2] == b
+        # axs.scatter(results[mask,-1], results[mask,1], marker='x', color=boundaries[b], label=f"{bname[b]}", s=1.5)
+    for thick in thicknesses:
+        mask = results[:,2] == thick
+        axs.scatter(results[mask,-1], results[mask,id], marker='x', label=f"{thick}mm", s=1.5)
+
+
+    # make log x scale
+    axs.set_xscale('log')
+    axs.set_ylabel(id_name[id])
+    axs.set_xlabel("N50 [-]")
+    fig.legend()
+    State.output(StateOutput(fig, FigureSize.ROW1), f'nfifty_{bound}_{break_pos}_{id_name[id].split(" ")[0]}', to_additional=True)
 
 
 @app.command()

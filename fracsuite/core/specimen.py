@@ -523,6 +523,15 @@ class Specimen(Outputtable):
 
         return in_region
 
+    def calculate_nfifty(self, centers, size):
+        area = float(size[0] * size[1])
+        nfifty = 0.0
+        for center in centers:
+            nfiftyi = self.calculate_esg_norm(center, size)[0]
+            nfifty += nfiftyi
+
+        return nfifty / len(centers)
+
     def calculate_esg_norm(
         self: Specimen,
         norm_region_center: tuple[int, int] = (400, 400),
@@ -573,7 +582,7 @@ class Specimen(Outputtable):
 
     def __get_energy(self):
         t0 = self.scalp.measured_thickness
-        return self.__get_energy_density() * t0
+        return self.__get_energy_density() * t0 * 1e-3 # thickness in mm
 
     def __get_energy_density(self):
         nue = 0.23
