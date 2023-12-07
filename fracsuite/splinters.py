@@ -13,6 +13,7 @@ from itertools import groupby
 from typing import Annotated, Any, Callable
 
 import cv2
+from matplotlib.axes import Axes
 from matplotlib.patches import Circle, PathPatch, Rectangle
 from matplotlib.path import Path
 import numpy as np
@@ -1110,16 +1111,19 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
     State.output(orientation_fig, spec=specimen, to_additional=True)
 
 @app.command()
-def ud(sigma: float, thickness: float) -> float:
+def ud(sigma: float) -> float:
     nue = 0.23
-    E = 70e6
-    print(f"U_d={1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
+    E = 70e3
+    print("Strain Energy Density [J/m³]")
+    print(f"U_d={1e6/5 * (1-nue)/E * (sigma ** 2):.2f} J/m²")
 
 @app.command()
 def u(sigma: float, thickness: float) -> float:
     nue = 0.23
-    E = 70e6
-    print(f"U_d={thickness * 1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
+    E = 70e3
+    thickness = thickness * 1e-3
+    print("Strain Energy [J/m²]")
+    print(f"U={thickness * 1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
 
 
 class ModeChoices(str,Enum):
@@ -1338,10 +1342,20 @@ def aspect_ratio_vs_radius_cluster(
         plt.ylim((0, 30))
     State.output(StateOutput(fig,sz), f'u{uds[0]:.0f}_{uds[-1]:.0f}_{bound}_{break_pos}_n{n}_nud{n_ud}_{mode}', to_additional=True)
 
+class EnergyUnit(str,Enum):
+    U = "U"
+    "Strain Energy [J/m²]"
+    UD = "Ud"
+    "Strain Energy Density [J/m³]"
+
+
 @app.command()
 def nfifty(
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
-    break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner'
+    break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
+    unit: Annotated[EnergyUnit, typer.Option(help='Energy unit.')] = EnergyUnit.U,
+    recalc: Annotated[bool, typer.Option(help='Recalculate N50.')] = False,
+    use_mean: Annotated[bool, typer.Option(help='Use mean splinter size.')] = False,
 ):
     bid = {
         'A': 1,
@@ -1349,7 +1363,7 @@ def nfifty(
         'Z': 3,
     }
 
-    boundaries = {
+    tcolors = {
         1: 'green',
         2: 'red',
         3: 'blue',
@@ -1359,7 +1373,11 @@ def nfifty(
         2: 'B',
         3: 'Z',
     }
-
+    bmarkers ={
+        1: 'o',
+        2: 'v',
+        3: 'X',
+    }
     thicknesses = [4, 8, 12]
 
     def add_filter(specimen: Specimen):
@@ -1381,40 +1399,92 @@ def nfifty(
     specimens: list[Specimen] = Specimen.get_all_by(add_filter , lazyload=False)
 
     centers = [
-        [450,450]
+        [450,50],
+        [50,450],
+        [450,450],
+        [200,200],
+        [50,200]
     ]
 
     results = np.zeros((len(specimens), 5), dtype=np.float64)
-    for i, specimen in enumerate(track(specimens)):
-        nfifty = specimen.calculate_nfifty(centers, (50,50))
-        results[i,:] = (specimen.U, specimen.U_d, specimen.thickness, bid[specimen.boundary], nfifty)
+    with get_progress(title='Working on specimens...') as progress:
+        for i, specimen in enumerate(specimens):
+            if not use_mean:
+                nfifty = specimen.calculate_nfifty(centers, (50,50), force_recalc=recalc)
+            else:
+                nfifty = specimen.calculate_NperWindow(force_recalc=recalc)
+            results[i,:] = (specimen.U, specimen.U_d, specimen.thickness, bid[specimen.boundary], nfifty)
+
+            progress.advance()
 
     inspect(results)
 
-    id = 0
-
-    id_name ={
-        0: "U [J/m²]",
-        1: "U_d [J/m³]",
-        2: "Thickness [mm]",
+    idd = {
+        EnergyUnit.U: 0,
+        EnergyUnit.UD: 1,
     }
 
+    id = idd[unit]
+
+    id_name = {
+        0: "U [J/m²]",
+        1: "U_d [J/m³]",
+    }
+
+    def U4(x):
+        return 0.58 *x + 49.47
+
+    def U8(x):
+        return 1.14 * x + 49.51
+
+    def U12(x):
+        return 1.92 * x + 48.24
+
+    def UD(x):
+        return 0.255 * x ** 2 + 109.28 * x + 5603.2
+
+
+    x = np.linspace(np.min(results[:,-1]), np.max(results[:,-1]), 100)
+    u4y = U4(x)
+    u8y = U8(x)
+    u12y = U12(x)
+    udy = UD(x)
+
+    axs: Axes
     fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
     # for b in boundaries:
         # mask = results[:,-2] == b
         # axs.scatter(results[mask,-1], results[mask,1], marker='x', color=boundaries[b], label=f"{bname[b]}", s=1.5)
-    for thick in thicknesses:
+    for it, thick in enumerate(thicknesses):
         mask = results[:,2] == thick
-        axs.scatter(results[mask,-1], results[mask,id], marker='x', label=f"{thick}mm", s=1.5)
+        clr = tcolors[it+1]
+        for b in bmarkers:
+            mask = (results[:,2] == thick) & (results[:,-2] == b)
+            ms = bmarkers[b]
+            axs.scatter(results[mask,-1], results[mask,id], marker=ms, label=f"{thick}mm ({bname[b]})", s=7, linewidth=0.1, color=clr)
 
+    if id == 0:
+        axs.plot(x, u4y, label="4mm (Navid)", linestyle='--', color=tcolors[1])
+        axs.plot(x, u8y, label="8mm (Navid)", linestyle='--', color=tcolors[2])
+        axs.plot(x, u12y, label="12mm (Navid)", linestyle='--', color=tcolors[3])
+
+    elif id == 1:
+        axs.plot(x, udy, label="U_d (Navid)", linestyle='--', color='k')
 
     # make log x scale
     axs.set_xscale('log')
     axs.set_ylabel(id_name[id])
     axs.set_xlabel("N50 [-]")
-    fig.legend()
-    State.output(StateOutput(fig, FigureSize.ROW1), f'nfifty_{bound}_{break_pos}_{id_name[id].split(" ")[0]}', to_additional=True)
+    axs.legend(loc='best')
 
+    name = 'nfifty' if not use_mean else 'nperwindow'
+    State.output(StateOutput(fig, FigureSize.ROW1), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)
+
+
+    for i in range(len(specimens)):
+        res = results[i,:]
+        print(specimens[i].name, "U:", res[0], "U_d:", res[1], "Thickness:", res[2], "Boundary:", res[3], "N50:", res[4])
+        U = specimens[i].calculate_energy()
 
 @app.command()
 def aspect_ratio_vs_radius(

@@ -41,6 +41,8 @@ class Specimen(Outputtable):
     "Key for the hard core radius in the simdata file."
     KEY_LAMBDA: str = "lambda"
     "Key for the fracture intensity parameter in the simdata file."
+    KEY_NFIFTY: str = "nfifty"
+    "Key for the nfifty value in the simdata file."
 
     @property
     def splinters(self) -> list[Splinter]:
@@ -523,14 +525,20 @@ class Specimen(Outputtable):
 
         return in_region
 
-    def calculate_nfifty(self, centers, size):
-        area = float(size[0] * size[1])
-        nfifty = 0.0
-        for center in centers:
-            nfiftyi = self.calculate_esg_norm(center, size)[0]
-            nfifty += nfiftyi
+    def calculate_nfifty(self, centers, size, force_recalc=False):
+        nfifty = self.simdata.get(Specimen.KEY_NFIFTY, None)
+        if nfifty is None or force_recalc:
+            # area = float(size[0] * size[1])
+            nfifty = 0.0
+            for center in centers:
+                nfiftyi = self.calculate_esg_norm(center, size)[0]
+                nfifty += nfiftyi
 
-        return nfifty / len(centers)
+            nfifty = nfifty / len(centers)
+            self.update_simdata(Specimen.KEY_NFIFTY, nfifty)
+            return nfifty
+        else:
+            return nfifty
 
     def calculate_esg_norm(
         self: Specimen,
@@ -580,14 +588,16 @@ class Specimen(Outputtable):
 
         return s_count, splinters_in_region
 
-    def __get_energy(self):
+    def calculate_energy(self):
         t0 = self.scalp.measured_thickness
-        return self.__get_energy_density() * t0 * 1e-3 # thickness in mm
+        # print('Thickness: ', t0)
+        return self.calculate_energy_density() * t0 * 1e-3 # thickness in mm
 
-    def __get_energy_density(self):
+    def calculate_energy_density(self):
         nue = 0.23
-        E = 70e6
-        return 1e6/5 * (1-nue)/E * self.scalp.sig_h ** 2
+        E = 70e3
+        # print('Sigma_h: ', self.scalp.sig_h)
+        return 1e6/5 * (1-nue)/E * (self.scalp.sig_h ** 2)
 
     def load_scalp(self, file = None):
         """Loads scalp data. Make sure to access self.__scalp until the load method returns. """
@@ -602,8 +612,8 @@ class Specimen(Outputtable):
         # then perform calculations
         self.__measured_thickness = self.__scalp.measured_thickness
         self.__sigma_h = self.__scalp.sig_h
-        self.__U_d = self.__get_energy_density()
-        self.__U = self.__get_energy()
+        self.__U_d = self.calculate_energy_density()
+        self.__U = self.calculate_energy()
 
     def load_splinters(self, file = None):
         assert self.has_splinters, f"Splinters not found in specimen {self.name}."

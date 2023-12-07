@@ -262,11 +262,11 @@ class ObjectKerneler():
 
         skip_i = 1 if self.skip_edge else 0
 
-        if State.has_progress():
-            d = range(len(xd))
-        else:
-            d = track(range(len(xd)), transient=True,
-                    description="Running kernel over region...")
+        d = range(len(xd))
+        # if State.has_progress():
+        # else:
+        #     d = track(range(len(xd)), transient=True,
+        #             description="Running kernel over region...")
 
         for i in d:
             for j in range(len(yd)):
