@@ -544,6 +544,7 @@ class Specimen(Outputtable):
         self: Specimen,
         norm_region_center: tuple[int, int] = (400, 400),
         norm_region_size: tuple[int, int] = (50, 50),
+        edge_width: int = 25,
     ) -> tuple[float, list[Splinter]]:
         """
         Count the number of splinters in a specified norm region.
@@ -577,8 +578,14 @@ class Specimen(Outputtable):
 
         s_count = 0
         splinters_in_region: list[Splinter] = []
+        rs = self.get_real_size()
         # count splinters in norm region
         for s in self.splinters:
+            # check if splinter is close to edge, if so, omit
+            p = s.centroid_mm
+            if p[0] < edge_width or p[0] > rs[0] - edge_width or p[1] < edge_width or p[1] > rs[1] - edge_width:
+                continue
+
             sc = s.in_region_exact((x1, y1, x2, y2))
             if sc == 1:
                 s_count += 1
