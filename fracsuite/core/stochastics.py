@@ -324,15 +324,17 @@ def calculate_lhat(X, area, d):
     return np.sqrt(stats / np.pi) - d
 
 
-def moving_average(x, y, w):
+def moving_average(x, y, rng):
     """
     Berechnet den gleitenden Durchschnitt eines Arrays. Werte, deren x-Wert NaN ist, werden ignoriert.
 
     Parameter:
         x : ndarray
-            Ein Array von Werten.
-        w : int
-            Die Fensterbreite.
+            Stützwerte der y-Arrays.
+        y : ndarray | list[ndarray]
+            Ein oder mehrere y-Arrays.
+        rng : linspace
+            Stützstellen für Auswertung
 
     Rückgabe:
         tuple(ndarray, list[ndarray]):
@@ -341,14 +343,17 @@ def moving_average(x, y, w):
     if not isinstance(y, list):
         y = [y]
     x = np.asarray(x)
-    x_raw = x[np.isfinite(x)]
+    # x_raw = x[np.isfinite(x)]
 
-    dr = np.max(x_raw) / w
-    r0 = np.min(x_raw)
-    n = int(np.ceil((np.max(x_raw) - np.min(x_raw)) / dr))
-    rs = [r0 + i * dr for i in range(n + 1)]
+    # dr = np.max(x_raw) / w
+    # r0 = np.min(x_raw)
+    # n = int(np.ceil((np.max(x_raw) - np.min(x_raw)) / dr))
+    # rs = [r0 + i * dr for i in range(n + 1)]
+
+    # rs = np.linspace(np.min(x_raw), np.max(x_raw), rng)
 
     # create result structure for every input y
+    n = len(rng)
     R = []
     for i in range(len(y)):
         Ri = np.zeros(n)
@@ -356,12 +361,18 @@ def moving_average(x, y, w):
 
     # calculate moving average
     for i in range(n):
-        mask = (x >= rs[i]) & (x < rs[i + 1]) & ~np.isnan(x)
+        if i == n - 1:
+            mask = (x >= rng[i]) & ~np.isnan(x)
+        else:
+            mask = (x >= rng[i]) & (x < rng[i + 1]) & ~np.isnan(x)
 
         # calculate average for every input y
         for ii, yi in enumerate(y):
             y_r = yi[mask]
 
-            R[ii][i] = np.mean(y_r)
+            if mask.sum() > 0:
+                R[ii][i] = np.mean(y_r)
+            else:
+                R[ii][i] = np.nan
 
-    return rs[:-1], *R
+    return rng, *R
