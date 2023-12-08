@@ -8,5 +8,6 @@
     ],
     "python.autoComplete.extraPaths": [
         "c:\\Users\\leon9\\.vscode\\extensions\\continue.continue-0.0.412-win32-x64"
-    ]
+    ],
+    "python.analysis.autoImportCompletions": true
 }

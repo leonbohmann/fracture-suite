@@ -58,6 +58,8 @@ from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
 from fracsuite.state import State, StateOutput
 
+from scipy.optimize import curve_fit
+
 app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
@@ -1268,7 +1270,7 @@ def aspect_ratio_vs_radius_cluster(
         # print(aspects[:,1])
         # print(l1)
 
-        results[si,0] = specimen.U
+        results[si,0] = specimen.calculate_tensile_energy()
         results[si,1] = bid[specimen.boundary]
         results[si,2] = si
         results[si,3:] = l1
@@ -1339,13 +1341,17 @@ def aspect_ratio_vs_radius_cluster(
     elif mode == 'area':
         plt.ylim((0, 30))
 
-    State.output(StateOutput(fig,sz), f'{mode}_{bound}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+    State.output(StateOutput(fig,sz), f'tensileonly_{mode}_{bound}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
 
 class EnergyUnit(str,Enum):
     U = "U"
     "Strain Energy [J/m²]"
     UD = "Ud"
     "Strain Energy Density [J/m³]"
+    Ut = "Ut"
+    "Tensile Strain Energy [J/m²]"
+    UDt = "Udt"
+    "Tensile Strain Energy Density [J/m³]"
 
 
 @app.command()
@@ -1405,14 +1411,14 @@ def nfifty(
         [50,200]
     ]
 
-    results = np.zeros((len(specimens), 5), dtype=np.float64)
+    results = np.zeros((len(specimens), 7), dtype=np.float64)
     with get_progress(title='Working on specimens...') as progress:
         for i, specimen in enumerate(specimens):
             if not use_mean:
                 nfifty = specimen.calculate_nfifty(centers, (50,50), force_recalc=recalc)
             else:
                 nfifty = specimen.calculate_NperWindow(force_recalc=recalc)
-            results[i,:] = (specimen.U, specimen.U_d, specimen.thickness, bid[specimen.boundary], nfifty)
+            results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_tensile_energy(), specimen.calculate_tensile_energy_density() , specimen.thickness, bid[specimen.boundary], nfifty)
 
             progress.advance()
 
@@ -1421,6 +1427,8 @@ def nfifty(
     idd = {
         EnergyUnit.U: 0,
         EnergyUnit.UD: 1,
+        EnergyUnit.Ut: 2,
+        EnergyUnit.UDt: 3,
     }
 
     id = idd[unit]
@@ -1428,6 +1436,8 @@ def nfifty(
     id_name = {
         0: "U [J/m²]",
         1: "U_d [J/m³]",
+        2: "U_t [J/m²]",
+        3: "U_dt [J/m³]",
     }
 
     def U4(x):
@@ -1443,11 +1453,11 @@ def nfifty(
         return 0.255 * x ** 2 + 109.28 * x + 5603.2
 
 
-    x = np.linspace(np.min(results[:,-1]), np.max(results[:,-1]), 100)
-    u4y = U4(x)
-    u8y = U8(x)
-    u12y = U12(x)
-    udy = UD(x)
+    ux = np.linspace(np.min(results[:,-1]), np.max(results[:,-1]), 100)
+    u4y = U4(ux)
+    u8y = U8(ux)
+    u12y = U12(ux)
+    udy = UD(ux)
 
     axs: Axes
     fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
@@ -1455,20 +1465,46 @@ def nfifty(
         # mask = results[:,-2] == b
         # axs.scatter(results[mask,-1], results[mask,1], marker='x', color=boundaries[b], label=f"{bname[b]}", s=1.5)
     for it, thick in enumerate(thicknesses):
-        mask = results[:,2] == thick
         clr = tcolors[it+1]
+        mask = results[:,4] == thick
+        # create a fitting curve
+        x = results[mask,-1]
+        y = results[mask,id]
+
+        if len(y) > 0:
+            # fit a curve
+            def func(x, a, b, c):
+                return a * x ** 2 + b * x + c
+            popt, pcov = curve_fit(func, x, y, p0=(1, 1, 1))
+
+            # plot the curve
+            x = np.linspace(np.min(results[:,-1]), np.max(results[:,-1]), 100)
+            y = func(x, *popt)
+            axs.plot(x, y, label=f"{thick}mm (fit)", linestyle='--', color=clr)
+
+        # get results from navid
+        from fracsuite.core.navid_results import navid_nfifty
+        navid_n50, navid_ud, navid_u = navid_nfifty(thick)
+        if unit == EnergyUnit.U:
+            # print(navid_n50, navid_ud, navid_u)
+            plt.scatter(navid_n50, navid_u, marker='P', color=clr, label=f"{thick}mm (Navid)", s=7, linewidth=0.1)
+        elif unit == EnergyUnit.UD:
+            plt.scatter(navid_n50, navid_ud, marker='P', color=clr, label=f"{thick}mm (Navid)", s=7, linewidth=0.1)
+
+
+
         for b in bmarkers:
-            mask = (results[:,2] == thick) & (results[:,-2] == b)
+            mask = (results[:,4] == thick) & (results[:,-2] == b)
             ms = bmarkers[b]
             axs.scatter(results[mask,-1], results[mask,id], marker=ms, label=f"{thick}mm ({bname[b]})", s=7, linewidth=0.1, color=clr)
 
     if id == 0:
-        axs.plot(x, u4y, label="4mm (Navid)", linestyle='--', color=tcolors[1])
-        axs.plot(x, u8y, label="8mm (Navid)", linestyle='--', color=tcolors[2])
-        axs.plot(x, u12y, label="12mm (Navid)", linestyle='--', color=tcolors[3])
+        axs.plot(ux, u4y, label="4mm (Navid)", linestyle='--', color=tcolors[1])
+        axs.plot(ux, u8y, label="8mm (Navid)", linestyle='--', color=tcolors[2])
+        axs.plot(ux, u12y, label="12mm (Navid)", linestyle='--', color=tcolors[3])
 
     elif id == 1:
-        axs.plot(x, udy, label="U_d (Navid)", linestyle='--', color='k')
+        axs.plot(ux, udy, label="U_d (Navid)", linestyle='--', color='k')
 
     # make log x scale
     axs.set_xscale('log')
@@ -1482,8 +1518,7 @@ def nfifty(
 
     for i in range(len(specimens)):
         res = results[i,:]
-        print(specimens[i].name, "U:", res[0], "U_d:", res[1], "Thickness:", res[2], "Boundary:", res[3], "N50:", res[4])
-        U = specimens[i].calculate_energy()
+        print(specimens[i].name, "U:", res[0], "U_d:", res[1], "U_t", res[2], "Ud_t", res[3] , "Thickness:", res[4], "Boundary:", res[3], "N50:", res[4])
 
 @app.command()
 def aspect_ratio_vs_radius(

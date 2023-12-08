@@ -22,6 +22,7 @@ from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
+from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 
 from spazial import k_test, l_test
 
@@ -598,13 +599,20 @@ class Specimen(Outputtable):
     def calculate_energy(self):
         t0 = self.scalp.measured_thickness
         # print('Thickness: ', t0)
-        return self.calculate_energy_density() * t0 * 1e-3 # thickness in mm
+        return calc_U(self.scalp.sig_h, t0)
 
     def calculate_energy_density(self):
+        return calc_Ud(self.scalp.sig_h)
+
+    def calculate_tensile_energy(self):
+        t0 = self.scalp.measured_thickness
+        # print('Thickness: ', t0)
+        return self.calculate_tensile_energy_density() * t0 * 1e-3 # thickness in mm
+
+    def calculate_tensile_energy_density(self):
         nue = 0.23
         E = 70e3
-        # print('Sigma_h: ', self.scalp.sig_h)
-        return 1e6/5 * (1-nue)/E * (self.scalp.sig_h ** 2)
+        return 1e6 * (128/125) * (1-nue)/E * (self.scalp.sig_h ** 2)
 
     def load_scalp(self, file = None):
         """Loads scalp data. Make sure to access self.__scalp until the load method returns. """

@@ -300,9 +300,10 @@ class Splinter:
             tuple[float,float]: The main and secondary axis of the ellipse. If impact_position is passed,
                 l1 is the axis towards the impact point and l2 is the other axis.
         """
-        ellipse = cv2.fitEllipse(self.contour)
+        (x,y), (w,h), angle = cv2.minAreaRect(self.contour)
+        # xy,wh,angle = cv2.fitEllipse(self.contour)
 
-        major_axis_angle = ellipse[2]
+        major_axis_angle = angle
         major_axis_angle_rad = np.deg2rad(major_axis_angle)
 
         # greater axis
@@ -311,7 +312,7 @@ class Splinter:
         minor_axis_vector = (-major_axis_vector[1], major_axis_vector[0])
 
         # l1=w, l2=h, when major axis is towards impact, height is major length!
-        l1,l2 = ellipse[1]
+        l1,l2 = w,h
 
         if impact_position is None:
             return l2,l1
