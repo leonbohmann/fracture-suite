@@ -88,7 +88,7 @@ params = {
     'axes.axisbelow': True,
     'grid.linestyle': '--',
     'grid.linewidth': 0.5,
-    'lines.markersize': 0.5,
+    'lines.markersize': 3,
     # 'axes.grid.which': 'both',
     # 'xtick.minor.visible': True,
     # 'ytick.minor.visible': True,

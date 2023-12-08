@@ -1480,31 +1480,31 @@ def nfifty(
             # plot the curve
             x = np.linspace(np.min(results[:,-1]), np.max(results[:,-1]), 100)
             y = func(x, *popt)
-            axs.plot(x, y, label=f"{thick}mm (fit)", linestyle='--', color=clr)
+            axs.plot(x, y, label=f"{thick}mm (fit)", linestyle=(0,(3,1,1,1)), color=clr)
 
         # get results from navid
         from fracsuite.core.navid_results import navid_nfifty
         navid_n50, navid_ud, navid_u = navid_nfifty(thick)
         if unit == EnergyUnit.U:
             # print(navid_n50, navid_ud, navid_u)
-            plt.scatter(navid_n50, navid_u, marker='P', color=clr, label=f"{thick}mm (Navid)", s=7, linewidth=0.1)
+            plt.plot(navid_n50, navid_u, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
         elif unit == EnergyUnit.UD:
-            plt.scatter(navid_n50, navid_ud, marker='P', color=clr, label=f"{thick}mm (Navid)", s=7, linewidth=0.1)
+            plt.plot(navid_n50, navid_ud, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
 
 
 
         for b in bmarkers:
             mask = (results[:,4] == thick) & (results[:,-2] == b)
             ms = bmarkers[b]
-            axs.scatter(results[mask,-1], results[mask,id], marker=ms, label=f"{thick}mm ({bname[b]})", s=7, linewidth=0.1, color=clr)
+            axs.scatter(results[mask,-1], results[mask,id], marker=ms, label=f"{thick}mm ({bname[b]})", linewidth=0.1, color=clr)
 
     if id == 0:
-        axs.plot(ux, u4y, label="4mm (Navid)", linestyle='--', color=tcolors[1])
-        axs.plot(ux, u8y, label="8mm (Navid)", linestyle='--', color=tcolors[2])
-        axs.plot(ux, u12y, label="12mm (Navid)", linestyle='--', color=tcolors[3])
+        axs.plot(ux, u4y, label="4mm (Figure)", linestyle='--', color=tcolors[1])
+        axs.plot(ux, u8y, label="8mm (Figure)", linestyle='--', color=tcolors[2])
+        axs.plot(ux, u12y, label="12mm (Figure)", linestyle='--', color=tcolors[3])
 
     elif id == 1:
-        axs.plot(ux, udy, label="U_d (Navid)", linestyle='--', color='k')
+        axs.plot(ux, udy, label="U_d (Figure)", linestyle='--', color='k')
 
     # make log x scale
     axs.set_xscale('log')
