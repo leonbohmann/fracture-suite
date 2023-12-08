@@ -27,6 +27,7 @@ from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
 from fracsuite.over_nrg import over_nrg
 from fracsuite.simulate import sim_app
+from fracsuite.model import model_app
 custom_theme = Theme({
     "info": "dim cyan",
     "warning": "magenta",
@@ -137,7 +138,7 @@ app.add_typer(nominals_app, name="nominals")
 app.add_typer(tester_app, name="tester")
 app.add_typer(over_nrg, name="over-nrg")
 app.add_typer(sim_app, name="simulate")
-
+app.add_typer(model_app, name="model")
 class PrintWrapper():
 
     def __init__(self, func, index):

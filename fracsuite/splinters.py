@@ -32,6 +32,7 @@ from fracsuite.core.image import put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
+from fracsuite.core.lbreak import plt_model
 from fracsuite.core.plotting import (
     DataHistMode,
     DataHistPlotMode,
@@ -1135,12 +1136,15 @@ class ModeChoices(str,Enum):
     ROUGHNESS = 'roughness'
     ASP = 'asp'
     ASP0 = 'asp0'
+    L1 = 'l1'
+    L2 = 'l2'
 
 @app.command()
 def aspect_ratio_vs_radius_cluster(
     break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
     mode: Annotated[ModeChoices, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
+    filter_nan_plt: Annotated[bool, typer.Option(help='Filter NaN values from plot.')] = False,
 ):
     bid = {
         'A': 1,
@@ -1152,6 +1156,8 @@ def aspect_ratio_vs_radius_cluster(
         2: '-',
         3: ':',
     }
+    # inverse bid
+    bid_r = {v: k for k, v in bid.items()}
 
     def add_filter(specimen: Specimen):
         if break_pos is not None and specimen.break_pos != break_pos:
@@ -1190,7 +1196,10 @@ def aspect_ratio_vs_radius_cluster(
         ylabel = "$L/L_p$ [-]"
     elif mode == 'asp0':
         ylabel = "$L_1/L_2$ [-]"
-
+    elif mode == ModeChoices.L1:
+        ylabel = "$L_1$ [mm]"
+    elif mode == ModeChoices.L2:
+        ylabel = "$L_2$ [mm]"
     if bound is None:
         bound = 'all'
         sz = FigureSize.ROW1
@@ -1220,7 +1229,7 @@ def aspect_ratio_vs_radius_cluster(
     # find aspect over R on every specimen
     n = 30
     r_min = 0
-    r_max = np.sqrt(500**2 + 500**2)
+    r_max = np.sqrt(450**2 + 450**2)
     r_range = np.linspace(r_min, r_max, n)
 
     results = np.ones((len(specimens), len(r_range)+3)) * np.nan
@@ -1257,6 +1266,12 @@ def aspect_ratio_vs_radius_cluster(
             elif mode == 'asp0':
                 l1, l2 = s.measure_size()
                 a = np.abs(l1/l2)
+            elif mode == ModeChoices.L1:
+                l1, l2 = s.measure_size()
+                a = l1
+            elif mode == ModeChoices.L2:
+                l1, l2 = s.measure_size()
+                a = l2
 
             aspects[i,:] = (r, a) # (r, a)
 
@@ -1270,7 +1285,7 @@ def aspect_ratio_vs_radius_cluster(
         # print(aspects[:,1])
         # print(l1)
 
-        results[si,0] = specimen.calculate_tensile_energy()
+        results[si,0] = specimen.U
         results[si,1] = bid[specimen.boundary]
         results[si,2] = si
         results[si,3:] = l1
@@ -1286,19 +1301,26 @@ def aspect_ratio_vs_radius_cluster(
     # sort results after U_d
     results = results[results[:,0].argsort()]
 
-    n_ud = 10
+    # results for interpolation with different boundaries
+    num_results = {
+        1: [],
+        2: [],
+        3: []
+    }
+
+    n_ud = 30
     ud_min = np.min(results[:,0])
     ud_max = np.max(results[:,0])
     ud_range = np.linspace(ud_min, ud_max, n_ud)
 
     print(ud_range)
 
-    for i in range(n_ud-1):
+    for i in range(n_ud):
         for b in boundaries:
-            mask = (results[:,0] >= ud_range[i]) & (results[:,0] < ud_range[i+1]) & (results[:,1] == b)
-
-            # dont use first row
-            mask[0] = False
+            if i == n_ud-1:
+                mask = (results[:,0] >= ud_range[i]) & (results[:,1] == b)
+            else:
+                mask = (results[:,0] >= ud_range[i]) & (results[:,0] < ud_range[i+1]) & (results[:,1] == b)
 
             # get mean of all results (specimens) in this range
             mean = np.nanmean(results[mask,3:], axis=0)
@@ -1318,6 +1340,7 @@ def aspect_ratio_vs_radius_cluster(
             alpha = 1 if bound != 'all' else 0.7
             plt.plot(r_range, mean,  color=clr, linestyle=ls, alpha=alpha)
             # label=f"{uds[i]:.2f} - {uds[i+1]:.2f} J/m²",
+            num_results[b].append(mean)
 
 
     plt.xlabel(xlabel)
@@ -1341,7 +1364,42 @@ def aspect_ratio_vs_radius_cluster(
     elif mode == 'area':
         plt.ylim((0, 30))
 
-    State.output(StateOutput(fig,sz), f'tensileonly_{mode}_{bound}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+    State.output(StateOutput(fig,sz), f'U_{mode}_{bound}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+
+    if bound != 'all':
+        return
+
+    ##
+    ## PLOT interpolated data as 2d plot for every boundary
+    print('> Plotting interpolated data...')
+    from scipy.interpolate import griddata
+    # num_results[ud,R]
+    for nr in num_results: # different boundaries
+        print('Boundary: ', nr)
+        nr_r = np.asarray(num_results[nr])
+
+
+        print(nr_r)
+        # find all rows that contain no nan
+        # mask = np.all(~np.isnan(nr_r), axis=1)
+        # # print amount of non-nan rows
+        # print(f"\tNon-NaN rows: {np.sum(mask)}")
+
+        # format data storage for saving and interpolation
+        x = r_range
+        y = ud_range
+        data = np.zeros((len(y)+1, len(x)+1))
+        print(nr_r.shape)
+        data[1:,1:] = nr_r
+        data[1:,0] = ud_range
+        data[0,1:] = r_range
+
+        Z_path = State.get_general_outputfile(f'model/interpolate_{mode}_{bid_r[nr]}_{break_pos}.npy')
+        np.save(Z_path, data)
+
+        fig = plt_model(x,y,nr_r, xlabel=xlabel, ylabel=clabel, clabel=ylabel, filter_nan=filter_nan_plt)
+        State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[nr]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+
 
 class EnergyUnit(str,Enum):
     U = "U"

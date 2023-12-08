@@ -289,7 +289,20 @@ class State:
 
         return p
 
-    def get_output_file(*names, **kwargs):
+    def get_general_outputfile(*names: str, **kwargs):
+        """Gets an output file path.
+
+        Returns:
+            str: path
+        """
+        p = os.path.join(general.out_path, *names)
+
+        if not os.path.exists(os.path.dirname(p)):
+            os.makedirs(os.path.dirname(p))
+
+        return p
+
+    def get_output_file(*names: str, **kwargs):
         """Gets an output file path.
 
         Returns:

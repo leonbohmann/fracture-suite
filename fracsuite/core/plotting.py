@@ -71,7 +71,7 @@ class KernelContourMode(str, Enum):
     def values():
         return list(map(lambda c: c.value, KernelContourMode))
 
-@deprecated(action='always')
+# @deprecated(action='always')
 def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     """
     Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.

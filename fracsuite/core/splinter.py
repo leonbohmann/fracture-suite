@@ -288,7 +288,7 @@ class Splinter:
 
         return self.__calculate_orientation_score(impact_position)
 
-    def measure_size(self, impact_position: tuple[float,float] = None) -> tuple[float,float]:
+    def measure_size(self, impact_position: tuple[float,float] = None, ) -> tuple[float,float]:
         """
         Measure the main and secondary axis of a fitting ellipse.
 
@@ -311,11 +311,8 @@ class Splinter:
         # smaller axis
         minor_axis_vector = (-major_axis_vector[1], major_axis_vector[0])
 
-        # l1=w, l2=h, when major axis is towards impact, height is major length!
-        l1,l2 = w,h
-
         if impact_position is None:
-            return l2,l1
+            return h,w
 
         # check wich angle has a greater alignment strength to
         A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
@@ -325,9 +322,9 @@ class Splinter:
 
 
         if alignment_major < alignment_minor:
-            return l1,l2
+            return w,h
         else:
-            return l2,l1
+            return h,w
 
     @staticmethod
     def analyze_marked_image(
