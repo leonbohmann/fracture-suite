@@ -16,6 +16,16 @@ class ModelBoundary(str, Enum):
     B = "B"
     Z = "Z"
 
+class ModeChoices(str,Enum):
+    AREA = 'area'
+    ORIENTATION = 'orientation'
+    ROUNDNESS = 'roundness'
+    ROUGHNESS = 'roughness'
+    ASP = 'asp'
+    ASP0 = 'asp0'
+    L1 = 'l1'
+    L2 = 'l2'
+
 def get_model_folder():
     return os.path.join(general.out_path, "model")
 
@@ -78,7 +88,6 @@ def plt_model(R,U,V,filter_nan=False, xlabel="Radius", ylabel="Energy", clabel="
         filtered_nr_r = V.ravel()
 
     Z = griddata(filtered_points, filtered_nr_r, (X, Y), method='linear')
-
 
     fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
     cmesh = axs.pcolormesh(X,Y,Z,shading='auto',cmap='turbo')

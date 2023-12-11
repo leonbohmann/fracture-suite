@@ -32,7 +32,7 @@ from fracsuite.core.image import put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
-from fracsuite.core.lbreak import plt_model
+from fracsuite.core.lbreak import plt_model, ModeChoices
 from fracsuite.core.plotting import (
     DataHistMode,
     DataHistPlotMode,
@@ -1129,15 +1129,7 @@ def u(sigma: float, thickness: float) -> float:
     print(f"U={thickness * 1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
 
 
-class ModeChoices(str,Enum):
-    AREA = 'area'
-    ORIENTATION = 'orientation'
-    ROUNDNESS = 'roundness'
-    ROUGHNESS = 'roughness'
-    ASP = 'asp'
-    ASP0 = 'asp0'
-    L1 = 'l1'
-    L2 = 'l2'
+
 
 @app.command()
 def aspect_ratio_vs_radius_cluster(
@@ -1184,17 +1176,17 @@ def aspect_ratio_vs_radius_cluster(
     ylabel = "$L/L_p$ [mm]"
     clabel = "U [J/m²]"
 
-    if mode == 'area':
+    if mode == ModeChoices.AREA:
         ylabel = "$A_S$ [mm²]"
-    elif mode == 'orientation':
+    elif mode == ModeChoices.ORIENTATION:
         ylabel = "$\Delta$ [-]"
-    elif mode == 'roundness':
+    elif mode == ModeChoices.ROUNDNESS:
         ylabel = "$\lambda_c$ [-]"
-    elif mode == 'roughness':
+    elif mode == ModeChoices.ROUGHNESS:
         ylabel = "$\lambda_r$ [-]"
-    elif mode == 'asp':
+    elif mode == ModeChoices.ASP:
         ylabel = "$L/L_p$ [-]"
-    elif mode == 'asp0':
+    elif mode == ModeChoices.ASP0:
         ylabel = "$L_1/L_2$ [-]"
     elif mode == ModeChoices.L1:
         ylabel = "$L_1$ [mm]"
@@ -1317,6 +1309,7 @@ def aspect_ratio_vs_radius_cluster(
 
     for i in range(n_ud):
         for b in boundaries:
+            # gruppieren von Ergebnissen nach erstem Eintrag (U,Ud,...)
             if i == n_ud-1:
                 mask = (results[:,0] >= ud_range[i]) & (results[:,1] == b)
             else:
@@ -1372,18 +1365,10 @@ def aspect_ratio_vs_radius_cluster(
     ##
     ## PLOT interpolated data as 2d plot for every boundary
     print('> Plotting interpolated data...')
-    from scipy.interpolate import griddata
     # num_results[ud,R]
     for nr in num_results: # different boundaries
         print('Boundary: ', nr)
         nr_r = np.asarray(num_results[nr])
-
-
-        print(nr_r)
-        # find all rows that contain no nan
-        # mask = np.all(~np.isnan(nr_r), axis=1)
-        # # print amount of non-nan rows
-        # print(f"\tNon-NaN rows: {np.sum(mask)}")
 
         # format data storage for saving and interpolation
         x = r_range
