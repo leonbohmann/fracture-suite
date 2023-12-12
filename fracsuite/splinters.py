@@ -89,6 +89,9 @@ def gen(
                 return False
             if specimen.has_splinters and all_skip_existing:
                 return False
+            if all_exclude is None:
+                return True
+            
             return re.search(all_exclude, specimen.name) is None
         specimens = Specimen.get_all_by(decider=exclude, lazyload=True)
     with get_progress(total=len(specimens)) as progress:
