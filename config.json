@@ -1,6 +1,6 @@
 {
-    "base_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Proben\\",
-    "out_path": "d:\\Forschung\\Glasbruch\\Versuche.Reihe\\Auswertung\\",
+    "base_path": "c:\\Users\\leonb\\Documents\\Beschleunigungsdaten\\",
+    "out_path": "c:\\Users\\leonb\\Documents\\Beschleunigungsdaten-Output\\",
     "plot_extension": "pdf",
     "image_extension": "png",
     "default_image_size_px": [

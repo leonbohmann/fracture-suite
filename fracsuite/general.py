@@ -56,16 +56,23 @@ class GeneralSettings:
         # print(f"[green]OK[/green] (Thread: {threading.get_ident()})")
 
         if not os.path.exists(self.base_path):
-            print(f"Base path {self.base_path} does not exist. Creating it...")
-            os.makedirs(self.base_path)
+            self.base_path = input(f"Base path {self.base_path} does not exist. Please enter a valid path: ")
+            if not os.path.exists(self.base_path):
+                print("Base path does not exist. Exiting...")
+                exit(1)
+            self.save()
         if not os.path.exists(self.out_path):
-            print(f"Output path {self.out_path} does not exist. Creating it...")
-            os.makedirs(self.out_path)
-
+            self.out_path = input(f"Output path {self.out_path} does not exist. Please enter a valid path: ")
+            if not os.path.exists(self.base_path):
+                print("Base path does not exist. Exiting...")
+                exit(1)
+            self.save()
+#
         if self.plot_extension.startswith("."):
             self.plot_extension = self.plot_extension[1:]
         if self.image_extension.startswith("."):
             self.image_extension = self.image_extension[1:]
+
 
 
     def __str__(self):

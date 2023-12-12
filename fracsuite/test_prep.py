@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import typer
 from matplotlib import pyplot as plt
-from pathos.multiprocessing import ProcessPool
+# from pathos.multiprocessing import ProcessPool
 
 from fracsuite.core.image import to_gray
 from fracsuite.core.progress import get_spinner
