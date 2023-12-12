@@ -18,8 +18,8 @@ general = GeneralSettings.get()
 @model_app.command()
 def plot(
     mode: Annotated[ModeChoices, typer.Argument(help="The mode to display")],
-    boundary: Annotated[ModelBoundary, "Boundary condition"],
-    filter_nan: Annotated[bool, typer.Option(True, help="Filter NaN values")] = False,
+    boundary: Annotated[ModelBoundary, typer.Argument(help="Boundary condition")],
+    filter_nan: Annotated[bool, typer.Option(help="Filter NaN values")] = False,
 ):
     model_name = f'interpolate_{mode}_{boundary}_corner.npy'
     R,U,V = load_model(model_name)
