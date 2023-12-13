@@ -1297,11 +1297,43 @@ def aspect_ratio_vs_radius_cluster(
     results = results[results[:,0].argsort()]
 
     # results for interpolation with different boundaries
-    num_results = {
+    results_per_boundary = {
         1: [],
         2: [],
         3: []
     }
+
+    results_per_boundary_unclustered = {
+        1: [],
+        2: [],
+        3: []
+    }
+
+    # find all results for every boundary
+    mask_A = results[:,1] == 1
+    mask_B = results[:,1] == 2
+    mask_Z = results[:,1] == 3
+
+    # put results in dictionary
+    results_per_boundary[1] = results[mask_A,3:]
+    results_per_boundary[2] = results[mask_B,3:]
+    results_per_boundary[3] = results[mask_Z,3:]
+
+    # sort the individual results after U_d
+    for b in results_per_boundary:
+        results_per_boundary[b] = results_per_boundary[b][results_per_boundary[b][:,0].argsort()]
+
+        # plot the current boundary
+        x = r_range
+        y = ud_range
+        z = results_per_boundary[b]
+
+        # display the figure
+        fig = plt_model(x,y,z, xlabel=xlabel, ylabel=clabel, clabel=ylabel, filter_nan=filter_nan_plt)
+
+        # save output
+        State.output(StateOutput(fig, sz), f'unclustered_{mode}_{bid_r[b]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+
 
     n_ud = 30
     ud_min = np.min(results[:,0])
@@ -1310,6 +1342,7 @@ def aspect_ratio_vs_radius_cluster(
 
     print(ud_range)
 
+    # cluster results for a range of energies
     for i in range(n_ud):
         for b in boundaries:
             # gruppieren von Ergebnissen nach erstem Eintrag (U,Ud,...)
@@ -1336,7 +1369,7 @@ def aspect_ratio_vs_radius_cluster(
             alpha = 1 if bound != 'all' else 0.7
             plt.plot(r_range, mean,  color=clr, linestyle=ls, alpha=alpha)
             # label=f"{uds[i]:.2f} - {uds[i+1]:.2f} J/m²",
-            num_results[b].append(mean)
+            results_per_boundary[b].append(mean)
 
 
     plt.xlabel(xlabel)
@@ -1369,9 +1402,9 @@ def aspect_ratio_vs_radius_cluster(
     ## PLOT interpolated data as 2d plot for every boundary
     print('> Plotting interpolated data...')
     # num_results[ud,R]
-    for nr in num_results: # different boundaries
-        print('Boundary: ', nr)
-        nr_r = np.asarray(num_results[nr])
+    for br_key in results_per_boundary: # different boundaries
+        print('Boundary: ', br_key)
+        nr_r = np.asarray(results_per_boundary[br_key])
 
         # format data storage for saving and interpolation
         x = r_range
@@ -1382,11 +1415,13 @@ def aspect_ratio_vs_radius_cluster(
         data[1:,0] = ud_range
         data[0,1:] = r_range
 
-        Z_path = State.get_general_outputfile(f'model/interpolate_{mode}_{bid_r[nr]}_{break_pos}.npy')
+        # this should save the original data that has not been clustered
+        Z_path = State.get_general_outputfile(f'model/interpolate_{mode}_{bid_r[br_key]}_{break_pos}.npy')
         np.save(Z_path, data)
 
         fig = plt_model(x,y,nr_r, xlabel=xlabel, ylabel=clabel, clabel=ylabel, filter_nan=filter_nan_plt)
-        State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[nr]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+        State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[br_key]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+
 
 
 class EnergyUnit(str,Enum):
