@@ -14,8 +14,6 @@ from typing import Annotated, Any, Callable
 
 import cv2
 from matplotlib.axes import Axes
-from matplotlib.patches import Circle, PathPatch, Rectangle
-from matplotlib.path import Path
 import numpy as np
 import numpy.typing as npt
 import typer
@@ -91,7 +89,7 @@ def gen(
                 return False
             if all_exclude is None:
                 return True
-            
+
             return re.search(all_exclude, specimen.name) is None
         specimens = Specimen.get_all_by(decider=exclude, lazyload=True)
     with get_progress(total=len(specimens)) as progress:
