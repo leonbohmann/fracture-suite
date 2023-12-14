@@ -26,15 +26,15 @@ class ModeChoices(str,Enum):
     L1 = 'l1'
     L2 = 'l2'
 
-def get_model_folder():
-    return os.path.join(general.out_path, "model")
+def get_layer_folder():
+    return os.path.join(general.out_path, "layers")
 
-def get_model_file(file_name):
-    return os.path.join(get_model_folder(), file_name)
+def get_layer_file(file_name):
+    return os.path.join(get_layer_folder(), file_name)
 
-def load_model(file_name):
+def load_layer(file_name):
     """
-    Loads a model from the model folder.
+    Loads a layer from the layer folder.
 
     Parameters
     ----------
@@ -50,22 +50,52 @@ def load_model(file_name):
         V : ndarray
             The interpolated values.
     """
-    file_path = get_model_file(file_name)
-    data = np.load(get_model_file(file_path))
+    file_path = get_layer_file(file_name)
+    data = np.load(get_layer_file(file_path))
     R = data[0,1:]
     U = data[1:,0]
     V = data[1:,1:]
 
     return R,U,V
 
-def plt_model(R,U,V,filter_nan=False, xlabel="Radius", ylabel="Energy", clabel="~") -> Figure:
+def interp_r_layer(model_path, U):
     """
-    Plots the aspect ratio.
+    Interpolates the layer for a given U.
+
+    Args:
+        model_path (str): Path to the model file.
+        U (float): Elastic strain energy.
+
+    Returns:
+        Callable: A function that takes the radius and returns the model value.
+    """
+    R,U,V = load_layer(model_path)
+
+    # create an interpolation function for the given U
+    p = np.meshgrid(R, U, indexing='xy')
+    points = np.vstack([p[0].ravel(), p[1].ravel()]).T
+    values = V.ravel()
+    f = interp2d(*points.T, values, kind='linear')
+
+    def r_func(r: float) -> float:
+        return f(r, U)[0]
+
+    return r_func
+
+def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="~",interpolate=True) -> Figure:
+    """
+    Plots a given layer.
 
     Args:
         R (array): Radius range.
         U (array): Energy range.
         V (n-d-array): Values matching R[i] and U[j].
+        xlabel (str, optional): x-axis label. Defaults to "Radius".
+        ylabel (str, optional): y-axis label. Defaults to "Energy".
+        clabel (str, optional): Colorbar label. Defaults to "~".
+        interpolate (bool, optional): Interpolate the data. Defaults to True.
+        ignore_nan (bool, optional): Ignore NaN values. Defaults to False. If set to true,
+            the NaN values are filtered out of the data and the plot is continuous.
     """
 
     # create interpolatable data
@@ -78,7 +108,7 @@ def plt_model(R,U,V,filter_nan=False, xlabel="Radius", ylabel="Energy", clabel="
     X,Y = np.meshgrid(X,Y)
 
     # Filter both points and nr_r arrays to exclude NaNs
-    if filter_nan:
+    if ignore_nan:
         raveled_nr = V.ravel()
         non_nan_mask = ~np.isnan(raveled_nr)
         filtered_points = points[non_nan_mask]
@@ -87,7 +117,8 @@ def plt_model(R,U,V,filter_nan=False, xlabel="Radius", ylabel="Energy", clabel="
         filtered_points = points
         filtered_nr_r = V.ravel()
 
-    Z = griddata(filtered_points, filtered_nr_r, (X, Y), method='linear')
+    Z = griddata(filtered_points, filtered_nr_r, (X, Y), method='nearest' if not interpolate else 'linear')
+
 
     fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
     cmesh = axs.pcolormesh(X,Y,Z,shading='auto',cmap='turbo')
@@ -110,18 +141,7 @@ def get_asp(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
     Returns:
         Callable[[float], float]: A function that takes the radius and returns the aspect ratio.
     """
-    R,U,V = load_model(f'interpolate_asp_{boundary}_corner.npy')
-
-    # create an interpolation function for the given U
-    p = np.meshgrid(R, U, indexing='xy')
-    points = np.vstack([p[0].ravel(), p[1].ravel()]).T
-    values = V.ravel()
-    f = interp2d(*points.T, values, kind='linear')
-
-    def asp(r: float) -> float:
-        return f(r, U)[0]
-
-    return asp
+    return interp_r_layer(f'impact-layer_asp_{boundary}_corner.npy', U)
 
 def get_l1(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
     """
@@ -134,15 +154,4 @@ def get_l1(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
     Returns:
         Callable[[float], float]: A function that takes the radius and returns the aspect ratio.
     """
-    R,U,V = load_model(f'interpolate_l1_{boundary}_corner.npy')
-
-    # create an interpolation function for the given U
-    p = np.meshgrid(R, U, indexing='xy')
-    points = np.vstack([p[0].ravel(), p[1].ravel()]).T
-    values = V.ravel()
-    f = interp2d(*points.T, values, kind='linear')
-
-    def l1(r: float) -> float:
-        return f(r, U)[0]
-
-    return l1
+    return interp_r_layer(f'impact-layer_l1_{boundary}_corner.npy', U)

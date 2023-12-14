@@ -1,33 +1,32 @@
 import os
-import io
 import subprocess
 import sys
 import time
 
 import typer
-from cycler import cycler
 from matplotlib import pyplot as plt
 from rich import print
+from rich.progress import Progress, TextColumn
 from rich.theme import Theme
-from rich.progress import Progress, TextColumn, SpinnerColumn
-from fracsuite.core.coloring import norm_color
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
 from fracsuite.acc import app as acc_app
 from fracsuite.config import app as config_app
-from fracsuite.core.progress import get_progress, get_spinner
+from fracsuite.core.coloring import norm_color
+from fracsuite.core.progress import get_progress
 from fracsuite.general import GeneralSettings
+from fracsuite.layer import layer_app
 from fracsuite.nominals import nominals_app
+from fracsuite.over_nrg import over_nrg
 from fracsuite.scalp import scalp_app
+from fracsuite.simulate import sim_app
 from fracsuite.specimen import app as specimen_app
 from fracsuite.splinters import app as splinter_app
 from fracsuite.state import State
 from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
-from fracsuite.over_nrg import over_nrg
-from fracsuite.simulate import sim_app
-from fracsuite.model import model_app
+
 custom_theme = Theme({
     "info": "dim cyan",
     "warning": "magenta",
@@ -138,7 +137,7 @@ app.add_typer(nominals_app, name="nominals")
 app.add_typer(tester_app, name="tester")
 app.add_typer(over_nrg, name="over-nrg")
 app.add_typer(sim_app, name="simulate")
-app.add_typer(model_app, name="model")
+app.add_typer(layer_app, name="model")
 class PrintWrapper():
 
     def __init__(self, func, index):

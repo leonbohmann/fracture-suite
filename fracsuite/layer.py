@@ -1,30 +1,27 @@
-from enum import Enum
 from typing import Annotated
 from matplotlib import pyplot as plt
 import typer
-import os
-import numpy as np
 
 from fracsuite.callbacks import main_callback
-from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
+from fracsuite.core.plotting import FigureSize
 from fracsuite.general import GeneralSettings
-from scipy.interpolate import griddata
-from fracsuite.core.lbreak import ModeChoices, load_model, ModelBoundary, plt_model
+from fracsuite.core.lbreak import ModeChoices, load_layer, ModelBoundary, plt_layer
 from fracsuite.state import State, StateOutput
 
-model_app = typer.Typer(callback=main_callback, help="Model related commands.")
+layer_app = typer.Typer(callback=main_callback, help="Model related commands.")
 general = GeneralSettings.get()
 
-@model_app.command()
+@layer_app.command()
 def plot(
+    layer: Annotated[str, typer.Argument(help="The layer to display")],
     mode: Annotated[ModeChoices, typer.Argument(help="The mode to display")],
     boundary: Annotated[ModelBoundary, typer.Argument(help="Boundary condition")],
-    filter_nan: Annotated[bool, typer.Option(help="Filter NaN values")] = False,
+    ignore_nan_plot: Annotated[bool, typer.Option(help="Filter NaN values")] = True,
 ):
-    model_name = f'interpolate_{mode}_{boundary}_corner.npy'
-    R,U,V = load_model(model_name)
+    model_name = f'{layer}-layer_{mode}_{boundary}_corner.npy'
+    R,U,V = load_layer(model_name)
 
-    xlabel = 'Radius [mm]'
+    xlabel = 'Distance $R$ from Impact [mm]'
     ylabel = 'Elastic Strain Energy U [J/m²]'
     clabel = 'Aspect ratio $L/L_p$'
 
@@ -45,9 +42,7 @@ def plot(
     elif mode == ModeChoices.L2:
         clabel = "Splinter Width $L_2$ [mm]"
 
-    fig = plt_model(R,U,V,filter_nan=filter_nan, xlabel=xlabel, ylabel=ylabel, clabel=clabel)
-    State.output(StateOutput(fig, FigureSize.ROW2), f"model_{mode}_{boundary}.png")
-
-
-    fig.show()
-    plt.waitforbuttonpress()
+    fig = plt_layer(R,U,V,ignore_nan=ignore_nan_plot, xlabel=xlabel, ylabel=ylabel, clabel=clabel,
+                    interpolate=False)
+    State.output(StateOutput(fig, FigureSize.ROW2), f"impact-layer-2d_{mode}_{boundary}")
+    plt.close(fig)
