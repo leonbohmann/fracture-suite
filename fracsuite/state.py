@@ -35,7 +35,7 @@ class StateOutput:
 
 
     def __init__(self, data, figwidth, **additional_data):
-        assert isinstance(data, Figure) or type(data).__module__ == np.__name__, "Data must be a matplotlib figure or a numpy array."
+        assert isinstance(data, Figure) or type(data).__module__ == np.__name__, f"Data must be a matplotlib figure or a numpy array. Is '{type(data)}'."
 
         self.Data = data
         self.FigWidth = figwidth

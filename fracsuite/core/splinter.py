@@ -1,4 +1,5 @@
 from __future__ import annotations
+from re import S
 
 import cv2
 import numpy as np
@@ -17,6 +18,7 @@ from fracsuite.core.imageprocessing import (
 )
 from fracsuite.core.preps import PreprocessorConfig
 from fracsuite.core.region import RectRegion
+from fracsuite.core.splinter_props import SplinterProp
 
 from fracsuite.core.vectors import alignment_between
 
@@ -271,6 +273,9 @@ class Splinter:
         self.alignment_score = 1 - np.abs(dot / (magA * magB))
         return self.alignment_score
 
+    def measure_circumfence(self, px_per_mm: float):
+        circumfence = cv2.arcLength(self.contour, False)
+        return circumfence / px_per_mm
 
     def measure_orientation(self, impact_position: tuple[float,float]) -> float | np.nan:
         """Calculate, how much the splinters orientation points to the impactpoint of config.
@@ -300,8 +305,17 @@ class Splinter:
             tuple[float,float]: The main and secondary axis of the ellipse. If impact_position is passed,
                 l1 is the axis towards the impact point and l2 is the other axis.
         """
-        (x,y), (w,h), angle = cv2.minAreaRect(self.contour)
+        # look also at: fracsuite tester roundrect, l1 is always the main axis, l2 the secondary axis
+        #   So, if rotating the rect, l1 is rotated from 0 to angle, l2 is rotated from 90 to angle+90.
+
+        (x,y), (l1,l2), angle = cv2.minAreaRect(self.contour)
         # xy,wh,angle = cv2.fitEllipse(self.contour)
+
+        # if angle > 45:
+        #     l1, l2 = l2, l1
+
+        if impact_position is None:
+            return max(l1,l2), min(l1,l2)
 
         major_axis_angle = angle
         major_axis_angle_rad = np.deg2rad(major_axis_angle)
@@ -311,8 +325,6 @@ class Splinter:
         # smaller axis
         minor_axis_vector = (-major_axis_vector[1], major_axis_vector[0])
 
-        if impact_position is None:
-            return h,w
 
         # check wich angle has a greater alignment strength to
         A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
@@ -322,9 +334,19 @@ class Splinter:
 
 
         if alignment_major < alignment_minor:
-            return w,h
+            return l1,l2
         else:
-            return h,w
+            return l2,l1
+
+    def measure_asp(self, ip) -> float:
+        """Calculate the aspect ratio of the splinter wrt to an impact position."""
+        l1, l2 = self.measure_size(ip)
+        return np.abs(l1/l2)
+
+    def measure_asp0(self) -> float:
+        """Calculate the aspect ratio of the splinter."""
+        l1, l2 = self.measure_size()
+        return np.abs(l1/l2)
 
     @staticmethod
     def analyze_marked_image(
@@ -595,3 +617,91 @@ class Splinter:
         splinters = [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
 
         return splinters
+
+    def get_splinter_data(self, mode, ip = None, px_p_mm = None):
+        """
+        Get the data of the splinter.
+
+        Args:
+            mode (str): The mode to use.
+            ip (tuple[float,float], optional): Impact position. Defaults to None.
+            px_p_mm (float, optional): Scale factor. Defaults to None.
+
+        Returns:
+            float: Return value depending on mode.
+        """
+        if mode == SplinterProp.ASP:
+            assert ip is not None, "Impact point must be set to calculate aspect ratio"
+            a = self.measure_asp(ip)
+        elif mode == SplinterProp.AREA:
+            a = self.area
+        elif mode == SplinterProp.ORIENTATION:
+            assert ip is not None, "Impact point must be set to calculate orientation"
+            a = self.measure_orientation(ip)
+        elif mode == SplinterProp.ROUNDNESS:
+            a = self.calculate_roundness()
+        elif mode == SplinterProp.ROUGHNESS:
+            a = self.calculate_roughness()
+        elif mode == SplinterProp.ASP0:
+            a = self.measure_asp0()
+        elif mode == SplinterProp.L1:
+            l1, l2 = self.measure_size()
+            a = l1
+        elif mode == SplinterProp.L2:
+            l1, l2 = self.measure_size()
+            a = l2
+        elif mode == SplinterProp.CIRCUMFENCE:
+            assert px_p_mm is not None, "px_per_mm must be set to calculate circumfence"
+            a = self.measure_circumfence(px_p_mm)
+        elif mode == SplinterProp.ANGLE:
+            _, _, angle = cv2.minAreaRect(self.contour)
+            a = angle
+        return a
+
+    def get_mode_labels(mode, row3 = False) -> str:
+
+        if mode == SplinterProp.AREA:
+            ylabel = "$A_S$ [mm²]"
+        elif mode == SplinterProp.ORIENTATION:
+            ylabel = "$\Delta$ [-]"
+        elif mode == SplinterProp.ROUNDNESS:
+            ylabel = "$\lambda_c$ [-]"
+        elif mode == SplinterProp.ROUGHNESS:
+            ylabel = "$\lambda_r$ [-]"
+        elif mode == SplinterProp.ASP:
+            ylabel = "$L/L_p$ [-]"
+        elif mode == SplinterProp.ASP0:
+            ylabel = "$L_1/L_2$ [-]"
+        elif mode == SplinterProp.L1:
+            ylabel = "$L_1$ [mm]"
+        elif mode == SplinterProp.L2:
+            ylabel = "$L_2$ [mm]"
+        elif mode == SplinterProp.CIRCUMFENCE:
+            ylabel = "Circumference [mm]"
+        elif mode == SplinterProp.ANGLE:
+            ylabel = "Angle [°]"
+        else:
+            raise Exception(f"Invalid splinter-prop '{mode}'")
+        if row3:
+            return ylabel
+
+        if mode == SplinterProp.AREA:
+            ylabel = "Splinter area " + ylabel
+        elif mode == SplinterProp.ORIENTATION:
+            ylabel = "Splinter orientation strength " + ylabel
+        elif mode == SplinterProp.ROUNDNESS:
+            ylabel = "Splinter roundness " + ylabel
+        elif mode == SplinterProp.ROUGHNESS:
+            ylabel = "Splinter roughness " + ylabel
+        elif mode == SplinterProp.ASP:
+            ylabel = "Splinter aspect ratio " + ylabel
+        elif mode == SplinterProp.ASP0:
+            ylabel = "Splinter aspect ratio " + ylabel
+        elif mode == SplinterProp.L1:
+            ylabel = "Splinter height " + ylabel
+        elif mode == SplinterProp.L2:
+            ylabel = "Splinter width " + ylabel
+        elif mode == SplinterProp.CIRCUMFENCE:
+            ylabel = "Splinter circumference " + ylabel
+
+        return ylabel

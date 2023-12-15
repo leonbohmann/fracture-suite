@@ -111,5 +111,5 @@ class PreprocessorConfig:
 # hardPrepConfig = PreprocessorConfig("hard", block=53)
 
 # defaultPrepConfig = PreprocessorConfig("test3-final", block=61, c=0, gauss_size=(3,3), gauss_sigma=1)
-defaultPrepConfig = PreprocessorConfig("test2-final", block=41, c=0, gauss_size=(5,5), gauss_sigma=1)
+defaultPrepConfig = PreprocessorConfig("test2-final", block=23, c=0, gauss_size=(5,5), gauss_sigma=1)
 # defaultPrepConfig = PreprocessorConfig("test1-final", block=41, c=0, gauss_size=(5,5), gauss_sigma=1)

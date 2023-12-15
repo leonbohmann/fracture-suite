@@ -462,11 +462,17 @@ def create_splinter_sizes_image(
     annotate: bool = True,
     annotate_title: str = "",
     with_contours: bool = False,
-    crange: tuple[float,float] = None
+    crange: tuple[float,float] = None,
+    s_value: float = None
 ) -> np.ndarray:
     """Create an image with the splinter sizes colored in a colormap."""
     img = np.zeros(shape, dtype=np.uint8)
-    areas = [x.area for x in splinters]
+
+    if s_value is None:
+        def s_value(s: Splinter):
+            return s.area
+
+    areas = [s_value(x) for x in splinters]
 
     min_area = np.min(areas)
     max_area = np.max(areas)
@@ -476,7 +482,7 @@ def create_splinter_sizes_image(
         max_area = crange[1]
 
     for s in splinters:
-        clr = get_color(s.area, min_value=min_area, max_value=max_area)
+        clr = get_color(s_value(s), min_value=min_area, max_value=max_area)
         cv2.drawContours(img, [s.contour], -1, clr, -1)
 
     if with_contours:

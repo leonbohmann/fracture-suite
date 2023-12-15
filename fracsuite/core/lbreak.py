@@ -16,15 +16,7 @@ class ModelBoundary(str, Enum):
     B = "B"
     Z = "Z"
 
-class ModeChoices(str,Enum):
-    AREA = 'area'
-    ORIENTATION = 'orientation'
-    ROUNDNESS = 'roundness'
-    ROUGHNESS = 'roughness'
-    ASP = 'asp'
-    ASP0 = 'asp0'
-    L1 = 'l1'
-    L2 = 'l2'
+
 
 def get_layer_folder():
     return os.path.join(general.out_path, "layers")

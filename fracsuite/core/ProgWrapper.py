@@ -9,6 +9,8 @@ class ProgWrapper():
         self.task = self.progress.add_task(title, total=total)
         self.entered = False
         self.enter_level = 0
+        self.set_description(title)
+        self.set_total(total)
 
     def set_description(self, description: str):
         self.progress.update(self.task, description=description)

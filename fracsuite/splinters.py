@@ -31,7 +31,7 @@ from fracsuite.core.image import put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
-from fracsuite.core.lbreak import plt_layer, ModeChoices
+from fracsuite.core.lbreak import plt_layer
 from fracsuite.core.plotting import (
     DataHistMode,
     DataHistPlotMode,
@@ -53,6 +53,7 @@ from fracsuite.core.preps import defaultPrepConfig
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
+from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import similarity, moving_average
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
@@ -75,14 +76,16 @@ def gen(
     all_exclude: Annotated[str, typer.Option(help='Exclude specimens from all.')] = None,
     all_skip_existing: Annotated[bool, typer.Option(help='Skip specimens that already have splinters.')] = False,
     from_label: Annotated[bool, typer.Option(help='Generate splinters from labeled image.')] = False,
+    use_default_prep: Annotated[bool, typer.Option(help='Use default prep config.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""
     if realsize[0] == -1 or realsize[1] == -1:
         realsize = None
 
     if not all:
-        specimen = Specimen.get(specimen_name, load=False)
-        specimens = [specimen]
+        filter = create_filter_function(specimen_name)
+
+        specimens = Specimen.get_all_by(filter, lazyload=True)
     else:
         def exclude(specimen: Specimen):
             if not specimen.has_fracture_scans:
@@ -94,6 +97,8 @@ def gen(
 
             return re.search(all_exclude, specimen.name) is None
         specimens = Specimen.get_all_by(decider=exclude, lazyload=True)
+
+
     with get_progress(total=len(specimens)) as progress:
         progress.set_total(len(specimens))
         for specimen in specimens:
@@ -107,6 +112,9 @@ def gen(
             fracture_image = specimen.get_fracture_image()
             px_per_mm = specimen.calculate_px_per_mm(realsize)
             prep = specimen.get_prepconf()
+            if use_default_prep:
+                prep = defaultPrepConfig
+
             # generate splinters for the specimen
             print(f'Using  px_per_mm = {px_per_mm:.2f}')
             print(f'            prep = "{prep.name}"')
@@ -923,11 +931,11 @@ def create_filter_function(name_filter,
         name_filter = name_filter.split(" ")
         print(f"Searching for specimen whose name is in: '{name_filter}'")
         name_filter_function = in_names_list
-    elif name_filter is not None and "*" not in name_filter:
+    elif name_filter is not None and not any([c not in "*[]^\\" for c in name_filter]):
         name_filter = [name_filter]
         print(f"Searching for specimen whose name is in: '{name_filter}'")
         name_filter_function = in_names_list
-    elif name_filter is not None and "*" in name_filter:
+    elif name_filter is not None and any([c not in "*[]^\\" for c in name_filter]):
         print(f"Searching for specimen whose name matches: '{name_filter}'")
         name_filter = name_filter.replace(".", "\.").replace("*", ".*").replace('!', '|')
         name_filter_function = in_names_wildcard
@@ -1132,12 +1140,69 @@ def u(sigma: float, thickness: float) -> float:
     print(f"U={thickness * 1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
 
 
+@app.command()
+def kde_impact_layer(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
+    mode: Annotated[SplinterProp, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
+):
+    specimen = Specimen.get(specimen_name)
+    px_per_mm = specimen.calculate_px_per_mm()
+    ip = specimen.get_impact_position()
 
+    data = {
+
+    }
+
+    for splinter in specimen.splinters:
+        data[splinter] = splinter.get_splinter_data(mode=mode, px_p_mm=px_per_mm, ip=ip)
+
+    def splinter_data_getter(splinters: list[Splinter]):
+        if len(splinters) == 0:
+            return np.nan
+
+        r = 0
+        for s in splinters:
+            r += data[s]
+
+        return r / len(splinters)
+
+    clr_label = Splinter.get_mode_labels(mode, row3=False)
+
+    w_mm = 20
+
+    soutput = plot_splinter_movavg(
+        specimen.get_fracture_image(),
+        specimen.splinters,
+        exclude_points=[specimen.get_impact_position(True)],
+        skip_edge=False,
+        fill_skipped_with_mean=True,
+        n_points=50,
+        kw_px=w_mm*px_per_mm,
+        z_action=splinter_data_getter,
+        clr_label=clr_label,
+        mode=KernelContourMode.FILLED,
+        figwidth=FigureSize.ROW2,
+        clr_format='.1f',
+        normalize=False,
+    )
+
+    State.output(soutput,f"impact-layer_{mode}" ,spec=specimen, to_additional=True)
+
+
+    img = create_splinter_sizes_image(
+        specimen.splinters,
+        specimen.get_fracture_image().shape,
+        annotate=True,
+        with_contours=True,
+        annotate_title=f"Splinter {mode}",
+        s_value=lambda x: x.get_splinter_data(mode=mode, px_p_mm=px_per_mm, ip=ip),
+    )
+    State.output(img, f"impact-layer_{mode}_splinters", spec=specimen, to_additional=True)
 
 @app.command()
 def create_impact_layer(
     break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
-    mode: Annotated[ModeChoices, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
+    mode: Annotated[SplinterProp, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
     ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
 ):
     bid = {
@@ -1171,43 +1236,12 @@ def create_impact_layer(
     specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
 
 
-    xlabel = "R [mm]"
-    ylabel = "$L/L_p$ [mm]"
-    clabel = "U [J/m²]"
-
-    if mode == ModeChoices.AREA:
-        ylabel = "$A_S$ [mm²]"
-    elif mode == ModeChoices.ORIENTATION:
-        ylabel = "$\Delta$ [-]"
-    elif mode == ModeChoices.ROUNDNESS:
-        ylabel = "$\lambda_c$ [-]"
-    elif mode == ModeChoices.ROUGHNESS:
-        ylabel = "$\lambda_r$ [-]"
-    elif mode == ModeChoices.ASP:
-        ylabel = "$L/L_p$ [-]"
-    elif mode == ModeChoices.ASP0:
-        ylabel = "$L_1/L_2$ [-]"
-    elif mode == ModeChoices.L1:
-        ylabel = "$L_1$ [mm]"
-    elif mode == ModeChoices.L2:
-        ylabel = "$L_2$ [mm]"
-
     sz = FigureSize.ROW1
 
-    xlabel = "Distance from impact " + xlabel
-    clabel = "Strain Energy " + clabel
-    if mode == 'area':
-        ylabel = "Splinter area " + ylabel
-    elif mode == 'orientation':
-        ylabel = "Splinter orientation strength " + ylabel
-    elif mode == 'roundness':
-        ylabel = "Splinter roundness " + ylabel
-    elif mode == 'roughness':
-        ylabel = "Splinter roughness " + ylabel
-    elif mode == 'asp':
-        ylabel = "Splinter aspect ratio " + ylabel
-    elif mode == 'asp0':
-        ylabel = "Splinter aspect ratio " + ylabel
+    xlabel = "Distance from impact R [mm]"
+    ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+    clabel = "Strain Energy U [J/m²]"
+
 
     # find aspect over R on every specimen
     n_r = 30
@@ -1228,6 +1262,7 @@ def create_impact_layer(
         aspects = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
         ip = specimen.get_impact_position()
         s_sz = specimen.get_real_size()
+        px_p_mm = specimen.calculate_px_per_mm()
         for i, s in enumerate(specimen.splinters):
             # skip splinters that are too close to the edge
             if s.centroid_mm[0] > s_sz[0]-d_rand or s.centroid_mm[0] < d_rand or s.centroid_mm[1] > s_sz[1]-d_rand or s.centroid_mm[1] < d_rand:
@@ -1237,27 +1272,8 @@ def create_impact_layer(
             # calculate distance to impact point
             r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
-            # get mode data from splinter
-            if mode == 'asp':
-                l1, l2 = s.measure_size(ip)
-                a = np.abs(l1/l2)
-            elif mode == 'area':
-                a = s.area
-            elif mode == 'orientation':
-                a = s.measure_orientation(ip)
-            elif mode == 'roundness':
-                a = s.calculate_roundness()
-            elif mode == 'roughness':
-                a = s.calculate_roughness()
-            elif mode == 'asp0':
-                l1, l2 = s.measure_size()
-                a = np.abs(l1/l2)
-            elif mode == ModeChoices.L1:
-                l1, l2 = s.measure_size()
-                a = l1
-            elif mode == ModeChoices.L2:
-                l1, l2 = s.measure_size()
-                a = l2
+            # get data from splinter
+            a = s.get_splinter_data(mode=mode, px_p_mm=px_p_mm, ip=ip)
 
             aspects[i,:] = (r, a) # (r, a)
 
@@ -1507,11 +1523,10 @@ def nfifty(
                 nfifty = specimen.calculate_nfifty(centers, (50,50), force_recalc=recalc)
             else:
                 nfifty = specimen.calculate_NperWindow(force_recalc=recalc)
-            results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_tensile_energy(), specimen.calculate_tensile_energy_density() , specimen.thickness, bid[specimen.boundary], nfifty)
+            results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_energy(), specimen.calculate_energy_density() , specimen.thickness, bid[specimen.boundary], nfifty)
 
             progress.advance()
 
-    inspect(results)
 
     idd = {
         EnergyUnit.U: 0,
@@ -1542,11 +1557,9 @@ def nfifty(
         return 0.255 * x ** 2 + 109.28 * x + 5603.2
 
 
-    ux = np.linspace(np.min(results[:,-1]), np.max(results[:,-1]), 100)
-    u4y = U4(ux)
-    u8y = U8(ux)
-    u12y = U12(ux)
-    udy = UD(ux)
+
+    min_N50 = 0
+    max_N50 = 400
 
     axs: Axes
     fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
@@ -1560,40 +1573,72 @@ def nfifty(
         x = results[mask,-1]
         y = results[mask,id]
 
+        # get results from navid
+        from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_interpolated
+        navid_n50 = navid_nfifty(thick)
+        navid_x = navid_n50[:,0]
+        navid_y = navid_n50[:,1]
+        # navids points
+        plt.scatter(navid_x, navid_y, marker='o', facecolors='none', edgecolors=clr, label=f"{thick}mm (Navid)", linewidth=0.6)
+
+
         if len(y) > 0:
             # fit a curve
-            def func(x, a, b, c):
-                return a * x ** 2 + b * x + c
-            popt, pcov = curve_fit(func, x, y, p0=(1, 1, 1))
+            def func(x, a, b):
+                return a * x + b
+
+            x = np.concatenate([x,navid_x])
+            y = np.concatenate([y,navid_y])
+            p = np.column_stack([x,y])
+
+            print(p.shape)
+            print(p[0])
+            # sort for x
+            p = p[p[:,0].argsort()]
+
+            x = p[:,0]
+            y = p[:,1]
+            popt, pcov = curve_fit(func, x, y, p0=(1, 1))
 
             # plot the curve
-            x = np.linspace(np.min(results[:,-1]), np.max(results[:,-1]), 100)
+            x = np.linspace(np.min(x), np.max(x), 100)
             y = func(x, *popt)
-            axs.plot(x, y, label=f"{thick}mm (fit)", linestyle=(0,(3,1,1,1)), color=clr)
+            axs.plot(x, y, linestyle=(0,(1,1)), color=clr)
 
-        # get results from navid
-        from fracsuite.core.navid_results import navid_nfifty
-        navid_n50, navid_ud, navid_u = navid_nfifty(thick)
-        if unit == EnergyUnit.U:
-            # print(navid_n50, navid_ud, navid_u)
-            plt.plot(navid_n50, navid_u, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
-        elif unit == EnergyUnit.UD:
-            plt.plot(navid_n50, navid_ud, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
+        # navid_n50, navid_ud, navid_u = navid_nfifty_interpolated(thick)
+        # if unit == EnergyUnit.U:
+        #     # print(navid_n50, navid_ud, navid_u)
+        #     plt.plot(navid_n50, navid_u, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
+        # elif unit == EnergyUnit.UD:
+        #     plt.plot(navid_n50, navid_ud, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
 
 
 
         for b in bmarkers:
             mask = (results[:,4] == thick) & (results[:,-2] == b)
-            ms = bmarkers[b]
-            axs.scatter(results[mask,-1], results[mask,id], marker=ms, label=f"{thick}mm ({bname[b]})", linewidth=0.1, color=clr)
+            ms = 'x'
+            axs.scatter(results[mask,-1], results[mask,id], marker=ms, linewidth=0.6, color=clr)
+
+
+    ux = np.linspace(min_N50, max_N50, 100)
+    u4y = U4(ux)
+    u8y = U8(ux)
+    u12y = U12(ux)
+    udy = UD(ux)
 
     if id == 0:
-        axs.plot(ux, u4y, label="4mm (Figure)", linestyle='--', color=tcolors[1])
-        axs.plot(ux, u8y, label="8mm (Figure)", linestyle='--', color=tcolors[2])
-        axs.plot(ux, u12y, label="12mm (Figure)", linestyle='--', color=tcolors[3])
+        axs.plot(ux, u4y, label="4mm (Navid)", linestyle='--', color=tcolors[1], alpha=0.4)
+        axs.plot(ux, u8y, label="8mm (Navid)", linestyle='--', color=tcolors[2], alpha=0.4)
+        axs.plot(ux, u12y, label="12mm (Navid)", linestyle='--', color=tcolors[3], alpha=0.4)
 
     elif id == 1:
-        axs.plot(ux, udy, label="U_d (Figure)", linestyle='--', color='k')
+        axs.plot(ux, udy, label="U_d (Navid)", linestyle='--', color='k')
+
+    # labeling for leons data
+    for b,t in zip(bid.values(), thicknesses):
+        axs.scatter([], [], label=f"{t}mm", marker='x', color=tcolors[b])
+    for b,t in zip(bid.values(), thicknesses):
+        axs.plot([],[], label=f"{t}mm (Leon)", color=tcolors[b])
 
     # make log x scale
     axs.set_xscale('log')

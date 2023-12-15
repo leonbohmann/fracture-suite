@@ -9,6 +9,7 @@ from tkinter import Checkbutton, Frame, IntVar, Scale
 from typing import Annotated
 
 import cv2
+from matplotlib import pyplot as plt
 import numpy as np
 import typer
 from PIL import Image, ImageTk
@@ -506,6 +507,26 @@ def preprocess(name):
     px_per_mm = specimen.calculate_px_per_mm()
     prep = specimen.get_prepconf()
     splinters = Splinter.analyze_image(fracture_image, prep=prep, px_per_mm=px_per_mm)
+
+@tester_app.command()
+def roundrect():
+    # create an image and draw a couple of rotated rectangles with different angles on it
+    img = np.ones((200,200,3), np.uint8) * 255
+
+    # draw a rectangle with a 40 degree angle
+    rotrect = ((100,100),(20,50),25)
+    box = np.int0(cv2.boxPoints(rotrect))
+    cv2.drawContours(img,[box],0,(0,0,255),2)
+    print('Width', 50)
+
+    # # draw a rectangle with a 60 degree angle
+    # rotrect = ((100,100),(50,20),60)
+    # box = np.int0(cv2.boxPoints(rotrect))
+    # cv2.drawContours(img,[box],0,(0,255,0),2)
+    # print('Width', 50)
+
+    plt.imshow(img)
+    plt.show()
 
 if __name__ == "__main__":
     typer.run(threshold)

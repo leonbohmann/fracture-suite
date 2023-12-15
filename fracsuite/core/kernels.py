@@ -1,6 +1,7 @@
 from typing import Any, Callable, TypeVar
 import numpy as np
 from fracsuite.core.image import split_image
+from fracsuite.core.progress import get_progress
 from fracsuite.core.region import RectRegion
 from fracsuite.state import State
 from rich.progress import track
@@ -239,6 +240,7 @@ class ObjectKerneler():
         print(f'[cyan]KERNELER[/cyan] [green]START[/green]')
         print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
         print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
+        print(f'[cyan]KERNELER[/cyan] Excluded Ps:  {exclude_points}')
         print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
 
         # Get the ranges for x and y
@@ -263,12 +265,22 @@ class ObjectKerneler():
         skip_i = 1 if self.skip_edge else 0
 
         d = range(len(xd))
-        # if State.has_progress():
-        # else:
-        #     d = track(range(len(xd)), transient=True,
-        #             description="Running kernel over region...")
+        if State.has_progress():
+            task = State.progress.add_task("Running kernel over region...", total=len(xd))
+            def advance():
+                State.progress.progress.advance(task)
+            def stop():
+                State.progress.remove_task(task)
+        else:
+            def advance():
+                pass
+            def stop():
+                pass
+            d = track(range(len(xd)), transient=True,
+                    description="Running kernel over region...")
 
         for i in d:
+            advance()
             for j in range(len(yd)):
                 if (j < skip_i or j >= len(yd) - skip_i) or (i < skip_i or i >= len(xd) - skip_i):
                     Z[j,i] = SKIP_VALUE
@@ -309,7 +321,7 @@ class ObjectKerneler():
 
                 if State.debug:
                     print(f'[cyan]KERNELER[/cyan] Result: {Z[j,i]}')
-
+        stop()
         # input("continue?")
         # this is for testing
         # Z[0,0] = 1000
