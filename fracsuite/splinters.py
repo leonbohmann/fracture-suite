@@ -55,6 +55,7 @@ from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import similarity, moving_average
+from fracsuite.core.vectors import alignment_sim
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
 from fracsuite.layer import plot as plot_saved_model
@@ -1103,10 +1104,79 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 
     # analyze splinter orientations
     orientation_image = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
+
+    debug_img = specimen.get_fracture_image()
+    n = 0
     for s in track(splinters):
+
         orientation = s.measure_orientation(impact_pos)
         color = get_color(orientation)
         cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
+
+
+        if n % 5 == 0:
+            # draw splinter contour into image
+            cv2.drawContours(debug_img, [s.contour], -1, (0, 0, 255), 1)
+            A = impact_pos - s.centroid_mm
+
+
+            # draw splinter ellipse
+            ellipse = cv2.fitEllipse(s.contour)
+            cv2.ellipse(debug_img, ellipse, (0, 255, 255), 1)
+
+            # get bounding box major axis
+            major_axis_angle = np.deg2rad(ellipse[2])
+            major_axis_vector = np.array([np.cos(major_axis_angle), np.sin(major_axis_angle)])
+            p0 = np.array(ellipse[0])
+            p1 = p0 + major_axis_vector * ellipse[1][0] * 1.2
+            cv2.line(debug_img, tuple(p0.astype(int)), tuple(p1.astype(int)), (0, 255, 255), 1)
+            c1 = p0 - A * 20 / np.linalg.norm(A)
+            cv2.line(debug_img, tuple(p0.astype(int)), tuple(c1.astype(int)), (255, 255, 0), 1)
+
+
+            # draw splinter bounding box
+            (x,y),(w,h),a = cv2.minAreaRect(s.contour)
+            box = cv2.boxPoints(((x,y),(w,h),a))
+            box = np.int0(box)
+            cv2.drawContours(debug_img, [box], 0, (0, 255, 0), 1)
+
+            # get bounding box major axis
+            major_axis_angle = np.deg2rad(a)
+            major_axis_vector = np.array([np.cos(major_axis_angle), np.sin(major_axis_angle)])
+            p0 = np.array([x,y])
+            p1 = p0 + major_axis_vector * w * 1.2
+            cv2.line(debug_img, tuple(p0.astype(int)), tuple(p1.astype(int)), (0, 255, 0), 1)
+
+            # extract splinter with its bounding box
+            bbox = cv2.boundingRect(s.contour)
+            # enlarge bbox by 20px
+            bbox = (bbox[0]-20, bbox[1]-20, bbox[2]+40, bbox[3]+40)
+            bbox_img = debug_img[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]
+            bbox_w, bbox_h = bbox_img.shape[:2]
+
+            bbox_img = cv2.resize(bbox_img, (int(bbox_h*4), int(bbox_w*4)), interpolation=cv2.INTER_NEAREST)
+            bbox_w, bbox_h = bbox_img.shape[:2]
+
+            h0 = 15
+            cv2.rectangle(bbox_img, (0, 0), (60, 140), (255, 255, 255), -1)
+            cv2.putText(bbox_img, f"{a:.0f} deg", (5, h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 2*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            B = np.array([np.cos(np.deg2rad(a)), np.sin(np.deg2rad(a))])
+            cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 3*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+            cv2.putText(bbox_img, f"{ellipse[2]:.0f} deg", (5, 4*h0 + h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            w,h = ellipse[1]
+            cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 5*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            B = np.array([np.cos(np.deg2rad(ellipse[2])), np.sin(np.deg2rad(ellipse[2]))])
+            cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 6*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+
+
+
+            # save image to debug folder
+            out_file = State.get_general_outputfile(f"debug/{specimen.name}_{n}.png")
+            cv2.imwrite(out_file, bbox_img)
+        n += 1
 
     # draw splinter contour lines
     cv2.drawContours(orientation_image, [x.contour for x in splinters], -1, (0, 0, 0), 1)
@@ -1357,9 +1427,9 @@ def create_impact_layer(
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
 
     bfigs: list[tuple[Figure,Axes]] = []
-    bfigs.append(plt.subplots(figsize=get_fig_width(sz)))
-    bfigs.append(plt.subplots(figsize=get_fig_width(sz)))
-    bfigs.append(plt.subplots(figsize=get_fig_width(sz)))
+    bfigs.append(plt.subplots(figsize=get_fig_width(FigureSize.ROW3)))
+    bfigs.append(plt.subplots(figsize=get_fig_width(FigureSize.ROW3)))
+    bfigs.append(plt.subplots(figsize=get_fig_width(FigureSize.ROW3)))
     # cluster results for a range of energies
     for i in range(n_ud):
         for ib, b in enumerate(boundaries):
@@ -1415,12 +1485,15 @@ def create_impact_layer(
 
     State.output(StateOutput(fig,sz), f'U_{mode}_all_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
 
+    xlabel = "Distance R [mm]"
+    ylabel = Splinter.get_mode_labels(mode, row3=True)
+    clabel = "U [J/m²]"
     for i_f, (f,a) in enumerate(bfigs):
         a.set_xlabel(xlabel)
         a.set_ylabel(ylabel)
         cbar = f.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=a)
         renew_ticks_cb(cbar)
-        State.output(StateOutput(f,sz), f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
+        State.output(StateOutput(f,FigureSize.ROW3), f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
 
     # ##
     # ## PLOT interpolated data as 2d plot for every boundary

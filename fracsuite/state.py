@@ -47,6 +47,10 @@ class StateOutput:
 
         self.has_detailed_image = 'img_detailed' in additional_data
 
+        # if self.is_figure:
+        #     sz = get_fig_width(figwidth)
+        #     self.Data.set_size_inches(sz[0], sz[1])
+
     def save(self, path, resize_factor:float =1) -> str:
         """Saves the output to a file."""
         saved = False

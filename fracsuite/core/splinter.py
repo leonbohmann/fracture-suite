@@ -246,6 +246,13 @@ class Splinter:
 
         Returns:
             A value from [0,1] indicating, how much the splinter points into the direction of the given vector.
+
+
+
+        ### IMPORTANT
+            The angle returned from fitEllipse always describes the minor axis (the smaller one).
+            Therefore, we need to rotate the vector by 90° to get the major axis and check this for alignment!
+
         """
         if len(self.contour) < 5:
             return np.nan
@@ -259,18 +266,19 @@ class Splinter:
         #
         # Calculate the major axis vector
         ellipse = cv2.fitEllipse(self.contour)
-        major_axis_angle = ellipse[2]
-        major_axis_angle_rad = np.deg2rad(major_axis_angle)
-        major_axis_vector = (np.cos(major_axis_angle_rad), np.sin(major_axis_angle_rad))
+        # the angle here describes the smaller axis
+        minor_axis_angle = ellipse[2]
+        minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
+        major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
 
         B = np.array(major_axis_vector)
 
+        self.alignment_score = alignment_between(A, B)
 
-        dot = np.dot(A, B)
-        magA = np.linalg.norm(A)
-        magB = np.linalg.norm(B)
-
-        self.alignment_score = 1 - np.abs(dot / (magA * magB))
+        AA = A / np.linalg.norm(A)
+        BB = B / np.linalg.norm(B)
+        # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
+        print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
         return self.alignment_score
 
     def measure_circumfence(self, px_per_mm: float):
@@ -309,11 +317,11 @@ class Splinter:
         #   So, if rotating the rect, l1 is rotated from 0 to angle, l2 is rotated from 90 to angle+90.
 
         (x,y), (l1,l2), angle = cv2.minAreaRect(self.contour)
-        # xy,wh,angle = cv2.fitEllipse(self.contour)
 
         # if angle > 45:
         #     l1, l2 = l2, l1
 
+        # with no impact position supplied, calculate the aspect ratio
         if impact_position is None:
             return max(l1,l2), min(l1,l2)
 
@@ -321,19 +329,19 @@ class Splinter:
         major_axis_angle_rad = np.deg2rad(major_axis_angle)
 
         # greater axis
-        major_axis_vector = (np.cos(major_axis_angle_rad), np.sin(major_axis_angle_rad))
+        first_axis_vector = (np.cos(major_axis_angle_rad), np.sin(major_axis_angle_rad))
         # smaller axis
-        minor_axis_vector = (-major_axis_vector[1], major_axis_vector[0])
+        second_axis_vector = (-first_axis_vector[1], first_axis_vector[0])
 
 
         # check wich angle has a greater alignment strength to
         A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
 
-        alignment_major = alignment_between(A, major_axis_vector)
-        alignment_minor = alignment_between(A, minor_axis_vector)
+        alignment_first = alignment_between(A, first_axis_vector)
+        alignment_second = alignment_between(A, second_axis_vector)
 
 
-        if alignment_major < alignment_minor:
+        if alignment_first < alignment_second:
             return l1,l2
         else:
             return l2,l1
@@ -703,5 +711,8 @@ class Splinter:
             ylabel = "Splinter width " + ylabel
         elif mode == SplinterProp.CIRCUMFENCE:
             ylabel = "Splinter circumference " + ylabel
-
+        elif mode == SplinterProp.ANGLE:
+            ylabel = "Splinter angle " + ylabel
+        else:
+            raise Exception(f"Missing or invalid splinter-prop '{mode}'")
         return ylabel

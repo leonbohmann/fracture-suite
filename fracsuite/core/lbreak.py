@@ -50,9 +50,9 @@ def load_layer(file_name):
 
     return R,U,V
 
-def interp_r_layer(model_path, U):
+def interp_impact_layer(model_path, U):
     """
-    Interpolates the layer for a given U.
+    Interpolates the impact layer for a given U.
 
     Args:
         model_path (str): Path to the model file.
@@ -133,7 +133,7 @@ def get_asp(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
     Returns:
         Callable[[float], float]: A function that takes the radius and returns the aspect ratio.
     """
-    return interp_r_layer(f'impact-layer_asp_{boundary}_corner.npy', U)
+    return interp_impact_layer(f'impact-layer_asp_{boundary}_corner.npy', U)
 
 def get_l1(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
     """
@@ -146,4 +146,4 @@ def get_l1(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
     Returns:
         Callable[[float], float]: A function that takes the radius and returns the aspect ratio.
     """
-    return interp_r_layer(f'impact-layer_l1_{boundary}_corner.npy', U)
+    return interp_impact_layer(f'impact-layer_l1_{boundary}_corner.npy', U)

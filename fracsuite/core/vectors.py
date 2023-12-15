@@ -13,4 +13,11 @@ def alignment_between(A, B) -> float:
     magA = np.linalg.norm(A)
     magB = np.linalg.norm(B)
 
-    return 1 - np.abs(dot / (magA * magB))
+    return np.abs(dot / (magA * magB))
+
+def alignment_sim(A,B):
+    dot = np.dot(A, B)
+    magA = np.linalg.norm(A)
+    magB = np.linalg.norm(B)
+
+    return dot / (magA * magB)

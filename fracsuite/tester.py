@@ -528,5 +528,23 @@ def roundrect():
     plt.imshow(img)
     plt.show()
 
+@tester_app.command()
+def alignment(
+    A : Annotated[tuple[float,float], typer.Option(help="The first vector")] = (0,0),
+    B : Annotated[tuple[float,float], typer.Option(help="The first vector")] = (0,0),
+):
+    A = np.array(A)
+    B = np.array(B)
+
+    dot = np.dot(A, B)
+    magA = np.linalg.norm(A)
+    magB = np.linalg.norm(B)
+
+    a = np.abs(dot / (magA * magB))
+    print('1-a=', 1 - a)
+    print('a=',a)
+
+
+
 if __name__ == "__main__":
     typer.run(threshold)
