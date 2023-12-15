@@ -62,6 +62,7 @@ class FigureSize(str, Enum):
 class KernelContourMode(str, Enum):
     FILLED = 'filled'
     CONTOURS = 'contours'
+    IMAGE_ONLY = 'image_only'
 
     @staticmethod
     def has_value(value):
@@ -392,6 +393,8 @@ def plot_kernel_results(
             mask = CONTOUR_ALPHA
 
         axim = axs.imshow(results, cmap='turbo', vmin=crange[0], vmax=crange[1], alpha=mask) # alpha=mask,
+    elif mode == KernelContourMode.IMAGE_ONLY:
+        axim = axs.imshow(original_image, interpolation='bilinear')
 
 
 
@@ -403,6 +406,8 @@ def plot_kernel_results(
         # cax = divider.append_axes("right", size="8%", pad=0.1)
         # cax.grid(False)
         # cbar_ax = fig.add_axes([axs.get_position().x1 + 0.01, axs.get_position().y0, 0.03, axs.get_position().height])
+        if mode == KernelContourMode.IMAGE_ONLY:
+            cbar = fig.colorbar(axim, label=clr_label, ax=axs)
         cbar = fig.colorbar(axim, label=clr_label)
 
         renew_ticks_cb(cbar)
@@ -735,8 +740,8 @@ def annotate_image(
     image,
     title = None,
     cbar_title = None,
-    min_value = 0,
-    max_value = 1,
+    min_value:float = 0,
+    max_value:float = 1,
     figwidth = FigureSize.ROW1,
     return_fig=True,
     clr_format: str = None,

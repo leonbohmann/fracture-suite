@@ -38,6 +38,7 @@ from fracsuite.core.plotting import (
     FigureSize,
     KernelContourMode,
     annotate_image,
+    plot_kernel_results,
     renew_ticks_cb,
     create_splinter_colored_image,
     create_splinter_sizes_image,
@@ -1104,7 +1105,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 
     # analyze splinter orientations
     orientation_image = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
-
+    orientations = []
     debug_img = specimen.get_fracture_image()
     n = 0
     for s in track(splinters):
@@ -1112,9 +1113,9 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
         orientation = s.measure_orientation(impact_pos)
         color = get_color(orientation)
         cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
+        orientations.append(orientation)
 
-
-        if n % 5 == 0:
+        if n % 50 == 0 and State.debug:
             # draw splinter contour into image
             cv2.drawContours(debug_img, [s.contour], -1, (0, 0, 255), 1)
             A = impact_pos - s.centroid_mm
@@ -1147,47 +1148,47 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
             p1 = p0 + major_axis_vector * w * 1.2
             cv2.line(debug_img, tuple(p0.astype(int)), tuple(p1.astype(int)), (0, 255, 0), 1)
 
-            # extract splinter with its bounding box
-            bbox = cv2.boundingRect(s.contour)
-            # enlarge bbox by 20px
-            bbox = (bbox[0]-20, bbox[1]-20, bbox[2]+40, bbox[3]+40)
-            bbox_img = debug_img[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]
-            bbox_w, bbox_h = bbox_img.shape[:2]
+            try:
+                # extract splinter with its bounding box
+                bbox = cv2.boundingRect(s.contour)
+                # enlarge bbox by 20px
+                bbox = (bbox[0]-20, bbox[1]-20, bbox[2]+40, bbox[3]+40)
+                bbox_img = debug_img[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]
+                bbox_w, bbox_h = bbox_img.shape[:2]
 
-            bbox_img = cv2.resize(bbox_img, (int(bbox_h*4), int(bbox_w*4)), interpolation=cv2.INTER_NEAREST)
-            bbox_w, bbox_h = bbox_img.shape[:2]
+                bbox_img = cv2.resize(bbox_img, (int(bbox_h*4), int(bbox_w*4)), interpolation=cv2.INTER_NEAREST)
+                bbox_w, bbox_h = bbox_img.shape[:2]
 
-            h0 = 15
-            cv2.rectangle(bbox_img, (0, 0), (60, 140), (255, 255, 255), -1)
-            cv2.putText(bbox_img, f"{a:.0f} deg", (5, h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-            cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 2*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-            B = np.array([np.cos(np.deg2rad(a)), np.sin(np.deg2rad(a))])
-            cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 3*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                h0 = 15
+                cv2.rectangle(bbox_img, (0, 0), (60, 140), (255, 255, 255), -1)
+                cv2.putText(bbox_img, f"{a:.0f} deg", (5, h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 2*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                B = np.array([np.cos(np.deg2rad(a)), np.sin(np.deg2rad(a))])
+                cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 3*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-            cv2.putText(bbox_img, f"{ellipse[2]:.0f} deg", (5, 4*h0 + h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-            w,h = ellipse[1]
-            cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 5*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-            B = np.array([np.cos(np.deg2rad(ellipse[2])), np.sin(np.deg2rad(ellipse[2]))])
-            cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 6*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                cv2.putText(bbox_img, f"{ellipse[2]:.0f} deg", (5, 4*h0 + h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                w,h = ellipse[1]
+                cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 5*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                B = np.array([np.cos(np.deg2rad(ellipse[2])), np.sin(np.deg2rad(ellipse[2]))])
+                cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 6*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-
-
-
-            # save image to debug folder
-            out_file = State.get_general_outputfile(f"debug/{specimen.name}_{n}.png")
-            cv2.imwrite(out_file, bbox_img)
+                # save image to debug folder
+                out_file = State.get_general_outputfile(f"debug/{specimen.name}_{n}.png")
+                cv2.imwrite(out_file, bbox_img)
+            except Exception as e:
+                print(f"Error: {e}")
         n += 1
 
     # draw splinter contour lines
-    cv2.drawContours(orientation_image, [x.contour for x in splinters], -1, (0, 0, 0), 1)
+    cv2.drawContours(orientation_image, [x.contour for x in splinters], -1, (255, 255, 255), 1)
 
     orientation_fig = annotate_image(
         orientation_image,
         cbar_title='Orientation Strength $\Delta$',
-        min_value=0,
-        max_value=1,
         figwidth=FigureSize.ROW2,
-        clr_format='.1f'
+        clr_format='.1f',
+        min_value = np.min(orientations),
+        max_value = np.max(orientations),
     )
 
     orientation_fig.overlayImpact(specimen)
@@ -1219,10 +1220,8 @@ def kde_impact_layer(
     px_per_mm = specimen.calculate_px_per_mm()
     ip = specimen.get_impact_position()
 
-    data = {
-
-    }
-
+    # precomputed data
+    data = {}
     for splinter in specimen.splinters:
         data[splinter] = splinter.get_splinter_data(mode=mode, px_p_mm=px_per_mm, ip=ip)
 
@@ -1238,15 +1237,16 @@ def kde_impact_layer(
 
     clr_label = Splinter.get_mode_labels(mode, row3=False)
 
-    w_mm = 20
+    w_mm = 50
+    n_points = 25
 
     soutput = plot_splinter_movavg(
         specimen.get_fracture_image(),
         specimen.splinters,
-        exclude_points=[specimen.get_impact_position(True)],
+        exclude_points=None,
         skip_edge=False,
         fill_skipped_with_mean=True,
-        n_points=50,
+        n_points=n_points,
         kw_px=w_mm*px_per_mm,
         z_action=splinter_data_getter,
         clr_label=clr_label,
@@ -1255,19 +1255,31 @@ def kde_impact_layer(
         clr_format='.1f',
         normalize=False,
     )
-
+    soutput.overlayImpact(specimen)
     State.output(soutput,f"impact-layer_{mode}" ,spec=specimen, to_additional=True)
 
 
     img = create_splinter_sizes_image(
         specimen.splinters,
         specimen.get_fracture_image().shape,
-        annotate=True,
+        annotate=False,
         with_contours=True,
         annotate_title=f"Splinter {mode}",
         s_value=lambda x: x.get_splinter_data(mode=mode, px_p_mm=px_per_mm, ip=ip),
     )
-    State.output(img, f"impact-layer_{mode}_splinters", spec=specimen, to_additional=True)
+
+    minval = np.min([x for x in data.values() if np.isfinite(x)])
+    maxval = np.max([x for x in data.values() if np.isfinite(x)])
+    output = annotate_image(
+        img,
+        cbar_title=clr_label,
+        figwidth=FigureSize.ROW2,
+        clr_format='.1f',
+        min_value = minval,
+        max_value = maxval,
+    )
+    output.overlayImpact(specimen)
+    State.output(output, f"impact-layer_{mode}_splinters", spec=specimen, to_additional=True)
 
 @app.command()
 def create_impact_layer(

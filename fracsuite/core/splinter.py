@@ -21,6 +21,7 @@ from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter_props import SplinterProp
 
 from fracsuite.core.vectors import alignment_between
+from fracsuite.state import State
 
 class Splinter:
 
@@ -275,10 +276,12 @@ class Splinter:
 
         self.alignment_score = alignment_between(A, B)
 
-        AA = A / np.linalg.norm(A)
-        BB = B / np.linalg.norm(B)
-        # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
-        print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
+
+        if State.debug:
+            AA = A / np.linalg.norm(A)
+            BB = B / np.linalg.norm(B)
+            # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
+            print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
         return self.alignment_score
 
     def measure_circumfence(self, px_per_mm: float):
@@ -313,45 +316,42 @@ class Splinter:
             tuple[float,float]: The main and secondary axis of the ellipse. If impact_position is passed,
                 l1 is the axis towards the impact point and l2 is the other axis.
         """
-        # look also at: fracsuite tester roundrect, l1 is always the main axis, l2 the secondary axis
-        #   So, if rotating the rect, l1 is rotated from 0 to angle, l2 is rotated from 90 to angle+90.
+        # look also at: fracsuite tester roundrect
+        #   the angle describes the first length returned (l_a), the second length is l_b
 
-        (x,y), (l1,l2), angle = cv2.minAreaRect(self.contour)
-
-        # if angle > 45:
-        #     l1, l2 = l2, l1
+        (x,y), (l_a,l_b), la_angle = cv2.minAreaRect(self.contour)
 
         # with no impact position supplied, calculate the aspect ratio
         if impact_position is None:
-            return max(l1,l2), min(l1,l2)
+            return max(l_a,l_b), min(l_a,l_b)
 
-        major_axis_angle = angle
-        major_axis_angle_rad = np.deg2rad(major_axis_angle)
+        la_axis_angle = la_angle
+        la_axis_angle_rad = np.deg2rad(la_axis_angle)
 
         # greater axis
-        first_axis_vector = (np.cos(major_axis_angle_rad), np.sin(major_axis_angle_rad))
+        la_axis_vector = (np.cos(la_axis_angle_rad), np.sin(la_axis_angle_rad))
         # smaller axis
-        second_axis_vector = (-first_axis_vector[1], first_axis_vector[0])
+        lb_axis_vector = (-la_axis_vector[1], la_axis_vector[0])
 
 
         # check wich angle has a greater alignment strength to
         A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
 
-        alignment_first = alignment_between(A, first_axis_vector)
-        alignment_second = alignment_between(A, second_axis_vector)
+        alignment_a = alignment_between(A, la_axis_vector)
+        alignment_b = alignment_between(A, lb_axis_vector)
 
-
-        if alignment_first < alignment_second:
-            return l1,l2
+        # if alignment of la is greater, la=l1 and lb=l2
+        if alignment_a > alignment_b:
+            return l_a,l_b
         else:
-            return l2,l1
+            return l_b,l_a
 
-    def measure_asp(self, ip) -> float:
+    def measure_aligned_aspectratio(self, ip) -> float:
         """Calculate the aspect ratio of the splinter wrt to an impact position."""
         l1, l2 = self.measure_size(ip)
         return np.abs(l1/l2)
 
-    def measure_asp0(self) -> float:
+    def measure_aspectratio(self) -> float:
         """Calculate the aspect ratio of the splinter."""
         l1, l2 = self.measure_size()
         return np.abs(l1/l2)
@@ -640,7 +640,7 @@ class Splinter:
         """
         if mode == SplinterProp.ASP:
             assert ip is not None, "Impact point must be set to calculate aspect ratio"
-            a = self.measure_asp(ip)
+            a = self.measure_aligned_aspectratio(ip)
         elif mode == SplinterProp.AREA:
             a = self.area
         elif mode == SplinterProp.ORIENTATION:
@@ -651,7 +651,7 @@ class Splinter:
         elif mode == SplinterProp.ROUGHNESS:
             a = self.calculate_roughness()
         elif mode == SplinterProp.ASP0:
-            a = self.measure_asp0()
+            a = self.measure_aspectratio()
         elif mode == SplinterProp.L1:
             l1, l2 = self.measure_size()
             a = l1
