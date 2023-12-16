@@ -1660,7 +1660,7 @@ def nfifty(
 
         # get results from navid
         from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_interpolated
-        navid_n50 = navid_nfifty(thick)
+        navid_n50 = navid_nfifty(thick, as_ud=(unit == EnergyUnit.UD or unit == EnergyUnit.UDt))
         navid_x = navid_n50[:,0]
         navid_y = navid_n50[:,1]
         # navids points
@@ -1726,7 +1726,11 @@ def nfifty(
         axs.plot([],[], label=f"{t}mm (Leon)", color=tcolors[b])
 
     # make log x scale
+    if unit == EnergyUnit.UD:
+        axs.set_ylim((5e3, 5e4))
     axs.set_xscale('log')
+    axs.set_yscale('log')
+
     axs.set_ylabel(id_name[id])
     axs.set_xlabel("N50 [-]")
     axs.legend(loc='best')

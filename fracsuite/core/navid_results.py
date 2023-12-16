@@ -84,15 +84,22 @@ nfifty_sigm_t = np.array([
     [400, 18.43, 30.72, 40.96, 61.44, 81.92, 102.40, 122.88, 153.61, 194.57]
 ])
 
-nfifty_ud_4mm = np.array([
-    [2.990686739636244	,48.67970111902714],
-    [3.0211772898656832	,54.65749377301492],
-    [4.0135088880623355	,48.230721445360004],
-    [47.207261814768835	,68.26988807286239],
-    [51.197776639187175	,68.90541230201934],
-    [44.419850496213165	,74.2072768294387],
+nfifty_u_4mm = np.array([
+    [2.988570242547909,	54.43219732397485],
+    [3.9591401203877608,	48.318625631898925],
+    [2.988570242547909,	48.7634778502579],
+    [44.105516438678706,	74.67398000372832],
+    [46.84521242514626,	68.13469310951773],
+    [50.7646754467195,	69.07779295927216],
+
+    # [2.990686739636244	,48.67970111902714],
+    # [3.0211772898656832	,54.65749377301492],
+    # [4.0135088880623355	,48.230721445360004],
+    # [47.207261814768835	,68.26988807286239],
+    # [51.197776639187175	,68.90541230201934],
+    # [44.419850496213165	,74.2072768294387],
 ])
-nfifty_ud_8mm = np.array([
+nfifty_u_8mm = np.array([
     [3.9730034550451268	,55.42247692969174],
     [4.966326207445054	,55.93840463842206],
     [5.961154754531081	,58.86306511656379],
@@ -102,7 +109,7 @@ nfifty_ud_8mm = np.array([
     [94.09537598368814	,143.9371346002303],
     [94.09537598368814	,147.31033426450102],
 ])
-nfifty_ud_12mm = np.array([
+nfifty_u_12mm = np.array([
     [9.700277108603037	,75.59529817644722],
     [10.955887828441798	,78.08709948681407],
     [11.64338599416454	,76.65332564600337],
@@ -131,7 +138,7 @@ nue  = 0.23
     # Ud[:, i] = calc_Ud(sig_m[:, i] * 2)
     # U[:, i] = calc_U(sig_m[:, i] * 2, t[i])
 
-def navid_nfifty(thickness: float) -> np.ndarray:
+def navid_nfifty(thickness: int, as_ud: bool = False) -> np.ndarray:
     """
     Returns the nfifty table (n,2) for the given thickness.
 
@@ -144,11 +151,16 @@ def navid_nfifty(thickness: float) -> np.ndarray:
     assert thickness in [4, 8, 12], f"Thickness {thickness} can only be 4, 8 or 12"
 
     if thickness == 4:
-        return nfifty_ud_4mm
+        data = nfifty_u_4mm.copy()
+        data[:, 1] = data[:, 1] / (8e-3 if as_ud else 1)
     elif thickness == 8:
-        return nfifty_ud_8mm
+        data = nfifty_u_8mm.copy()
+        data[:, 1] = data[:, 1] / (8e-3 if as_ud else 1)
     elif thickness == 12:
-        return nfifty_ud_12mm
+        data = nfifty_u_12mm.copy()
+        data[:, 1] = data[:, 1] / (12e-3 if as_ud else 1)
+
+    return data
 
 def navid_nfifty_interpolated(thickness: float):
     assert thickness in t, f"Thickness {thickness} not in table"
