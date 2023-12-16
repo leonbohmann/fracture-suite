@@ -32,6 +32,7 @@ from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.lbreak import plt_layer
+from fracsuite.core.navid_results import navid_nfifty_ud, navid_nfifty, navid_nfifty_interpolated
 from fracsuite.core.plotting import (
     DataHistMode,
     DataHistPlotMode,
@@ -1651,6 +1652,22 @@ def nfifty(
     # for b in boundaries:
         # mask = results[:,-2] == b
         # axs.scatter(results[mask,-1], results[mask,1], marker='x', color=boundaries[b], label=f"{bname[b]}", s=1.5)
+
+    if unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
+        navid_n50 = navid_nfifty_ud()
+
+        navid_x = navid_n50[:,0]
+        navid_y = navid_n50[:,1]
+        # navids points
+        plt.scatter(
+            navid_x,
+            navid_y,
+            marker='o',
+            facecolors='none',
+            edgecolors='k',
+            label="P-Mogh. (2020)",
+            linewidth=0.6
+        )
     for it, thick in enumerate(thicknesses):
         clr = tcolors[it+1]
         mask = results[:,4] == thick
@@ -1659,18 +1676,26 @@ def nfifty(
         y = results[mask,id]
 
         # get results from navid
-        from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_interpolated
-        navid_n50 = navid_nfifty(thick, as_ud=(unit == EnergyUnit.UD or unit == EnergyUnit.UDt))
-        navid_x = navid_n50[:,0]
-        navid_y = navid_n50[:,1]
-        # navids points
-        plt.scatter(navid_x, navid_y, marker='o', facecolors='none', edgecolors=clr, label=f"{thick}mm (Navid)", linewidth=0.6)
+        if unit == EnergyUnit.U or unit == EnergyUnit.Ut:
+            navid_n50 = navid_nfifty(thick, as_ud=(unit == EnergyUnit.UD or unit == EnergyUnit.UDt))
+            navid_x = navid_n50[:,0]
+            navid_y = navid_n50[:,1]
+            # navids points
+            plt.scatter(
+                navid_x,
+                navid_y,
+                marker='o',
+                facecolors='none',
+                edgecolors=clr,
+                label=f"{thick}mm (Navid)",
+                linewidth=0.6
+            )
 
 
         if len(y) > 0:
             # fit a curve
             def func(x, a, b):
-                return a * x + b
+                return np.float64(a * x + b)
 
             x = np.concatenate([x,navid_x])
             y = np.concatenate([y,navid_y])
@@ -1683,7 +1708,8 @@ def nfifty(
 
             x = p[:,0]
             y = p[:,1]
-            popt, pcov = curve_fit(func, x, y, p0=(1, 1))
+            popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
+            print(f'{thick}mm Fitting cov:', pcov)
 
             # plot the curve
             x = np.linspace(np.min(x), np.max(x), 100)
@@ -1717,7 +1743,7 @@ def nfifty(
         axs.plot(ux, u12y, label="12mm (Navid)", linestyle='--', color=tcolors[3], alpha=0.4)
 
     elif id == 1:
-        axs.plot(ux, udy, label="U_d (Navid)", linestyle='--', color='k')
+        axs.plot(ux, udy, label="P-Mogh. (2020)", linestyle='--', color='k')
 
     # labeling for leons data
     for b,t in zip(bid.values(), thicknesses):
@@ -1725,9 +1751,6 @@ def nfifty(
     for b,t in zip(bid.values(), thicknesses):
         axs.plot([],[], label=f"{t}mm (Leon)", color=tcolors[b])
 
-    # make log x scale
-    if unit == EnergyUnit.UD:
-        axs.set_ylim((5e3, 5e4))
     axs.set_xscale('log')
     axs.set_yscale('log')
 
@@ -1738,10 +1761,10 @@ def nfifty(
     name = 'nfifty' if not use_mean else 'nperwindow'
     State.output(StateOutput(fig, FigureSize.ROW1), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)
 
-
-    for i in range(len(specimens)):
-        res = results[i,:]
-        print(specimens[i].name, "U:", res[0], "U_d:", res[1], "U_t", res[2], "Ud_t", res[3] , "Thickness:", res[4], "Boundary:", res[3], "N50:", res[4])
+    if State.debug:
+        for i in range(len(specimens)):
+            res = results[i,:]
+            print(specimens[i].name, "U:", res[0], "U_d:", res[1], "U_t", res[2], "Ud_t", res[3] , "Thickness:", res[4], "Boundary:", res[3], "N50:", res[4])
 
 @app.command()
 def aspect_ratio_vs_radius(
