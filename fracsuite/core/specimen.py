@@ -639,6 +639,7 @@ class Specimen(Outputtable):
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
 
+
     @staticmethod
     def get(name: str | Specimen, load: bool = True) -> Specimen:
         """Gets a specimen by name. Raises exception, if not found."""
@@ -687,6 +688,10 @@ class Specimen(Outputtable):
 
         # this is quicker than to call get_all_by because only the names are loaded
         for name in track(names, description="Loading specimens...", transient=True):
+            if name.startswith("."):
+                print(f"Skipping {name}.")
+                continue
+
             dir = os.path.join(general.base_path, name)
             specimen = Specimen.get(dir, load=True)
             specimens.append(specimen)
@@ -755,6 +760,10 @@ class Specimen(Outputtable):
             for dir in directories:
                 spec = load_specimen(dir, decider, value)
                 prog.advance()
+
+                if spec.name.startswith("."):
+                    print(f"Skipping {spec.name}.")
+                    continue
 
                 if spec is not None:
                     data.append(spec)

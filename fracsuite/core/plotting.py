@@ -831,3 +831,14 @@ def annotate_images(
         fig.tight_layout()
         return fig
     return to_img(fig)
+
+
+def cfg_logplot(axs: Axes):
+    # activate grid
+    axs.grid(True, which='both', axis='both')
+    # make the grid lines solid
+    axs.grid(which='major', linestyle='-', linewidth='0.3', color='gray')
+    axs.grid(which='minor', linestyle='-', linewidth='0.1', color='gray')
+
+    axs.set_xscale('log')
+    axs.set_yscale('log')
