@@ -639,6 +639,12 @@ class Specimen(Outputtable):
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
 
+        # remove all splinters whose centroid is closer than 2 cm to the edge
+        delta_edge = 10
+        self.__splinters = [s for s in self.__splinters if s.centroid_mm[0] > delta_edge and s.centroid_mm[0] < self.settings['real_size_mm'][0] - delta_edge and s.centroid_mm[1] > delta_edge and s.centroid_mm[1] < self.settings['real_size_mm'][1] - delta_edge]
+        # or within a 2cm radius to the impact point
+        delta_impact = 20
+        self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
     @staticmethod
     def get(name: str | Specimen, load: bool = True) -> Specimen:

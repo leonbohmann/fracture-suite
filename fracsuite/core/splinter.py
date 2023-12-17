@@ -274,7 +274,7 @@ class Splinter:
 
         B = np.array(major_axis_vector)
 
-        self.alignment_score = alignment_between(A, B) # * self.measure_aspectratio()
+        self.alignment_score = alignment_between(A, B) * self.measure_aspectratio()
 
         # if self.measure_aspectratio() > 5:
         #     self.alignment_score = np.nan
