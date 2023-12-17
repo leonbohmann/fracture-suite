@@ -86,8 +86,8 @@ params = {
     'font.family': 'serif',
     'axes.grid': True,
     'axes.axisbelow': True,
-    'grid.linestyle': '--',
-    'grid.linewidth': 0.5,
+    'grid.linestyle': '-',
+    'grid.linewidth': 0.3,
     'lines.markersize': 3,
     # 'axes.grid.which': 'both',
     # 'xtick.minor.visible': True,
@@ -137,7 +137,7 @@ app.add_typer(nominals_app, name="nominals")
 app.add_typer(tester_app, name="tester")
 app.add_typer(over_nrg, name="over-nrg")
 app.add_typer(sim_app, name="simulate")
-app.add_typer(layer_app, name="model")
+app.add_typer(layer_app, name="layer")
 class PrintWrapper():
 
     def __init__(self, func, index):
