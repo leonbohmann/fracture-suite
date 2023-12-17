@@ -274,14 +274,17 @@ class Splinter:
 
         B = np.array(major_axis_vector)
 
-        self.alignment_score = alignment_between(A, B)
+        self.alignment_score = alignment_between(A, B) # * self.measure_aspectratio()
 
+        # if self.measure_aspectratio() > 5:
+        #     self.alignment_score = np.nan
 
         if State.debug:
             AA = A / np.linalg.norm(A)
             BB = B / np.linalg.norm(B)
             # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
             print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
+
         return self.alignment_score
 
     def measure_circumfence(self, px_per_mm: float):
