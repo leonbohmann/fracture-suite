@@ -10,6 +10,7 @@ import re
 import shutil
 import sys
 from itertools import groupby
+from types import NoneType
 from typing import Annotated, Any, Callable
 
 import cv2
@@ -17,6 +18,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import numpy as np
 import numpy.typing as npt
+from sympy import plot
 import typer
 from matplotlib import pyplot as plt
 from matplotlib import colors as pltc
@@ -39,6 +41,7 @@ from fracsuite.core.plotting import (
     FigureSize,
     KernelContourMode,
     annotate_image,
+    cfg_logplot,
     plot_kernel_results,
     renew_ticks_cb,
     create_splinter_colored_image,
@@ -139,11 +142,18 @@ def gen(
             progress.advance()
 
 
-def plot_touching_len(specimen, splinters):
-    out_img = specimen.get_fracture_image()
+def plot_touching_len(specimen, splinters) -> StateOutput:
+    """Returns an image with the splinters colored after their amount of touching splinters."""
+    output_image0 = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
+
     touches = [len(x.adjacent_splinter_ids) for x in splinters]
     max_adj = np.max(touches)
     min_adj = np.min(touches)
+
+    if np.sum(touches) == 0:
+        # print red error
+        print(f"[red]Error: No touching splinters found for {specimen.name}.[/red")
+
 
     print(f"Max touching splinters: {max_adj}")
     print(f"Min touching splinters: {min_adj}")
@@ -151,11 +161,13 @@ def plot_touching_len(specimen, splinters):
 
     for splinter in track(splinters, description="Drawing touching splinters...", transient=True):
         clr = get_color(len(splinter.adjacent_splinter_ids), min_adj, max_adj)
-        cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
+        cv2.drawContours(output_image0, [splinter.contour], 0, clr, -1)
 
+    # draw white contour around splinters for better visibility
+    cv2.drawContours(output_image0, [x.contour for x in splinters], -1, (0, 0, 0), 1)
 
-    out_img = annotate_image(
-        out_img,
+    output_image0 = annotate_image(
+        output_image0,
         cbar_title="Amount of touching splinters",
         clr_format=".2f",
         min_value=min_adj,
@@ -163,7 +175,7 @@ def plot_touching_len(specimen, splinters):
         figwidth=FigureSize.ROW2,
     )
 
-    return out_img
+    return output_image0
 
 @app.command()
 def gen_adjacent_all(
@@ -223,10 +235,12 @@ def plot_adjacent(
     assert specimen.has_splinters, "Specimen has no splinters."
     splinters = specimen.splinters
 
+    # create filled image with splinters colored after their amount of touching splinters
     outp = plot_touching_len(specimen, splinters)
-    State.output(outp, spec=specimen, to_additional=True)
+    outp.overlayImpact(specimen)
+    State.output(outp, "adjacent_plot", spec=specimen, to_additional=True)
 
-
+    # create probability histogram plot of touching splinters
     lens = [len(x.adjacent_splinter_ids) for x in splinters]
     fig, axs = datahist_plot(
         x_label='Amount of edges $N_e$',
@@ -249,7 +263,7 @@ def plot_adjacent(
     axs[0].autoscale()
     axs[0].set_xlim(n_range)
 
-    State.output(fig, spec=specimen, to_additional=True)
+    State.output(fig, 'adjacent_pdf', spec=specimen, to_additional=True, figwidth=FigureSize.ROW1)
 
 @app.command()
 def plot_adjacent_detail(
@@ -497,82 +511,73 @@ def roundness_f(
 @app.command()
 def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
     """Plot the roughness of a specimen."""
+    plt_prop(specimen_name, prop=SplinterProp.ROUGHNESS)
+
+
+@app.command()
+def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
+    """Plot the roundness of a specimen."""
+    plt_prop(specimen_name, prop=SplinterProp.ROUNDNESS)
+
+@app.command()
+def plt_prop(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
+    prop: Annotated[SplinterProp, typer.Option(help='Property to plot.')] = SplinterProp.AREA,
+):
+    """
+    Create a plot of a specimen where the splinters are filled with a color representing the selected property.
+    """
 
     specimen = Specimen.get(specimen_name)
 
     out_img = specimen.get_fracture_image()
     out_img = cv2.cvtColor(out_img, cv2.COLOR_BGR2RGB)
 
-    rough = [splinter.calculate_roughness() for splinter in specimen.splinters]
-    max_r = np.max(rough)
-    min_r = np.min(rough)
+    ip = specimen.get_impact_position()
+    px_p_mm = specimen.calculate_px_per_mm()
+    prop_values_dict = {}
+    for splinter in specimen.splinters:
+        val = splinter.get_splinter_data(mode=prop, ip=ip,px_p_mm=px_p_mm)
+        if np.isfinite(val):
+            prop_values_dict[splinter.ID] = val
 
-    print(f"Max roughness: {max_r}")
-    print(f"Min roughness: {min_r}")
-    print(f"Mean roughness: {np.mean(rough)}")
-    print(f"Median roughness: {np.median(rough)}")
+    prop_values_list = list(prop_values_dict.values())
+
+    max_prop = np.max(prop_values_list)
+    min_prop = np.min(prop_values_list)
+    mean_prop = np.mean(prop_values_list)
+
+    print(f'# {prop.name}')
+    print(f"Max:    {max_prop:>15.2f}")
+    print(f"Min:    {min_prop:>15.2f}")
+    print(f"Mean:   {mean_prop:>15.2f}")
+    print(f"Median: {np.median(prop_values_list):>15.2f}")
 
     # d = np.median(rough) - min_r
     # max_r = np.median(rough) + d
 
     for splinter in track(specimen.splinters, description="Calculating roughness", transient=True):
-        roughness = splinter.calculate_roughness()
-        clr = get_color(roughness, min_r, max_r)
+        if splinter.ID not in prop_values_dict:
+            continue
+
+        splinter_prop_value = prop_values_dict[splinter.ID]
+        clr = get_color(splinter_prop_value, min_prop, max_prop)
 
         cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
 
+    cv2.drawContours(out_img, [x.contour for x in specimen.splinters], -1, (0, 0, 0), 1)
+    clr_label = Splinter.get_mode_labels(prop)
     out_img = annotate_image(
         out_img,
-        cbar_title="Roughness $\lambda_r$",
-        clr_format=".2f",
-        min_value=min_r,
-        max_value=max_r,
+        cbar_title=clr_label,
+        clr_format=".1f",
+        min_value=min_prop,
+        max_value=max_prop,
         figwidth=FigureSize.ROW2,
     )
 
     out_img.overlayImpact(specimen)
-    State.output(out_img, spec=specimen, to_additional=True)
-
-
-@app.command()
-def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
-    """Plot the roundness of a specimen."""
-
-    specimen = Specimen.get(specimen_name)
-
-    out_img = specimen.get_fracture_image()
-
-    rounds = [splinter.calculate_roundness() for splinter in specimen.splinters]
-    max_r = np.max(rounds)
-    min_r = np.min(rounds)
-
-    print(f"Max roundness: {max_r}")
-    print(f"Min roundness: {min_r}")
-    print(f"Mean roundness: {np.mean(rounds)}")
-
-    # scale max and min roundness to +- 60% around mean
-    # max_r = np.mean(rounds) + np.mean(rounds) * 0.6
-    # min_r = np.mean(rounds) - np.mean(rounds) * 0.6
-
-    for splinter in track(specimen.splinters):
-        r = splinter.calculate_roundness()
-        clr = get_color(r, min_r, max_r)
-
-        cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
-
-    out_img = annotate_image(
-        out_img,
-        cbar_title="Roundness $\lambda_c$",
-        min_value=min_r,
-        max_value=max_r,
-        figwidth=FigureSize.ROW2,
-        clr_format=".2f"
-    )
-
-
-    out_img.overlayImpact(specimen)
-    State.output(out_img, spec=specimen, to_additional=True)
-
+    State.output(out_img, f'{prop}_filled', spec=specimen, to_additional=True)
 
 def str_to_intlist(input: str) -> list[int]:
     if isinstance(input, int):
@@ -928,18 +933,18 @@ def create_filter_function(name_filter,
     # create name_filter_function based on name_filter
     if name_filter is not None and "," in name_filter:
         name_filter = name_filter.split(",")
-        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        print(f"Searching for specimen whose name is in: {name_filter}")
         name_filter_function = in_names_list
     elif name_filter is not None and " " in name_filter:
         name_filter = name_filter.split(" ")
-        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        print(f"Searching for specimen whose name is in: {name_filter}")
         name_filter_function = in_names_list
-    elif name_filter is not None and not any([c not in "*[]^\\" for c in name_filter]):
+    elif name_filter is not None and all([c not in "*[]^\\" for c in name_filter]):
         name_filter = [name_filter]
-        print(f"Searching for specimen whose name is in: '{name_filter}'")
+        print(f"Searching for specimen whose name is in: {name_filter}")
         name_filter_function = in_names_list
-    elif name_filter is not None and any([c not in "*[]^\\" for c in name_filter]):
-        print(f"Searching for specimen whose name matches: '{name_filter}'")
+    elif name_filter is not None and any([c in "*[]^\\" for c in name_filter]):
+        print(f"Searching for specimen whose name matches: {name_filter}")
         name_filter = name_filter.replace(".", "\.").replace("*", ".*").replace('!', '|')
         name_filter_function = in_names_wildcard
     elif name_filter is None:
@@ -985,12 +990,20 @@ def log_histograms(
     n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins,
     plot_mean: Annotated[bool, typer.Option('--plot-mean', help='Plot mean splinter size.')] = False,
     data_mode: Annotated[DataHistMode, typer.Option(help='Mode for histogram. Either pdf or cdf.')] = 'pdf',
-    plot_mode: Annotated[DataHistPlotMode, typer.Option(help='Data mode.')] = DataHistPlotMode.HIST,
+    plot_mode: Annotated[DataHistPlotMode, typer.Option(help='Histograms or KDE Estimation, only applies to data_mode=pdf. If not specified and PDF-Mode, plot_mode is HIST.')] = None,
     legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = None,
     xlim: Annotated[tuple[float, float], typer.Option(help='X-Limits for plot')] = (0, 2),
     figwidth: Annotated[FigureSize, typer.Option(help='Width of the figure.')] = FigureSize.ROW2,
 ):
     """Plot logaritmic histograms of splinter sizes for specimens."""
+
+    if data_mode == DataHistMode.CDF and plot_mode is not None:
+        # print info that plot_mode is ignored
+        print("[cyan]Plot mode is ignored when using CDF mode.[/cyan]")
+    elif data_mode == DataHistMode.PDF and plot_mode is None:
+        plot_mode = DataHistPlotMode.HIST
+
+
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
     specimens = Specimen.get_all_by(filter, lazyload=False)
 
@@ -1099,24 +1112,22 @@ def splinter_orientation_f(
 @app.command()
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
     """Plot the orientation of splinters."""
+
+    plt_prop(specimen_name, prop=SplinterProp.ORIENTATION)
+
+    if not State.debug:
+        return
+
     specimen = Specimen.get(specimen_name)
 
     impact_pos = specimen.get_impact_position()
     splinters = specimen.splinters
 
     # analyze splinter orientations
-    orientation_image = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
-    orientations = []
     debug_img = specimen.get_fracture_image()
     n = 0
     for s in track(splinters):
-
-        orientation = s.measure_orientation(impact_pos)
-        color = get_color(orientation)
-        cv2.drawContours(orientation_image, [s.contour], -1, color, -1)
-        orientations.append(orientation)
-
-        if n % 50 == 0 and State.debug:
+        if n % 50 == 0:
             # draw splinter contour into image
             cv2.drawContours(debug_img, [s.contour], -1, (0, 0, 255), 1)
             A = impact_pos - s.centroid_mm
@@ -1180,21 +1191,7 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
                 print(f"Error: {e}")
         n += 1
 
-    # draw splinter contour lines
-    cv2.drawContours(orientation_image, [x.contour for x in splinters], -1, (255, 255, 255), 1)
 
-    orientation_fig = annotate_image(
-        orientation_image,
-        cbar_title='Orientation Strength $\Delta$',
-        figwidth=FigureSize.ROW2,
-        clr_format='.1f',
-        min_value = np.min(orientations),
-        max_value = np.max(orientations),
-    )
-
-    orientation_fig.overlayImpact(specimen)
-
-    State.output(orientation_fig, spec=specimen, to_additional=True)
 
 @app.command()
 def ud(sigma: float) -> float:
@@ -1281,257 +1278,6 @@ def kde_impact_layer(
     )
     output.overlayImpact(specimen)
     State.output(output, f"impact-layer_{mode}_splinters", spec=specimen, to_additional=True)
-
-@app.command()
-def create_impact_layer(
-    break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
-    mode: Annotated[SplinterProp, typer.Option(help='Mode for the aspect ratio.')] = 'asp',
-    ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
-):
-    bid = {
-        'A': 1,
-        'B': 2,
-        'Z': 3,
-    }
-    boundaries = {
-        1: '--',
-        2: '-',
-        3: ':',
-    }
-    # inverse bid
-    bid_r = {v: k for k, v in bid.items()}
-
-    def add_filter(specimen: Specimen):
-        if break_pos is not None and specimen.break_pos != break_pos:
-            return False
-
-        if specimen.boundary == "":
-            return False
-
-        if not specimen.has_splinters:
-            return False
-
-        if specimen.U_d is None or not np.isfinite(specimen.U_d):
-            return False
-
-        return True
-
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
-
-
-    sz = FigureSize.ROW1
-
-    xlabel = "Distance from impact R [mm]"
-    ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
-    clabel = "Strain Energy U [J/m²]"
-
-
-    # find aspect over R on every specimen
-    n_r = 30
-    r_min = 0
-    r_max = np.sqrt(450**2 + 450**2)
-    r_range = np.linspace(r_min, r_max, n_r)
-
-    results = np.ones((len(specimens), len(r_range)+3)) * np.nan
-
-    # all other rows: u_d, boundary, aspect ratios
-
-    d_rand = 15 #mm
-
-    for si, specimen in track(list(enumerate(specimens))):
-        print('Specimen: ', specimen.name)
-
-        # now, find aspect ratio of all splinters
-        aspects = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
-        ip = specimen.get_impact_position()
-        s_sz = specimen.get_real_size()
-        px_p_mm = specimen.calculate_px_per_mm()
-        for i, s in enumerate(specimen.splinters):
-            # skip splinters that are too close to the edge
-            if s.centroid_mm[0] > s_sz[0]-d_rand or s.centroid_mm[0] < d_rand or s.centroid_mm[1] > s_sz[1]-d_rand or s.centroid_mm[1] < d_rand:
-                aspects[i,:] = (np.nan, np.nan)
-                continue
-
-            # calculate distance to impact point
-            r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
-
-            # get data from splinter
-            a = s.get_splinter_data(mode=mode, px_p_mm=px_p_mm, ip=ip)
-
-            aspects[i,:] = (r, a) # (r, a)
-
-        # sort after the radius
-        aspects = aspects[aspects[:,0].argsort()]
-
-        # take moving average
-        r1,l1 = moving_average(aspects[:,0], aspects[:,1], r_range)
-
-        results[si,0] = specimen.U
-        results[si,1] = bid[specimen.boundary]
-        results[si,2] = si
-        results[si,3:] = l1
-        # except:
-        #     results[si+1,0] = specimen.U
-        #     results[si+1,1] = bid[specimen.boundary]
-        #     results[si+1,2] = si
-        #     results[si+1,3:] = aspects[:,1]
-
-
-    # sort results after U_d
-    results = results[results[:,0].argsort()]
-
-
-
-    results_per_boundary_unclustered = {
-        1: [],
-        2: [],
-        3: []
-    }
-
-    # find all results for every boundary
-    mask_A = results[:,1] == 1
-    mask_B = results[:,1] == 2
-    mask_Z = results[:,1] == 3
-
-    # put results in dictionary
-    results_per_boundary_unclustered[1] = results[mask_A,:]
-    results_per_boundary_unclustered[2] = results[mask_B,:]
-    results_per_boundary_unclustered[3] = results[mask_Z,:]
-
-    # sort the individual results after U_d
-    for b in results_per_boundary_unclustered:
-        results_per_boundary_unclustered[b] = \
-            results_per_boundary_unclustered[b][results_per_boundary_unclustered[b][:,0].argsort()]
-
-        # plot the current boundary
-        x = r_range
-        y = results_per_boundary_unclustered[b][:,0].ravel()
-        z = results_per_boundary_unclustered[b][:,3:]
-
-        # display the figure
-        fig = plt_layer(x,y,z, xlabel=xlabel, ylabel=clabel, clabel=ylabel, ignore_nan=False,interpolate=False)
-
-        # save output
-
-        # save model
-        Z_path = State.get_general_outputfile(f'layers/impact-layer_{mode}_{bid_r[b]}_{break_pos}.npy')
-        data = np.zeros((len(y)+1, len(x)+1))
-        data[1:,1:] = z
-        data[1:,0] = y
-        data[0,1:] = x
-        np.save(Z_path, data)
-
-        plot_saved_model("impact", mode=mode, boundary=bid_r[b], ignore_nan_plot=ignore_nan_u)
-
-
-    # results for interpolation with different boundaries
-    results_per_boundary = {
-        1: [],
-        2: [],
-        3: []
-    }
-
-    n_ud = 30
-    ud_min = np.min(results[:,0])
-    ud_max = np.max(results[:,0])
-    ud_range = np.linspace(ud_min, ud_max, n_ud)
-
-
-    fig,axs = plt.subplots(figsize=get_fig_width(sz))
-
-    bfigs: list[tuple[Figure,Axes]] = []
-    bfigs.append(plt.subplots(figsize=get_fig_width(FigureSize.ROW3)))
-    bfigs.append(plt.subplots(figsize=get_fig_width(FigureSize.ROW3)))
-    bfigs.append(plt.subplots(figsize=get_fig_width(FigureSize.ROW3)))
-    # cluster results for a range of energies
-    for i in range(n_ud):
-        for ib, b in enumerate(boundaries):
-            # gruppieren von Ergebnissen nach erstem Eintrag (U,Ud,...)
-            if i == n_ud-1:
-                mask = (results[:,0] >= ud_range[i]) & (results[:,1] == b)
-            else:
-                mask = (results[:,0] >= ud_range[i]) & (results[:,0] < ud_range[i+1]) & (results[:,1] == b)
-
-            # get mean of all results (specimens) in this range
-            mean = np.nanmean(results[mask,3:], axis=0)
-
-            clr = norm_color(get_color(ud_range[i], ud_min, ud_max))
-
-            # plot all masked results as scatter plots
-            for j in range(len(results)):
-                if mask[j]:
-                    axs.scatter(r_range, results[j,3:], color=clr, marker='x', linewidth=0.5, s=1.5)
-                    bfigs[ib][1].scatter(r_range, results[j,3:], color=clr, marker='x', linewidth=0.5, s=1.5)
-
-                    id = int(results[j,2])
-                    s = specimens[id]
-                    print(f"{s.name} ({np.nanmean(results[j,3:]):.1f})")
-
-            ls = boundaries[b]
-            alpha = 0.7
-            axs.plot(r_range, mean,  color=clr, linestyle=ls, alpha=alpha)
-            bfigs[ib][1].plot(r_range, mean,  color=clr, linestyle='-', alpha=1)
-            # label=f"{uds[i]:.2f} - {uds[i+1]:.2f} J/m²",
-            results_per_boundary[b].append(mean)
-
-
-
-    axs.set_xlabel(xlabel)
-    # plt.ylabel("Splinter Orientation Strength $\Delta$ [-]")
-    axs.set_ylabel(ylabel)
-    # create legend for boundaries
-    axs.plot([], [], label="A", linestyle=boundaries[1], color='k')
-    axs.plot([], [], label="B", linestyle=boundaries[2], color='k')
-    axs.plot([], [], label="Z", linestyle=boundaries[3], color='k')
-    colors = [norm_color(get_color(x, ud_min, ud_max)) for x in ud_range]
-    cmap = pltc.ListedColormap(colors)
-    norm = pltc.Normalize(np.min(ud_range), np.max(ud_range))
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=axs)
-    renew_ticks_cb(cbar)
-    axs.legend(loc='upper right')
-
-    if mode == 'asp':
-        # plt.ylim((0.9, 2.6))
-        pass
-    elif mode == 'area':
-        axs.set_ylim((0, 30))
-
-    State.output(StateOutput(fig,sz), f'U_{mode}_all_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
-
-    xlabel = "Distance R [mm]"
-    ylabel = Splinter.get_mode_labels(mode, row3=True)
-    clabel = "U [J/m²]"
-    for i_f, (f,a) in enumerate(bfigs):
-        a.set_xlabel(xlabel)
-        a.set_ylabel(ylabel)
-        cbar = f.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=a)
-        renew_ticks_cb(cbar)
-        State.output(StateOutput(f,FigureSize.ROW3), f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
-
-    # ##
-    # ## PLOT interpolated data as 2d plot for every boundary
-    # print('> Plotting interpolated data...')
-    # # num_results[ud,R]
-    # for br_key in results_per_boundary: # different boundaries
-    #     print('Boundary: ', br_key)
-    #     nr_r = np.asarray(results_per_boundary[br_key])
-
-    #     # format data storage for saving and interpolation
-    #     x = r_range
-    #     y = ud_range
-    #     data = np.zeros((len(y)+1, len(x)+1))
-    #     print(nr_r.shape)
-    #     data[1:,1:] = nr_r
-    #     data[1:,0] = ud_range
-    #     data[0,1:] = r_range
-
-    #     # this should save the original data that has not been clustered
-    #     Z_path = State.get_general_outputfile(f'model/interpolate_{mode}_{bid_r[br_key]}_{break_pos}.npy')
-    #     np.save(Z_path, data)
-
-    #     fig = plt_model(x,y,nr_r, xlabel=xlabel, ylabel=clabel, clabel=ylabel, exclude_nan=exclude_nan_u)
-    #     State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[br_key]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
-
 
 
 class EnergyUnit(str,Enum):
@@ -1649,9 +1395,7 @@ def nfifty(
 
     axs: Axes
     fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-    # for b in boundaries:
-        # mask = results[:,-2] == b
-        # axs.scatter(results[mask,-1], results[mask,1], marker='x', color=boundaries[b], label=f"{bname[b]}", s=1.5)
+    cfg_logplot(axs)
 
     if unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
         navid_n50 = navid_nfifty_ud()
@@ -1659,7 +1403,7 @@ def nfifty(
         navid_x = navid_n50[:,0]
         navid_y = navid_n50[:,1]
         # navids points
-        plt.scatter(
+        axs.scatter(
             navid_x,
             navid_y,
             marker='o',
@@ -1681,7 +1425,7 @@ def nfifty(
             navid_x = navid_n50[:,0]
             navid_y = navid_n50[:,1]
             # navids points
-            plt.scatter(
+            axs.scatter(
                 navid_x,
                 navid_y,
                 marker='o',
@@ -1750,9 +1494,6 @@ def nfifty(
         axs.scatter([], [], label=f"{t}mm", marker='x', color=tcolors[b])
     for b,t in zip(bid.values(), thicknesses):
         axs.plot([],[], label=f"{t}mm (Leon)", color=tcolors[b])
-
-    axs.set_xscale('log')
-    axs.set_yscale('log')
 
     axs.set_ylabel(id_name[id])
     axs.set_xlabel("N50 [-]")
