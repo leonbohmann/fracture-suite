@@ -62,7 +62,7 @@ def plot_impact_layer(
         r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
         # get data from splinter
-        a = s.get_splinter_data(mode=mode, px_p_mm=px_p_mm, ip=ip)
+        a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
 
         splinter_values[i,:] = (r, a)
 
@@ -217,7 +217,7 @@ def create_impact_layer(
             r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
             # get data from splinter
-            a = s.get_splinter_data(mode=mode, px_p_mm=px_p_mm, ip=ip)
+            a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
 
             aspects[i,:] = (r, a) # (r, a)
 

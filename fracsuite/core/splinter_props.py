@@ -3,6 +3,7 @@ from enum import Enum
 class SplinterProp(str,Enum):
     AREA = 'area'
     ORIENTATION = 'orientation'
+    IMPACT_DEPENDENCY = 'impdep'
     ROUNDNESS = 'roundness'
     ROUGHNESS = 'roughness'
     ASP = 'asp'
@@ -10,4 +11,3 @@ class SplinterProp(str,Enum):
     L1 = 'l1'
     L2 = 'l2'
     CIRCUMFENCE = 'circ'
-    ANGLE = 'angle'

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from re import S
+from typing import Any
 
 import cv2
 import numpy as np
@@ -31,7 +32,9 @@ class Splinter:
     angle_vector: tuple[float, float]
     "Normalized orientation vector"
     alignment_score: float = np.nan
-    "Score indicating how much the splinter points into the direction of the impact point."
+    "Score indicating how much the splinter was affected by the impact."
+    alignment: float = np.nan
+    "Score indicating how much the splinter points into the direction of the impact."
 
 
     roughness: float
@@ -243,121 +246,112 @@ class Splinter:
 
         return len(common_points) > 0
 
-    def __calculate_orientation_score(self, origin) -> float:
-        """Calculate the alignment score of the splinter with the given vector.
+    # def __calculate_orientation_score(self, origin) -> float:
+    #     """Calculate the alignment score of the splinter with the given vector.
+
+    #     Returns:
+    #         A value from [0,1] indicating, how much the splinter points into the direction of the given vector.
+
+
+
+    #     ### IMPORTANT
+    #         The angle returned from fitEllipse always describes the minor axis (the smaller one).
+    #         Therefore, we need to rotate the vector by 90° to get the major axis and check this for alignment!
+
+    #     """
+    #     if len(self.contour) < 5:
+    #         return np.nan
+
+    #     return self.orientation2(origin)
+
+
+    #     centroid = self.centroid_mm
+    #     Ax = origin[0] - centroid[0]
+    #     Ay = origin[1] - centroid[1]
+
+    #     A = np.array((Ax, Ay))
+
+    #     #
+    #     # Calculate the major axis vector
+    #     ellipse = cv2.fitEllipse(self.contour)
+    #     # the angle here describes the smaller axis
+    #     minor_axis_angle = ellipse[2]
+    #     minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
+    #     # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
+    #     major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
+
+    #     B = np.array(major_axis_vector)
+
+    #     # calculate the weighting factor
+    #     theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
+    #     theta1 = theta0 - np.pi/2
+    #     r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
+    #     r2 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta1)      # short side
+    #     f = r1 / r2
+
+    #     self.alignment_score = alignment_between(A, B) * f
+
+    #     # if self.measure_aspectratio() > 5:
+    #     #     self.alignment_score = np.nan
+
+    #     # if State.debug:
+    #     #     AA = A / np.linalg.norm(A)
+    #     #     BB = B / np.linalg.norm(B)
+    #     #     # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
+    #     #     print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
+
+    #     return self.alignment_score
+
+
+    # def orientation2(self,origin):
+
+
+    # def orientation3(self,origin):
+    #     centroid = self.centroid_mm
+    #     Ax = origin[0] - centroid[0]
+    #     Ay = origin[1] - centroid[1]
+
+    #     A = np.array((Ax, Ay))
+    #     R = np.linalg.norm(A)
+    #     #
+    #     # Calculate the major axis vector
+    #     ellipse = cv2.fitEllipse(self.contour)
+    #     # the angle here describes the smaller axis
+    #     minor_axis_angle = ellipse[2]
+    #     minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
+    #     # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
+    #     major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
+
+    #     B = np.array(major_axis_vector)
+
+
+    #     # calculate the weighting factor
+    #     theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
+    #     theta1 = theta0 - np.pi/2
+    #     r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
+    #     r2 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta1)      # short side
+    #     f = r1 / r2
+
+    #     self.alignment_score = np.abs(f-1)
+    #     return self.alignment_score
+
+    def get_ellipse_axes(self) -> tuple[np.ndarray,np.ndarray, Any]:
+        """
+        Return the axes of the ellipse that fits the contour best.
+        First axis is the major (longer) axis.
 
         Returns:
-            A value from [0,1] indicating, how much the splinter points into the direction of the given vector.
-
-
-
-        ### IMPORTANT
-            The angle returned from fitEllipse always describes the minor axis (the smaller one).
-            Therefore, we need to rotate the vector by 90° to get the major axis and check this for alignment!
-
+            tuple[np.ndarray,np.ndarray,np.ndarray]: The major axis, the minor axis and the ellipse.
         """
-        if len(self.contour) < 5:
-            return np.nan
-
-        return self.orientation2(origin)
-
-
-        centroid = self.centroid_mm
-        Ax = origin[0] - centroid[0]
-        Ay = origin[1] - centroid[1]
-
-        A = np.array((Ax, Ay))
-
-        #
-        # Calculate the major axis vector
         ellipse = cv2.fitEllipse(self.contour)
         # the angle here describes the smaller axis
         minor_axis_angle = ellipse[2]
         minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
-        # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
-        major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
+        minor_axis_vector = np.asarray((np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad)))
+        major_axis_vector = np.asarray((-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad)))
 
-        B = np.array(major_axis_vector)
+        return major_axis_vector, minor_axis_vector, ellipse
 
-        # calculate the weighting factor
-        theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
-        theta1 = theta0 - np.pi/2
-        r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
-        r2 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta1)      # short side
-        f = r1 / r2
-
-        self.alignment_score = alignment_between(A, B) * f
-
-        # if self.measure_aspectratio() > 5:
-        #     self.alignment_score = np.nan
-
-        # if State.debug:
-        #     AA = A / np.linalg.norm(A)
-        #     BB = B / np.linalg.norm(B)
-        #     # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
-        #     print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
-
-        return self.alignment_score
-
-
-    def orientation2(self,origin):
-        centroid = self.centroid_mm
-        Ax = origin[0] - centroid[0]
-        Ay = origin[1] - centroid[1]
-
-        A = np.array((Ax, Ay))
-        R = np.linalg.norm(A)
-        #
-        # Calculate the major axis vector
-        ellipse = cv2.fitEllipse(self.contour)
-        # the angle here describes the smaller axis
-        minor_axis_angle = ellipse[2]
-        minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
-        # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
-        major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
-
-        B = np.array(major_axis_vector)
-
-        # influence 1: orientation of the major axis
-        i1 = alignment_between(A, B)
-        # influence 2: lengthiness of splinter (aspect > 1 -->  asp-1>0)
-        i2 = self.measure_aspectratio() - 1# 1-1/(np.e**(self.measure_aspectratio()))
-        # influence 3: distance
-        theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
-        r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
-        i3 = 1 # r1 / R
-
-        self.alignment_score = i1*i2*i3
-        return self.alignment_score
-
-    def orientation3(self,origin):
-        centroid = self.centroid_mm
-        Ax = origin[0] - centroid[0]
-        Ay = origin[1] - centroid[1]
-
-        A = np.array((Ax, Ay))
-        R = np.linalg.norm(A)
-        #
-        # Calculate the major axis vector
-        ellipse = cv2.fitEllipse(self.contour)
-        # the angle here describes the smaller axis
-        minor_axis_angle = ellipse[2]
-        minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
-        # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
-        major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
-
-        B = np.array(major_axis_vector)
-
-
-        # calculate the weighting factor
-        theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
-        theta1 = theta0 - np.pi/2
-        r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
-        r2 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta1)      # short side
-        f = r1 / r2
-
-        self.alignment_score = np.abs(f-1)
-        return self.alignment_score
 
     def measure_lengthiness(self):
         """Calculate the lengthiness of the splinter. Always greater than 0, where 0 is a circle.
@@ -371,21 +365,45 @@ class Splinter:
         circumfence = cv2.arcLength(self.contour, False)
         return circumfence / px_per_mm
 
+    def measure_impact_dependency(self, impact_position: tuple[float,float]) -> float:
+        centroid = self.centroid_mm
+        Ax = impact_position[0] - centroid[0]
+        Ay = impact_position[1] - centroid[1]
+
+        A = np.array((Ax, Ay))
+
+        # get the ellipse major axis
+        B,_,ellipse = self.get_ellipse_axes()
+
+        # influence 1: orientation of the major axis
+        i1 = alignment_between(A, B)
+        # influence 2: lengthiness of splinter (aspect > 1 -->  asp-1>0)
+        i2 = self.measure_aspectratio() - 1# 1-1/(np.e**(self.measure_aspectratio()))
+
+        # harmonic mean
+        #h = 2 / (1/i1 + 1/i2)
+
+        self.alignment_score = i1*i2 # np.sqrt(i1*i2)
+        return self.alignment_score
+
     def measure_orientation(self, impact_position: tuple[float,float]) -> float | np.nan:
-        """Calculate, how much the splinters orientation points to the impactpoint of config.
+        """
+        Calculate, how much the splinters points to the impact position.
 
         Args:
             impact_position (tuple[float,float]): Impact position in mm.
 
         Returns:
-            float: Orientation in degrees.
+            float: A float value [0,1], where 0 is no orientation and 1 is perfect orientation.
         """
         if not self.has_centroid:
             return np.nan
 
-        # calculate the angle between the centroid and the impact point
+        A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
+        B,_,_ = self.get_ellipse_axes()
 
-        return self.__calculate_orientation_score(impact_position)
+        self.alignment = alignment_between(A, B)
+        return self.alignment
 
     def measure_size(self, impact_position: tuple[float,float] = None, ) -> tuple[float,float]:
         """
@@ -709,7 +727,7 @@ class Splinter:
 
         return splinters
 
-    def get_splinter_data(self, mode, ip = None, px_p_mm = None):
+    def get_splinter_data(self, prop: SplinterProp, ip = None, px_p_mm = None):
         """
         Get the data of the splinter.
 
@@ -721,32 +739,35 @@ class Splinter:
         Returns:
             float: Return value depending on mode.
         """
-        if mode == SplinterProp.ASP:
+        if prop == SplinterProp.ASP:
             assert ip is not None, "Impact point must be set to calculate aspect ratio"
             a = self.measure_aligned_aspectratio(ip)
-        elif mode == SplinterProp.AREA:
+        elif prop == SplinterProp.AREA:
             a = self.area
-        elif mode == SplinterProp.ORIENTATION:
+        elif prop == SplinterProp.ORIENTATION:
             assert ip is not None, "Impact point must be set to calculate orientation"
             a = self.measure_orientation(ip)
-        elif mode == SplinterProp.ROUNDNESS:
+        elif prop == SplinterProp.IMPACT_DEPENDENCY:
+            assert ip is not None, "Impact point must be set to calculate orientation"
+            a = self.measure_impact_dependency(ip)
+        elif prop == SplinterProp.ROUNDNESS:
             a = self.calculate_roundness()
-        elif mode == SplinterProp.ROUGHNESS:
+        elif prop == SplinterProp.ROUGHNESS:
             a = self.calculate_roughness()
-        elif mode == SplinterProp.ASP0:
+        elif prop == SplinterProp.ASP0:
             a = self.measure_aspectratio()
-        elif mode == SplinterProp.L1:
+        elif prop == SplinterProp.L1:
             l1, l2 = self.measure_size()
             a = l1
-        elif mode == SplinterProp.L2:
+        elif prop == SplinterProp.L2:
             l1, l2 = self.measure_size()
             a = l2
-        elif mode == SplinterProp.CIRCUMFENCE:
+        elif prop == SplinterProp.CIRCUMFENCE:
             assert px_p_mm is not None, "px_per_mm must be set to calculate circumfence"
             a = self.measure_circumfence(px_p_mm)
-        elif mode == SplinterProp.ANGLE:
-            _, _, angle = cv2.minAreaRect(self.contour)
-            a = angle
+        # elif prop == SplinterProp.ANGLE:
+        #     _, _, angle = cv2.minAreaRect(self.contour)
+        #     a = angle
         return a
 
     def get_mode_labels(mode, row3 = False) -> str:
@@ -755,6 +776,8 @@ class Splinter:
             ylabel = "$A_S$ [mm²]"
         elif mode == SplinterProp.ORIENTATION:
             ylabel = "$\Delta$ [-]"
+        elif mode == SplinterProp.IMPACT_DEPENDENCY:
+            ylabel = "$\Psi$ [-]"
         elif mode == SplinterProp.ROUNDNESS:
             ylabel = "$\lambda_c$ [-]"
         elif mode == SplinterProp.ROUGHNESS:
@@ -769,33 +792,35 @@ class Splinter:
             ylabel = "$L_2$ [mm]"
         elif mode == SplinterProp.CIRCUMFENCE:
             ylabel = "Circumference [mm]"
-        elif mode == SplinterProp.ANGLE:
-            ylabel = "Angle [°]"
+        # elif mode == SplinterProp.ANGLE:
+        #     ylabel = "Angle [°]"
         else:
             raise Exception(f"Invalid splinter-prop '{mode}'")
         if row3:
             return ylabel
 
         if mode == SplinterProp.AREA:
-            ylabel = "Splinter area " + ylabel
+            ylabel = "Area " + ylabel
         elif mode == SplinterProp.ORIENTATION:
-            ylabel = "Splinter orientation strength " + ylabel
+            ylabel = "Orientation " + ylabel
+        elif mode == SplinterProp.IMPACT_DEPENDENCY:
+            ylabel = "Impact dependency "
         elif mode == SplinterProp.ROUNDNESS:
-            ylabel = "Splinter roundness " + ylabel
+            ylabel = "Roundness " + ylabel
         elif mode == SplinterProp.ROUGHNESS:
-            ylabel = "Splinter roughness " + ylabel
+            ylabel = "Roughness " + ylabel
         elif mode == SplinterProp.ASP:
-            ylabel = "Splinter aspect ratio " + ylabel
+            ylabel = "Aspect ratio " + ylabel
         elif mode == SplinterProp.ASP0:
-            ylabel = "Splinter aspect ratio " + ylabel
+            ylabel = "Aspect ratio " + ylabel
         elif mode == SplinterProp.L1:
-            ylabel = "Splinter height " + ylabel
+            ylabel = "Height " + ylabel
         elif mode == SplinterProp.L2:
-            ylabel = "Splinter width " + ylabel
+            ylabel = "Width " + ylabel
         elif mode == SplinterProp.CIRCUMFENCE:
-            ylabel = "Splinter circumference " + ylabel
-        elif mode == SplinterProp.ANGLE:
-            ylabel = "Splinter angle " + ylabel
+            ylabel = "Circumference " + ylabel
+        # elif mode == SplinterProp.ANGLE:
+        #     ylabel = "Angle " + ylabel
         else:
             raise Exception(f"Missing or invalid splinter-prop '{mode}'")
         return ylabel

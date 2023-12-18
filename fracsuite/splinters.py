@@ -521,6 +521,52 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
     plt_prop(specimen_name, prop=SplinterProp.ROUNDNESS)
 
 @app.command()
+def plt_prop_f(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
+    prop: Annotated[SplinterProp, typer.Argument(help='Property to plot.')],
+    w_mm: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 50,
+    as_contours: Annotated[bool, typer.Option(help='Plot the kernel as contours.')] = False,
+    n_points: Annotated[int, typer.Option(help='Amount of points to evaluate.')] = general.n_points_kernel,
+    plot_kernel: Annotated[bool, typer.Option(help='Plot the kernel.')] = False,
+    plot_vertices: Annotated[bool, typer.Option(help='Plot the vertices.')] = False,
+    exclude_points: Annotated[bool, typer.Option(help='Exclude impact point.')] = False,
+    skip_edge: Annotated[bool, typer.Option(help='Skip edge.')] = False,
+    figwidth: Annotated[FigureSize, typer.Option(help='Figure width.')] = FigureSize.ROW2,
+):
+    specimen = Specimen.get(specimen_name)
+    pxpmm = specimen.calculate_px_per_mm()
+    impact_pos = specimen.get_impact_position()
+    def mean_value(splinters: list[Splinter]):
+        values = np.array([x.get_splinter_data(prop, impact_pos, pxpmm) for x in splinters])
+        return np.mean(values[~np.isnan(values)])
+
+    w_px = int(w_mm * specimen.calculate_px_per_mm())
+
+    clr_label = Splinter.get_mode_labels(prop)
+    clr_label = clr_label[0].lower() + clr_label[1:]
+    clr_label = "Normalized " + clr_label
+    fig_output = plot_splinter_movavg(
+        specimen.get_fracture_image(),
+        specimen.splinters,
+        plot_kernel=plot_kernel,
+        plot_vertices=plot_vertices,
+        exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
+        skip_edge=skip_edge,
+        fill_skipped_with_mean=True,
+        n_points=n_points,
+        kw_px=w_px,
+        z_action=mean_value,
+        clr_label=clr_label,
+        mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
+        figwidth=figwidth,
+        clr_format='.1f',
+        normalize=True
+    )
+
+    fig_output.overlayImpact(specimen)
+    State.output(fig_output, f'movavg_{prop}',spec=specimen, to_additional=True)
+
+@app.command()
 def plt_prop(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
     prop: Annotated[SplinterProp, typer.Option(help='Property to plot.')] = SplinterProp.AREA,
@@ -538,7 +584,7 @@ def plt_prop(
     px_p_mm = specimen.calculate_px_per_mm()
     prop_values_dict = {}
     for splinter in specimen.splinters:
-        val = splinter.get_splinter_data(mode=prop, ip=ip,px_p_mm=px_p_mm)
+        val = splinter.get_splinter_data(prop=prop, ip=ip,px_p_mm=px_p_mm)
         if np.isfinite(val):
             prop_values_dict[splinter.ID] = val
 
@@ -1099,7 +1145,7 @@ def splinter_orientation_f(
         n_points=n_points,
         kw_px=w_px,
         z_action=mean_orientations,
-        clr_label="Normalized Orientation Strength $\\bar{\Delta}$",
+        clr_label="Normalized Orientation $\\bar{\Delta}$",
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         figwidth=figwidth,
         clr_format='.1f',
@@ -1222,7 +1268,7 @@ def kde_impact_layer(
     # precomputed data
     data = {}
     for splinter in specimen.splinters:
-        data[splinter] = splinter.get_splinter_data(mode=mode, px_p_mm=px_per_mm, ip=ip)
+        data[splinter] = splinter.get_splinter_data(prop=mode, px_p_mm=px_per_mm, ip=ip)
 
     def splinter_data_getter(splinters: list[Splinter]):
         if len(splinters) == 0:
@@ -1585,7 +1631,6 @@ def fracture_intensity_f(
         figwidth: Annotated[FigureSize, typer.Option(help='Fraction of kernel width to use.')] = FigureSize.ROW2,
 ):
     """Plot the intensity of the fracture morphology."""
-
     specimen = Specimen.get(specimen_name)
     w_px = int(w_mm * specimen.calculate_px_per_mm())
     print(f"Kernel width: {w_mm} mm")

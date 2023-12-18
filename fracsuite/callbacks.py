@@ -18,7 +18,7 @@ def main_callback(
         debug: Annotated[bool, typer.Option(help='Set a debug flag for the subcommand.')] = False,
         no_additional: Annotated[bool, typer.Option(help='Do not use an additional output path.')] = False,
         to_temp: Annotated[bool, typer.Option(help='Redirect all output to temp folder.')] = False,
-        mod: Annotated[str, typer.Option(help='Modifies the output name.')] = False,
+        mod: Annotated[str, typer.Option(help='Modifies the output name.')] = '',
     ):
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
