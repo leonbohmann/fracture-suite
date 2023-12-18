@@ -18,6 +18,7 @@ def main_callback(
         debug: Annotated[bool, typer.Option(help='Set a debug flag for the subcommand.')] = False,
         no_additional: Annotated[bool, typer.Option(help='Do not use an additional output path.')] = False,
         to_temp: Annotated[bool, typer.Option(help='Redirect all output to temp folder.')] = False,
+        mod: Annotated[str, typer.Option(help='Modifies the output name.')] = False,
     ):
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
@@ -45,6 +46,13 @@ def main_callback(
 
     State.debug = debug
     State.to_temp = to_temp
+    State.output_name_mod = mod
+
+    if mod != "":
+        print(f"[cyan]Output name will be modified with: {mod}")
+
+    if to_temp:
+        print("[cyan]Output will be written to temp folder.")
 
 #TODO: In the future this can be used to make the commands more modular
 def specimen_callback(name_or_names_with_sigma: list[str]):

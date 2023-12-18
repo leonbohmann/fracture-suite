@@ -334,6 +334,7 @@ def plot_kernel_results(
     plot_kernel: bool = False,
     fill_skipped_with_mean: bool = True,
     make_border_transparent: bool = False,
+    overwrite_alpha: float = None,
 ) -> StateOutput:
     """
     Plot the results of a kernel operation on an image.
@@ -390,7 +391,7 @@ def plot_kernel_results(
         if make_border_transparent:
             mask, results = modify_border(results, 5, 0.85*CONTOUR_ALPHA, fill_skipped_with_mean)
         else:
-            mask = CONTOUR_ALPHA
+            mask = overwrite_alpha or CONTOUR_ALPHA
 
         axim = axs.imshow(results, cmap='turbo', vmin=crange[0], vmax=crange[1], alpha=mask) # alpha=mask,
     elif mode == KernelContourMode.IMAGE_ONLY:

@@ -17,12 +17,14 @@ from rich import print
 from rich.progress import Progress, track
 
 from fracsuite.callbacks import main_callback
+from fracsuite.core.geometry import ellipse_radius
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageprocessing import preprocess_image
 from fracsuite.core.preps import PrepMode, PreprocessorConfig
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import similarity, similarity_count
+from fracsuite.core.vectors import angle_between
 from fracsuite.helpers import find_file
 from fracsuite.state import State
 
@@ -544,7 +546,28 @@ def alignment(
     print('1-a=', 1 - a)
     print('a=',a)
 
+@tester_app.command()
+def ellipse_r(
+    a:float,
+    b:float,
+    theta:float,
+):
+    """Returns the radius of an ellipse at a given angle."""
+    theta = np.deg2rad(theta)
+    r = ellipse_radius(a,b,theta)
+    print(r)
 
+@tester_app.command()
+def angle(
+    x1:float,
+    y1:float,
+    x2:float,
+    y2:float,
+):
+    A = np.array((x1,y1))
+    B = np.array((x2,y2))
+    theta = angle_between(A,B)
+    print(np.rad2deg(theta))
 
 if __name__ == "__main__":
     typer.run(threshold)

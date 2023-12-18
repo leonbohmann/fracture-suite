@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import Enum
 
 import json
 import os
@@ -27,6 +28,21 @@ from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 from spazial import k_test, l_test
 
 general: GeneralSettings = GeneralSettings.get()
+
+class SpecimenBreakPosition(str,Enum):
+    """Break position of the specimen."""
+    CENTER = "center"
+    CORNER = "corner"
+
+class SpecimenBreakMode(str,Enum):
+    PUNCH = "punch"
+    DRILL = "drill"
+
+class SpecimenBoundary(str, Enum):
+    A = "A"
+    B = "B"
+    Z = "Z"
+    Unknown = "unknown"
 
 class SpecimenException(Exception):
     """Exception for specimen related errors."""
@@ -58,13 +74,13 @@ class Specimen(Outputtable):
         return self.__scalp
 
     @property
-    def break_pos(self):
+    def break_pos(self) -> SpecimenBreakPosition:
         "Break position of the specimen."
         assert "break_pos" in self.settings, "break_pos not in settings."
         return self.settings["break_pos"]
 
     @property
-    def break_mode(self):
+    def break_mode(self) -> SpecimenBreakMode:
         "Break mode of the specimen."
         assert "break_mode" in self.settings, "break_mode not in settings."
         return self.settings["break_mode"]
@@ -108,31 +124,26 @@ class Specimen(Outputtable):
     __settings: dict[str, Any]
     "Settings of the specimen."
 
-    nue: ClassVar[float] = 0.23
-    "Poisson's ratio of the specimen."
-    E: ClassVar[float] = 70e9
-    "Young's modulus of the specimen."
-
     @property
-    def sig_h(self):
+    def sig_h(self) -> float:
         "Measured pre-stress of the specimen."
         assert self.loaded, "Specimen not loaded."
         return self.__sigma_h
 
     @property
-    def measured_thickness(self):
+    def measured_thickness(self) -> float:
         "Measured thickness of the specimen."
         assert self.loaded, "Specimen not loaded."
         return self.__measured_thickness
 
     @property
-    def U_d(self):
+    def U_d(self) -> float:
         "Strain energy density of the specimen."
         assert self.loaded, "Specimen not loaded."
         return self.__U_d
 
     @property
-    def U(self):
+    def U(self) -> float:
         "Strain Energy of the specimen."
         assert self.loaded, "Specimen not loaded."
         return self.__U
@@ -183,7 +194,7 @@ class Specimen(Outputtable):
         "Whether the specimen can load splinters or not."
         self.has_scalp: bool = False
         "Whether the specimen can load a scalp or not."
-        self.boundary: str = ""
+        self.boundary: SpecimenBoundary = SpecimenBoundary.Unknown
         "Boundary condition of the specimen."
         self.nom_stress: int = 0
         "Nominal stress of the specimen."
@@ -205,6 +216,7 @@ class Specimen(Outputtable):
             "real_size_mm": (500,500)
         }
 
+        # load settings from config
         self.__cfg_path = os.path.join(path, "config.json")
         if not os.path.exists(self.__cfg_path):
             with open(self.__cfg_path, "w") as f:
@@ -227,7 +239,7 @@ class Specimen(Outputtable):
             if vars[2].isdigit():
                 vars[2],vars[3] = vars[3], vars[2]
 
-            self.boundary = vars[2]
+            self.boundary = SpecimenBoundary(vars[2])
 
             if "-" not in vars[3]:
                 self.nbr = int(vars[3])
@@ -350,12 +362,12 @@ class Specimen(Outputtable):
         """
         factor = self.calculate_px_per_mm() if in_px else 1
 
-        if self.settings['break_pos'] == "center":
+        if self.break_pos == SpecimenBreakPosition.CENTER:
             arr =  np.array((250,250)) * factor
-        elif self.settings['break_pos'] == "corner":
+        elif self.break_pos == SpecimenBreakPosition.CORNER:
             arr = np.array((50,50)) * factor
         else:
-            raise Exception("Invalid break position.")
+            raise Exception(f"Invalid break position {self.settings['break_pos']} in {self.name}.")
 
         if as_tuple:
             return tuple(arr.astype(int))
@@ -643,7 +655,7 @@ class Specimen(Outputtable):
         delta_edge = 10
         self.__splinters = [s for s in self.__splinters if s.centroid_mm[0] > delta_edge and s.centroid_mm[0] < self.settings['real_size_mm'][0] - delta_edge and s.centroid_mm[1] > delta_edge and s.centroid_mm[1] < self.settings['real_size_mm'][1] - delta_edge]
         # or within a 2cm radius to the impact point
-        delta_impact = 20
+        delta_impact = 10
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
     @staticmethod
@@ -767,11 +779,12 @@ class Specimen(Outputtable):
                 spec = load_specimen(dir, decider, value)
                 prog.advance()
 
-                if spec.name.startswith("."):
-                    print(f"Skipping {spec.name}.")
-                    continue
 
                 if spec is not None:
+                    if spec.name.startswith("."):
+                        print(f"Skipping {spec.name}.")
+                        continue
+
                     data.append(spec)
                     prog.set_description(f'Loaded {len(data)} specimens...')
                     spec.print_loaded()

@@ -7,19 +7,16 @@ import numpy as np
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
 from fracsuite.general import GeneralSettings
 from scipy.interpolate import interp2d, griddata
-
+from fracsuite.core.specimen import SpecimenBoundary
 
 general = GeneralSettings.get()
 
-class ModelBoundary(str, Enum):
-    A = "A"
-    B = "B"
-    Z = "Z"
-
-
+class ModelLayer(str, Enum):
+    IMPACT = "impact-layer"
+    BASE = "base-layer"
 
 def get_layer_folder():
-    return os.path.join(general.out_path, "layers")
+    return os.path.join(general.out_path, "layer")
 
 def get_layer_file(file_name):
     return os.path.join(get_layer_folder(), file_name)
@@ -43,12 +40,17 @@ def load_layer(file_name):
             The interpolated values.
     """
     file_path = get_layer_file(file_name)
-    data = np.load(get_layer_file(file_path))
+    return load_layer_file(file_path)
+
+def load_layer_file(file_path):
+    """Loads a layer from a file path."""
+    data = np.load(file_path)
     R = data[0,1:]
     U = data[1:,0]
     V = data[1:,1:]
 
     return R,U,V
+
 
 def interp_impact_layer(model_path, U):
     """
@@ -122,7 +124,7 @@ def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="
     axs.set_xlim((0, R[-3]))
     return fig
 
-def get_asp(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
+def get_asp(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
     """
     Returns the aspect ratio function for a given elastic strain energy and a boundary mode.
 
@@ -135,7 +137,7 @@ def get_asp(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
     """
     return interp_impact_layer(f'impact-layer_asp_{boundary}_corner.npy', U)
 
-def get_l1(U: float, boundary: ModelBoundary) -> Callable[[float], float]:
+def get_l1(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
     """
     Returns the aspect ratio function for a given elastic strain energy and a boundary mode.
 

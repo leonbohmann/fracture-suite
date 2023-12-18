@@ -19,6 +19,7 @@ from matplotlib.figure import Figure
 import numpy as np
 import numpy.typing as npt
 from sympy import plot
+from torch import cosine_similarity
 import typer
 from matplotlib import pyplot as plt
 from matplotlib import colors as pltc
@@ -33,7 +34,7 @@ from fracsuite.core.image import put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
-from fracsuite.core.lbreak import plt_layer
+from fracsuite.core.model_layers import plt_layer
 from fracsuite.core.navid_results import navid_nfifty_ud, navid_nfifty, navid_nfifty_interpolated
 from fracsuite.core.plotting import (
     DataHistMode,
@@ -56,11 +57,11 @@ from fracsuite.core.plotting import (
 )
 from fracsuite.core.preps import defaultPrepConfig
 from fracsuite.core.progress import get_progress
-from fracsuite.core.specimen import Specimen
+from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import similarity, moving_average
-from fracsuite.core.vectors import alignment_sim
+from fracsuite.core.vectors import alignment_between, alignment_cossim
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
 from fracsuite.layer import plot as plot_saved_model
@@ -618,7 +619,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float, float], typer.Option(help='X-Limi
             return False
         if not spec.has_scalp:
             return False
-        if spec.boundary == "":
+        if spec.boundary == SpecimenBoundary.Unknown:
             return False
         if spec.thickness not in thickness:
             return False
@@ -1098,7 +1099,7 @@ def splinter_orientation_f(
         n_points=n_points,
         kw_px=w_px,
         z_action=mean_orientations,
-        clr_label="Mean Orientation Strength $\\bar{\Delta}$",
+        clr_label="Normalized Orientation Strength $\\bar{\Delta}$",
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         figwidth=figwidth,
         clr_format='.1f',
@@ -1113,9 +1114,9 @@ def splinter_orientation_f(
 def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')]):
     """Plot the orientation of splinters."""
 
-    plt_prop(specimen_name, prop=SplinterProp.ORIENTATION)
 
     if not State.debug:
+        plt_prop(specimen_name, prop=SplinterProp.ORIENTATION)
         return
 
     specimen = Specimen.get(specimen_name)
@@ -1127,11 +1128,10 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
     debug_img = specimen.get_fracture_image()
     n = 0
     for s in track(splinters):
-        if n % 50 == 0:
+        if n % 10 == 0:
             # draw splinter contour into image
             cv2.drawContours(debug_img, [s.contour], -1, (0, 0, 255), 1)
             A = impact_pos - s.centroid_mm
-
 
             # draw splinter ellipse
             ellipse = cv2.fitEllipse(s.contour)
@@ -1139,26 +1139,27 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
 
             # get bounding box major axis
             major_axis_angle = np.deg2rad(ellipse[2])
-            major_axis_vector = np.array([np.cos(major_axis_angle), np.sin(major_axis_angle)])
+            major_axis_vector = np.array([-np.sin(major_axis_angle), np.cos(major_axis_angle)])
             p0 = np.array(ellipse[0])
             p1 = p0 + major_axis_vector * ellipse[1][0] * 1.2
             cv2.line(debug_img, tuple(p0.astype(int)), tuple(p1.astype(int)), (0, 255, 255), 1)
-            c1 = p0 - A * 20 / np.linalg.norm(A)
-            cv2.line(debug_img, tuple(p0.astype(int)), tuple(c1.astype(int)), (255, 255, 0), 1)
+            c0 = p0 - A * 20 / np.linalg.norm(A)
+            c1 = p0
+            cv2.line(debug_img, tuple(c0.astype(int)), tuple(c1.astype(int)), (255, 255, 0), 1)
 
 
-            # draw splinter bounding box
-            (x,y),(w,h),a = cv2.minAreaRect(s.contour)
-            box = cv2.boxPoints(((x,y),(w,h),a))
-            box = np.int0(box)
-            cv2.drawContours(debug_img, [box], 0, (0, 255, 0), 1)
+            # # draw splinter bounding box
+            # (x,y),(w,h),a = cv2.minAreaRect(s.contour)
+            # box = cv2.boxPoints(((x,y),(w,h),a))
+            # box = np.int0(box)
+            # cv2.drawContours(debug_img, [box], 0, (0, 255, 0), 1)
 
-            # get bounding box major axis
-            major_axis_angle = np.deg2rad(a)
-            major_axis_vector = np.array([np.cos(major_axis_angle), np.sin(major_axis_angle)])
-            p0 = np.array([x,y])
-            p1 = p0 + major_axis_vector * w * 1.2
-            cv2.line(debug_img, tuple(p0.astype(int)), tuple(p1.astype(int)), (0, 255, 0), 1)
+            # # get bounding box major axis
+            # major_axis_angle = np.deg2rad(a)
+            # major_axis_vector = np.array([np.cos(major_axis_angle), np.sin(major_axis_angle)])
+            # p0 = np.array([x,y])
+            # p1 = p0 + major_axis_vector * w * 1.2
+            # cv2.line(debug_img, tuple(p0.astype(int)), tuple(p1.astype(int)), (0, 255, 0), 1)
 
             try:
                 # extract splinter with its bounding box
@@ -1172,17 +1173,17 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
                 bbox_w, bbox_h = bbox_img.shape[:2]
 
                 h0 = 15
-                cv2.rectangle(bbox_img, (0, 0), (60, 140), (255, 255, 255), -1)
-                cv2.putText(bbox_img, f"{a:.0f} deg", (5, h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 2*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                B = np.array([np.cos(np.deg2rad(a)), np.sin(np.deg2rad(a))])
-                cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 3*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                cv2.rectangle(bbox_img, (0, 0), (250, 3*h0), (255, 255, 255), -1)
+                # cv2.putText(bbox_img, f"{a:.0f} deg", (5, h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                # cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 2*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                # B = np.array([np.cos(np.deg2rad(a)), np.sin(np.deg2rad(a))])
+                # cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 3*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-                cv2.putText(bbox_img, f"{ellipse[2]:.0f} deg", (5, 4*h0 + h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                # cv2.putText(bbox_img, f"Angle: {ellipse[2]:.0f} deg", (5, h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                 w,h = ellipse[1]
-                cv2.putText(bbox_img, f"{w:.0f}x{h:.0f}", (5, 5*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                B = np.array([np.cos(np.deg2rad(ellipse[2])), np.sin(np.deg2rad(ellipse[2]))])
-                cv2.putText(bbox_img, f"{alignment_sim(A,B)*100:.2f}%", (5, 6*h0+ h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                B = np.array([-np.sin(np.deg2rad(ellipse[2])), np.cos(np.deg2rad(ellipse[2]))])
+                cv2.putText(bbox_img, f"Cosine-Similarity: {alignment_cossim(A,B)*100:.2f}%", (5, 1*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                cv2.putText(bbox_img, f"Orientation strength: {s.measure_orientation(impact_pos):.2f}", (5, 2*h0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                 # save image to debug folder
                 out_file = State.get_general_outputfile(f"debug/{specimen.name}_{n}.png")
@@ -1325,7 +1326,7 @@ def nfifty(
     def add_filter(specimen: Specimen):
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
-        if specimen.boundary == "":
+        if specimen.boundary == SpecimenBoundary.Unknown:
             return False
 
         if not specimen.has_splinters:
@@ -1506,167 +1507,6 @@ def nfifty(
         for i in range(len(specimens)):
             res = results[i,:]
             print(specimens[i].name, "U:", res[0], "U_d:", res[1], "U_t", res[2], "Ud_t", res[3] , "Thickness:", res[4], "Boundary:", res[3], "N50:", res[4])
-
-@app.command()
-def aspect_ratio_vs_radius(
-    u_d: Annotated[float, typer.Option(help='Strain energy density.')] = None,
-    bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
-    output_name: Annotated[str, typer.Option(help='Output name.')] = None,
-    break_pos: Annotated[str, typer.Option(help='Break position.')] = None,
-):
-    color = {
-        'A': 'tab:blue',
-        'B': 'tab:orange',
-        'Z': 'tab:green',
-    }
-
-    def add_filter(specimen: Specimen):
-        if break_pos is not None and specimen.break_pos != break_pos:
-            return False
-        if specimen.boundary == "":
-            return False
-
-        if not specimen.has_splinters:
-            return False
-
-        if bound is not None and specimen.boundary != bound:
-            return False
-        if specimen.U_d is None or not np.isfinite(specimen.U_d):
-            return False
-
-        if u_d is not None:
-            f = specimen.U_d / u_d - 1
-            if f > 0.2 or f < -0.2:
-                return False
-
-        return True
-
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
-
-    if break_pos is None:
-        break_pos = 'all'
-
-    fig = plt.figure(figsize=get_fig_width(FigureSize.ROW2))
-
-    results: dict[Specimen, Any] = {}
-    n = 20
-
-    A = []
-    B = []
-    Z = []
-
-    for specimen in specimens:
-    # specimen = Specimen.get(specimen_name)
-        impact_pos = specimen.get_impact_position()
-
-        splinters = specimen.splinters
-
-        data = np.zeros((len(splinters), 3))
-
-        for i, s in enumerate(splinters):
-            r = np.linalg.norm(np.asarray(s.centroid_mm) - impact_pos)
-            l1, l2 = s.measure_size(impact_pos)
-
-            l1 = np.abs(l1/l2)
-            data[i,:] = (r, l1, l2)
-
-        data = data[data[:, 0].argsort()]
-
-        R = data[:,0]
-        L1 = data[:,1]
-        L2 = data[:,2]
-
-
-        # Rm, Lm1, Lm2 = R, L1, L2
-        Rm, Lm1, Lm2 = moving_average(R, [L1, L2], n)
-
-        if specimen.boundary == 'A':
-            # extract Rm,Lm1 into tuples and append to A
-            A.extend(zip(Rm,Lm1))
-        elif specimen.boundary == 'B':
-            B.extend(zip(Rm,Lm1))
-        elif specimen.boundary == 'Z':
-            Z.extend(zip(Rm,Lm1))
-
-        print(len(Rm), len(Lm1), len(Lm2))
-        results[specimen] = (Rm, Lm1, Lm2)
-
-        # plt.scatter(Rm, Lm1, label=specimen.name, marker='x', color=color[specimen.boundary])
-        # plt.plot(Rm, Lm2, label="$L_{\perp}$")
-
-
-
-
-    plt.xlabel("Distance from impact R [mm]")
-    plt.ylabel("Splinter aspect ratio $L/L_p$ [mm]")
-
-
-    A = np.array(A)
-    B = np.array(B)
-    Z = np.array(Z)
-
-    A = A[A[:,0].argsort()]
-    B = B[B[:,0].argsort()]
-    Z = Z[Z[:,0].argsort()]
-
-    plt.scatter(A[:,0], A[:,1], color=color['A'])
-    plt.scatter(B[:,0], B[:,1], color=color['B'])
-    plt.scatter(Z[:,0], Z[:,1], color=color['Z'])
-
-    ra, A = moving_average(A[:,0], A[:,1], n)
-    rb, B = moving_average(B[:,0], B[:,1], n)
-    rz, Z = moving_average(Z[:,0], Z[:,1], n)
-
-
-    plt.plot(ra, A, label="A", color=color['A'])
-    plt.plot(rb, B, label="B", color=color['B'])
-    plt.plot(rz, Z, label="Z", color=color['Z'])
-    # xa,ya = zip(*A)
-    # xb,yb = zip(*B)
-    # xz,yz = zip(*Z)
-
-    # plt.scatter(xa, ya, label="A", color=color['A'])
-    # plt.scatter(xb, yb, label="B", color=color['B'])
-    # plt.scatter(xz, yz, label="Z", color=color['Z'])
-
-    plt.legend()
-    plt.show()
-
-    State.output(StateOutput(fig,FigureSize.ROW2), f'ud{u_d}_{break_pos}', to_additional=True)
-
-
-
-
-    # fig = plt.figure(figsize=get_fig_width(FigureSize.ROW2))
-    # plt.plot(R, A, label="A")
-    # plt.plot(R, B, label="B")
-    # # plt.plot(R, Z, label="Z")
-
-    # plt.xlabel("Distance from impact R [mm]")
-    # plt.ylabel("Splinter aspect ratio $L/L_p$ [mm]")
-    # plt.legend()
-    # plt.show()
-
-
-
-
-
-    # RmA = []
-    # L1A = []
-    # L2A = []
-    # for result in results:
-    #     Rm, Lm1, Lm2 = results[result]
-
-    #     if result.boundary == 'A':
-    #         RmA.append(Rm)
-    #         L1A.append(Lm1)
-    #         L2A.append(Lm2)
-    #     plt.plot(Rm, Lm1, label=result.name)
-
-
-
-
-
 
 @app.command()
 def fracture_intensity_img(

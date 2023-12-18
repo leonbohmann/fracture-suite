@@ -136,6 +136,8 @@ class State:
     "Clear the output directory of similar files when finalizing."
     to_temp: bool = False
     "Redirect all output to the temp folder."
+    output_name_mod: str = ""
+
     __progress_started: bool = False
 
     __checkpoint_data: dict = None
@@ -239,11 +241,14 @@ class State:
             for mod in mods:
                 path_and_name[-1] += f'_{mod}'
 
+        if State.output_name_mod != "":
+            path_and_name[-1] += f'_{State.output_name_mod}'
+
         # If a spec is passed, use its output functions to save
         #   the object to the specimen path as well.
         # The name of this output file does not need the specimen ID,
         #   as it is already in the path.
-        if isinstance(spec, Outputtable):
+        if isinstance(spec, Outputtable) and not State.to_temp:
             specimen_output_funcs = spec.get_output_funcs()
             for key, func in specimen_output_funcs.items():
                 if key in State.sub_outpath:

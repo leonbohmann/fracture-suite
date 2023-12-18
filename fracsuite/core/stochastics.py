@@ -324,7 +324,7 @@ def calculate_lhat(X, area, d):
     return np.sqrt(stats / np.pi) - d
 
 
-def moving_average(x, y, rng):
+def moving_average(x, y, rng) -> tuple[np.ndarray, list[np.ndarray] | np.ndarray]:
     """
     Berechnet den gleitenden Durchschnitt eines Arrays. Werte, deren x-Wert NaN ist, werden ignoriert.
 

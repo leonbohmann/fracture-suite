@@ -8,6 +8,7 @@ from skimage.morphology import skeletonize
 
 from fracsuite.core.coloring import rand_col
 from fracsuite.core.detection import detect_fragments, remove_dark_spots
+from fracsuite.core.geometry import ellipse_radius
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import (
@@ -20,7 +21,7 @@ from fracsuite.core.preps import PreprocessorConfig
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter_props import SplinterProp
 
-from fracsuite.core.vectors import alignment_between
+from fracsuite.core.vectors import alignment_between, alignment_cossim, angle_between
 from fracsuite.state import State
 
 class Splinter:
@@ -258,6 +259,9 @@ class Splinter:
         if len(self.contour) < 5:
             return np.nan
 
+        return self.orientation2(origin)
+
+
         centroid = self.centroid_mm
         Ax = origin[0] - centroid[0]
         Ay = origin[1] - centroid[1]
@@ -270,22 +274,98 @@ class Splinter:
         # the angle here describes the smaller axis
         minor_axis_angle = ellipse[2]
         minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
+        # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
         major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
 
         B = np.array(major_axis_vector)
 
-        self.alignment_score = alignment_between(A, B) * self.measure_aspectratio()
+        # calculate the weighting factor
+        theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
+        theta1 = theta0 - np.pi/2
+        r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
+        r2 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta1)      # short side
+        f = r1 / r2
+
+        self.alignment_score = alignment_between(A, B) * f
 
         # if self.measure_aspectratio() > 5:
         #     self.alignment_score = np.nan
 
-        if State.debug:
-            AA = A / np.linalg.norm(A)
-            BB = B / np.linalg.norm(B)
-            # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
-            print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
+        # if State.debug:
+        #     AA = A / np.linalg.norm(A)
+        #     BB = B / np.linalg.norm(B)
+        #     # print('A', AA, 'B', BB, 'score', self.alignment_score, 'angle', major_axis_angle)
+        #     print(f'A={AA}, B={BB}, angle={ellipse[2]:<3.2f}, score={self.alignment_score:<3.2f}')
 
         return self.alignment_score
+
+
+    def orientation2(self,origin):
+        centroid = self.centroid_mm
+        Ax = origin[0] - centroid[0]
+        Ay = origin[1] - centroid[1]
+
+        A = np.array((Ax, Ay))
+        R = np.linalg.norm(A)
+        #
+        # Calculate the major axis vector
+        ellipse = cv2.fitEllipse(self.contour)
+        # the angle here describes the smaller axis
+        minor_axis_angle = ellipse[2]
+        minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
+        # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
+        major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
+
+        B = np.array(major_axis_vector)
+
+        # influence 1: orientation of the major axis
+        i1 = alignment_between(A, B)
+        # influence 2: lengthiness of splinter (aspect > 1 -->  asp-1>0)
+        i2 = self.measure_aspectratio() - 1# 1-1/(np.e**(self.measure_aspectratio()))
+        # influence 3: distance
+        theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
+        r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
+        i3 = 1 # r1 / R
+
+        self.alignment_score = i1*i2*i3
+        return self.alignment_score
+
+    def orientation3(self,origin):
+        centroid = self.centroid_mm
+        Ax = origin[0] - centroid[0]
+        Ay = origin[1] - centroid[1]
+
+        A = np.array((Ax, Ay))
+        R = np.linalg.norm(A)
+        #
+        # Calculate the major axis vector
+        ellipse = cv2.fitEllipse(self.contour)
+        # the angle here describes the smaller axis
+        minor_axis_angle = ellipse[2]
+        minor_axis_angle_rad = np.deg2rad(minor_axis_angle)
+        # minor_axis_vector = (np.cos(minor_axis_angle_rad), np.sin(minor_axis_angle_rad))
+        major_axis_vector = (-np.sin(minor_axis_angle_rad), np.cos(minor_axis_angle_rad))
+
+        B = np.array(major_axis_vector)
+
+
+        # calculate the weighting factor
+        theta0 = np.abs(alignment_cossim(A,B)) * np.pi / 2
+        theta1 = theta0 - np.pi/2
+        r1 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta0)      # long side
+        r2 = ellipse_radius(ellipse[1][0], ellipse[1][1], theta1)      # short side
+        f = r1 / r2
+
+        self.alignment_score = np.abs(f-1)
+        return self.alignment_score
+
+    def measure_lengthiness(self):
+        """Calculate the lengthiness of the splinter. Always greater than 0, where 0 is a circle.
+
+        Returns:
+            float: A value indicating how long the splinter is.
+        """
+        return self.measure_aspectratio() - 1
 
     def measure_circumfence(self, px_per_mm: float):
         circumfence = cv2.arcLength(self.contour, False)
