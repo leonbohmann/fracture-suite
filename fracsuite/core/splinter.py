@@ -366,6 +366,9 @@ class Splinter:
         return circumfence / px_per_mm
 
     def measure_impact_dependency(self, impact_position: tuple[float,float]) -> float:
+        if not self.has_centroid or len(self.contour) <= 5:
+            return np.nan
+
         centroid = self.centroid_mm
         Ax = impact_position[0] - centroid[0]
         Ay = impact_position[1] - centroid[1]
@@ -396,7 +399,7 @@ class Splinter:
         Returns:
             float: A float value [0,1], where 0 is no orientation and 1 is perfect orientation.
         """
-        if not self.has_centroid:
+        if not self.has_centroid or len(self.contour) <= 5:
             return np.nan
 
         A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
@@ -607,6 +610,10 @@ class Splinter:
 
         contour_image = to_gray(contour_image)
         contours = detect_fragments(contour_image, min_area_px=prep.min_area, max_area_px=prep.max_area, filter=True)
+
+        for c in contours:
+            cv2.approxPolyDP(c, 0.01, True)
+
         return [Splinter(c, i, px_per_mm) for i, c in enumerate(contours)]
 
     @staticmethod
@@ -765,6 +772,9 @@ class Splinter:
         elif prop == SplinterProp.CIRCUMFENCE:
             assert px_p_mm is not None, "px_per_mm must be set to calculate circumfence"
             a = self.measure_circumfence(px_p_mm)
+        elif prop == SplinterProp.L1_WEIGHTED:
+            assert ip is not None, "Impact point must be set to calculate weighted l1-length"
+            a = self.measure_size()[0] * self.measure_orientation(ip)
         # elif prop == SplinterProp.ANGLE:
         #     _, _, angle = cv2.minAreaRect(self.contour)
         #     a = angle
@@ -790,6 +800,8 @@ class Splinter:
             ylabel = "$L_1$ [mm]"
         elif mode == SplinterProp.L2:
             ylabel = "$L_2$ [mm]"
+        elif mode == SplinterProp.L1_WEIGHTED:
+            ylabel = "$\Delta \cdot L_1$ [mm]"
         elif mode == SplinterProp.CIRCUMFENCE:
             ylabel = "Circumference [mm]"
         # elif mode == SplinterProp.ANGLE:
@@ -817,6 +829,8 @@ class Splinter:
             ylabel = "Height " + ylabel
         elif mode == SplinterProp.L2:
             ylabel = "Width " + ylabel
+        elif mode == SplinterProp.L1_WEIGHTED:
+            ylabel = "Weighted height " + ylabel
         elif mode == SplinterProp.CIRCUMFENCE:
             ylabel = "Circumference " + ylabel
         # elif mode == SplinterProp.ANGLE:

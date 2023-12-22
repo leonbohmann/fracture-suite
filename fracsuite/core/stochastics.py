@@ -337,8 +337,8 @@ def moving_average(x, y, rng) -> tuple[np.ndarray, list[np.ndarray] | np.ndarray
             Stützstellen für Auswertung
 
     Rückgabe:
-        tuple(ndarray, list[ndarray]):
-            Stützstellen des Durchschnitts und der Durchschnitt selbst.
+        tuple(ndarray, list[ndarray], list[ndarray]):
+            Stützstellen des Durchschnitts, der Durchschnitt selbst und seine Standardabweichung.
     """
     if not isinstance(y, list):
         y = [y]
@@ -355,9 +355,12 @@ def moving_average(x, y, rng) -> tuple[np.ndarray, list[np.ndarray] | np.ndarray
     # create result structure for every input y
     n = len(rng)
     R = []
+    DEV = []
     for i in range(len(y)):
         Ri = np.zeros(n)
+        dev = np.zeros(n)
         R.append(Ri)
+        DEV.append(dev)
 
     # calculate moving average
     for i in range(n):
@@ -372,7 +375,9 @@ def moving_average(x, y, rng) -> tuple[np.ndarray, list[np.ndarray] | np.ndarray
 
             if mask.sum() > 0:
                 R[ii][i] = np.mean(y_r)
+                DEV[ii][i] = np.std(y_r)
             else:
                 R[ii][i] = np.nan
+                DEV[ii][i] = np.nan
 
-    return rng, *R
+    return rng, *R, *DEV

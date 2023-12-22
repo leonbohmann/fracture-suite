@@ -78,7 +78,7 @@ def interp_impact_layer(model_path, U):
 
 def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="~",interpolate=True) -> Figure:
     """
-    Plots a given layer.
+    Plots a given layer on a 2d contour plot.
 
     Args:
         R (array): Radius range.

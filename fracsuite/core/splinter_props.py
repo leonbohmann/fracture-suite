@@ -11,3 +11,4 @@ class SplinterProp(str,Enum):
     L1 = 'l1'
     L2 = 'l2'
     CIRCUMFENCE = 'circ'
+    L1_WEIGHTED = 'l1w'

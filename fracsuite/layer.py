@@ -10,7 +10,7 @@ from rich.progress import track
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
-from fracsuite.core.model_layers import load_layer, load_layer_file, plt_layer
+from fracsuite.core.model_layers import ModelLayer, load_layer, load_layer_file, plt_layer
 from fracsuite.core.plotting import FigureSize, KernelContourMode, get_fig_width, plot_kernel_results, renew_ticks_cb
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition, SpecimenBreakMode
 from fracsuite.core.splinter import Splinter
@@ -24,7 +24,7 @@ general = GeneralSettings.get()
 
 @layer_app.command()
 def plot(
-    layer: Annotated[str, typer.Argument(help="The layer to display")],
+    layer: Annotated[ModelLayer, typer.Argument(help="The layer to display")],
     mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
     boundary: Annotated[SpecimenBoundary, typer.Argument(help="Boundary condition")],
     ignore_nan_plot: Annotated[bool, typer.Option(help="Filter NaN values")] = True,
@@ -33,7 +33,7 @@ def plot(
     if file is not None:
         R,U,V = load_layer_file(file)
     else:
-        model_name = f'{layer}-layer_{mode}_{boundary}_corner.npy'
+        model_name = f'{layer}_{mode}_{boundary}_corner.npy'
         R,U,V = load_layer(model_name)
 
     xlabel = 'Distance $R$ from Impact [mm]'
@@ -42,7 +42,7 @@ def plot(
 
     fig = plt_layer(R,U,V,ignore_nan=ignore_nan_plot, xlabel=xlabel, ylabel=ylabel, clabel=clabel,
                     interpolate=False)
-    State.output(StateOutput(fig, FigureSize.ROW2), f"impact-layer-2d_{mode}_{boundary}")
+    State.output(StateOutput(fig, FigureSize.ROW2), f"{layer}-2d_{mode}_{boundary}")
     plt.close(fig)
 
 @layer_app.command()
@@ -75,7 +75,7 @@ def plot_impact_layer(
     axs.imshow(specimen.get_fracture_image(), cmap='gray')
 
     # now, overlay circles corresponding to the radii and the color the value
-    R,V = moving_average(splinter_values[:,0], splinter_values[:,1], np.linspace(0, np.max(splinter_values[:,0])))
+    R,V,D = moving_average(splinter_values[:,0], splinter_values[:,1], np.linspace(0, np.max(splinter_values[:,0])))
     R = R*px_p_mm
 
     # Erstellen Sie ein Gitter für den Contour-Plot
@@ -184,6 +184,7 @@ def create_impact_layer(
 
     xlabel = "Distance from impact R [mm]"
     ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+    ylabel_short = Splinter.get_mode_labels(mode, row3=True)
     clabel = "Strain Energy U [J/m²]"
 
 
@@ -193,11 +194,13 @@ def create_impact_layer(
     r_max = np.sqrt(450**2 + 450**2)
     r_range = np.linspace(r_min, r_max, n_r)
 
+
+
+    ########################
+    # Calculate value for every specimen and save results to arrays
+    ########################
     results = np.ones((len(specimens), len(r_range)+3)) * np.nan
-
-    # all other rows: u_d, boundary, aspect ratios
-
-    d_rand = 15 #mm
+    stddevs = np.ones((len(specimens), len(r_range)+3)) * np.nan
 
     for si, specimen in track(list(enumerate(specimens))):
         print('Specimen: ', specimen.name)
@@ -205,14 +208,8 @@ def create_impact_layer(
         # now, find aspect ratio of all splinters
         aspects = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
         ip = specimen.get_impact_position()
-        s_sz = specimen.get_real_size()
         px_p_mm = specimen.calculate_px_per_mm()
         for i, s in enumerate(specimen.splinters):
-            # skip splinters that are too close to the edge
-            if s.centroid_mm[0] > s_sz[0]-d_rand or s.centroid_mm[0] < d_rand or s.centroid_mm[1] > s_sz[1]-d_rand or s.centroid_mm[1] < d_rand:
-                aspects[i,:] = (np.nan, np.nan)
-                continue
-
             # calculate distance to impact point
             r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
@@ -225,12 +222,18 @@ def create_impact_layer(
         aspects = aspects[aspects[:,0].argsort()]
 
         # take moving average
-        r1,l1 = moving_average(aspects[:,0], aspects[:,1], r_range)
+        r1,l1,stddev1 = moving_average(aspects[:,0], aspects[:,1], r_range)
 
         results[si,0] = specimen.U
         results[si,1] = bid[specimen.boundary]
         results[si,2] = si
         results[si,3:] = l1
+
+        stddevs[si,0] = results[si,0]
+        stddevs[si,1] = results[si,1]
+        stddevs[si,2] = results[si,2]
+        stddevs[si,3:] = stddev1
+
         # except:
         #     results[si+1,0] = specimen.U
         #     results[si+1,1] = bid[specimen.boundary]
@@ -241,12 +244,15 @@ def create_impact_layer(
     # sort results after U_d
     results = results[results[:,0].argsort()]
 
+    ########################
+    # Save results as layer
+    ########################
 
-
+    # first: results, second: stddevs
     results_per_boundary_unclustered = {
-        1: [],
-        2: [],
-        3: []
+        1: ([],[]),
+        2: ([],[]),
+        3: ([],[])
     }
 
     # find all results for every boundary
@@ -255,37 +261,55 @@ def create_impact_layer(
     mask_Z = results[:,1] == 3
 
     # put results in dictionary
-    results_per_boundary_unclustered[1] = results[mask_A,:]
-    results_per_boundary_unclustered[2] = results[mask_B,:]
-    results_per_boundary_unclustered[3] = results[mask_Z,:]
-
+    results_per_boundary_unclustered[1] = (results[mask_A,:], stddevs[mask_A,:])
+    results_per_boundary_unclustered[2] = (results[mask_B,:], stddevs[mask_B,:])
+    results_per_boundary_unclustered[3] = (results[mask_Z,:], stddevs[mask_Z,:])
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
     # sort the individual results after U_d
     for b in results_per_boundary_unclustered:
-        results_per_boundary_unclustered[b] = \
-            results_per_boundary_unclustered[b][results_per_boundary_unclustered[b][:,0].argsort()]
+        b_mask = results_per_boundary_unclustered[b][0][:,0].argsort()
+        results_b = results_per_boundary_unclustered[b][0][b_mask]
+        stddev_b = results_per_boundary_unclustered[b][1][b_mask]
 
         # plot the current boundary
         x = r_range
-        y = results_per_boundary_unclustered[b][:,0].ravel()
-        z = results_per_boundary_unclustered[b][:,3:]
-
-        # display the figure
-        fig = plt_layer(x,y,z, xlabel=xlabel, ylabel=clabel, clabel=ylabel, ignore_nan=False,interpolate=False)
-
-        # save output
+        y = results_b[:,0].ravel()
+        z = results_b[:,3:]
 
         # save model
-        Z_path = State.get_output_file(f'impact-layer_{mode}_{bid_r[b]}_{break_pos}.npy')
+        Z_path = State.get_output_file(f'{ModelLayer.IMPACT}_{mode}_{bid_r[b]}_{break_pos}.npy')
         print(f'> Saving impact layer {mode}_{bid_r[b]}_{break_pos} to {Z_path}')
         data = np.zeros((len(y)+1, len(x)+1))
         data[1:,1:] = z
         data[1:,0] = y
         data[0,1:] = x
         np.save(Z_path, data)
+        stddev_path = State.get_output_file(f'{ModelLayer.IMPACT}-stddev_{mode}_{bid_r[b]}_{break_pos}.npy')
+        data_stddev = np.zeros((len(y)+1, len(x)+1))
+        data_stddev[1:,1:] = stddev_b[:,3:]
+        data_stddev[1:,0] = stddev_b[:,0].ravel()
+        data_stddev[0,1:] = r_range
+        np.save(stddev_path, data_stddev)
 
-        plot("impact", mode=mode, boundary=bid_r[b], ignore_nan_plot=ignore_nan_u,
+        plot(ModelLayer.IMPACT, mode=mode, boundary=bid_r[b], ignore_nan_plot=ignore_nan_u,
              file=Z_path)
 
+
+        # this plots the standard deviation between different energy levels
+        c_stddev = np.nanstd(z, axis=0)
+        # this however plots the maximum difference between lowest and highest property value
+        max_diff = np.abs((np.nanmax(z,axis=0) - np.nanmin(z,axis=0)))
+        # plot max_dif over r
+        axs.plot(x, max_diff, label=bid_r[b], linestyle=boundaries[b])
+
+    axs.set_xlabel(xlabel)
+    axs.set_ylabel(f"Influence of energy on {ylabel_short}")
+    axs.legend()
+    State.output(StateOutput(fig,sz), f'max-diff_{mode}_{break_pos}', to_additional=True)
+
+    ########################
+    # cluster results for a range of energies and save plots
+    ########################
 
     # results for interpolation with different boundaries
     results_per_boundary = {

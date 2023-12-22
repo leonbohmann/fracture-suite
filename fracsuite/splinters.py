@@ -324,6 +324,8 @@ def plot_adjacent_detail(
 @app.command()
 def draw_contours(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+    fill: Annotated[bool, typer.Option(help='Fill contours.')] = False,
+    ls: Annotated[int, typer.Option(help='Line size.')] = 2,
 ):
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
@@ -332,9 +334,9 @@ def draw_contours(
     out_img = specimen.get_fracture_image()
     for splinter in track(splinters, description="Drawing contours...", transient=True):
         clr = rand_col()
-        cv2.drawContours(out_img, [splinter.contour], 0, clr, 1)
+        cv2.drawContours(out_img, [splinter.contour], 0, clr, ls if not fill else -1)
 
-    State.output(out_img, 'contours',spec=specimen, to_additional=True, figwidth=FigureSize.ROW1)
+    State.output(out_img, 'contours', spec=specimen, to_additional=True, figwidth=FigureSize.ROW1)
 
 def check_chunk(i, chunksize, p_len):
     points_sm = sm.SharedMemory(name='points')
