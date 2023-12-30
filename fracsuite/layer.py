@@ -192,7 +192,7 @@ def create_impact_layer(
     n_r = 30
     r_min = 0
     r_max = np.sqrt(450**2 + 450**2)
-    r_range = np.linspace(r_min, r_max, n_r)
+    r_range = np.linspace(r_min, r_max, n_r, endpoint=False)
 
 
 

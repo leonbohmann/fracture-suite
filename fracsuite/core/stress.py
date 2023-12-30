@@ -39,7 +39,7 @@ ns = {
     3: 1,
     4: 2,
     5: 3,
-    -1: 3,
+    -1: 4,
 }
 
 def relative_remaining_stress(A: float, h: float, n: int = -1):
@@ -55,7 +55,7 @@ def relative_remaining_stress(A: float, h: float, n: int = -1):
         The relative remaining strain energy density in fragments.
     """
     d = A/h**2
-    assert d > 0.05 and d < 18.45, "A/h² is out of range of the URR-Data."
+    assert d > 0.05 and d < 18.45, f"A/h²={d:.2f} is out of range of the URR-Data."
     assert n in ns, "n is not a valid number of polygon edges."
 
     n = ns[n]

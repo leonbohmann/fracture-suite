@@ -12,16 +12,20 @@ from fracsuite.core.contours import center
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.imageprocessing import dilateImg
+from fracsuite.core.model_layers import ModelLayer, interp_layer, interp_layer_stddev, load_layer
 from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.core.point_process import CSR_process, strauss_process, gibbs_strauss_process
 from fracsuite.core.region import RectRegion
-from fracsuite.core.specimen import Specimen
+from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
+from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import calculate_khat, calculate_fhat, calculate_ghat
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
 
 from fracsuite.state import State
+
+from spazial import gibbs_strauss_process as spazial_gibbs_strauss_process
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -114,13 +118,135 @@ def est_break(
     State.output(fig, 'lfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
 
+@sim_app.command()
+def simulate_fracture(
+    energy: float,
+    thickness: float,
+    size: tuple[float,float] = (500,500),
+    break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER
+):
+    # fetch fracture intensity and hc radius from energy
+    fracture_intensity = 0.21
+    hc_radius = 15
+    mean_area = 1 / fracture_intensity
+    impact_position = break_pos.position()
+
+    print(f'Fracture intensity: {fracture_intensity:.2f} 1/mm²')
+    print(f'HC Radius: {hc_radius:.2f} mm')
+    print(f'Mean area: {mean_area:.2f} mm²')
+    print(f'Impact position: {impact_position}')
+    # estimate acceptance probability
+    urr = relative_remaining_stress(mean_area, thickness)
+    nue = 1 - urr
+    print(f'Urr: {urr:.2f}', f'nue: {nue:.2f}')
+
+    # create spatial points
+    points = spazial_gibbs_strauss_process(fracture_intensity, hc_radius, nue, size)
+
+    # transform points to ndarray
+    points = np.asarray(points)
+
+    # plot points
+    fig,axs = plt.subplots()
+    axs.scatter(*zip(*points))
+    plt.show()
+
+    # create output image store
+    markers = np.zeros((int(size[0]),int(size[1]),3), dtype=np.uint8)
+    for point in points:
+        markers[int(point[0]), int(point[1])] = (0,0,255)
+
+    # apply layers to points
+    # modification 1: impact layer
+    il_orientation, il_orientation_stddev = interp_layer(
+        ModelLayer.IMPACT,
+        SplinterProp.ORIENTATION,
+        SpecimenBoundary.Z,
+        SpecimenBreakPosition.CORNER,
+        energy
+    )
+
+    il_l1, il_l1_stddev = interp_layer(
+        ModelLayer.IMPACT,
+        SplinterProp.L1,
+        SpecimenBoundary.Z,
+        SpecimenBreakPosition.CORNER,
+        energy
+    )
+
+    il_l1l2, il_l1l2_stddev = interp_layer(
+        ModelLayer.IMPACT,
+        SplinterProp.ASP0,
+        SpecimenBoundary.Z,
+        SpecimenBreakPosition.CORNER,
+        energy
+    )
+
+    # plot orientation
+    r_range = np.linspace(0, np.sqrt(450**2+450**2), 100)
+    fig,axs = plt.subplots()
+    r_ori = il_orientation(r_range)
+    r_ori_stddev = il_orientation_stddev(r_range)
+    print(r_ori)
+    axs.plot(r_range, r_ori, label='orientation')
+    # add error bars to plot
+    axs.fill_between(r_range, r_ori-r_ori_stddev, r_ori+r_ori_stddev, alpha=0.3)
+    axs.legend()
+    plt.show()
 
 
+    fig,axs = plt.subplots()
+    r_l1 = il_l1(r_range)
+    r_l1_stddev = il_l1_stddev(r_range)
+    print(r_l1)
+    axs.plot(r_range, r_l1, label='$l_1$')
+    # add error bars to plot
+    axs.fill_between(r_range, r_l1-r_l1_stddev, r_l1+r_l1_stddev, alpha=0.3)
+    axs.legend()
+    plt.show()
 
+
+    # iterate points
+    for p in points:
+        print(p)
+        p = np.asarray([p[1], p[0]])
+        # calculate distance to impact position
+        r = np.linalg.norm(p-impact_position)
+        # calculate orientation
+        orientation = il_orientation(r)
+        orientation_stddev = il_orientation_stddev(r)
+
+        # calculate l1
+        l1 = il_l1(r)
+        l1_stddev = il_l1_stddev(r)
+        # calculate aspect ratio
+        l1l2 = il_l1l2(r)
+        l1l2_stddev = il_l1l2_stddev(r)
+
+        ## calculate major axis vector using orientation and its deviation
+        # create major axis vector
+        # v0 = (p-impact_position)/r
+        # calculate angle from current point to impact position
+        angle0 = np.arctan2(p[0]-impact_position[0], p[1]-impact_position[1])
+        angle = angle0 # + np.pi/2 * orientation + (np.random.random()-0.5)*2*orientation_stddev
+        print(f'{np.rad2deg(angle)}°')
+
+        # rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+        # v1 = np.dot(rotation_matrix, v0)
+
+        ## calculate length of major axis using l1 and its deviation
+        # calculate length of major axis
+        l_major = l1 + (np.random.random()-0.5)*2*l1_stddev
+        l1l2 = l1l2 + (np.random.random()-0.5)*2*l1l2_stddev
+        l_minor = l_major / l1l2
+        ## modify the point using the major axis
+        # calculate new point
+        markers = cv2.ellipse(markers, p.astype(np.uint8), (int(20), int(5)), float(np.rad2deg(angle)), 0, 360, (255,255,255), 1)
+
+    plotImage(markers, 'markers', force=True)
 
 @sim_app.command()
 def create_spatial():
-
     area = (500,500)
     intensity = 0.1
     n_points = 500

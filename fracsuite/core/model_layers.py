@@ -5,9 +5,10 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
+from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
 from scipy.interpolate import interp2d, griddata
-from fracsuite.core.specimen import SpecimenBoundary
+from fracsuite.core.specimen import SpecimenBoundary, SpecimenBreakPosition
 
 general = GeneralSettings.get()
 
@@ -51,6 +52,72 @@ def load_layer_file(file_path):
 
     return R,U,V
 
+def interp_layer(
+    layer_name: ModelLayer,
+    mode: SplinterProp,
+    boundary: SpecimenBoundary,
+    break_pos: SpecimenBreakPosition,
+    U: float
+):
+    # X: Distance from Impact
+    # Y: Energy
+    # V: Layer value
+    # Layout:
+    #     X1    X2      X3      X4
+    # Y1  V11   V12     V13     V14
+    # Y2  V21   V22     V23     V24
+    # Y3  ...
+    # Y4  ...
+    X,Y,V = load_layer(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
+    print(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
+
+    # fill nans with linear interpolation
+    nans = np.isnan(V)
+    non_nans = ~nans
+    interpolated_V = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), V[non_nans])
+    V[nans] = interpolated_V
+
+    # print(X)
+    # print(Y)
+    # print(V)
+    f = interp2d(X, Y, V, kind='linear')
+
+    def r_func(r: float) -> float:
+        return f(r, U)
+
+    Xs,Ys,Vs = load_layer(f'{layer_name}-stddev_{mode}_{boundary}_{break_pos}.npy')
+
+    # fill nans with linear interpolation
+    nans_s = np.isnan(Vs)
+    non_nans_s = ~nans_s
+    interpolated_Vs = np.interp(np.flatnonzero(nans_s), np.flatnonzero(non_nans_s), Vs[non_nans_s])
+    Vs[nans_s] = interpolated_Vs
+
+    f_s = interp2d(Xs, Ys, Vs, kind='linear')
+
+    def r_func_s(r: float) -> float:
+        return f_s(r, U)
+
+    return r_func, r_func_s
+
+def interp_layer_stddev(
+    layer_name: ModelLayer,
+    mode: SplinterProp,
+    boundary: SpecimenBoundary,
+    break_pos: SpecimenBreakPosition,
+    U: float):
+    X,Y,V = load_layer(f'{layer_name}-stddev_{mode}_{boundary}_{break_pos}.npy')
+
+    # create an interpolation function for the given U
+    p = np.meshgrid(X, Y, indexing='xy')
+    points = np.vstack([p[0].ravel(), p[1].ravel()]).T
+    values = V.ravel()
+    f = interp2d(*points.T, values, kind='linear')
+
+    def r_func(r: float) -> float:
+        return f(r, U)[0]
+
+    return r_func
 
 def interp_impact_layer(model_path, U):
     """
@@ -63,10 +130,10 @@ def interp_impact_layer(model_path, U):
     Returns:
         Callable: A function that takes the radius and returns the model value.
     """
-    R,U,V = load_layer(model_path)
+    X,Y,V = load_layer(model_path)
 
     # create an interpolation function for the given U
-    p = np.meshgrid(R, U, indexing='xy')
+    p = np.meshgrid(X, Y, indexing='xy')
     points = np.vstack([p[0].ravel(), p[1].ravel()]).T
     values = V.ravel()
     f = interp2d(*points.T, values, kind='linear')
