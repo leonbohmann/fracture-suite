@@ -224,6 +224,62 @@ def create_base_layer(
     State.output(StateOutput(fig2, FigureSize.ROW1), f"base-layer-rhc_{break_pos}", to_additional=True)
 
 @layer_app.command()
+def create_impact_layer_intensity(
+    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
+    break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+    boundaries = {
+        1: '--',
+        2: '-',
+        3: ':',
+    }
+    # inverse bid
+    bid_r = {v: k for k, v in bid.items()}
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+
+        if break_mode is not None and specimen.break_mode != break_mode:
+            return False
+
+        if specimen.boundary == SpecimenBoundary.Unknown:
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        return True
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False, max_n=1)
+    sz = FigureSize.ROW1
+
+    for spec in specimens:
+        result = spec.calculate_fracture_intensity_2d()
+
+        X = result[0,1:]
+        Y = result[1:,0]
+        Z = result[1:,1:]
+
+        # plot results as 2d contour plot
+        fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+        cmesh = axs.contourf(X, Y, Z, cmap='turbo')
+        cbar = fig.colorbar(cmesh, label="Fracture Intensity", ax=axs)
+        renew_ticks_cb(cbar)
+        axs.set_xlabel("Distance to Impact [mm]")
+        axs.set_ylabel("Angle to Impact [°]")
+        axs.autoscale()
+        State.output(StateOutput(fig, sz), f"intensity-2d_{spec.name}", to_additional=True)
+
+@layer_app.command()
 def create_impact_layer(
     mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,

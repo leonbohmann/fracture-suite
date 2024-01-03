@@ -28,6 +28,7 @@ from fracsuite.core.vectors import angle_between
 from fracsuite.state import State
 
 from spazial import gibbs_strauss_process as spazial_gibbs_strauss_process
+from spazial import csstraussproc, csstraussproc2
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -128,10 +129,12 @@ def simulate_fracture(
     break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER
 ):
     # fetch fracture intensity and hc radius from energy
-    fracture_intensity = 0.089
-    hc_radius = 6
+    fracture_intensity = 0.0139
+    hc_radius = 5
     mean_area = 1 / fracture_intensity
     impact_position = break_pos.position()
+    area = size[0] * size[1]
+    c = 4.169e-5
 
     print(f'Fracture intensity: {fracture_intensity:.2f} 1/mm²')
     print(f'HC Radius: {hc_radius:.2f} mm')
@@ -143,7 +146,9 @@ def simulate_fracture(
     print(f'Urr: {urr:.2f}', f'nue: {nue:.2f}')
 
     # create spatial points
-    points = spazial_gibbs_strauss_process(fracture_intensity, hc_radius, nue, size)
+    # points = spazial_gibbs_strauss_process(fracture_intensity, hc_radius, 0.55, size)
+    # points = csstraussproc(size, hc_radius, int(fracture_intensity*area), c, int(1e6))
+    points = csstraussproc2(size[0], size[1], hc_radius, int(fracture_intensity*area), c, int(1e6))
 
 
 
@@ -152,7 +157,7 @@ def simulate_fracture(
     axs.scatter(*zip(*points))
     plt.show()
 
-    size_f = 1
+    size_f = 2
     # create output image store
     markers = np.zeros((int(size[0]*size_f),int(size[1]*size_f)), dtype=np.uint8)
     for point in points:
@@ -163,7 +168,7 @@ def simulate_fracture(
     il_orientation, il_orientation_stddev = interp_layer(
         ModelLayer.IMPACT,
         SplinterProp.ORIENTATION,
-        SpecimenBoundary.Z,
+        SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
         energy
     )
@@ -171,15 +176,15 @@ def simulate_fracture(
     il_l1, il_l1_stddev = interp_layer(
         ModelLayer.IMPACT,
         SplinterProp.L1,
-        SpecimenBoundary.Z,
+        SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
         energy
     )
 
     il_l1l2, il_l1l2_stddev = interp_layer(
         ModelLayer.IMPACT,
-        SplinterProp.ASP0,
-        SpecimenBoundary.Z,
+        SplinterProp.ASP,
+        SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
         energy
     )
@@ -253,7 +258,7 @@ def simulate_fracture(
                 markers = cv2.ellipse(
                     markers,
                     (int(p[1]*size_f), int(p[0]*size_f)), # location
-                    (int(l_minor * size_f/2), int(l_major * size_f/2)), # axes lengths
+                    (int(l_minor * size_f / 2), int(l_major * size_f / 2)), # axes lengths
                     np.rad2deg(angle)-180, # angle
                     0, 360, # start and end angle
                     255, # color
@@ -276,15 +281,22 @@ def simulate_fracture(
     m_img = np.zeros(shape, dtype=np.uint8)
     m_img[markers == -1] = 255
 
+    black_white_img = np.zeros((shape[0], shape[1]), dtype=np.uint8)
     splinters = Splinter.analyze_contour_image(m_img)
 
     out_img = np.zeros((shape[0], shape[1], 3), dtype=np.uint8)
     for s in splinters:
         clr = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
         cv2.drawContours(out_img, [s.contour], -1, clr, -1)
+        cv2.drawContours(black_white_img, [s.contour], -1, 255, 1)
 
     plt.imshow(out_img)
     plt.show()
+
+    plt.imshow(black_white_img)
+    plt.show()
+
+    State.output(black_white_img, f'generated_{energy}_{thickness}', spec=None, figwidth=FigureSize.ROW2)
 
 @sim_app.command()
 def create_spatial():

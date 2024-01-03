@@ -5,12 +5,13 @@ import json
 import os
 import pickle
 import re
-from typing import Any, Callable, ClassVar, List, TypeVar
+from typing import Any, Callable, List, TypeVar
 
 import cv2
 import numpy as np
 from rich import print
 from rich.progress import track
+from fracsuite.core.arrays import resample
 from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.imageprocessing import simplify_contour
@@ -20,10 +21,12 @@ from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter import Splinter
+from fracsuite.core.vectors import angle_between
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
+
 
 from spazial import k_test, l_test
 
@@ -633,6 +636,58 @@ class Specimen(Outputtable):
         nue = 0.23
         E = 70e3
         return 1e6 * (128/125) * (1-nue)/E * (self.scalp.sig_h ** 2)
+
+    def calculate_fracture_intensity_2d(self,D_mm: float = 50) -> np.ndarray:
+        """Calculate the fracture intensity in 2D."""
+        region = self.settings['real_size_mm']
+        impact_position = self.get_impact_position()
+        kernel = ObjectKerneler(
+            region,
+            self.splinters,
+            collector=lambda x,r: x.in_region(r),
+            skip_edge=True,
+        )
+
+        X, Y, Z = kernel.run(
+            lambda x: len(x),
+            D_mm,
+            50,
+            mode="area",
+            exclude_points=[self.get_impact_position()],
+            fill_skipped_with_mean=True
+        )
+
+        # print(X)
+
+        # create ndarray with x and y coordinates
+        distances = []
+        angles = []
+        values = []
+
+        for i in range(Z.shape[0]):
+            for j in range(Z.shape[1]):
+                p = np.array((X[0,i],Y[j,0]))
+                print(p)
+                # print(p)
+                dv = p - impact_position
+                # print(dv)
+                angle = np.rad2deg(angle_between(dv, np.array((1,0))))
+                dst = np.linalg.norm(dv)
+
+                distances.append(dst)
+                angles.append(angle)
+                values.append(Z[i,j])
+
+        print(distances)
+        print(angles)
+
+        # sample the data into another array
+        return resample(distances, angles, values, 50, 30)
+
+
+
+
+
 
     def load_scalp(self, file = None):
         """Loads scalp data. Make sure to access self.__scalp until the load method returns. """
