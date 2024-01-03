@@ -1,12 +1,22 @@
 import numpy as np
 
-def angle_between(A, B) -> float:
-    """Returns the angle between two vectors."""
-    dot = np.dot(A, B)
-    magA = np.linalg.norm(A)
-    magB = np.linalg.norm(B)
+def angle_between(v1, v2):
+    # Berechnung des Winkels in Radiant
+    dot_product = np.dot(v1, v2)
+    norm_v1 = np.linalg.norm(v1)
+    norm_v2 = np.linalg.norm(v2)
+    cos_angle = dot_product / (norm_v1 * norm_v2)
+    angle_rad = np.arccos(np.clip(cos_angle, -1.0, 1.0))
 
-    return np.arccos(dot / (magA * magB))
+    # Umwandlung in Grad
+    angle_deg = np.degrees(angle_rad)
+
+    # Bestimmung der Orientierung des Winkels
+    orientation = np.sign(np.cross(v1, v2))
+    if orientation < 0:
+        angle_deg = 360 - angle_deg
+
+    return np.deg2rad(angle_deg)
 
 def alignment_between(A, B) -> float:
     """

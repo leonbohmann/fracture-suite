@@ -10,8 +10,9 @@ from rich.progress import track
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
-from fracsuite.core.model_layers import ModelLayer, load_layer, load_layer_file, plt_layer
+from fracsuite.core.model_layers import ModelLayer, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
 from fracsuite.core.plotting import FigureSize, KernelContourMode, get_fig_width, plot_kernel_results, renew_ticks_cb
+from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition, SpecimenBreakMode
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
@@ -138,6 +139,89 @@ def plot_impact_layer(
 
     # display the figure
     State.output(output, f"impact-layer_{mode}", spec=specimen)
+
+@layer_app.command()
+def create_base_layer(
+    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
+    break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+    boundaries = {
+        1: '--',
+        2: '-',
+        3: ':',
+    }
+    # inverse bid
+    bid_r = {v: k for k, v in bid.items()}
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+
+        if break_mode is not None and specimen.break_mode != break_mode:
+            return False
+
+        if specimen.boundary == SpecimenBoundary.Unknown:
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        return True
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
+
+    # [U, boundary, lambda, rhc]
+    values = np.zeros((len(specimens), 5))
+    with get_progress(title='Calculating base layer', total=len(specimens)) as progress:
+        progress.set_total(len(specimens))
+        for id, spec in enumerate(specimens):
+            progress.set_description(f"Specimen {spec.name}")
+            progress.advance()
+            values[id,0] = spec.U
+            values[id,1] = bid[spec.boundary]
+            values[id,2] = spec.measured_thickness
+            values[id,3] = spec.calculate_break_lambda()
+            values[id,4] = spec.calculate_break_rhc()
+
+    # sort value after first column
+    values = values[values[:,0].argsort()]
+
+    sz = get_fig_width(FigureSize.ROW1)
+    fig,lam_axs = plt.subplots(figsize=sz)
+    fig2,rhc_axs = plt.subplots(figsize=sz)
+    # save values
+    for b in boundaries:
+        mask = values[:,1] == b
+
+        # values for the current boundary
+        b_values = values[mask,:]
+
+        # save layer
+        save_base_layer(b_values, bid_r[b], break_pos)
+
+        # plot fracture intensity parameter
+        lam_axs.plot(b_values[:,0], b_values[:,3], label=bid_r[b], linestyle=boundaries[b])
+
+        # plot hard core radius
+        rhc_axs.plot(b_values[:,0], b_values[:,4], label=bid_r[b], linestyle=boundaries[b])
+
+    lam_axs.set_xlabel("Strain Energy U [J/m²]")
+    lam_axs.set_ylabel("Fracture Intensity Parameter $\lambda$ [-]")
+    lam_axs.legend()
+    State.output(StateOutput(fig, FigureSize.ROW1), f"base-layer-lambda_{break_pos}", to_additional=True)
+
+    rhc_axs.set_xlabel("Strain Energy U [J/m²]")
+    rhc_axs.set_ylabel("Hard Core Radius $r_{hc}$ [mm]")
+    rhc_axs.legend()
+    State.output(StateOutput(fig2, FigureSize.ROW1), f"base-layer-rhc_{break_pos}", to_additional=True)
 
 @layer_app.command()
 def create_impact_layer(
@@ -276,23 +360,26 @@ def create_impact_layer(
         y = results_b[:,0].ravel()
         z = results_b[:,3:]
 
-        # save model
-        Z_path = State.get_output_file(f'{ModelLayer.IMPACT}_{mode}_{bid_r[b]}_{break_pos}.npy')
-        print(f'> Saving impact layer {mode}_{bid_r[b]}_{break_pos} to {Z_path}')
-        data = np.zeros((len(y)+1, len(x)+1))
-        data[1:,1:] = z
-        data[1:,0] = y
-        data[0,1:] = x
-        np.save(Z_path, data)
-        stddev_path = State.get_output_file(f'{ModelLayer.IMPACT}-stddev_{mode}_{bid_r[b]}_{break_pos}.npy')
-        data_stddev = np.zeros((len(y)+1, len(x)+1))
-        data_stddev[1:,1:] = stddev_b[:,3:]
-        data_stddev[1:,0] = stddev_b[:,0].ravel()
-        data_stddev[0,1:] = r_range
-        np.save(stddev_path, data_stddev)
+        # save layer and stddev
+        save_layer(ModelLayer.IMPACT, mode, bid_r[b], break_pos, False, x, y, z)
+        save_layer(ModelLayer.IMPACT, mode, bid_r[b], break_pos, True, x, y, stddev_b[:,3:])
 
-        plot(ModelLayer.IMPACT, mode=mode, boundary=bid_r[b], ignore_nan_plot=ignore_nan_u,
-             file=Z_path)
+
+        # Z_path = State.get_output_file(f'{ModelLayer.IMPACT}_{mode}_{bid_r[b]}_{break_pos}.npy')
+        # print(f'> Saving impact layer {mode}_{bid_r[b]}_{break_pos} to {Z_path}')
+        # data = np.zeros((len(y)+1, len(x)+1))
+        # data[1:,1:] = z
+        # data[1:,0] = y
+        # data[0,1:] = x
+        # np.save(Z_path, data)
+        # stddev_path = State.get_output_file(f'{ModelLayer.IMPACT}-stddev_{mode}_{bid_r[b]}_{break_pos}.npy')
+        # data_stddev = np.zeros((len(y)+1, len(x)+1))
+        # data_stddev[1:,1:] = stddev_b[:,3:]
+        # data_stddev[1:,0] = stddev_b[:,0].ravel()
+        # data_stddev[0,1:] = r_range
+        # np.save(stddev_path, data_stddev)
+
+        plot(ModelLayer.IMPACT, mode=mode, boundary=bid_r[b], ignore_nan_plot=ignore_nan_u)
 
 
         # this plots the standard deviation between different energy levels

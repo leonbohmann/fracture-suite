@@ -15,6 +15,7 @@ from fracsuite.core.imageprocessing import dilateImg
 from fracsuite.core.model_layers import ModelLayer, interp_layer, interp_layer_stddev, load_layer
 from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.core.point_process import CSR_process, strauss_process, gibbs_strauss_process
+from fracsuite.core.progress import get_progress
 from fracsuite.core.region import RectRegion
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
@@ -22,6 +23,7 @@ from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import calculate_khat, calculate_fhat, calculate_ghat
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
+from fracsuite.core.vectors import angle_between
 
 from fracsuite.state import State
 
@@ -126,8 +128,8 @@ def simulate_fracture(
     break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER
 ):
     # fetch fracture intensity and hc radius from energy
-    fracture_intensity = 0.21
-    hc_radius = 15
+    fracture_intensity = 0.089
+    hc_radius = 6
     mean_area = 1 / fracture_intensity
     impact_position = break_pos.position()
 
@@ -143,18 +145,18 @@ def simulate_fracture(
     # create spatial points
     points = spazial_gibbs_strauss_process(fracture_intensity, hc_radius, nue, size)
 
-    # transform points to ndarray
-    points = np.asarray(points)
+
 
     # plot points
     fig,axs = plt.subplots()
     axs.scatter(*zip(*points))
     plt.show()
 
+    size_f = 1
     # create output image store
-    markers = np.zeros((int(size[0]),int(size[1]),3), dtype=np.uint8)
+    markers = np.zeros((int(size[0]*size_f),int(size[1]*size_f)), dtype=np.uint8)
     for point in points:
-        markers[int(point[0]), int(point[1])] = (0,0,255)
+        markers[int(point[0]*size_f), int(point[1]*size_f)] = 0
 
     # apply layers to points
     # modification 1: impact layer
@@ -190,7 +192,7 @@ def simulate_fracture(
     print(r_ori)
     axs.plot(r_range, r_ori, label='orientation')
     # add error bars to plot
-    axs.fill_between(r_range, r_ori-r_ori_stddev, r_ori+r_ori_stddev, alpha=0.3)
+    axs.fill_between(r_range, r_ori-r_ori_stddev/2, r_ori+r_ori_stddev/2, alpha=0.3)
     axs.legend()
     plt.show()
 
@@ -201,49 +203,88 @@ def simulate_fracture(
     print(r_l1)
     axs.plot(r_range, r_l1, label='$l_1$')
     # add error bars to plot
-    axs.fill_between(r_range, r_l1-r_l1_stddev, r_l1+r_l1_stddev, alpha=0.3)
+    axs.fill_between(r_range, r_l1-r_l1_stddev/2, r_l1+r_l1_stddev/2, alpha=0.3)
     axs.legend()
     plt.show()
 
+    def rand2(mue,sigma):
+        """Returns a random number between -0.5 and 0.5"""
+        # return np.random.normal(mue, sigma)
+        return mue
 
-    # iterate points
-    for p in points:
-        print(p)
-        p = np.asarray([p[1], p[0]])
-        # calculate distance to impact position
-        r = np.linalg.norm(p-impact_position)
-        # calculate orientation
-        orientation = il_orientation(r)
-        orientation_stddev = il_orientation_stddev(r)
+    with get_progress() as progress:
+        # iterate points
+        for p in points:
+            progress.advance()
+            # calculate distance to impact position
+            r = np.linalg.norm(p-impact_position)
+            # calculate orientation
+            orientation = il_orientation(r)
+            orientation_stddev = il_orientation_stddev(r)
+            orientation = rand2(orientation,orientation_stddev)
 
-        # calculate l1
-        l1 = il_l1(r)
-        l1_stddev = il_l1_stddev(r)
-        # calculate aspect ratio
-        l1l2 = il_l1l2(r)
-        l1l2_stddev = il_l1l2_stddev(r)
+            # calculate l1
+            l1 = il_l1(r)
+            l1_stddev = il_l1_stddev(r)
+            l1 = rand2(l1,l1_stddev)
 
-        ## calculate major axis vector using orientation and its deviation
-        # create major axis vector
-        # v0 = (p-impact_position)/r
-        # calculate angle from current point to impact position
-        angle0 = np.arctan2(p[0]-impact_position[0], p[1]-impact_position[1])
-        angle = angle0 # + np.pi/2 * orientation + (np.random.random()-0.5)*2*orientation_stddev
-        print(f'{np.rad2deg(angle)}°')
+            # calculate aspect ratio
+            l1l2 = il_l1l2(r)
+            l1l2_stddev = il_l1l2_stddev(r)
+            l1l2 = rand2(l1l2,l1l2_stddev)
 
-        # rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
-        # v1 = np.dot(rotation_matrix, v0)
+            ## calculate major axis vector using orientation and its deviation
+            # create major axis vector
+            v0 = (p-impact_position)/r
+            # calculate angle from current point to impact position
+            angle0 = angle_between(v0, np.asarray((1,0)))
+            angle = angle0 # + np.sign(np.random.random()-0.5) * np.pi/2 * (1-orientation) # this gives +- 90° deviation
 
-        ## calculate length of major axis using l1 and its deviation
-        # calculate length of major axis
-        l_major = l1 + (np.random.random()-0.5)*2*l1_stddev
-        l1l2 = l1l2 + (np.random.random()-0.5)*2*l1l2_stddev
-        l_minor = l_major / l1l2
-        ## modify the point using the major axis
-        # calculate new point
-        markers = cv2.ellipse(markers, p.astype(np.uint8), (int(20), int(5)), float(np.rad2deg(angle)), 0, 360, (255,255,255), 1)
+            # rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+            # v1 = np.dot(rotation_matrix, v0)
 
+            ## calculate length of major axis using l1 and its deviation
+            # calculate length of major axis (this is radius, so divide by 2)
+            l_major = l1
+            l_minor = l_major / l1l2
+            ## modify the point using the major axis
+            # calculate new point
+            try:
+                markers = cv2.ellipse(
+                    markers,
+                    (int(p[1]*size_f), int(p[0]*size_f)), # location
+                    (int(l_minor * size_f/2), int(l_major * size_f/2)), # axes lengths
+                    np.rad2deg(angle)-180, # angle
+                    0, 360, # start and end angle
+                    255, # color
+                    -1 # thickness
+                )
+            except Exception as e:
+                print(f'Point: {p}, r: {r}, angle: {np.rad2deg(angle)}, l_major: {l_major}, l_minor: {l_minor}')
+
+
+    # cv2.ellipse(markers, impact_position.astype(np.uint8)*size_f, (int(20), int(5)), 0, 0, 360, (0,255,0), 1)
+    # cv2.ellipse(markers, (400*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (0,255,0), -1)
+    # cv2.ellipse(markers, (200*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (255,120,0), -1)
     plotImage(markers, 'markers', force=True)
+
+    markers = cv2.connectedComponents(np.uint8(markers))[1]
+    shape = (int(size[0]*size_f),int(size[1]*size_f),3)
+    blank_image = np.zeros(shape, dtype=np.uint8)
+    markers = cv2.watershed(blank_image, markers)
+
+    m_img = np.zeros(shape, dtype=np.uint8)
+    m_img[markers == -1] = 255
+
+    splinters = Splinter.analyze_contour_image(m_img)
+
+    out_img = np.zeros((shape[0], shape[1], 3), dtype=np.uint8)
+    for s in splinters:
+        clr = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+        cv2.drawContours(out_img, [s.contour], -1, clr, -1)
+
+    plt.imshow(out_img)
+    plt.show()
 
 @sim_app.command()
 def create_spatial():

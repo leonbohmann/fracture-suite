@@ -22,6 +22,72 @@ def get_layer_folder():
 def get_layer_file(file_name):
     return os.path.join(get_layer_folder(), file_name)
 
+def save_base_layer(
+    base_layer: np.ndarray,
+    boundary: SpecimenBoundary,
+    break_pos: SpecimenBreakPosition
+):
+    """
+    Saves the base layer to a file.
+
+    Args:
+        base_layer (np.ndarray): 2D Array with [n, 5] with columns:
+            0: Strain Energy
+            1: Boundary condition (A: 0, B: 1, Z: 2)
+            2: Measured thickness
+            3: Lambda (Fracture Intensity Parameter)
+            4: Rhc (Hard Core Radius)
+    """
+    layer_name = f'{ModelLayer.BASE}_{boundary}_{break_pos}.npy'
+
+    # interpolate missing values (nan) column-wise
+    nans = np.isnan(base_layer)
+    non_nans = ~nans
+    for i in range(base_layer.shape[1]):
+        interpolated = np.interp(np.flatnonzero(nans[:,i]), np.flatnonzero(non_nans[:,i]), base_layer[non_nans[:,i],i])
+        base_layer[nans[:,i],i] = interpolated
+
+    file_path = get_layer_file(layer_name)
+    np.save(file_path, base_layer)
+
+def save_layer(
+    layer_name: ModelLayer,
+    mode: SplinterProp,
+    boundary: SpecimenBoundary,
+    break_pos: SpecimenBreakPosition,
+    is_stddev: bool,
+    X: np.ndarray,
+    Y: np.ndarray,
+    Z: np.ndarray
+):
+    # assert, that Z is has the same x-length as x and y-length as y
+    assert Z.shape == (len(Y), len(X)), f"Z has shape {Z.shape}, but should have shape ({len(Y)}, {len(X)})"
+    # assert, that X and Y are 1-dimensional
+    assert X.ndim == 1, f"X has {X.ndim} dimensions, but should have 1"
+    assert Y.ndim == 1, f"Y has {Y.ndim} dimensions, but should have 1"
+
+    stddev = "-stddev" if is_stddev else ""
+    layer_name = f'{layer_name}{stddev}_{mode}_{boundary}_{break_pos}.npy'
+
+    file_path = get_layer_file(layer_name)
+
+    # interpolate missing values (nan)
+    nans = np.isnan(Z)
+    non_nans = ~nans
+    interpolated_Z = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), Z[non_nans])
+    Z[nans] = interpolated_Z
+
+    # create 2d array with shape (len(Y)+1, len(X)+1)
+    # the first row and column are the x and y values
+    # the rest is the z values
+    data = np.zeros((len(Y)+1, len(X)+1))
+    data[0,1:] = X
+    data[1:,0] = Y
+    data[1:,1:] = Z
+
+    np.save(file_path, data)
+
+
 def load_layer(file_name):
     """
     Loads a layer from the layer folder.
@@ -71,12 +137,6 @@ def interp_layer(
     X,Y,V = load_layer(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
     print(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
 
-    # fill nans with linear interpolation
-    nans = np.isnan(V)
-    non_nans = ~nans
-    interpolated_V = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), V[non_nans])
-    V[nans] = interpolated_V
-
     # print(X)
     # print(Y)
     # print(V)
@@ -86,12 +146,6 @@ def interp_layer(
         return f(r, U)
 
     Xs,Ys,Vs = load_layer(f'{layer_name}-stddev_{mode}_{boundary}_{break_pos}.npy')
-
-    # fill nans with linear interpolation
-    nans_s = np.isnan(Vs)
-    non_nans_s = ~nans_s
-    interpolated_Vs = np.interp(np.flatnonzero(nans_s), np.flatnonzero(non_nans_s), Vs[non_nans_s])
-    Vs[nans_s] = interpolated_Vs
 
     f_s = interp2d(Xs, Ys, Vs, kind='linear')
 

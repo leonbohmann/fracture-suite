@@ -4,6 +4,8 @@ from rich.progress import Progress
 class ProgWrapper():
     entered: bool
     enter_level: int
+    total: int
+    descr: str
     def __init__(self, spinnerProgress: Progress, title: str = None, total = None):
         self.progress = spinnerProgress
         self.task = self.progress.add_task(title, total=total)
@@ -11,6 +13,9 @@ class ProgWrapper():
         self.enter_level = 0
         self.set_description(title)
         self.set_total(total)
+
+        self.total = total
+        self.descr = title
 
     def set_description(self, description: str):
         self.progress.update(self.task, description=description)
@@ -35,6 +40,9 @@ class ProgWrapper():
         if not self.entered:
             self.entered = True
             self.progress.__enter__()
+
+            self.set_total(self.total)
+            self.set_description(self.descr)
         else:
             self.enter_level += 1
 

@@ -102,6 +102,9 @@ class Splinter:
         self.contour_set = None
         "Set of contour points for faster membership testing."
 
+    def calculate_px_per_mm(self):
+        return cv2.arcLength(self.contour,True) / self.circumfence
+
     def calculate_roundness(self) -> float:
         """
         Calculate the roundness by comparing the actual contour area with the area
@@ -412,12 +415,16 @@ class Splinter:
         """
         Measure the main and secondary axis of a fitting ellipse.
 
+        The returned value is in px, which depends on the underlaying picture, that has the splinter contour.
+        For layering purposes, this value has to be translated to mm in order to create an independently sized
+        picture.
+
         Arguments:
             impact_position (tuple[float,float]): Impact position in mm. If omitted, major axis and minor axis is
                 returned.
 
         Returns:
-            tuple[float,float]: The main and secondary axis of the ellipse. If impact_position is passed,
+            tuple[float,float]: The main and secondary axis of the ellipse in px. If impact_position is passed,
                 l1 is the axis towards the impact point and l2 is the other axis.
         """
         # look also at: fracsuite tester roundrect
@@ -744,7 +751,7 @@ class Splinter:
             px_p_mm (float, optional): Scale factor. Defaults to None.
 
         Returns:
-            float: Return value depending on mode.
+            float: Return value depending on mode in real dimensions (mm).
         """
         if prop == SplinterProp.ASP:
             assert ip is not None, "Impact point must be set to calculate aspect ratio"
@@ -765,16 +772,16 @@ class Splinter:
             a = self.measure_aspectratio()
         elif prop == SplinterProp.L1:
             l1, l2 = self.measure_size()
-            a = l1
+            a = l1 / self.calculate_px_per_mm()
         elif prop == SplinterProp.L2:
             l1, l2 = self.measure_size()
-            a = l2
+            a = l2 / self.calculate_px_per_mm()
         elif prop == SplinterProp.CIRCUMFENCE:
             assert px_p_mm is not None, "px_per_mm must be set to calculate circumfence"
             a = self.measure_circumfence(px_p_mm)
         elif prop == SplinterProp.L1_WEIGHTED:
             assert ip is not None, "Impact point must be set to calculate weighted l1-length"
-            a = self.measure_size()[0] * self.measure_orientation(ip)
+            a = self.measure_size()[0] / self.calculate_px_per_mm() * self.measure_orientation(ip)
         # elif prop == SplinterProp.ANGLE:
         #     _, _, angle = cv2.minAreaRect(self.contour)
         #     a = angle
