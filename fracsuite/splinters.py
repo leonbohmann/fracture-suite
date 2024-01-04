@@ -10,32 +10,27 @@ import re
 import shutil
 import sys
 from itertools import groupby
-from types import NoneType
 from typing import Annotated, Any, Callable
 
 import cv2
 from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 import numpy as np
 import numpy.typing as npt
-from sympy import plot
-from torch import cosine_similarity
 import typer
 from matplotlib import pyplot as plt
-from matplotlib import colors as pltc
 from rich import inspect, print
 from rich.progress import track
 
 from fracsuite.callbacks import main_callback
+from fracsuite.core.arrays import sort_two_arrays
 from fracsuite.core.calculate import pooled
-from fracsuite.core.coloring import get_color, rand_col, norm_color
+from fracsuite.core.coloring import get_color, rand_col
 from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
 from fracsuite.core.image import put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
-from fracsuite.core.model_layers import plt_layer
-from fracsuite.core.navid_results import navid_nfifty_ud, navid_nfifty, navid_nfifty_interpolated
+from fracsuite.core.navid_results import navid_nfifty_ud, navid_nfifty
 from fracsuite.core.plotting import (
     DataHistMode,
     DataHistPlotMode,
@@ -43,8 +38,6 @@ from fracsuite.core.plotting import (
     KernelContourMode,
     annotate_image,
     cfg_logplot,
-    plot_kernel_results,
-    renew_ticks_cb,
     create_splinter_colored_image,
     create_splinter_sizes_image,
     datahist_plot,
@@ -57,14 +50,13 @@ from fracsuite.core.plotting import (
 )
 from fracsuite.core.preps import defaultPrepConfig
 from fracsuite.core.progress import get_progress
-from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
+from fracsuite.core.specimen import Specimen, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import similarity, moving_average
-from fracsuite.core.vectors import alignment_between, alignment_cossim
+from fracsuite.core.stochastics import similarity
+from fracsuite.core.vectors import alignment_cossim
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
-from fracsuite.layer import plot as plot_saved_model
 from fracsuite.state import State, StateOutput
 
 from scipy.optimize import curve_fit
@@ -639,13 +631,6 @@ def specimen_parser(input: str):
     return input
 
 
-def sort_two_arrays(array1, array2, reversed=False, keyoverride=None) -> tuple[list, list]:
-    # Combine x and y into pairs
-    pairs = list(zip(array1, array2))
-    # Sort the pairs based on the values in x
-    sorted_pairs = sorted(pairs, key=keyoverride or (lambda pair: pair[0]), reverse=reversed)
-    # Separate the sorted pairs back into separate arrays
-    return zip(*sorted_pairs)
 
 
 @app.command(name='sigmasize')

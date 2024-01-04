@@ -11,17 +11,18 @@ import cv2
 import numpy as np
 from rich import print
 from rich.progress import track
-from fracsuite.core.arrays import resample
+from fracsuite.core.arrays import resample, sort_arrays
 from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.imageprocessing import simplify_contour
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.outputtable import Outputtable
+from fracsuite.core.plotting import FigureSize, KernelContourMode, plot_kernel_results
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.vectors import angle_between
+from fracsuite.core.vectors import angle_abs, angle_abs_deg, angle_between
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -29,6 +30,8 @@ from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 
 
 from spazial import k_test, l_test
+
+from fracsuite.state import State
 
 general: GeneralSettings = GeneralSettings.get()
 
@@ -637,8 +640,23 @@ class Specimen(Outputtable):
         E = 70e3
         return 1e6 * (128/125) * (1-nue)/E * (self.scalp.sig_h ** 2)
 
-    def calculate_fracture_intensity_2d(self,D_mm: float = 50) -> np.ndarray:
-        """Calculate the fracture intensity in 2D."""
+    def calculate_fracture_intensity_2d_polar(self,D_mm: float = 50) -> np.ndarray:
+        """
+        Calculate the fracture intensity in 2D.
+
+        Returns:
+            A 2D Array with the fracture intensity values.
+            The first dimension is the distance from the impact point and
+            the second dimension is the angle.
+
+        Example:
+            ```python
+            result = resample(X,Y,Z, 30, 15)
+            rx = result[0,1:]
+            ry = result[1:,0]
+            rz = result[1:,1:]
+            ```
+        """
         region = self.settings['real_size_mm']
         impact_position = self.get_impact_position()
         kernel = ObjectKerneler(
@@ -653,36 +671,54 @@ class Specimen(Outputtable):
             D_mm,
             50,
             mode="area",
-            exclude_points=[self.get_impact_position()],
             fill_skipped_with_mean=True
         )
 
+        # output = plot_kernel_results(
+        #     self.get_fracture_image(),
+        #     clr_label="Fracture Intensity",
+        #     no_ticks=True,
+        #     plot_vertices=False,
+        #     mode=KernelContourMode.FILLED,
+        #     X=X,
+        #     Y=Y,
+        #     results=Z,
+        #     kw_px=D_mm*self.calculate_px_per_mm(),
+        #     figwidth=FigureSize.ROW1,
+        #     clr_format='.1f',
+        # )
+
+        # State.output(output, "fracture_intensity_2d_test", spec=self)
+
         # print(X)
 
-        # create ndarray with x and y coordinates
+        # create lists with transformed values
         distances = []
         angles = []
         values = []
 
         for i in range(Z.shape[0]):
             for j in range(Z.shape[1]):
-                p = np.array((X[0,i],Y[j,0]))
+                p = np.array((X[j,i],Y[j,i]))
                 print(p)
                 # print(p)
-                dv = p - impact_position
+                dp = p - impact_position
                 # print(dv)
-                angle = np.rad2deg(angle_between(dv, np.array((1,0))))
-                dst = np.linalg.norm(dv)
+                angle = angle_abs_deg(dp)
+                dst = np.linalg.norm(dp)
 
                 distances.append(dst)
                 angles.append(angle)
                 values.append(Z[i,j])
 
+
+        # distances, angles, values = sort_arrays(distances, angles, values)
+
         print(distances)
         print(angles)
 
         # sample the data into another array
-        return resample(distances, angles, values, 50, 30)
+        return resample(distances, angles, values, 20, 10)
 
 
 

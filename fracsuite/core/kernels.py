@@ -24,6 +24,32 @@ def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
 
     return i_w, i_h
 
+def process_region(args):
+    i, j, xd, yd, kw, exclude_points, data_objects, collector, calculator = args
+
+    x1,x2=(xd[i]-kw//2,xd[i]+kw//2)
+    y1,y2=(yd[j]-kw//2,yd[j]+kw//2)
+
+    # Create a region (x1, y1, x2, y2)
+    region = RectRegion(x1, y1, x2, y2)
+
+    is_excluded = False
+    if exclude_points is not None:
+        for p in exclude_points:
+            if region.is_point_in(p):
+                is_excluded = True
+                break
+
+    if is_excluded:
+        return SKIP_VALUE
+
+    # Collect objects in the current region
+    objects_in_region = [obj for obj in data_objects if collector(obj, region)]
+
+    # Apply z_action to collected splinters
+    return calculator(objects_in_region) if len(objects_in_region) > 0 else 0
+
+
 class ImageKerneler():
     def __init__(
         self,

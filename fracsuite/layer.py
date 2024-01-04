@@ -263,17 +263,25 @@ def create_impact_layer_intensity(
     sz = FigureSize.ROW1
 
     for spec in specimens:
-        result = spec.calculate_fracture_intensity_2d()
+        result = spec.calculate_fracture_intensity_2d_polar()
 
         X = result[0,1:]
         Y = result[1:,0]
         Z = result[1:,1:]
 
+        print(X)
+        print(Y)
+        print(Z)
+
         # plot results as 2d contour plot
         fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-        cmesh = axs.contourf(X, Y, Z, cmap='turbo')
-        cbar = fig.colorbar(cmesh, label="Fracture Intensity", ax=axs)
+        # axs.imshow(Z, cmap='turbo')
+        X, Y = np.meshgrid(X, Y, indexing='xy')
+        mesh = axs.pcolormesh(X, Y, Z, shading='auto', cmap='turbo')
+        cbar = fig.colorbar(mesh, label='Fracture Intensity $N_{50}$ [-]')
         renew_ticks_cb(cbar)
+
+
         axs.set_xlabel("Distance to Impact [mm]")
         axs.set_ylabel("Angle to Impact [°]")
         axs.autoscale()

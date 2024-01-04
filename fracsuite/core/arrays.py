@@ -1,5 +1,21 @@
 import numpy as np
 
+def sort_two_arrays(array1, array2, reversed=False, keyoverride=None) -> tuple[list, list]:
+    # Combine x and y into pairs
+    pairs = list(zip(array1, array2))
+    # Sort the pairs based on the values in x
+    sorted_pairs = sorted(pairs, key=keyoverride or (lambda pair: pair[0]), reverse=reversed)
+    # Separate the sorted pairs back into separate arrays
+    return zip(*sorted_pairs)
+
+def sort_arrays(*arrays, reversed=False,keyoverride=None) -> tuple:
+    # Combine x and y into pairs
+    pairs = list(zip(*arrays))
+    # Sort the pairs based on the values in x
+    sorted_pairs = sorted(pairs, key=keyoverride or (lambda pair: pair[0]), reverse=reversed)
+    # Separate the sorted pairs back into separate arrays
+    return zip(*sorted_pairs)
+
 def resample(X, Y, Z, nx=50, ny=30):
     """
     Resample a 2D array to a new size using spline interpolation.
@@ -7,14 +23,16 @@ def resample(X, Y, Z, nx=50, ny=30):
     The resulting array has shape (nx+1, ny+1) and the first row and column
     are the x and y values. The rest is the z values.
     """
+    assert len(X) == len(Y) == len(Z), "X, Y and Z must have the same length"
+
     X = np.asarray(X)
     Y = np.asarray(Y)
     Z = np.asarray(Z)
-    x = np.linspace(X.min(), X.max(), nx)
-    y = np.linspace(Y.min(), Y.max(), ny)
+    x = np.linspace(X.min(), X.max(), nx+1, endpoint=True)
+    y = np.linspace(Y.min(), Y.max(), ny+1, endpoint=True)
 
     # create a new array with the new shape
-    results = np.zeros((ny+1, nx+1))
+    results = np.full((ny+1, nx+1), -1, dtype=np.float64)
 
     for ix in range(len(x)-1):
         curx = x[ix]
@@ -34,6 +52,24 @@ def resample(X, Y, Z, nx=50, ny=30):
                     zvals.append(Z[i])
 
             # interpolate using simple mean value
-            results[iy+1,ix+1] = np.nanmean(zvals) if len(zvals) > 0 else 0
+            results[iy+1,ix+1] = np.nanmean(zvals) if len(zvals) > 0 else np.nan
+
+    # get the indices that would sort the first row (excluding the first element) and first column (excluding the first element)
+    row_sort_indices = np.argsort(results[0, 1:])
+    col_sort_indices = np.argsort(results[1:, 0])
+
+    # add 1 to the indices to account for the excluded first element
+    row_sort_indices += 1
+    col_sort_indices += 1
+
+    # insert the index of the first element (0) at the beginning of the indices arrays
+    row_sort_indices = np.insert(row_sort_indices, 0, 0)
+    col_sort_indices = np.insert(col_sort_indices, 0, 0)
+
+    # use these indices to sort the rows and columns of the result array
+    results = results[:, row_sort_indices]
+    results = results[col_sort_indices, :]
+
+    results[0,0] = np.nan
 
     return results

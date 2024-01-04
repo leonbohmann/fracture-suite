@@ -1,5 +1,13 @@
 import numpy as np
 
+def angle_abs(v1):
+    """Returns the absolute angle of a vector in radians."""
+    return np.arctan2(v1[1], v1[0])
+
+def angle_abs_deg(v1):
+    """Returns the absolute angle of a vector in degrees."""
+    return np.degrees(np.arctan2(v1[1], v1[0]))
+
 def angle_between(v1, v2):
     # Berechnung des Winkels in Radiant
     dot_product = np.dot(v1, v2)
