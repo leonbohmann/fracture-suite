@@ -26,6 +26,7 @@ from fracsuite.splinters import app as splinter_app
 from fracsuite.state import State
 from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
+from fracsuite.highspeedimg import app as highspeed_app
 
 custom_theme = Theme({
     "info": "dim cyan",
@@ -138,6 +139,7 @@ app.add_typer(tester_app, name="tester")
 app.add_typer(over_nrg, name="over-nrg")
 app.add_typer(sim_app, name="simulate")
 app.add_typer(layer_app, name="layer")
+app.add_typer(highspeed_app, name="highspeed")
 class PrintWrapper():
 
     def __init__(self, func, index):
