@@ -843,3 +843,16 @@ def cfg_logplot(axs: Axes):
 
     axs.set_xscale('log')
     axs.set_yscale('log')
+
+
+def transparent_line(img, pt1, pt2, color, thickness, transparency: float):
+    # create a separate image for the line
+    line_img = np.zeros_like(img)
+
+    # draw the line on the separate image
+    cv2.line(line_img, pt1, pt2, color, thickness)
+
+    # blend the line image with the original image
+    img2 = cv2.addWeighted(img, 1.0, line_img, transparency, 1)
+
+    return img2
