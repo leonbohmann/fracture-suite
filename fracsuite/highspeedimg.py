@@ -8,6 +8,7 @@ import numpy as np
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.plotting import FigureSize, get_fig_width, transparent_line
+from fracsuite.core.stochastics import moving_average
 from fracsuite.state import State
 
 MARKER_MAIN = (0,0,255) # red
@@ -17,6 +18,47 @@ MARKER_BRANCH = (255,0,0) # blue
 app = typer.Typer(help=__doc__, callback=main_callback)
 
 @app.command()
+def prepare(
+    folder_path: str,
+    extension: str = "tiff"
+):
+    """
+    Prepares the images in the given folder by calculating the absolute difference
+    between two images and adding a weighted version of the difference to the image.
+
+    This enhances the crack tip surrounding and makes it easier to detect.
+    """
+
+    output_path = os.path.join(folder_path, "prepared")
+    os.makedirs(output_path, exist_ok=True)
+
+    # load all image files from folder_path
+    images: list[tuple[str,Any]] = []
+    for f in os.listdir(folder_path):
+        if f.endswith(extension):
+            image = cv2.imread(os.path.join(folder_path, f), cv2.IMREAD_COLOR)
+            images.append((f,image))
+
+    # now, create the absolute difference between every image
+    diffs = []
+    for i in range(len(images)-1):
+        img1 = images[i][1]
+        img2 = images[i+1][1]
+        diff = cv2.absdiff(img2, img1)
+        diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+        diff = cv2.threshold(diff, 10, 255, cv2.THRESH_BINARY)[1]
+        diff = cv2.cvtColor(diff, cv2.COLOR_GRAY2BGR)
+        diffs.append(diff)
+
+    # save the differences by adding a weighted version of diff to the frame
+    for i in range(len(diffs)):
+        print(f"Saving {i+1}/{len(diffs)}")
+        img = images[i][1]
+        diff = diffs[i]
+        img = cv2.addWeighted(img, 1, diff, 0.1, 1)
+        cv2.imwrite(os.path.join(output_path, images[i][0]), img)
+
+@app.command()
 def analyze(
     folder_path: str,
     fps_mio: int = 2,
@@ -24,6 +66,17 @@ def analyze(
     plot_branchings: bool = False,
     extension: str = "tiff"
 ):
+    """
+    Analyzes the images in the given folder and plots the results.
+
+    Args:
+        folder_path (str): The path to the folder containing the images.
+        fps_mio (int, optional): Million fps. Defaults to 2.
+        frame_size_mm (tuple[int,int], optional): The size of the image in mm. Defaults to (40, 25).
+        extension (str, optional): Image file extension. Defaults to "tiff".
+    """
+
+    folder_name = os.path.basename(folder_path)
     images: list[tuple[str,Any]] = []
     frame_size_px = (400,250)
 
@@ -41,7 +94,7 @@ def analyze(
             images.append((f,image, ic))
             ic += 1
 
-
+            folder_name = os.path.basename(f)
 
             assert all([img.shape == images[0][1].shape for _,img,_ in images]), "All images must have the same shape."
             assert all([img.shape[0] == frame_size_px[1] and img.shape[1] == frame_size_px[0] for _,img,_ in images]), f"All images must have the shape {frame_size_px}."
@@ -103,8 +156,8 @@ def analyze(
             if current_status > 0:
                 crack_tip = crack_tips[0]
             else:
-                print('Crack tips:', crack_tips)
-                raise Exception(f"Crack tip with color {crack_clr} missing in {img_name}! Maybe you forgot to indicate an ending with 4 pixels?")
+                continue
+                # raise Exception(f"Crack tip with color {crack_clr} missing in {img_name}! Maybe you forgot to indicate an ending with 4 pixels?")
 
             # time increment
             stime.append(current_time)
@@ -116,8 +169,8 @@ def analyze(
             if len(positions) > 0:
                 dp = crack_tip - positions[-1]
                 angle = np.arctan2(dp[1], dp[0]) * 180 / np.pi
-                if len(sangle) > 0:
-                    angle = np.abs(sangle[-1] - angle)
+                # if len(sangle) > 0:
+                #     angle = np.abs(sangle[-1] - angle)
             else:
                 angle = 0
 
@@ -152,8 +205,8 @@ def analyze(
 
         # calculate velocity
         distance_m = np.asarray(sdistance) * 1e-3
-        time_s = np.asarray(stime) * 1e-6
-        velocity = np.diff(distance_m) / np.diff(time_s)
+        time_s = np.asarray(stime)
+        velocity = np.diff(distance_m) / np.diff(time_s) / 1e-6
         velocity_time = time_s[:-1] + np.diff(time_s) / 2
 
         fig,axs = plt.subplots(2,1,figsize=get_fig_width(FigureSize.ROW1))
@@ -200,6 +253,10 @@ def analyze(
         vline = vel_ax.plot(velocity_time, velocity, color='blue', linestyle='--', label="Velocity", linewidth=0.5)
         vel_ax.set_ylabel("Velocity [m/s]")
 
+        # mark branchings in plot as points
+        for i in range(len(status)):
+            if status[i] == CRACK_BRANCHING:
+                dst_ax.plot(stime[i], sdistance[i], 'o', color='red', zorder=11)
 
 
         dst_ax.set_zorder(3)
@@ -207,7 +264,7 @@ def analyze(
         dst_ax.legend([dst_line[0], ang_line[0], vline[0]], ["Distance", "Angle", "Velocity"], loc='upper left')
         fig.tight_layout()
 
-        State.output(fig, f"sys{c}_plot", figwidth=FigureSize.ROW1)
+        State.output(fig, f"{folder_name}/sys{c}_plot", figwidth=FigureSize.ROW1)
 
 
     for c,crack_sys in enumerate(crack_tip_systems):
@@ -244,7 +301,7 @@ def analyze(
             # crop the image to the region
             img = img[min_y:max_y, min_x:max_x]
 
-            State.output_nopen(img, f"sys{c}/running_{img_index:02d}", figwidth=FigureSize.ROW2)
+            State.output_nopen(img, f"{folder_name}/sys{c}/running_{img_index:02d}", figwidth=FigureSize.ROW2)
 
     print(f'dt={dt}ns')
     print(f'px_per_mm={px_per_mm}')

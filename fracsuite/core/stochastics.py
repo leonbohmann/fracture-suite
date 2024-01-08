@@ -340,7 +340,7 @@ def moving_average(x, y, rng) -> tuple[np.ndarray, list[np.ndarray] | np.ndarray
         tuple(ndarray, list[ndarray], list[ndarray]):
             Stützstellen des Durchschnitts, der Durchschnitt selbst und seine Standardabweichung.
     """
-    if not isinstance(y, list):
+    if not isinstance(y, list) or not isinstance(y, np.ndarray):
         y = [y]
     x = np.asarray(x)
     # x_raw = x[np.isfinite(x)]
