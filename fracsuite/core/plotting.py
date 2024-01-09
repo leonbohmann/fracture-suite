@@ -49,7 +49,9 @@ class FigureSize(str, Enum):
     "The width of a figure in a row with three figures."
     ROW1H = 'row1h'
     "The width of a figure in one row in landscape."
-
+    ROW1HL = 'row1h_l'
+    "Large landscape."
+    
     @staticmethod
     def has_value(value):
         return value in FigureSize.values()

@@ -71,7 +71,6 @@ class StateOutput:
                         pad_inches=0
                     )
                 saved = True
-                self.Data=None
 
             except PermissionError:
                 print("[red]Error: Cannot access file. Waiting for 1 second...[/red]")
