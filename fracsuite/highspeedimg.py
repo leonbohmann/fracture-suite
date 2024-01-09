@@ -18,6 +18,23 @@ MARKER_BRANCH = (255,0,0) # blue
 app = typer.Typer(help=__doc__, callback=main_callback)
 
 @app.command()
+def vid2img(
+    vid_path: str
+):
+    """
+    Converts a video file to a series of images.
+    """
+    vid_name = os.path.basename(vid_path).split('.')[0]
+    vidcap = cv2.VideoCapture(vid_path)
+    success, image = vidcap.read()
+    count = 0
+    while success:
+        cv2.imwrite(os.path.join(os.path.dirname(vid_path), f"{vid_name}_{count:02d}.tiff"), image)     # save frame as TIFF file
+        success, image = vidcap.read()
+        count += 1
+        print(f"Read frame {count}")
+
+@app.command()
 def extract_details(
     folder_path: str,
     frame_start: int,
@@ -62,7 +79,7 @@ def extract_details(
     images = [(f, index, img[int(y-h/2):int(y+h/2), int(x-w/2):int(x+w/2)]) for f,index,img in images]
 
     # save images to output folder
-    output_path = os.path.join(folder_path, name)
+    output_path = os.path.join(State.get_output_dir(), name)
     os.makedirs(output_path, exist_ok=True)
 
     # add a scale to the image
@@ -76,9 +93,9 @@ def extract_details(
 
         scale_pos = (5*img_scale_f,img.shape[0]-5*img_scale_f)
 
-        cv2.line(img, scale_pos, (int(scale_pos[0]+scale_px), int(scale_pos[1])), (255,255,255), 2)
+        cv2.line(img, scale_pos, (int(scale_pos[0]+scale_px), int(scale_pos[1])), (0,0,0), 2)
         _, sz = cv2.getTextSize(f"{scale_length}mm", cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.putText(img, f"{scale_length}mm", (int(scale_pos[0]), int(scale_pos[1]-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+        cv2.putText(img, f"{scale_length}mm", (int(scale_pos[0]), int(scale_pos[1]-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
         cv2.imwrite(os.path.join(output_path, f), img)
 
 
@@ -379,9 +396,9 @@ def analyze(
 
             scale_pos = (5*img_scale_f,img.shape[0]-5*img_scale_f)
 
-            cv2.line(img, scale_pos, (int(scale_pos[0]+scale_px), int(scale_pos[1])), (255,255,255), 2)
+            cv2.line(img, scale_pos, (int(scale_pos[0]+scale_px), int(scale_pos[1])), (0,0,0), 2)
             _, sz = cv2.getTextSize(f"{scale_length}mm", cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            cv2.putText(img, f"{scale_length}mm", (int(scale_pos[0]), int(scale_pos[1]-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+            cv2.putText(img, f"{scale_length}mm", (int(scale_pos[0]), int(scale_pos[1]-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
 
             State.output_nopen(img, f"{folder_name}/sys{c}/running_{stime[i]:.2f}_{img_index:02d}", figwidth=FigureSize.ROW2)
 
