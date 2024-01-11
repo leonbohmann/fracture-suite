@@ -372,7 +372,7 @@ def create_impact_layer(
         # take moving average
         r1,l1,stddev1 = moving_average(aspects[:,0], aspects[:,1], r_range)
 
-        results[si,0] = specimen.U
+        results[si,0] = specimen.U_d
         results[si,1] = bid[specimen.boundary]
         results[si,2] = si
         results[si,3:] = l1
