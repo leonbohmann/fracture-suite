@@ -19,20 +19,23 @@ app = typer.Typer(help=__doc__, callback=main_callback)
 
 @app.command()
 def vid2img(
-    vid_path: str
+    vid_path: str,
+    every:int = 1
 ):
     """
     Converts a video file to a series of images.
     """
     vid_name = os.path.basename(vid_path).split('.')[0]
     vidcap = cv2.VideoCapture(vid_path)
+    n_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
     success, image = vidcap.read()
     count = 0
     while success:
-        cv2.imwrite(os.path.join(os.path.dirname(vid_path), f"{vid_name}_{count:02d}.tiff"), image)     # save frame as TIFF file
+        if count % every == 0:
+            print(f"Frame {count}/{n_frames}")
+            cv2.imwrite(os.path.join(os.path.dirname(vid_path), f"{vid_name}_{count:02d}.tiff"), image)     # save frame as TIFF file
         success, image = vidcap.read()
         count += 1
-        print(f"Read frame {count}")
 
 @app.command()
 def extract_details(
