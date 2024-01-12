@@ -31,18 +31,18 @@ LABEL_HEIGHT_FAC = 1 - BARCODE_HEIGHT_FAC
 
 
 def create_datamatrix_code(code: str, label: str) -> str:
-    encoded = encode(code.encode('utf-8'), size='RectAuto')    
+    encoded = encode(code.encode('utf-8'), size='RectAuto')
     img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
     os.makedirs('.out', exist_ok=True)
     name = f'.out/{label}.png'
     img.save(name)
-    
+
     content = decode(img, max_count=1)
-    if content[0].data.decode('utf-8') != code:        
+    if content[0].data.decode('utf-8') != code:
         print(f"Decoded code {content[0].data.decode('utf-8')} does not match original code {code}!")
-    
+
     return os.path.abspath(name)
-    
+
 def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas):
 
     # save barcode image and get its path
@@ -50,13 +50,13 @@ def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas
 
     canvas.setFont(CANVAS_FONT, CANVAS_FONT_SIZE)
     # draw label and barcode on canvas at provided coordinates
-    canvas.drawImage(fullname, x*mm , (y + 0.95 * CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)    
+    canvas.drawImage(fullname, x*mm , (y + 0.95 * CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)
     canvas.drawCentredString((x + CELL_WIDTH / 2)*mm, (y + CELL_HEIGHT * LABEL_HEIGHT_FAC / 2)*mm , label, )
     # canvas.rect(x*mm , y*mm, CELL_WIDTH * mm, CELL_HEIGHT * mm, stroke = 1, fill = 0)
-    
-    
+
+
 def generate_pdf(labels_codes: list, filename: str):
-    
+
     fontpath= os.path.join(__path__, f"{CANVAS_FONT}.ttf")
     pdfmetrics.registerFont(TTFont(CANVAS_FONT,fontpath))
     pdfmetrics.registerFontFamily(CANVAS_FONT)
@@ -81,10 +81,10 @@ def generate_pdf(labels_codes: list, filename: str):
 
 if __name__ == "__main__":
     CREATE_CODE = create_datamatrix_code
-    
+
     # stretch barcode,datamatrix not stretched!
     ASPECT_RATIO = True
-    
+
 
     existing_label_path = os.path.join(__path__, "existing_labels.txt")
     # read existing labels from "existing_labels.txt" file
@@ -92,45 +92,42 @@ if __name__ == "__main__":
         existentLabels = [line.strip() for line in f.readlines()]
 
 
-    thick = [4,8,12]
-    sig = {4: [x for x in range(70,150,10)], 8: [x for x in range(70,150,10)], 12: [x for x in range(40,120,10)]}
+    thick = [4,8]
+    sig = {4: [120], 8: [100]}
     bound = ["Z", "A", "B"]
-    lfnr = list(range(1,11))
-    
+    lfnr = list(range(1,6))
+
     labels = []
-    
+
     for t in thick:
         for s in sig[t]:
             for b in bound:
                 for i in lfnr:
                     label = f'{t}.{s}.{b}.{i:02d}'
                     labels.append((label,label))
-             
-    manual_labels = [
-        "SCHOTT_A",
-        "SCHOTT_B",
-        "SCHOTT_C",
-        "SCHOTT_D",
-        "SCHOTT_E",
-    ]
-    
     labels = [(label,label) for _,label in labels if label not in existentLabels]
 
+
+    # manual labels are forced
+    manual_labels = []
+
+    # these are actually used
     used_labels = []
     for label in manual_labels:
         used_labels.append((label, label))
     used_labels = [(label,label) for _,label in used_labels if label not in existentLabels]
-    
+
     for n in range(len(used_labels),24):
-        used_labels.append(labels.pop(0))
+        if len(labels) > 0:
+            used_labels.append(labels.pop(0))
 
     name = f'{used_labels[0][0]}-{used_labels[-1][0]}.pdf'
 
     generate_pdf(used_labels, name)
-    
+
     if os.path.exists(".out"):
         shutil.rmtree(".out", ignore_errors=True)
-        
+
     if os.path.exists(name):
         os.system(f"start {name}")
 
