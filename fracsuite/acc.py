@@ -295,7 +295,7 @@ def wave_compare(
     tf, tunit = mod_unit(time_unit)
 
     filter_func = create_filter_function(name_filter, sigmas)
-    specimens: list[Specimen] = Specimen.get_all_by(filter_func, lazyload=False)
+    specimens: list[Specimen] = Specimen.get_all_by(filter_func, load=False)
 
     fig, axs = plt.subplots(len(specimens), 1, sharey='all', sharex='all')
 

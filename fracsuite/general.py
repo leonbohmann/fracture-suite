@@ -73,7 +73,8 @@ class GeneralSettings:
         if self.image_extension.startswith("."):
             self.image_extension = self.image_extension[1:]
 
-
+    def get_output_file(self, *args) -> str:
+        return os.path.join(self.out_path, *args)
 
     def __str__(self):
         return "General Settings"

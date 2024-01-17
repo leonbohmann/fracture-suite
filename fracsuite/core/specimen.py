@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 from rich import print
 from rich.progress import track
+from fracsuite.core.anisotropy_images import AnisotropyImages
 from fracsuite.core.arrays import resample, sort_arrays
 from fracsuite.core.coloring import rand_col
 
@@ -78,6 +79,10 @@ class Specimen(Outputtable):
     @property
     def splinters(self) -> list[Splinter]:
         "Splinters on the glass ply."
+        if self.has_splinters and self.__splinters is None:
+            self.load_splinters()
+            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
+
         assert self.__splinters is not None, f"Splinters are empty. Specimen {self.name} not loaded?"
         return self.__splinters
 
@@ -168,13 +173,6 @@ class Specimen(Outputtable):
         if self.loaded:
             print("[red]Specimen already loaded.")
 
-        if self.has_splinters:
-            self.load_splinters()
-            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
-        elif log_missing_data:
-            print(f"Could not find splinter file for '{self.name}'. Create it using [green]fracsuite splinters gen[/green].")
-
-
         if self.has_scalp:
             self.load_scalp()
         elif log_missing_data:
@@ -188,7 +186,7 @@ class Specimen(Outputtable):
                 f"Splinters: {checkmark(self.has_splinters)}).")
 
 
-    def __init__(self, path: str, log_missing = True, lazy = False):
+    def __init__(self, path: str, log_missing = True, load = False):
         """Create a new specimen.
 
         Args:
@@ -223,14 +221,17 @@ class Specimen(Outputtable):
         "Path to the acceleration file."
 
         self.path = path
+
+        # set default settings (overwritten in the next step)
         self.__settings = {
             "break_mode": "punch",
             "break_pos": "corner",
             "fall_height_m": 0.07,
-            "real_size_mm": (500,500)
+            "real_size_mm": (500,500),
+            "img_size_px": (2000,2000)
         }
 
-        # load settings from config
+        # load settings from config and overwrite defaults
         self.__cfg_path = os.path.join(path, "config.json")
         if not os.path.exists(self.__cfg_path):
             with open(self.__cfg_path, "w") as f:
@@ -240,6 +241,8 @@ class Specimen(Outputtable):
                 sets = json.load(f)
                 for k,v in sets.items():
                     self.__settings[k] = v
+            with open(self.__cfg_path, "w") as f:
+                json.dump(self.__settings, f, indent=4)
 
         # get name from path
         self.name = os.path.basename(os.path.normpath(path))
@@ -287,6 +290,10 @@ class Specimen(Outputtable):
         "States wether adjacency information are present or not."
 
 
+        self.anisotropy_dir = os.path.join(self.path, "anisotropy")
+        "Path to anisotropy scans."
+        self.anisotropy = AnisotropyImages(self.anisotropy_dir)
+
         self.simdata_path = self.get_splinter_outfile("simdata.json")
         "Path to the simulation data file."
         if os.path.exists(self.simdata_path):
@@ -297,7 +304,7 @@ class Specimen(Outputtable):
             self.__save_simdata()
 
         # init done, load data
-        if not lazy:
+        if load:
             self.load(log_missing)
 
     def set_setting(self, key, value):
@@ -346,7 +353,10 @@ class Specimen(Outputtable):
     def get_image_size(self):
         """Returns the size of the specimen in px."""
         img = self.get_fracture_image()
-        return img.shape[0], img.shape[1]
+        if img is None:
+            return self.settings['img_size_px']
+
+        return img.shape[1], img.shape[0]
 
     def get_real_size(self):
         """Returns the real size of the specimen in mm."""
@@ -552,7 +562,10 @@ class Specimen(Outputtable):
 
         return in_region
 
-    def calculate_nfifty(self, centers, size, force_recalc=False):
+    def calculate_nfifty(self, centers = [], size = (50,50), force_recalc=False):
+        if centers == []:
+            centers = [(400,400)]
+
         nfifty = self.simdata.get(Specimen.KEY_NFIFTY, None)
         if nfifty is None or force_recalc:
             # area = float(size[0] * size[1])
@@ -750,10 +763,10 @@ class Specimen(Outputtable):
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
 
-        # remove all splinters whose centroid is closer than 2 cm to the edge
+        # remove all splinters whose centroid is closer than 1 cm to the edge
         delta_edge = 10
         self.__splinters = [s for s in self.__splinters if s.centroid_mm[0] > delta_edge and s.centroid_mm[0] < self.settings['real_size_mm'][0] - delta_edge and s.centroid_mm[1] > delta_edge and s.centroid_mm[1] < self.settings['real_size_mm'][1] - delta_edge]
-        # or within a 2cm radius to the impact point
+        # or within a 1cm radius to the impact point
         delta_impact = 10
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
@@ -767,7 +780,7 @@ class Specimen(Outputtable):
         if not os.path.isdir(path):
             raise SpecimenException(f"Specimen '{name}' not found.")
 
-        return Specimen(path, lazy=not load)
+        return Specimen(path, load=not load)
 
     @staticmethod
     def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = False) \
@@ -784,7 +797,7 @@ class Specimen(Outputtable):
         specimens: list[Specimen] = []
 
         if names is None:
-            return Specimen.get_all_by(lambda x: True, lazyload=not load)
+            return Specimen.get_all_by(lambda x: True, load=load)
         elif isinstance(names, Specimen):
             return [names]
         elif isinstance(names, list) and len(names) > 0 and isinstance(names[0], Specimen):
@@ -810,7 +823,7 @@ class Specimen(Outputtable):
                 continue
 
             dir = os.path.join(general.base_path, name)
-            specimen = Specimen.get(dir, load=True)
+            specimen = Specimen.get(dir, load=load)
             specimens.append(specimen)
 
         if len(specimens) == 0:
@@ -826,7 +839,7 @@ class Specimen(Outputtable):
     def get_all_by( decider: Callable[[Specimen], bool],
                     value: Callable[[Specimen], _T1 | Specimen] = None,
                     max_n: int = 1000,
-                    lazyload: bool = False,
+                    load: bool = False,
                     sortby: Callable[[Specimen], Any] = None) -> list[_T1]:
         """
         Loads specimens with a decider function.
@@ -841,8 +854,6 @@ class Specimen(Outputtable):
                 decider (func(bool)):   Decides, if the specimen should be loaded.
                 value (func(Specimen)->Specimen):
                                         Function that can convert the specimen.
-                load (bool):            Do not load the specimen data.
-                lazy_load (bool):       Instruct the function to load the specimen data afterwards.
 
             Returns:
                 Specimen | None: Specimen or None.
@@ -853,7 +864,7 @@ class Specimen(Outputtable):
             if value is None:
                 value = Specimen.__default_value
 
-            specimen = Specimen(spec_path, log_missing=False, lazy=lazyload)
+            specimen = Specimen(spec_path, log_missing=False, load=load)
 
             if not decider(specimen):
                 return None

@@ -12,7 +12,7 @@ from rich.progress import track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.plotting import FigureSize
 
-from fracsuite.core.specimen import Specimen
+from fracsuite.core.specimen import Specimen, SpecimenBoundary
 from fracsuite.general import GeneralSettings
 from fracsuite.state import State
 
@@ -35,7 +35,7 @@ def sync():
             continue
 
 
-        s = Specimen(spec_path, log_missing=False, lazy=True)
+        s = Specimen(spec_path, log_missing=False, load=True)
 
 
 @app.command()
@@ -177,3 +177,128 @@ def nfifty(name):
     specimen.update_simdata("nfifty_dev", np.std(nfifties))
 
     State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)
+
+
+@app.command()
+def to_tex():
+    """
+    Retrieves all specimens and exports them to a latex file.
+
+    The data is sorted in a table and contains several columns with information about the specimen.
+    """
+    all_specimens = Specimen.get_all(load=True)
+
+    # sort by thickness, then nominal stress, then boundary and then number
+    all_specimens.sort(key=lambda x: (x.thickness, x.nom_stress, x.boundary, x.nbr))
+
+    # define some columns
+    def t(s: Specimen):
+        return s.thickness
+    def stress(s: Specimen):
+        return f"{-s.nom_stress:.0f}"
+    def boundary(s: Specimen):
+        return s.boundary
+    def nbr(s: Specimen):
+        return s.nbr
+    def t_real(s: Specimen):
+        if not s.has_scalp:
+            return None
+        return f"{s.measured_thickness:.2f}"
+    def u(s: Specimen):
+        if not s.has_scalp:
+            return None
+        return f"{s.U:.0f}"
+    def ud(s: Specimen):
+        if not s.has_scalp:
+            return None
+        return f"{s.U_d:.0f}"
+    def stress_real(s: Specimen):
+        if not s.has_scalp:
+            return None
+        return f"{s.sig_h:.2f}"
+    def n50(s: Specimen):
+        if s.has_fracture_scans and s.has_splinters:
+            return f"{s.calculate_nfifty():.2f}"
+        else:
+            return None
+
+    columns = {
+        "$\glsm{t}_{\\text{nom}}$": (t, "mm"),
+        "$\glsm{sig_s}_{,\\text{nom}}$": (stress, "MPa"),
+        "Lagerung": (boundary, "-"),
+        "ID": (nbr, "-"),
+        "$t_{\\text{real}}$": (t_real, "mm"),
+        "$\glsm{sig_s}_{,\\text{real}}$": (stress_real, "MPa"),
+        "$\glsm{fdens}$": (n50, "-"),
+        "$\glsm{u}$": (u, "J/m²"),
+        "$\glsm{ud}$": (ud, "J/m³"),
+    }
+
+    # create the table
+    table = []
+    for spec in all_specimens:
+        if spec.boundary == SpecimenBoundary.Unknown:
+            continue
+
+        row = []
+        for name, (func, unit) in columns.items():
+            row.append(func(spec))
+
+        if any([x is None for x in row]):
+            continue
+
+        table.append(row)
+
+    # create latex code
+    latex_code = r"""
+\appendix
+\chapter{Daten aller Probekörper}
+
+\begin{longtable}[l]{(COLUMN_DEF)}
+	\caption{Zusammenfassung der Datensätze aller Probekörper}
+	\label{tab:appendix_datensaetze}\\
+	\toprule
+	(HEADER) \\
+    (HEADER_UNITS) \\
+	\midrule
+	\endfirsthead
+ 	\caption*{\cref{tab:appendix_datensaetze} (Fortsetzung)}\\
+	\toprule
+	(HEADER) \\
+    (HEADER_UNITS) \\
+	\midrule
+	\endhead
+    (CONTENT)
+    \bottomrule
+\end{longtable}
+    """
+    # column def
+    column_def = ""
+    for _ in columns:
+        column_def += "c"
+
+    latex_code = latex_code.replace("(COLUMN_DEF)", column_def)
+
+    # add header
+    header = ""
+    header_unit = ""
+    for name, (_,unit) in columns.items():
+        header += f"\t{name} & "
+        header_unit += "\\textcolor{gray}{\\small{{[{0}]}}} & ".replace("{0}", unit if unit != '' else '-')
+
+    latex_code = latex_code.replace("(HEADER)", header[:-2])
+    latex_code = latex_code.replace("(HEADER_UNITS)", header_unit[:-2])
+
+    content = ""
+    # add data
+    for row in table:
+        for col in row:
+            content += f"\t{col} & "
+        content = content[:-2] + "\\\\\n"
+
+    latex_code = latex_code.replace("(CONTENT)", content)
+
+    # save to output directory
+    output_file = State.get_output_file("A1_Specimens.tex")
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(latex_code)

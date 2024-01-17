@@ -175,7 +175,7 @@ def analyze(
     frame_size_px = (400,250)
 
     # calculate the time between two images
-    dt = 1 / (fps_mio) # ns
+    dt = 1 / (fps_mio) # us
 
     px_per_mm = frame_size_px[1] / frame_size_mm[1] # should be 10
     print(f"px_per_mm: {px_per_mm}")
@@ -311,7 +311,7 @@ def analyze(
 
         # distance plot
         dst_line = dst_ax.plot(stime,sdistance, label="Distance", color='orange', zorder=10)
-        dst_ax.set_xlabel("Time [ns]")
+        dst_ax.set_xlabel("Time [$\mu$s]")
         dst_ax.set_ylabel("Distance [mm]")
 
         # angle plot
@@ -337,7 +337,7 @@ def analyze(
         # plot the fitting function
         dst_ax.plot(stime, mean_velocity*np.asarray(stime)+intercept, color='orange', linestyle='--', linewidth=0.75)
         # plot the mean_velocity as hline
-        vel_ax.axhline(mean_velocity * 1e-3 / 1e-6, color='blue', linestyle='--', linewidth=0.5)
+        vel_ax.axhline(mean_velocity *1e3, color='blue', linestyle='--', linewidth=0.5)
 
 
         # mark branchings in plot as points
@@ -345,6 +345,13 @@ def analyze(
             if status[i] == CRACK_BRANCHING:
                 dst_ax.plot(stime[i], sdistance[i], 'o', color='red', zorder=11)
 
+        # insert tick into existing ticks for velocity
+        vel_ticks = vel_ax.get_yticks()
+        vel_ticks_labels = vel_ax.get_yticklabels()
+        vel_ticks = np.insert(vel_ticks, 0, mean_velocity * 1e3)
+        vel_ticks_labels = [f"{mean_velocity*1e3:.0f}"] + vel_ticks_labels
+        vel_ax.set_yticks(vel_ticks)
+        vel_ax.set_yticklabels(vel_ticks_labels)
 
         dst_ax.set_zorder(3)
         dst_ax.set_frame_on(False)

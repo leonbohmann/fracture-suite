@@ -6,6 +6,7 @@ import os
 from matplotlib import pyplot as plt
 import numpy as np
 import typer
+from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.state import State
 from fracsuite.general import GeneralSettings
 from fracsuite.core.specimen import Specimen
@@ -21,7 +22,7 @@ def stress():
     def get_spec(specimen: Specimen) -> Specimen:
         return specimen
 
-    specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec, lazyload=False)
+    specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec, load=True)
 
 
     thicknesses = {
@@ -35,7 +36,7 @@ def stress():
     for spec in specimens:
         thicknesses[spec.thickness][spec.nom_stress].append(np.abs(spec.sig_h))
 
-    fig, axs = plt.subplots(figsize=(4,4))
+    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1HL))
     # axs.scatter(nominal_4, scalped_4, marker='x', color='orange', label="4mm")
     # axs.scatter(nominal_8+5, scalped_8, marker='o', color='blue', label="8mm")
     # axs.scatter(nominal_12+10, scalped_12, marker='v', color='green', label="12mm")
@@ -61,7 +62,7 @@ def stress():
     fig.tight_layout()
     axs.legend(bars, lbs, loc='lower right')
 
-    State.output(fig, override_name='compare_nominal_stress_to_real_stress')
+    State.output(fig, 'compare_nominal_stress_to_real_stress', figwidth=FigureSize.ROW1HL)
 
 @nominals_app.command()
 def thickness():
@@ -72,7 +73,7 @@ def thickness():
     def get_spec(specimen: Specimen) -> Specimen:
         return specimen
 
-    specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec)
+    specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec, load=True)
 
     thicknesses = {
             4: [], 8: [], 12: []
@@ -82,31 +83,42 @@ def thickness():
         thicknesses[spec.thickness].append(np.abs(spec.measured_thickness))
 
 
-    # 4mm specs
+    print(thicknesses)
 
 
-
-    fig, axs = plt.subplots(figsize=general.figure_size)
+    fig, axs = plt.subplots(1,3, figsize=general.figure_size)
     # axs.scatter(nominal_4, scalped_4, marker='x', color='orange', label="4mm")
     # axs.scatter(nominal_8+5, scalped_8, marker='o', color='blue', label="8mm")
     # axs.scatter(nominal_12+10, scalped_12, marker='v', color='green', label="12mm")
+    xspace = 0.3
+    yspace = 0.3
     lbs = ["4mm", "8mm", "12mm"]
     bars = []
     for it, nom_thick in enumerate(thicknesses):
-        real_thick = np.array(thicknesses[nom_thick])
-        bar = plt.errorbar(nom_thick-5+it*5, np.mean(real_thick), yerr=np.std(real_thick), fmt='ovx'[it], color='bgm'[it])
-        axs.scatter([nom_thick-5+it*5]*len(real_thick), real_thick, marker='x', color='gray', linewidths=0.5, alpha=0.5)
+        ax = axs[it]
+        ax.axline((nom_thick-1, nom_thick-1), slope=1, color="black", linestyle="-")
+        ax.set_xlim((nom_thick-xspace, nom_thick+xspace))
+        ax.set_ylim((nom_thick-yspace, nom_thick+yspace))
+        ax.set_title(f'{nom_thick}mm')
+
+        # show only the nom_thick x label
+        ax.set_xticks([nom_thick])
+
+        print(f'{nom_thick}mm: {thicknesses[nom_thick]}')
+        real_thick = thicknesses[nom_thick]
+        bar = ax.errorbar(nom_thick, np.mean(real_thick), yerr=np.std(real_thick), fmt='ovx'[it], color='bgm'[it])
+        ax.scatter(np.full(len(real_thick), nom_thick), real_thick, marker='x', color='gray', linewidths=0.5, alpha=0.5)
         bars.append(bar)
 
-    axs.set_xlabel("Nominal glass thickness [mm]")
-    axs.set_ylabel("Measured glass thickness [mm]")
 
-    axs.axline((0, 0), slope=1, color="black", linestyle="-")
+    axs[1].set_xlabel("Nominal glass thickness [mm]")
+    axs[0].set_ylabel("Measured glass thickness [mm]")
 
-    axs.set_xlim((7,9))
-    axs.set_ylim((7,9))
+
+
+    fig.legend(bars, lbs)
+
     fig.tight_layout()
-    axs.legend(bars, lbs, loc='lower right')
 
 
-    State.output(fig, override_name='compare_nominal_stress_to_real_stress')
+    State.output(fig, 'compare_nominal_to_real_thickness', figwidth=FigureSize.ROW1)

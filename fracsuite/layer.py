@@ -176,7 +176,7 @@ def create_base_layer(
 
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=False)
 
     # [U, boundary, lambda, rhc]
     values = np.zeros((len(specimens), 5))
@@ -227,7 +227,13 @@ def create_base_layer(
 def create_impact_layer_intensity(
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+    specimen_name: Annotated[str, typer.Option(help='Specimen name.')] = None,
 ):
+    """
+    Plots the fracture intensity parameter for every specimen via distance and angle to impact.
+
+    In specimen_name, supply the full specimen name!
+    """
     bid = {
         'A': 1,
         'B': 2,
@@ -242,6 +248,9 @@ def create_impact_layer_intensity(
     bid_r = {v: k for k, v in bid.items()}
 
     def add_filter(specimen: Specimen):
+        if specimen_name is not None and not specimen.name.startswith(specimen_name):
+            return False
+
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
 
@@ -259,7 +268,7 @@ def create_impact_layer_intensity(
 
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False, max_n=1)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=False, max_n=1)
     sz = FigureSize.ROW1
 
     for spec in specimens:
@@ -269,9 +278,9 @@ def create_impact_layer_intensity(
         Y = result[1:,0]
         Z = result[1:,1:]
 
-        print(X)
-        print(Y)
-        print(Z)
+        # print(X)
+        # print(Y)
+        # print(Z)
 
         # plot results as 2d contour plot
         fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
@@ -325,7 +334,7 @@ def create_impact_layer(
 
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, lazyload=False)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=False)
 
 
     sz = FigureSize.ROW1

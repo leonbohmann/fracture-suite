@@ -82,9 +82,9 @@ def gen(
         realsize = None
 
     if not all:
-        filter = create_filter_function(specimen_name)
+        filter = create_filter_function(specimen_name, needs_splinters=False)
 
-        specimens = Specimen.get_all_by(filter, lazyload=True)
+        specimens = Specimen.get_all_by(filter, load=True)
     else:
         def exclude(specimen: Specimen):
             if not specimen.has_fracture_scans:
@@ -95,7 +95,7 @@ def gen(
                 return True
 
             return re.search(all_exclude, specimen.name) is None
-        specimens = Specimen.get_all_by(decider=exclude, lazyload=True)
+        specimens = Specimen.get_all_by(decider=exclude, load=True)
 
 
     with get_progress(total=len(specimens)) as progress:
@@ -664,7 +664,7 @@ def size_vs_sigma(xlim: Annotated[tuple[float, float], typer.Option(help='X-Limi
     def specimen_value(spec: Specimen):
         return (spec.boundary, np.mean([x.area for x in spec.splinters]), np.abs(spec.U))
 
-    specimens = Specimen.get_all_by(decider, lazyload=False)
+    specimens = Specimen.get_all_by(decider, load=False)
 
     specimens = [specimen_value(x) for x in specimens]
     specimens = sorted(specimens, key=lambda x: x[0])
@@ -771,7 +771,7 @@ def log2dhist_diag(
 
     filter = create_filter_function(names, sigmas, sigma_delta=delta)
 
-    specimens: list[Specimen] = Specimen.get_all_by(filter, lazyload=False)
+    specimens: list[Specimen] = Specimen.get_all_by(filter, load=False)
 
     fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
 
@@ -862,7 +862,7 @@ def log_2d_histograms(
                                     needs_scalp=False,
                                     needs_splinters=True)
 
-    specimens: list[Specimen] = Specimen.get_all_by(filter, max_n=maxspecimen, lazyload=False)
+    specimens: list[Specimen] = Specimen.get_all_by(filter, max_n=maxspecimen, load=False)
 
     assert len(specimens) > 0, "[red]No specimens loaded.[/red]"
 
@@ -1039,7 +1039,7 @@ def log_histograms(
 
 
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
-    specimens = Specimen.get_all_by(filter, lazyload=False)
+    specimens = Specimen.get_all_by(filter, load=False)
 
     if len(specimens) == 0:
         print("[red]No specimens loaded.[/red]")
@@ -1372,7 +1372,7 @@ def nfifty(
 
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter , lazyload=False)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=False)
 
     centers = [
         [450,50],
@@ -1404,10 +1404,10 @@ def nfifty(
     id = idd[unit]
 
     id_name = {
-        0: "U [J/m²]",
-        1: "U_d [J/m³]",
-        2: "U_t [J/m²]",
-        3: "U_dt [J/m³]",
+        0: "Strain Energy U [J/m²]",
+        1: "Strain Energy Density $U_d$ [J/m³]",
+        2: "Tensile Strain Energy $U_t$ [J/m²]",
+        3: "Tensile Strain Energy Density $U_{dt}$ [J/m³]",
     }
 
     def U4(x):
@@ -1423,12 +1423,12 @@ def nfifty(
         return 0.255 * x ** 2 + 109.28 * x + 5603.2
 
 
-
+    sz = FigureSize.ROW2
     min_N50 = 0
     max_N50 = 400
 
     axs: Axes
-    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    fig, axs = plt.subplots(figsize=get_fig_width(sz))
     cfg_logplot(axs)
 
     if unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
@@ -1443,7 +1443,6 @@ def nfifty(
             marker='o',
             facecolors='none',
             edgecolors='k',
-            label="P-Mogh. (2020)",
             linewidth=0.6
         )
     for it, thick in enumerate(thicknesses):
@@ -1465,8 +1464,8 @@ def nfifty(
                 marker='o',
                 facecolors='none',
                 edgecolors=clr,
-                label=f"{thick}mm (Navid)",
-                linewidth=0.6
+                linewidth=0.6,
+                alpha=0.4
             )
 
 
@@ -1516,9 +1515,9 @@ def nfifty(
     udy = UD(ux)
 
     if id == 0:
-        axs.plot(ux, u4y, label="4mm (Navid)", linestyle='--', color=tcolors[1], alpha=0.4)
-        axs.plot(ux, u8y, label="8mm (Navid)", linestyle='--', color=tcolors[2], alpha=0.4)
-        axs.plot(ux, u12y, label="12mm (Navid)", linestyle='--', color=tcolors[3], alpha=0.4)
+        axs.plot(ux, u4y, linestyle='--', color=tcolors[1], alpha=0.4)
+        axs.plot(ux, u8y, linestyle='--', color=tcolors[2], alpha=0.4)
+        axs.plot(ux, u12y, linestyle='--', color=tcolors[3], alpha=0.4)
 
     elif id == 1:
         axs.plot(ux, udy, label="P-Mogh. (2020)", linestyle='--', color='k')
@@ -1527,14 +1526,14 @@ def nfifty(
     for b,t in zip(bid.values(), thicknesses):
         axs.scatter([], [], label=f"{t}mm", marker='x', color=tcolors[b])
     for b,t in zip(bid.values(), thicknesses):
-        axs.plot([],[], label=f"{t}mm (Leon)", color=tcolors[b])
+        axs.plot([],[], label=f"{t}mm", color=tcolors[b])
 
     axs.set_ylabel(id_name[id])
-    axs.set_xlabel("N50 [-]")
+    axs.set_xlabel("Fragment Density $N_{50}$")
     axs.legend(loc='best')
 
     name = 'nfifty' if not use_mean else 'nperwindow'
-    State.output(StateOutput(fig, FigureSize.ROW1), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)
+    State.output(StateOutput(fig, sz), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)
 
     if State.debug:
         for i in range(len(specimens)):
@@ -1633,7 +1632,7 @@ def fracture_intensity_f(
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
         plot_kernel=plot_kernel,
-        clr_label="Fracture Intensity $\Gamma$ [$N_S/A$]",  # , $w_A,h_A$={w_mm}mm
+        clr_label="Fragment Density $N_{50}$ [$N_S/A_{50x50mm}$]",  # , $w_A,h_A$={w_mm}mm
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
         skip_edge=skip_edge,
@@ -1705,7 +1704,7 @@ def get_detection_rate(splinters: list[Splinter], real_size: tuple[float, float]
 def crop_fracture_morph(
         specimen_name: Annotated[str, typer.Option(help='Name of specimen to load')] = "",
         all: Annotated[bool, typer.Option('--all', help='Perform this action on all specimen.')] = False,
-        rotate: Annotated[bool, typer.Option('--rotate', help='Rotate image by 90°.')] = False,
+        rotate: Annotated[bool, typer.Option('--rotate', help='Rotate the input image 90° CCW. Defaults to False.')] = False,
         crop: Annotated[bool, typer.Option('--crop', help='Crop the image.')] = True,
         size: Annotated[
             tuple[int, int], typer.Option(help='Image size.', metavar='Y X')] = general.default_image_size_px,
