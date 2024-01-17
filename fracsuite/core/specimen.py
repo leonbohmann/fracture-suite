@@ -845,6 +845,9 @@ class Specimen(Outputtable):
         Loads specimens with a decider function.
         Iterates over all specimens in the base path.
         """
+        # show yellow hint when not loading
+        if not load:
+            print("[yellow]Not loading data of specimens.")
 
         def load_specimen(spec_path, decider, value) -> Specimen | None:
             """Load a single specimen.

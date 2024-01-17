@@ -1,6 +1,7 @@
 from typing import Annotated
 
 import numpy as np
+from sympy import false
 import typer
 from matplotlib import colors as pltc
 from matplotlib import pyplot as plt
@@ -579,3 +580,278 @@ def create_impact_layer(
 
     #     fig = plt_model(x,y,nr_r, xlabel=xlabel, ylabel=clabel, clabel=ylabel, exclude_nan=exclude_nan_u)
     #     State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[br_key]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+
+
+
+@layer_app.command()
+def compare_boundaries(
+    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+    ud: Annotated[float, typer.Argument(help='Energy level.')],
+    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
+    break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+    ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
+    energy_range: Annotated[float, typer.Option(help='Energy range around ud.')] = 0.05,
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+    boundaries = {
+        1: '--',
+        2: '-',
+        3: ':',
+    }
+    # inverse bid
+    bid_r = {v: k for k, v in bid.items()}
+
+
+    min_energy = ud * (1-energy_range)
+    max_energy = ud * (1+energy_range)
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+
+        if break_mode is not None and specimen.break_mode != break_mode:
+            return False
+
+        if specimen.boundary == SpecimenBoundary.Unknown:
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        if not max_energy > specimen.U > min_energy:
+            return False
+
+        return True
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True)
+
+
+    sz = FigureSize.ROW1
+
+    xlabel = "Distance from impact R [mm]"
+    ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+    ylabel_short = Splinter.get_mode_labels(mode, row3=True)
+    clabel = "Strain Energy U [J/m²]"
+
+
+    # find aspect over R on every specimen
+    n_r = 30
+    r_min = 0
+    r_max = np.sqrt(450**2 + 450**2)
+    r_range = np.linspace(r_min, r_max, n_r, endpoint=False)
+
+
+
+    ########################
+    # Calculate value for every specimen and save results to arrays
+    ########################
+    results = np.ones((len(specimens), len(r_range)+3)) * np.nan
+    stddevs = np.ones((len(specimens), len(r_range)+3)) * np.nan
+
+    for si, specimen in track(list(enumerate(specimens))):
+        print('Specimen: ', specimen.name)
+
+        # now, find aspect ratio of all splinters
+        aspects = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
+        ip = specimen.get_impact_position()
+        px_p_mm = specimen.calculate_px_per_mm()
+        for i, s in enumerate(specimen.splinters):
+            # calculate distance to impact point
+            r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
+
+            # get data from splinter
+            a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
+
+            aspects[i,:] = (r, a) # (r, a)
+
+        # sort after the radius
+        aspects = aspects[aspects[:,0].argsort()]
+
+        # take moving average
+        r1,l1,stddev1 = moving_average(aspects[:,0], aspects[:,1], r_range)
+
+        results[si,0] = specimen.U
+        results[si,1] = bid[specimen.boundary]
+        results[si,2] = si
+        results[si,3:] = l1
+
+        stddevs[si,0] = results[si,0]
+        stddevs[si,1] = results[si,1]
+        stddevs[si,2] = results[si,2]
+        stddevs[si,3:] = stddev1
+
+        # except:
+        #     results[si+1,0] = specimen.U
+        #     results[si+1,1] = bid[specimen.boundary]
+        #     results[si+1,2] = si
+        #     results[si+1,3:] = aspects[:,1]
+
+
+    # sort results after U_d
+    results = results[results[:,0].argsort()]
+
+    ########################
+    # Save results as layer
+    ########################
+
+    # first: results, second: stddevs
+    results_per_boundary_unclustered = {
+        1: ([],[]),
+        2: ([],[]),
+        3: ([],[])
+    }
+
+    # find all results for every boundary
+    mask_A = results[:,1] == 1
+    mask_B = results[:,1] == 2
+    mask_Z = results[:,1] == 3
+
+    # put results in dictionary
+    results_per_boundary_unclustered[1] = (results[mask_A,:], stddevs[mask_A,:])
+    results_per_boundary_unclustered[2] = (results[mask_B,:], stddevs[mask_B,:])
+    results_per_boundary_unclustered[3] = (results[mask_Z,:], stddevs[mask_Z,:])
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    # sort the individual results after U_d
+    for ib, b in enumerate(results_per_boundary_unclustered):
+        b_mask = results_per_boundary_unclustered[b][0][:,0].argsort()
+        results_b = results_per_boundary_unclustered[b][0][b_mask]
+        stddev_b = results_per_boundary_unclustered[b][1][b_mask]
+
+        # plot the current boundary
+        x = r_range
+        y = results_b[:,0].ravel()
+        z = results_b[:,3:]
+
+        # scatter each line in results with x
+        for i in range(len(y)):
+            axs.scatter(x, z[i,:], color='rkb'[ib], marker='x', linewidth=0.5, s=1.5)
+
+
+        # plot the stdmean of the current boundary
+        mean = np.nanmean(z, axis=0)
+        axs.plot(x, mean,  color='rkb'[ib], linestyle='-', alpha=1, label=bid_r[b])
+
+    axs.set_xlabel(xlabel)
+    axs.set_ylabel(ylabel)
+    axs.legend()
+    State.output(StateOutput(fig,sz), f'compare_{min_energy:.0f}-{max_energy:.0f}_{mode}_{break_pos}', to_additional=True)
+
+    # ########################
+    # # cluster results for a range of energies and save plots
+    # ########################
+
+    # # results for interpolation with different boundaries
+    # results_per_boundary = {
+    #     1: [],
+    #     2: [],
+    #     3: []
+    # }
+
+    # n_ud = 30
+    # ud_min = np.min(results[:,0])
+    # ud_max = np.max(results[:,0])
+    # ud_range = np.linspace(ud_min, ud_max, n_ud)
+
+
+    # fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    # bfigs: list[tuple[Figure,Axes]] = []
+    # row3size = get_fig_width(FigureSize.ROW3)
+    # bfigs.append(plt.subplots(figsize=row3size))
+    # bfigs.append(plt.subplots(figsize=row3size))
+    # bfigs.append(plt.subplots(figsize=row3size))
+    # # cluster results for a range of energies
+    # for i in range(n_ud):
+    #     for ib, b in enumerate(boundaries):
+    #         # gruppieren von Ergebnissen nach erstem Eintrag (U,Ud,...)
+    #         if i == n_ud-1:
+    #             mask = (results[:,0] >= ud_range[i]) & (results[:,1] == b)
+    #         else:
+    #             mask = (results[:,0] >= ud_range[i]) & (results[:,0] < ud_range[i+1]) & (results[:,1] == b)
+
+    #         # get mean of all results (specimens) in this range
+    #         mean = np.nanmean(results[mask,3:], axis=0)
+
+    #         clr = norm_color(get_color(ud_range[i], ud_min, ud_max))
+
+    #         # plot all masked results as scatter plots
+    #         for j in range(len(results)):
+    #             if mask[j]:
+    #                 axs.scatter(r_range, results[j,3:], color=clr, marker='x', linewidth=0.5, s=1.5)
+    #                 bfigs[ib][1].scatter(r_range, results[j,3:], color=clr, marker='x', linewidth=0.5, s=1.5)
+
+    #                 id = int(results[j,2])
+    #                 s = specimens[id]
+    #                 print(f"{s.name} ({np.nanmean(results[j,3:]):.1f})")
+
+    #         ls = boundaries[b]
+    #         alpha = 0.7
+    #         axs.plot(r_range, mean,  color=clr, linestyle=ls, alpha=alpha)
+    #         bfigs[ib][1].plot(r_range, mean,  color=clr, linestyle='-', alpha=1)
+    #         # label=f"{uds[i]:.2f} - {uds[i+1]:.2f} J/m²",
+    #         results_per_boundary[b].append(mean)
+
+
+
+    # axs.set_xlabel(xlabel)
+    # # plt.ylabel("Splinter Orientation Strength $\Delta$ [-]")
+    # axs.set_ylabel(ylabel)
+    # # create legend for boundaries
+    # axs.plot([], [], label="A", linestyle=boundaries[1], color='k')
+    # axs.plot([], [], label="B", linestyle=boundaries[2], color='k')
+    # axs.plot([], [], label="Z", linestyle=boundaries[3], color='k')
+    # colors = [norm_color(get_color(x, ud_min, ud_max)) for x in ud_range]
+    # cmap = pltc.ListedColormap(colors)
+    # norm = pltc.Normalize(np.min(ud_range), np.max(ud_range))
+    # cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=axs)
+    # renew_ticks_cb(cbar)
+    # axs.legend(loc='upper right')
+
+    # if mode == 'asp':
+    #     # plt.ylim((0.9, 2.6))
+    #     pass
+    # elif mode == 'area':
+    #     axs.set_ylim((0, 30))
+
+    # State.output(StateOutput(fig,sz), f'U_{mode}_all_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
+
+    # xlabel = "Distance R [mm]"
+    # ylabel = Splinter.get_mode_labels(mode, row3=True)
+    # clabel = "U [J/m²]"
+    # for i_f, (f,a) in enumerate(bfigs):
+    #     a.set_xlabel(xlabel)
+    #     a.set_ylabel(ylabel)
+    #     cbar = f.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=a)
+    #     renew_ticks_cb(cbar)
+    #     State.output(StateOutput(f,FigureSize.ROW3), f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
+
+    # # ##
+    # # ## PLOT interpolated data as 2d plot for every boundary
+    # # print('> Plotting interpolated data...')
+    # # # num_results[ud,R]
+    # # for br_key in results_per_boundary: # different boundaries
+    # #     print('Boundary: ', br_key)
+    # #     nr_r = np.asarray(results_per_boundary[br_key])
+
+    # #     # format data storage for saving and interpolation
+    # #     x = r_range
+    # #     y = ud_range
+    # #     data = np.zeros((len(y)+1, len(x)+1))
+    # #     print(nr_r.shape)
+    # #     data[1:,1:] = nr_r
+    # #     data[1:,0] = ud_range
+    # #     data[0,1:] = r_range
+
+    # #     # this should save the original data that has not been clustered
+    # #     Z_path = State.get_general_outputfile(f'model/interpolate_{mode}_{bid_r[br_key]}_{break_pos}.npy')
+    # #     np.save(Z_path, data)
+
+    # #     fig = plt_model(x,y,nr_r, xlabel=xlabel, ylabel=clabel, clabel=ylabel, exclude_nan=exclude_nan_u)
+    # #     State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[br_key]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)

@@ -859,10 +859,10 @@ def log_2d_histograms(
 
     filter = create_filter_function(names, sigmas, delta,
                                     exclude=exclude,
-                                    needs_scalp=False,
+                                    needs_scalp=True,
                                     needs_splinters=True)
 
-    specimens: list[Specimen] = Specimen.get_all_by(filter, max_n=maxspecimen, load=False)
+    specimens: list[Specimen] = Specimen.get_all_by(filter, max_n=maxspecimen, load=True)
 
     assert len(specimens) > 0, "[red]No specimens loaded.[/red]"
 
@@ -1006,11 +1006,11 @@ def create_filter_function(name_filter,
         elif needs_scalp and not specimen.has_scalp:
             print(f"Specimen '{specimen.name}' has no scalp data. Skipping.")
             return False
-        elif sigmas is not None:
-            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
         elif needs_splinters and not specimen.has_splinters:
             print(f"Specimen '{specimen.name}' has no splinter data. Skipping.")
             return False
+        elif sigmas is not None:
+            return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
 
         return True
 
@@ -1039,7 +1039,7 @@ def log_histograms(
 
 
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
-    specimens = Specimen.get_all_by(filter, load=False)
+    specimens = Specimen.get_all_by(filter, load=True)
 
     if len(specimens) == 0:
         print("[red]No specimens loaded.[/red]")
@@ -1372,7 +1372,7 @@ def nfifty(
 
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=False)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=True)
 
     centers = [
         [450,50],

@@ -15,6 +15,7 @@ import typer
 from apread import APReader, Channel
 from rich import print
 from rich.progress import track
+from fracsuite.core.plotting import FigureSize
 from fracsuite.state import State
 
 from fracsuite.general import GeneralSettings
@@ -48,7 +49,7 @@ def set_prim_sec_sensors(specimen: Specimen):
 
 def annotate_runtimes(specimen: Specimen, ax: Axes, with_text = True) -> tuple[float, float, float]:
     # wave and crackfront velocities
-    v_p = 5500 * 1e3
+    v_p = 5500 * 1e3 # mm/s
     v_s = 3500 * 1e3
     v_c = 1500 * 1e3
 
@@ -571,7 +572,7 @@ def plot_impact(
     fig.tight_layout()
     plt.show()
 
-    State.output(fig, specimen)
+    State.output(fig, "acceleration-impact", spec=specimen, figwidth=FigureSize.ROW1HL)
 
 
 def get_impact_time(channel: Channel):
