@@ -99,7 +99,7 @@ def extract_details(
         cv2.line(img, scale_pos, (int(scale_pos[0]+scale_px), int(scale_pos[1])), (0,0,0), 2)
         _, sz = cv2.getTextSize(f"{scale_length}mm", cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.putText(img, f"{scale_length}mm", (int(scale_pos[0]), int(scale_pos[1]-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
-        cv2.imwrite(os.path.join(output_path, f), img)
+        cv2.imwrite(os.path.join(output_path, f) + ".png", img)
 
 
 

@@ -197,7 +197,7 @@ def interp_impact_layer(model_path, U):
 
     return r_func
 
-def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="~",interpolate=True) -> Figure:
+def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="~",interpolate=True,figwidth=FigureSize.ROW1) -> Figure:
     """
     Plots a given layer on a 2d contour plot.
 
@@ -235,7 +235,7 @@ def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="
     Z = griddata(filtered_points, filtered_nr_r, (X, Y), method='nearest' if not interpolate else 'linear')
 
 
-    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    fig,axs = plt.subplots(figsize=get_fig_width(figwidth))
     cmesh = axs.pcolormesh(X,Y,Z,shading='auto',cmap='turbo')
     cbar = fig.colorbar(cmesh, label=clabel, ax=axs)
     renew_ticks_cb(cbar)

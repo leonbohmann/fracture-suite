@@ -7,6 +7,8 @@ from matplotlib import colors as pltc
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+import matplotlib.ticker as ticker
+
 from rich.progress import track
 
 from fracsuite.callbacks import main_callback
@@ -38,6 +40,7 @@ def plot(
     boundary: Annotated[SpecimenBoundary, typer.Argument(help="Boundary condition")],
     ignore_nan_plot: Annotated[bool, typer.Option(help="Filter NaN values")] = True,
     file: Annotated[str, typer.Option(help="File that contains the model")] = None,
+    figwidth: Annotated[FigureSize, typer.Option(help="Figure width")] = FigureSize.ROW2,
 ):
     if file is not None:
         R,U,V = load_layer_file(file)
@@ -45,13 +48,19 @@ def plot(
         model_name = f'{layer}_{mode}_{boundary}_corner.npy'
         R,U,V = load_layer(model_name)
 
+
     xlabel = 'Distance $R$ from Impact [mm]'
     ylabel = 'Elastic Strain Energy U [J/m²]'
+
+    if figwidth == FigureSize.ROW3:
+        xlabel = 'Distance $R$ [mm]'
+        ylabel = '$U$ [J/m²]'
+
     clabel = Splinter.get_mode_labels(mode)
 
     fig = plt_layer(R,U,V,ignore_nan=ignore_nan_plot, xlabel=xlabel, ylabel=ylabel, clabel=clabel,
-                    interpolate=False)
-    State.output(StateOutput(fig, FigureSize.ROW2), f"{layer}-2d_{mode}_{boundary}")
+                    interpolate=False,figwidth=figwidth)
+    State.output(StateOutput(fig, figwidth), f"{layer}-2d_{mode}_{boundary}")
     plt.close(fig)
 
 @layer_app.command()
@@ -276,11 +285,11 @@ def create_impact_layer_intensity(
 
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=False, max_n=1)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True, max_n=1)
     sz = FigureSize.ROW1
 
     for spec in specimens:
-        result = spec.calculate_fracture_intensity_2d_polar()
+        result = spec.calculate_2d_polar()
 
         X = result[0,1:]
         Y = result[1:,0]
@@ -310,6 +319,8 @@ def create_impact_layer(
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
     ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
+    thickness: Annotated[float, typer.Option(help='Specimen thickness.')] = None,
+    exclude_names: Annotated[str, typer.Option(help='Exclude specimens with these names. Seperated by comma.')] = "",
 ):
     bid = {
         'A': 1,
@@ -323,6 +334,9 @@ def create_impact_layer(
     }
     # inverse bid
     bid_r = {v: k for k, v in bid.items()}
+
+    if exclude_names != "":
+        exclude_names = exclude_names.split(',')
 
     def add_filter(specimen: Specimen):
         if break_pos is not None and specimen.break_pos != break_pos:
@@ -340,9 +354,15 @@ def create_impact_layer(
         if specimen.U_d is None or not np.isfinite(specimen.U_d):
             return False
 
+        if thickness is not None and specimen.thickness != thickness:
+            return False
+
+        if specimen.name in exclude_names:
+            return False
+
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=False)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True)
 
 
     sz = FigureSize.ROW1
@@ -389,7 +409,7 @@ def create_impact_layer(
         # take moving average
         r1,l1,stddev1 = moving_average(aspects[:,0], aspects[:,1], r_range)
 
-        results[si,0] = specimen.U_d
+        results[si,0] = specimen.U
         results[si,1] = bid[specimen.boundary]
         results[si,2] = si
         results[si,3:] = l1
@@ -460,7 +480,7 @@ def create_impact_layer(
         # data_stddev[0,1:] = r_range
         # np.save(stddev_path, data_stddev)
 
-        plot(ModelLayer.IMPACT, mode=mode, boundary=bid_r[b], ignore_nan_plot=ignore_nan_u)
+        plot(ModelLayer.IMPACT, mode=mode, boundary=bid_r[b], ignore_nan_plot=ignore_nan_u,figwidth=FigureSize.ROW3)
 
 
         # this plots the standard deviation between different energy levels
@@ -557,12 +577,17 @@ def create_impact_layer(
     xlabel = "Distance R [mm]"
     ylabel = Splinter.get_mode_labels(mode, row3=True)
     clabel = "U [J/m²]"
+
+    def fmt(x, pos):
+        return f"{x:.0f}"
+
     for i_f, (f,a) in enumerate(bfigs):
         a.set_xlabel(xlabel)
         a.set_ylabel(ylabel)
-        cbar = f.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=a)
+        cbar = f.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=a, format=ticker.FuncFormatter(fmt))
         renew_ticks_cb(cbar)
-        State.output(StateOutput(f,FigureSize.ROW3), f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
+        outname = f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}' if thickness is None else f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}_t{thickness:.0f}'
+        State.output(StateOutput(f,FigureSize.ROW3), outname, to_additional=True)
 
     # ##
     # ## PLOT interpolated data as 2d plot for every boundary
@@ -868,6 +893,8 @@ def compare_boundaries(
 def graph_impact_layer(
     specimen_name: Annotated[str, typer.Argument(help='Specimen name.')],
     mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+    colored_angle: Annotated[bool, typer.Option(help='Color the scatterplot by angle to impact.')] = False,
+    plot_stddev: Annotated[bool, typer.Option(help='Plot standard deviation behind lineplot.')] = False,
 ):
     specimen = Specimen.get(specimen_name, load=True)
 
@@ -884,7 +911,7 @@ def graph_impact_layer(
     ########################
     results = np.full((len(r_range)+1),np.nan)
     stddevs = np.full((len(r_range)+1),np.nan)
-
+    amounts = np.full((len(r_range)),np.nan)
     # now, find aspect ratio of all splinters
     aspects = np.zeros((len(specimen.splinters), 3)) # 0: radius, 1: aspect ratio
     ip = specimen.get_impact_position()
@@ -898,7 +925,7 @@ def graph_impact_layer(
         r = np.linalg.norm(dp)
 
         # get data from splinter
-        a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
+        data = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
 
         # calculate angle to impact
         # print(dv)
@@ -907,7 +934,7 @@ def graph_impact_layer(
         if np.deg2rad(-20) > angle > np.deg2rad(90):
             continue
 
-        aspects[i,:] = (r, a, angle) # (r, a)
+        aspects[i,:] = (r, data, angle) # (r, a)
 
     # sort after the radius
     aspects = aspects[aspects[:,0].argsort()]
@@ -922,6 +949,7 @@ def graph_impact_layer(
     stddevs[1:] = stddev1
 
 
+
     # plot the results in a graph
     sz = FigureSize.ROW1HL
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
@@ -932,17 +960,41 @@ def graph_impact_layer(
     y_values = aspects[:,1]
     c_values = aspects[:,2]
 
-    # plot x and y with c as colors
-    scatter = axs.scatter(x_values, y_values, c=c_values, cmap='turbo', s=1.5, alpha=0.6)
+    if not colored_angle:
+        c_values = None
+        axs.scatter(x_values, y_values, linewidth=0.5, marker='o', color=clr, s=1.5, alpha=0.1)
+    else:
+        # plot x and y with c as colors
+        scatter = axs.scatter(x_values, y_values, c=c_values, cmap='turbo', s=1.5, alpha=0.1)
+        # add colorbar
+        cbar = fig.colorbar(scatter, label="Angle to impact [°]", ax=axs)
+        renew_ticks_cb(cbar)
 
     # lineplot
-    axs.plot(r_range, results[1:], color=clr, linestyle='-')
+    axs.plot(r_range, results[1:], color='r', linestyle='-')
+
+    # count amount of splinters in each bin
+    for i in range(len(r_range)):
+        if i == len(r_range)-1:
+            mask = (aspects[:,0] >= r_range[i])
+        else:
+            mask = (aspects[:,0] >= r_range[i]) & (aspects[:,0] < r_range[i+1])
+        amounts[i] = np.sum(mask)
+
+    if plot_stddev:
+
+        # fill stddev behind lineplot
+        axs.fill_between(r_range, results[1:]-stddevs[1:], results[1:]+stddevs[1:], color='r', alpha=0.2)
+
+
+    # plot amounts to secondary axis
+    axs2 = axs.twinx()
+    axs2.set_ylabel("Amount of splinters [-]")
+    axs2.grid(False)
+    axs2.plot(r_range, amounts, color='g', linestyle='--')
 
     axs.set_xlabel("Distance from impact R [mm]")
     axs.set_ylabel(Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3))
 
-    # add colorbar
-    cbar = fig.colorbar(scatter, label="Angle to impact [°]", ax=axs)
-    renew_ticks_cb(cbar)
 
     State.output(StateOutput(fig,sz), f'graph-{specimen_name}_{mode}', to_additional=True)

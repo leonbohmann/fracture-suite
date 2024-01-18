@@ -229,8 +229,7 @@ class Specimen(Outputtable):
             "break_mode": "punch",
             "break_pos": "corner",
             "fall_height_m": 0.07,
-            "real_size_mm": (500,500),
-            "img_size_px": (2000,2000)
+            "real_size_mm": (500,500)
         }
 
         # load settings from config and overwrite defaults
@@ -355,8 +354,7 @@ class Specimen(Outputtable):
     def get_image_size(self):
         """Returns the size of the specimen in px."""
         img = self.get_fracture_image()
-        if img is None:
-            return self.settings['img_size_px']
+        assert img is not None, f"Fracture image not found in {self.name}."
 
         return img.shape[1], img.shape[0]
 
@@ -662,22 +660,19 @@ class Specimen(Outputtable):
         E = 70e3
         return 1e6 * (128/125) * (1-nue)/E * (self.scalp.sig_h ** 2)
 
-    def calculate_fracture_intensity_2d_polar(self,D_mm: float = 50) -> np.ndarray:
+    def calculate_2d_polar(
+        self,
+        D_mm: float = 50,
+        value_calculator: Callable = None) -> np.ndarray:
         """
-        Calculate the fracture intensity in 2D.
+        Calculate a value in polar 2D.
 
         Returns:
             A 2D Array with the fracture intensity values.
             The first dimension is the distance from the impact point and
             the second dimension is the angle.
 
-        Example:
-            ```python
-            result = resample(X,Y,Z, 30, 15)
-            rx = result[0,1:]
-            ry = result[1:,0]
-            rz = result[1:,1:]
-            ```
+
         """
         region = self.settings['real_size_mm']
         impact_position = self.get_impact_position()
@@ -688,37 +683,25 @@ class Specimen(Outputtable):
             skip_edge=True,
         )
 
+        if value_calculator is None:
+            def value_calculator(x):
+                return len(x)
+
+
         X, Y, Z = kernel.run(
-            lambda x: len(x),
+            value_calculator,
             D_mm,
             50,
             mode="area",
             fill_skipped_with_mean=True
         )
 
-        # output = plot_kernel_results(
-        #     self.get_fracture_image(),
-        #     clr_label="Fracture Intensity",
-        #     no_ticks=True,
-        #     plot_vertices=False,
-        #     mode=KernelContourMode.FILLED,
-        #     X=X,
-        #     Y=Y,
-        #     results=Z,
-        #     kw_px=D_mm*self.calculate_px_per_mm(),
-        #     figwidth=FigureSize.ROW1,
-        #     clr_format='.1f',
-        # )
-
-        # State.output(output, "fracture_intensity_2d_test", spec=self)
-
-        # print(X)
-
         # create lists with transformed values
         distances = []
         angles = []
         values = []
 
+        # transform X,Y coordinates to polar coordinates
         for i in range(Z.shape[0]):
             for j in range(Z.shape[1]):
                 p = np.array((X[j,i],Y[j,i]))
@@ -736,8 +719,8 @@ class Specimen(Outputtable):
 
         # distances, angles, values = sort_arrays(distances, angles, values)
 
-        print(distances)
-        print(angles)
+        # print(distances)
+        # print(angles)
 
         # sample the data into another array
         return resample(distances, angles, values, 20, 10)

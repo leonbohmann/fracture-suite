@@ -18,10 +18,21 @@ def sort_arrays(*arrays, reversed=False,keyoverride=None) -> tuple:
 
 def resample(X, Y, Z, nx=50, ny=30):
     """
-    Resample a 2D array to a new size using spline interpolation.
+    Resample lists of arrays to a new size using spline interpolation.
 
     The resulting array has shape (nx+1, ny+1) and the first row and column
     are the x and y values. The rest is the z values.
+
+    Returns:
+        np.ndarray: The resampled array, now 2D with shape (nx+1, ny+1).
+
+    Example:
+    ```python
+        result = resample(X,Y,Z, 30, 15)
+        rx = result[0,1:]
+        ry = result[1:,0]
+        rz = result[1:,1:]
+    ```
     """
     assert len(X) == len(Y) == len(Z), "X, Y and Z must have the same length"
 
