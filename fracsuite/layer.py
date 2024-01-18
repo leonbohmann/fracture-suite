@@ -1,4 +1,5 @@
 from typing import Annotated
+import cv2
 
 import numpy as np
 from sympy import false
@@ -242,6 +243,7 @@ def create_base_layer(
 
 @layer_app.command()
 def create_impact_layer_intensity(
+    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
     specimen_name: Annotated[str, typer.Option(help='Specimen name.')] = None,
@@ -288,8 +290,22 @@ def create_impact_layer_intensity(
     specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True, max_n=1)
     sz = FigureSize.ROW1
 
+    if mode == 'intensity':
+        def value_calculator(x):
+            return len(x)
+
+        clrlabel = 'Fracture Intensity $N_{50}$ [-]'
+    else:
+
+        clrlabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+
     for spec in specimens:
-        result = spec.calculate_2d_polar()
+        if mode != 'intensity':
+            def value_calculator(x: list[Splinter]):
+                return np.mean([s.get_splinter_data(prop=mode, ip=spec.get_impact_position()) for s in x])
+
+
+        result = spec.calculate_2d_polar(value_calculator=value_calculator)
 
         X = result[0,1:]
         Y = result[1:,0]
@@ -304,14 +320,14 @@ def create_impact_layer_intensity(
         # axs.imshow(Z, cmap='turbo')
         X, Y = np.meshgrid(X, Y, indexing='xy')
         mesh = axs.pcolormesh(X, Y, Z, shading='auto', cmap='turbo')
-        cbar = fig.colorbar(mesh, label='Fracture Intensity $N_{50}$ [-]')
+        cbar = fig.colorbar(mesh, label=clrlabel)
         renew_ticks_cb(cbar)
 
 
         axs.set_xlabel("Distance to Impact [mm]")
         axs.set_ylabel("Angle to Impact [°]")
         axs.autoscale()
-        State.output(StateOutput(fig, sz), f"intensity-2d_{spec.name}", to_additional=True)
+        State.output(StateOutput(fig, sz), f"{mode}-2d_{spec.name}", to_additional=True)
 
 @layer_app.command()
 def create_impact_layer(
@@ -412,7 +428,7 @@ def create_impact_layer(
         results[si,0] = specimen.U
         results[si,1] = bid[specimen.boundary]
         results[si,2] = si
-        results[si,3:] = l1
+        results[si,3:] = l1 # / np.max(l1) # normalization
 
         stddevs[si,0] = results[si,0]
         stddevs[si,1] = results[si,1]
@@ -998,3 +1014,26 @@ def graph_impact_layer(
 
 
     State.output(StateOutput(fig,sz), f'graph-{specimen_name}_{mode}', to_additional=True)
+
+
+
+@layer_app.command()
+def plot_layer_regions(n_r: int, n_t: int, break_pos: SpecimenBreakPosition, w: int, h: int):
+    f = 3
+    img_w = w * f
+    img_h = h * f
+
+
+    img = np.full((img_w,img_h,3), (255,255,255), dtype=np.uint8)
+    stroke = 5 * f
+    blk = (0,0,0)
+
+    # draw a square in the center
+    cv2.rectangle(img, (0,0), (img_w,img_h), blk, stroke)
+
+    # add polar coordinates with nr and nt steps
+
+
+
+    plt.imshow(img)
+    plt.show()

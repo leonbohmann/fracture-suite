@@ -1225,7 +1225,13 @@ def splinter_orientation(specimen_name: Annotated[str, typer.Argument(help='Name
                 print(f"Error: {e}")
         n += 1
 
-
+@app.command()
+def get_energy(
+    specimen_name: str = typer.Argument(help='Name of specimen to load'),
+):
+    specimen = Specimen.get(specimen_name, load=True)
+    print(f"U_d={specimen.U_d:.2f} J/m²")
+    print(f"U={specimen.U:.2f} J/m²")
 
 @app.command()
 def ud(sigma: float) -> float:

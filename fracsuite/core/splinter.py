@@ -833,7 +833,7 @@ class Splinter:
         elif mode == SplinterProp.ROUGHNESS:
             ylabel = "Roughness " + ylabel
         elif mode == SplinterProp.ASP:
-            ylabel = "Aspect ratio " + ylabel
+            ylabel = "Weighted Aspect ratio " + ylabel
         elif mode == SplinterProp.ASP0:
             ylabel = "Aspect ratio " + ylabel
         elif mode == SplinterProp.L1:
