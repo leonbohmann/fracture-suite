@@ -18,11 +18,18 @@ from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPos
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import moving_average
+from fracsuite.core.vectors import angle_deg
 from fracsuite.general import GeneralSettings
 from fracsuite.state import State, StateOutput
 
 layer_app = typer.Typer(callback=main_callback, help="Model related commands.")
 general = GeneralSettings.get()
+
+bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
 
 @layer_app.command()
 def plot(
@@ -190,7 +197,7 @@ def create_base_layer(
             values[id,1] = bid[spec.boundary]
             values[id,2] = spec.measured_thickness
             values[id,3] = spec.calculate_break_lambda()
-            values[id,4] = spec.calculate_break_rhc()
+            values[id,4] = spec.calculate_break_rhc()[0]
 
     # sort value after first column
     values = values[values[:,0].argsort()]
@@ -855,3 +862,87 @@ def compare_boundaries(
 
     # #     fig = plt_model(x,y,nr_r, xlabel=xlabel, ylabel=clabel, clabel=ylabel, exclude_nan=exclude_nan_u)
     # #     State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[br_key]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
+
+
+@layer_app.command()
+def graph_impact_layer(
+    specimen_name: Annotated[str, typer.Argument(help='Specimen name.')],
+    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+):
+    specimen = Specimen.get(specimen_name, load=True)
+
+    # find aspect over R on every specimen
+    n_r = 30
+    r_min = 0
+    r_max = np.sqrt(450**2 + 450**2)
+    r_range = np.linspace(r_min, r_max, n_r, endpoint=False)
+
+    clr = "rkb"[bid[specimen.boundary]]
+
+    ########################
+    # Calculate value for every specimen and save results to arrays
+    ########################
+    results = np.full((len(r_range)+1),np.nan)
+    stddevs = np.full((len(r_range)+1),np.nan)
+
+    # now, find aspect ratio of all splinters
+    aspects = np.zeros((len(specimen.splinters), 3)) # 0: radius, 1: aspect ratio
+    ip = specimen.get_impact_position()
+    px_p_mm = specimen.calculate_px_per_mm()
+    for i, s in enumerate(specimen.splinters):
+        # calculate distance to impact point
+        p = np.asarray(s.centroid_mm)
+        dp = p - ip
+
+        # distance
+        r = np.linalg.norm(dp)
+
+        # get data from splinter
+        a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
+
+        # calculate angle to impact
+        # print(dv)
+        angle = angle_deg(dp)
+        # # angle should be between 30 and 60 degrees
+        if np.deg2rad(-20) > angle > np.deg2rad(90):
+            continue
+
+        aspects[i,:] = (r, a, angle) # (r, a)
+
+    # sort after the radius
+    aspects = aspects[aspects[:,0].argsort()]
+
+    # take moving average
+    r1,l1,stddev1 = moving_average(aspects[:,0], aspects[:,1], r_range)
+
+    results[0] = specimen.U_d
+    results[1:] = l1
+
+    stddevs[0] = results[0]
+    stddevs[1:] = stddev1
+
+
+    # plot the results in a graph
+    sz = FigureSize.ROW1HL
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+
+    # scatterplot aspects
+    x_values = aspects[:,0]
+    y_values = aspects[:,1]
+    c_values = aspects[:,2]
+
+    # plot x and y with c as colors
+    scatter = axs.scatter(x_values, y_values, c=c_values, cmap='turbo', s=1.5, alpha=0.6)
+
+    # lineplot
+    axs.plot(r_range, results[1:], color=clr, linestyle='-')
+
+    axs.set_xlabel("Distance from impact R [mm]")
+    axs.set_ylabel(Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3))
+
+    # add colorbar
+    cbar = fig.colorbar(scatter, label="Angle to impact [°]", ax=axs)
+    renew_ticks_cb(cbar)
+
+    State.output(StateOutput(fig,sz), f'graph-{specimen_name}_{mode}', to_additional=True)

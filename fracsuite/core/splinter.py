@@ -22,7 +22,7 @@ from fracsuite.core.preps import PreprocessorConfig
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter_props import SplinterProp
 
-from fracsuite.core.vectors import alignment_between, alignment_cossim, angle_between
+from fracsuite.core.vectors import alignment_between, alignment_cossim, angle_between, angle_deg
 from fracsuite.state import State
 
 class Splinter:
@@ -782,6 +782,10 @@ class Splinter:
         elif prop == SplinterProp.L1_WEIGHTED:
             assert ip is not None, "Impact point must be set to calculate weighted l1-length"
             a = self.measure_size()[0] / self.calculate_px_per_mm() * self.measure_orientation(ip)
+        elif prop == SplinterProp.ANGLE:
+            assert ip is not None, "Impact point must be set to calculate angle"
+            dp = np.array(self.centroid_mm) - np.array(ip)
+            a = angle_deg(dp)
         # elif prop == SplinterProp.ANGLE:
         #     _, _, angle = cv2.minAreaRect(self.contour)
         #     a = angle
@@ -811,8 +815,8 @@ class Splinter:
             ylabel = "$\Delta \cdot L_1$ [mm]"
         elif mode == SplinterProp.CIRCUMFENCE:
             ylabel = "Circumference [mm]"
-        # elif mode == SplinterProp.ANGLE:
-        #     ylabel = "Angle [°]"
+        elif mode == SplinterProp.ANGLE:
+            ylabel = "Angle [°]"
         else:
             raise Exception(f"Invalid splinter-prop '{mode}'")
         if row3:
@@ -840,8 +844,8 @@ class Splinter:
             ylabel = "Weighted height " + ylabel
         elif mode == SplinterProp.CIRCUMFENCE:
             ylabel = "Circumference " + ylabel
-        # elif mode == SplinterProp.ANGLE:
-        #     ylabel = "Angle " + ylabel
+        elif mode == SplinterProp.ANGLE:
+            ylabel = ylabel
         else:
             raise Exception(f"Missing or invalid splinter-prop '{mode}'")
         return ylabel

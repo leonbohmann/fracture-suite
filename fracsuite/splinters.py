@@ -22,7 +22,7 @@ from rich import inspect, print
 from rich.progress import track
 
 from fracsuite.callbacks import main_callback
-from fracsuite.core.arrays import sort_two_arrays
+from fracsuite.core.arrays import sort_arrays, sort_two_arrays
 from fracsuite.core.calculate import pooled
 from fracsuite.core.coloring import get_color, rand_col
 from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
@@ -1423,7 +1423,12 @@ def nfifty(
         return 0.255 * x ** 2 + 109.28 * x + 5603.2
 
 
-    sz = FigureSize.ROW2
+    sz = FigureSize.ROW3
+
+    if sz == FigureSize.ROW3:
+        for idn in id_name:
+            id_name[idn] = " ".join(id_name[idn].split(" ")[-2:])
+
     min_N50 = 0
     max_N50 = 400
 
@@ -1443,7 +1448,8 @@ def nfifty(
             marker='o',
             facecolors='none',
             edgecolors='k',
-            linewidth=0.6
+            linewidth=0.6,
+            alpha = 0.4
         )
     for it, thick in enumerate(thicknesses):
         clr = tcolors[it+1]
@@ -1520,7 +1526,27 @@ def nfifty(
         axs.plot(ux, u12y, linestyle='--', color=tcolors[3], alpha=0.4)
 
     elif id == 1:
-        axs.plot(ux, udy, label="P-Mogh. (2020)", linestyle='--', color='k')
+        axs.plot(ux, udy, label="P-Mogh. (2020)", linestyle='--', color='k', alpha=0.4)
+        # fit a curve into all scattered points
+        x = np.concatenate([results[:,-1], navid_x])
+        y = np.concatenate([results[:,id], navid_y])
+
+        # sort for x
+        x,y = sort_arrays(x,y)
+
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+
+        # fit a curve to x and y
+        def func(x, a, b):
+            return np.float64(a * x + b)
+
+        popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
+
+        # plot the curve
+        x = np.linspace(np.min(x), np.max(x), 100)
+        y = func(x, *popt)
+        axs.plot(x, y, linestyle=(0,(1,1)), color='k', alpha=1, label='Bohmann (2024)')
 
     # labeling for leons data
     for b,t in zip(bid.values(), thicknesses):
@@ -1530,7 +1556,7 @@ def nfifty(
 
     axs.set_ylabel(id_name[id])
     axs.set_xlabel("Fragment Density $N_{50}$")
-    axs.legend(loc='best')
+    # axs.legend(loc='best')
 
     name = 'nfifty' if not use_mean else 'nperwindow'
     State.output(StateOutput(fig, sz), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)

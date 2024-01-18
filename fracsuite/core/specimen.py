@@ -23,7 +23,7 @@ from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.vectors import angle_abs, angle_abs_deg, angle_between
+from fracsuite.core.vectors import angle_abs, angle_deg, angle_between
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -71,6 +71,8 @@ class Specimen(Outputtable):
     "Key for the fracture intensity in the simdata file."
     KEY_HCRADIUS: str = "hc_radius"
     "Key for the hard core radius in the simdata file."
+    KEY_ACCEPTANCE_PROB: str = "acceptance_prob"
+    "Key for the acceptance probability in the simdata file."
     KEY_LAMBDA: str = "lambda"
     "Key for the fracture intensity parameter in the simdata file."
     KEY_NFIFTY: str = "nfifty"
@@ -497,17 +499,20 @@ class Specimen(Outputtable):
         """
 
         r1 = self.simdata.get(Specimen.KEY_HCRADIUS, None)
+        acceptance = self.simdata.get(Specimen.KEY_ACCEPTANCE_PROB, None)
 
-        if force_recalc or r1 is None:
+        if force_recalc or r1 is None or acceptance is None:
             all_centroids = np.array([s.centroid_px for s in self.splinters])
             pane_size = self.get_image_size()
             x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], d_max)
             min_idx = np.argmin(y2)
             r1 = x2[min_idx]
+            acceptance = min_idx / len(y2)
 
+            self.update_simdata(Specimen.KEY_ACCEPTANCE_PROB, acceptance)
             self.update_simdata(Specimen.KEY_HCRADIUS, r1)
 
-        return r1
+        return r1,acceptance
 
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. px/mm."""
@@ -553,6 +558,10 @@ class Specimen(Outputtable):
         pane_size = self.get_image_size()
         x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], max_d)
         return x2,y2
+
+    def lfun_acceptance(self, rhc, max_d = 50):
+        x,y = self.lfun(max_d)
+
 
     def get_splinters_in_region(self, region: RectRegion) -> list[Splinter]:
         in_region = []
@@ -717,7 +726,7 @@ class Specimen(Outputtable):
                 # print(p)
                 dp = p - impact_position
                 # print(dv)
-                angle = angle_abs_deg(dp)
+                angle = angle_deg(dp)
                 dst = np.linalg.norm(dp)
 
                 distances.append(dst)
@@ -780,7 +789,7 @@ class Specimen(Outputtable):
         if not os.path.isdir(path):
             raise SpecimenException(f"Specimen '{name}' not found.")
 
-        return Specimen(path, load=not load)
+        return Specimen(path, load=load)
 
     @staticmethod
     def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = False) \

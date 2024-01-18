@@ -90,9 +90,10 @@ def est_break(
     intensity = specimen.calculate_break_lambda(force_recalc=True)
 
     # find the hard core radius using second order statistics
-    rhc = specimen.calculate_break_rhc(force_recalc=True)
+    rhc,acceptance = specimen.calculate_break_rhc(force_recalc=True)
     print(f'Fracture intensity: {intensity:.2f} 1/mm²')
     print(f'HC Radius: {rhc:.2f} mm')
+    print(f'Acceptance: {acceptance:.2f}')
 
     def Kpois(d):
         # see Baddeley et al. S.206 K_pois
@@ -119,6 +120,13 @@ def est_break(
     ax.set_ylabel('$\hat{L}(d)$')
     ax.set_xlabel('$d$ [mm]')
     State.output(fig, 'lfunc', spec=specimen, figwidth=FigureSize.ROW2)
+
+    # find the acceptance probability by finding radii smaller than rhc
+    # and dividing it by the total number of point pairs
+    # calculate the total number of point pairs
+    n_points = len(specimen.splinters)
+    # calculate the number of point pairs with distance < rhc
+
 
 
 @sim_app.command()
