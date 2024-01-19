@@ -337,6 +337,7 @@ def create_impact_layer(
     ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
     thickness: Annotated[float, typer.Option(help='Specimen thickness.')] = None,
     exclude_names: Annotated[str, typer.Option(help='Exclude specimens with these names. Seperated by comma.')] = "",
+    normalize: Annotated[bool, typer.Option(help='Normalize specimen value ranges.')] = False,
 ):
     bid = {
         'A': 1,
@@ -428,7 +429,7 @@ def create_impact_layer(
         results[si,0] = specimen.U
         results[si,1] = bid[specimen.boundary]
         results[si,2] = si
-        results[si,3:] = l1 # / np.max(l1) # normalization
+        results[si,3:] = l1 / (np.max(l1) if normalize else 1) # normalization
 
         stddevs[si,0] = results[si,0]
         stddevs[si,1] = results[si,1]
