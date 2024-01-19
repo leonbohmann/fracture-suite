@@ -2,7 +2,6 @@ from typing import Annotated
 import cv2
 
 import numpy as np
-from sympy import false
 import typer
 from matplotlib import colors as pltc
 from matplotlib import pyplot as plt
@@ -14,7 +13,7 @@ from rich.progress import track
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
-from fracsuite.core.model_layers import ModelLayer, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
+from fracsuite.core.model_layers import ModelLayer, arrange_regions, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
 from fracsuite.core.plotting import FigureSize, KernelContourMode, get_fig_width, plot_kernel_results, renew_ticks_cb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition, SpecimenBreakMode
@@ -1016,24 +1015,46 @@ def graph_impact_layer(
 
     State.output(StateOutput(fig,sz), f'graph-{specimen_name}_{mode}', to_additional=True)
 
-
-
 @layer_app.command()
-def plot_layer_regions(n_r: int, n_t: int, break_pos: SpecimenBreakPosition, w: int, h: int):
-    f = 3
-    img_w = w * f
-    img_h = h * f
+def plot_layer_regions(d_r: int, d_t: int, break_pos: SpecimenBreakPosition, w_mm: int, h_mm: int):
+    """
+    Plots a 2D representation of polar layer regions.
+    """
+    f = 5
+    r_range, t_range = arrange_regions(f, d_r, d_t, break_pos, w_mm, h_mm)
+
+
+    img_w = int(w_mm * f)
+    img_h = int(h_mm * f)
+    ip_x,ip_y = break_pos.position()
+    ip_x = int(ip_x * f)
+    ip_y = int(ip_y * f)
+
+    r_max = np.max(r_range) * 1.3
 
 
     img = np.full((img_w,img_h,3), (255,255,255), dtype=np.uint8)
-    stroke = 5 * f
+    stroke = 1 * f
     blk = (0,0,0)
+    red = (0,0,255)
 
     # draw a square in the center
     cv2.rectangle(img, (0,0), (img_w,img_h), blk, stroke)
 
-    # add polar coordinates with nr and nt steps
+    # add circles
+    for r in r_range:
+        # draw circle
+        cv2.circle(img, (int(ip_x),int(ip_y)), int(r), blk, stroke)
+        # annotate circle wth radius
+        cv2.putText(img, f"{r/f:.0f}", (int(ip_x+r),int(ip_y)), cv2.FONT_HERSHEY_DUPLEX, 1, blk, stroke // 2)
 
+    for t in t_range:
+        cv2.line(img, (int(ip_x),int(ip_y)), (int(ip_x+r_max*np.cos(t)),int(ip_y+r_max*np.sin(t))), blk, stroke)
+        # annotate at a distance from ip
+        cv2.putText(img, f"{np.degrees(t):.0f} deg", (int(ip_x+r_max/2*np.cos(t)),int(ip_y+r_max/2*np.sin(t))), cv2.FONT_HERSHEY_DUPLEX, 1, blk, stroke // 2)
+
+    # mark impact red
+    cv2.circle(img, (int(ip_x),int(ip_y)), stroke*2, red, -1)
 
 
     plt.imshow(img)

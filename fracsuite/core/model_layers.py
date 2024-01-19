@@ -270,3 +270,39 @@ def get_l1(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
         Callable[[float], float]: A function that takes the radius and returns the aspect ratio.
     """
     return interp_impact_layer(f'impact-layer_l1_{boundary}_corner.npy', U)
+
+
+
+def arrange_regions(
+    px_per_mm: float,
+    d_r_mm: int = 50,
+    d_t_deg: int = 15,
+    break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
+    w_mm: int = 500,
+    h_mm: int = 500,
+):
+    """
+
+    """
+    img_w = w_mm * px_per_mm
+    img_h = h_mm * px_per_mm
+
+
+    # get break position and convert to px
+    ip_x, ip_y = break_pos.position()
+    ip_x = int(ip_x * px_per_mm)
+    ip_y = int(ip_y * px_per_mm)
+
+    # maximum radius
+    r_max = np.sqrt((img_w-ip_x)**2 + (img_h-ip_y)**2)
+
+    # calculate angle and radius steps
+    n_t = int(360 / d_t_deg)
+
+
+    # radius range
+    r_range = np.arange(0, r_max, d_r_mm * px_per_mm)
+    # angle range
+    t_range = np.linspace(0, 2*np.pi, n_t, endpoint=False)
+
+    return r_range,t_range
