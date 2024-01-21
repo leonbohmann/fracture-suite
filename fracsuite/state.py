@@ -33,8 +33,9 @@ class StateOutput:
     is_image: bool
     is_figure: bool
 
+    img_ext: str
 
-    def __init__(self, data, figwidth, **additional_data):
+    def __init__(self, data, figwidth, img_ext = None, **additional_data):
         assert isinstance(data, Figure) or type(data).__module__ == np.__name__, f"Data must be a matplotlib figure or a numpy array. Is '{type(data)}'."
 
         self.Data = data
@@ -47,6 +48,8 @@ class StateOutput:
 
         self.has_detailed_image = 'img_detailed' in additional_data
 
+        self.img_ext = img_ext
+
         # if self.is_figure:
         #     sz = get_fig_width(figwidth)
         #     self.Data.set_size_inches(sz[0], sz[1])
@@ -57,9 +60,10 @@ class StateOutput:
         while not saved:
             try:
                 if self.is_image:
+                    extension = self.img_ext if self.img_ext is not None else general.image_extension
                     data = cv2.resize(self.Data, (0, 0), fx=resize_factor, fy=resize_factor)
                     cv2.imwrite(
-                        outfile := f'{path}_{self.FigWidth}.{general.image_extension}',
+                        outfile := f'{path}_{self.FigWidth}.{extension}',
                         data
                     )
                 elif self.is_figure:
