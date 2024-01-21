@@ -15,7 +15,7 @@ from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
-from fracsuite.core.plotting import FigureSize, KernelContourMode, fill_polar_cell, get_fig_width, plot_kernel_results, renew_ticks_cb
+from fracsuite.core.plotting import FigureSize, KernelContourMode, annotate_image, fill_polar_cell, get_fig_width, plot_kernel_results, renew_ticks_cb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition, SpecimenBreakMode
 from fracsuite.core.splinter import Splinter
@@ -1072,7 +1072,7 @@ def test_polar(
     img_overlay = np.zeros_like(img)
     # t_range = np.deg2rad(np.asarray(t_range))
 
-    for r in track(range(len(r_range)-1),total=len(r_range)-1):
+    for r in track(range(len(r_range)-1),total=len(r_range)-1,description='Plotting regions...'):
         for t in range(len(t_range)-1):
             r0,r1 = r_range[r],r_range[r+1]
             t0,t1 = t_range[t],t_range[t+1]
@@ -1091,18 +1091,24 @@ def test_polar(
             # fill cell with color
             img_overlay = fill_polar_cell(img_overlay,ip_px, t0,t1,r0,r1, clr)
 
-    # img = cv2.ellipse(img, (int(ip_px[0]),int(ip_px[1])), (int(r_range[5]*pxpmm),int(r_range[5]*pxpmm)), 0, 355, 360, (0,0,255), 5)
+    result_img = cv2.addWeighted(img, 0.5, img_overlay, 0.5, 0.5)
 
-    fig,axs = plt.subplots(figsize=get_fig_width(sz))
-    axs.imshow(img)
-    axs.imshow(img_overlay, alpha=0.5)
-    plt.show()
+    clr_label = Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3)
+
+    output = annotate_image(
+        result_img,
+        min_value = np.nanmin(Z),
+        max_value = np.nanmax(Z),
+        cbar_title=clr_label,
+        clr_format='.0f',
+        figwidth=sz
+    )
 
 
 
 
 
-    State.output(StateOutput(fig,sz), f'polar-{specimen_name}_{prop}', to_additional=True)
+    State.output(output, f'polar-{specimen_name}_{prop}', to_additional=True)
 
 @layer_app.command()
 def plot_layer_regions(d_r: int, d_t: int, break_pos: SpecimenBreakPosition, w_mm: int, h_mm: int):
