@@ -81,6 +81,8 @@ def gen(
     if realsize[0] == -1 or realsize[1] == -1:
         realsize = None
 
+    specimens: list[Specimen]
+
     if not all:
         filter = create_filter_function(specimen_name, needs_splinters=False)
 
@@ -378,9 +380,14 @@ def import_files(
         print(f"Imported adjacent file for {specimen_name}.")
 
 @app.command()
-def show_prep():
+def show_prep(specimen_name: str = None):
     """Show the default preprocessing configuration."""
-    inspect(defaultPrepConfig)
+    if specimen_name is None:
+        inspect(defaultPrepConfig)
+
+    else:
+        specimen = Specimen.get(specimen_name)
+        inspect(specimen.get_prepconf())
 
 
 @app.command(name='norm')
@@ -578,7 +585,7 @@ def plt_prop(
     px_p_mm = specimen.calculate_px_per_mm()
     prop_values_dict = {}
     for splinter in specimen.splinters:
-        val = splinter.get_splinter_data(prop=prop, ip=ip,px_p_mm=px_p_mm)
+        val = splinter.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=px_p_mm)
         if np.isfinite(val):
             prop_values_dict[splinter.ID] = val
 
@@ -596,6 +603,7 @@ def plt_prop(
 
     # d = np.median(rough) - min_r
     # max_r = np.median(rough) + d
+    overlay_img = np.zeros_like(out_img, dtype=np.uint8)
 
     for splinter in track(specimen.splinters, description="Calculating roughness", transient=True):
         if splinter.ID not in prop_values_dict:
@@ -604,9 +612,13 @@ def plt_prop(
         splinter_prop_value = prop_values_dict[splinter.ID]
         clr = get_color(splinter_prop_value, min_prop, max_prop)
 
-        cv2.drawContours(out_img, [splinter.contour], 0, clr, -1)
+        cv2.drawContours(overlay_img, [splinter.contour], 0, clr, -1)
 
-    cv2.drawContours(out_img, [x.contour for x in specimen.splinters], -1, (0, 0, 0), 1)
+    cv2.drawContours(overlay_img, [x.contour for x in specimen.splinters], -1, (0, 0, 0), 1)
+    out_img = cv2.addWeighted(out_img, 0.5, overlay_img, 0.5, 0.5)
+
+    State.output(out_img, f'{prop}_filled', spec=specimen, to_additional=True, figwidth=FigureSize.ROW2)
+
     clr_label = Splinter.get_mode_labels(prop)
     out_img = annotate_image(
         out_img,
@@ -1261,7 +1273,7 @@ def kde_impact_layer(
     # precomputed data
     data = {}
     for splinter in specimen.splinters:
-        data[splinter] = splinter.get_splinter_data(prop=mode, px_p_mm=px_per_mm, ip=ip)
+        data[splinter] = splinter.get_splinter_data(prop=mode, px_p_mm=px_per_mm, ip_mm=ip)
 
     def splinter_data_getter(splinters: list[Splinter]):
         if len(splinters) == 0:
