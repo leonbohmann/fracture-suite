@@ -8,7 +8,7 @@ from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.vectors import angle_deg
 from fracsuite.state import State
-from rich.progress import track
+from tqdm import tqdm
 from fracsuite.general import GeneralSettings
 from rich import print
 
@@ -56,15 +56,18 @@ def process_region(args):
 def check_polar_region(
         args
     ):
-        spl: list[Splinter]
-        # radii, angles, list of splinters
-        r0,r1,t0,t1,i,j,ip,spl,calculator,kwargs = args
+    """
+    args: r0,r1,t0,t1,i,j,ip,spl,calculator, mode, ip, pxpmm
 
-        mode, ip, pxpmm= kwargs
+    """
+    spl: list[Splinter]
+    # radii, angles, list of splinters
+    r0,r1,t0,t1,i,j,ip,spl,calculator, mode, pxpmm = args
 
-        # calculate the value
-        mean_value = calculator(spl, mode, ip, pxpmm)
-        return (i,j,(r0+r1)/2,(t0+t1)/2,mean_value)
+
+    # calculate the value
+    mean_value, stddev = calculator(spl, mode, ip, pxpmm)
+    return (i,j,(r0+r1)/2,(t0+t1)/2, mean_value, stddev)
 
 
 class ImageKerneler():
@@ -114,8 +117,7 @@ class ImageKerneler():
         # print(len(yd))
         skip_i = 1 if self.skip_edge else 0
         # Iterate over all points and find splinters in the area of X, Y and intensity_h
-        for i in track(range(len(xd)), transient=True,
-                    description="Calculating intensity..."):
+        for i in tqdm(range(len(xd)), leave=False, desc="Calculating intensity..."):
             for j in range(len(yd)):
                 if (j < skip_i or j >= len(yd) - skip_i) or (i < skip_i or i >= len(xd) - skip_i):
                     result[j,i] = SKIP_VALUE
@@ -181,32 +183,52 @@ class ObjectKerneler():
     def polar(
         self,
         calculator: Callable[[list[Splinter]], float],
-        r_range,
-        t_range,
-        ip,
-        calculator_kwargs
+        r_range_mm,
+        t_range_deg,
+        ip_mm,
+        mode,
+        pxpmm,
     ):
+        """
+        Calculate the polar distribution of the data.
+
+        Args:
+            calculator (Callable[[list[Splinter]], float]): The calculator function to use.
+            r_range_mm (range): Created with arrange_regions.
+            t_range_deg (range): Created with arrange_regions.
+            ip_mm (tuple[float,float]): Impact position in mm.
+            mode (SplinterProp): Property to calculate.
+            pxpmm (float): Pixel per millimeter factor.
+
+        Returns:
+            R,T,Z,Zstd:
+                Radii and thetas contain the centers of each region. They have to be used for interpolation.
+                Z contains the calculated values.
+
+                If R(1,n) and T(1,m) then Z(n,m) and Zstd(n,m) contain the calculated values and their standard deviations respectively.
+        """
         # create 2d array to store the results
-        X = np.zeros(len(r_range)-1, dtype=np.float64)
-        Y = np.zeros(len(t_range)-1, dtype=np.float64)
-        Z = np.zeros((len(r_range)-1, len(t_range)-1), dtype=np.float64)
+        X = np.zeros(len(r_range_mm)-1, dtype=np.float64)
+        Y = np.zeros(len(t_range_deg)-1, dtype=np.float64)
+        Z = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
+        Zstd = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
 
         spl_groups = []
-        for i in range(len(r_range)-1):
+        for i in range(len(r_range_mm)-1):
             new_l = []
             spl_groups.append(new_l)
-            for j in range(len(t_range)-1):
+            for j in range(len(t_range_deg)-1):
                 new_l.append([])
 
         # put all splinters in the correct group
-        for s in track(self.data_objects, description='Sorting splinters...', total=len(self.data_objects)):
-            dr = s.centroid_mm - ip
+        for s in tqdm(self.data_objects, desc='Sorting splinters...', leave=False):
+            dr = s.centroid_mm - ip_mm
             r = np.linalg.norm(dr)
             a = angle_deg(dr)
-            for i in range(len(r_range)-1):
-                for j in range(len(t_range)-1):
-                    r0,r1=(r_range[i],r_range[i+1])
-                    t0,t1=(t_range[j],t_range[j+1])
+            for i in range(len(r_range_mm)-1):
+                for j in range(len(t_range_deg)-1):
+                    r0,r1=(r_range_mm[i],r_range_mm[i+1])
+                    t0,t1=(t_range_deg[j],t_range_deg[j+1])
                     if not r0 <= r < r1:
                         continue
                     if not t0 <= a < t1:
@@ -216,25 +238,26 @@ class ObjectKerneler():
 
         # create args for every (r,t) region
         args = []
-        for i in range(len(r_range)-1):
-            for j in range(len(t_range)-1):
+        for i in range(len(r_range_mm)-1):
+            for j in range(len(t_range_deg)-1):
                 # last r includes all remaining radii
-                r0,r1=(r_range[i],r_range[i+1])
-                t0,t1=(t_range[j],t_range[j+1])
+                r0,r1=(r_range_mm[i],r_range_mm[i+1])
+                t0,t1=(t_range_deg[j],t_range_deg[j+1])
                 spl = spl_groups[i][j]
 
-                args.append((r0,r1,t0,t1,i,j,ip,spl,calculator,calculator_kwargs))
+                args.append((r0,r1,t0,t1,i,j,ip_mm,spl,calculator,mode, pxpmm))
 
         # use multiprocessing pool
         with Pool() as pool:
             # create unordered imap and track progress
-            for result in track(pool.imap_unordered(check_polar_region, args), total=len(args), description='Calculating polar...'):
-                i, j, r_c, t_c, mean_value = result
+            for result in tqdm(pool.imap_unordered(check_polar_region, args), desc='Calculating polar...', total=len(args), leave=False):
+                i, j, r_c, t_c, mean_value, stddev = result
                 Z[i,j] = mean_value
+                Zstd[i,j] = stddev
                 X[i] = r_c
                 Y[j] = t_c
 
-        return X,Y,Z
+        return X,Y,Z,Zstd
 
     def run(
         self,
@@ -378,8 +401,7 @@ class ObjectKerneler():
                 pass
             def stop():
                 pass
-            d = track(range(len(xd)), transient=True,
-                    description="Running kernel over region...")
+            d = tqdm(range(len(xd)), leave=False, desc="Running kernel over region...")
 
         for i in d:
             advance()
