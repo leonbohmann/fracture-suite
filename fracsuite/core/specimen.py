@@ -12,56 +12,42 @@ import numpy as np
 from rich import print
 from rich.progress import track
 from fracsuite.core.anisotropy_images import AnisotropyImages
-from fracsuite.core.arrays import resample, sort_arrays
 from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.imageprocessing import simplify_contour
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.outputtable import Outputtable
-from fracsuite.core.plotting import FigureSize, KernelContourMode, plot_kernel_results
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
+from fracsuite.core.specimenregion import SpecimenRegion
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.vectors import angle_abs, angle_deg, angle_between
+from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 
+from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 
 from spazial import k_test, l_test
 
-from fracsuite.state import State
 
 general: GeneralSettings = GeneralSettings.get()
 
-class SpecimenBreakPosition(str,Enum):
-    """Break position of the specimen."""
-    CENTER = "center"
-    CORNER = "corner"
 
-    def position(self):
-        if self == SpecimenBreakPosition.CENTER:
-            return np.array((250,250))
-        elif self == SpecimenBreakPosition.CORNER:
-            return np.array((50,50))
-        else:
-            raise Exception(f"Invalid break position {self}.")
-
-class SpecimenBreakMode(str,Enum):
-    PUNCH = "punch"
-    DRILL = "drill"
-
-class SpecimenBoundary(str, Enum):
-    A = "A"
-    B = "B"
-    Z = "Z"
-    Unknown = "unknown"
 
 class SpecimenException(Exception):
     """Exception for specimen related errors."""
     pass
+
+def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
+    """Calculates a property for a list of splinters."""
+    if len(spl) == 0:
+        return (np.nan,np.nan)
+
+    values = [s.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=pxpmm) for s in spl]
+    return np.nanmean(values), np.nanstd(values)
 
 class Specimen(Outputtable):
     """ Container class for a specimen. """
@@ -184,7 +170,7 @@ class Specimen(Outputtable):
 
     def print_loaded(self):
         name = f"'{self.name}'"
-        print(f"Loaded {name:>30} (Scalp: {checkmark(self.has_scalp)}, "
+        print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)}, "
                 f"Splinters: {checkmark(self.has_splinters)}).")
 
 
@@ -308,6 +294,8 @@ class Specimen(Outputtable):
         if load:
             self.load(log_missing)
 
+        self.layer_region = SpecimenRegion(20, 360, self.get_impact_position(), self.get_real_size())
+
     def set_setting(self, key, value):
         self.settings[key] = value
         self.__save_settings()
@@ -342,7 +330,7 @@ class Specimen(Outputtable):
             return cv2.imread(label_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
     def get_fracture_image(self, as_rgb = True):
-        """Gets the grayscale fracture image."""
+        """Gets the fracture image. Default is RGB."""
         transmission_file = find_file(self.fracture_morph_dir, "*Transmission*")
         if transmission_file is not None:
             return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
@@ -377,6 +365,7 @@ class Specimen(Outputtable):
 
     def get_impact_position_name(self):
         return self.settings['break_pos']
+
     def get_impact_position(self, in_px = False, as_tuple = False):
         """
         Returns the impact position of the specimen in mm.
@@ -662,72 +651,46 @@ class Specimen(Outputtable):
 
     def calculate_2d_polar(
         self,
-        D_mm: float = 50,
-        value_calculator: Callable = None) -> np.ndarray:
+        prop: SplinterProp,
+        r_range_mm = None,
+        t_range_deg = None
+    ) -> tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
         """
         Calculate a value in polar 2D.
 
         Returns:
-            A 2D Array with the fracture intensity values.
-            The first dimension is the distance from the impact point and
-            the second dimension is the angle.
-
-
+            tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]: R,T,Z,Zstd
+                R: Radius centers.
+                T: Angles.
         """
-        region = self.settings['real_size_mm']
         impact_position = self.get_impact_position()
-        kernel = ObjectKerneler(
-            region,
+
+        # create kerneler
+        kerneler = ObjectKerneler(
+            self.get_real_size(),
             self.splinters,
-            collector=lambda x,r: x.in_region(r),
-            skip_edge=True,
+            None,
+            False
         )
 
-        if value_calculator is None:
-            def value_calculator(x):
-                return len(x)
+        if t_range_deg is None:
+            t_range_deg = self.layer_region.theta
+            print(f"Using theta range {t_range_deg}.")
+        if r_range_mm is None:
+            r_range_mm = self.layer_region.radii
+            print(f"Using radius range {r_range_mm}.")
 
-
-        X, Y, Z = kernel.run(
-            value_calculator,
-            D_mm,
-            50,
-            mode="area",
-            fill_skipped_with_mean=True
+        R,T,Z,Zstd = kerneler.polar(
+            calculator,
+            r_range_mm,
+            t_range_deg,
+            impact_position,
+            prop,
+            self.calculate_px_per_mm()
         )
+        T = np.radians(T)
 
-        # create lists with transformed values
-        distances = []
-        angles = []
-        values = []
-
-        # transform X,Y coordinates to polar coordinates
-        for i in range(Z.shape[0]):
-            for j in range(Z.shape[1]):
-                p = np.array((X[j,i],Y[j,i]))
-                print(p)
-                # print(p)
-                dp = p - impact_position
-                # print(dv)
-                angle = angle_deg(dp)
-                dst = np.linalg.norm(dp)
-
-                distances.append(dst)
-                angles.append(angle)
-                values.append(Z[i,j])
-
-
-        # distances, angles, values = sort_arrays(distances, angles, values)
-
-        # print(distances)
-        # print(angles)
-
-        # sample the data into another array
-        return resample(distances, angles, values, 20, 10)
-
-
-
-
+        return R,T,Z,Zstd
 
 
     def load_scalp(self, file = None):

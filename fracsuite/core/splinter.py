@@ -741,29 +741,29 @@ class Splinter:
 
         return splinters
 
-    def get_splinter_data(self, prop: SplinterProp, ip = None, px_p_mm = None):
+    def get_splinter_data(self, prop: SplinterProp, ip_mm = None, px_p_mm = None):
         """
         Get the data of the splinter.
 
         Args:
             mode (str): The mode to use.
-            ip (tuple[float,float], optional): Impact position. Defaults to None.
+            ip_mm (tuple[float,float], optional): Impact position. Defaults to None.
             px_p_mm (float, optional): Scale factor. Defaults to None.
 
         Returns:
             float: Return value depending on mode in real dimensions (mm).
         """
         if prop == SplinterProp.ASP:
-            assert ip is not None, "Impact point must be set to calculate aspect ratio"
-            a = self.measure_aligned_aspectratio(ip)
+            assert ip_mm is not None, "Impact point must be set to calculate aspect ratio"
+            a = self.measure_aligned_aspectratio(ip_mm)
         elif prop == SplinterProp.AREA:
             a = self.area
         elif prop == SplinterProp.ORIENTATION:
-            assert ip is not None, "Impact point must be set to calculate orientation"
-            a = self.measure_orientation(ip)
+            assert ip_mm is not None, "Impact point must be set to calculate orientation"
+            a = self.measure_orientation(ip_mm)
         elif prop == SplinterProp.IMPACT_DEPENDENCY:
-            assert ip is not None, "Impact point must be set to calculate orientation"
-            a = self.measure_impact_dependency(ip)
+            assert ip_mm is not None, "Impact point must be set to calculate orientation"
+            a = self.measure_impact_dependency(ip_mm)
         elif prop == SplinterProp.ROUNDNESS:
             a = self.calculate_roundness()
         elif prop == SplinterProp.ROUGHNESS:
@@ -780,11 +780,11 @@ class Splinter:
             assert px_p_mm is not None, "px_per_mm must be set to calculate circumfence"
             a = self.measure_circumfence(px_p_mm)
         elif prop == SplinterProp.L1_WEIGHTED:
-            assert ip is not None, "Impact point must be set to calculate weighted l1-length"
-            a = self.measure_size()[0] / self.calculate_px_per_mm() * self.measure_orientation(ip)
+            assert ip_mm is not None, "Impact point must be set to calculate weighted l1-length"
+            a = self.measure_size()[0] / self.calculate_px_per_mm() * self.measure_orientation(ip_mm)
         elif prop == SplinterProp.ANGLE:
-            assert ip is not None, "Impact point must be set to calculate angle"
-            dp = np.array(self.centroid_mm) - np.array(ip)
+            assert ip_mm is not None, "Impact point must be set to calculate angle"
+            dp = np.array(self.centroid_mm) - np.array(ip_mm)
             a = angle_deg(dp)
         # elif prop == SplinterProp.ANGLE:
         #     _, _, angle = cv2.minAreaRect(self.contour)

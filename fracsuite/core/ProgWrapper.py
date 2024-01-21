@@ -25,6 +25,8 @@ class ProgWrapper():
         self.progress.update(self.task, completed=completed)
     def advance(self):
         self.progress.advance(self.task)
+    def advance_task(self, taskid):
+        self.progress.advance(taskid)
     def add_task(self, description: str, total: int = None):
         return self.progress.add_task(description=description, total=total)
     def remove_task(self, task_id):

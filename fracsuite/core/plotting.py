@@ -775,7 +775,7 @@ def annotate_image(
     if title is not None:
         ax.set_title(title)
 
-    im = ax.imshow(image, cmap='turbo', vmin=min_value, vmax=max_value, aspect='equal')
+    im = ax.imshow(image, cmap='turbo', aspect='equal', alpha=1)
     ax.grid(False)
 
     if cbar_title is not None:

@@ -8,7 +8,7 @@ from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
 from scipy.interpolate import interp2d, griddata
-from fracsuite.core.specimen import SpecimenBoundary, SpecimenBreakPosition
+from fracsuite.core.specimenprops import SpecimenBreakPosition, SpecimenBoundary
 
 general = GeneralSettings.get()
 
@@ -129,11 +129,12 @@ def interp_layer(
     # Y: Energy
     # V: Layer value
     # Layout:
-    #     X1    X2      X3      X4
-    # Y1  V11   V12     V13     V14
-    # Y2  V21   V22     V23     V24
-    # Y3  ...
-    # Y4  ...
+    # nan   X1    X2      X3      X4
+    # Y1    V11   V12     V13     V14
+    # Y2    V21   V22     V23     V24
+    # Y3    ...
+    # Y4    ...
+
     X,Y,V = load_layer(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
     print(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
 
@@ -274,12 +275,12 @@ def get_l1(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
 
 
 def arrange_regions(
-    px_per_mm: float,
     d_r_mm: int = 20,
-    d_t_deg: int = 15,
-    break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
+    d_t_deg: int = 360,
+    break_pos: SpecimenBreakPosition | tuple[float,float] = SpecimenBreakPosition.CORNER,
     w_mm: int = 500,
     h_mm: int = 500,
+    **kwargs
 ):
     """
     Arranges polar regions for model layers.
@@ -287,25 +288,45 @@ def arrange_regions(
     Returns:
         (r_range, t_range): The radius and angle ranges.
     """
-    img_w = w_mm * px_per_mm
-    img_h = h_mm * px_per_mm
-
-
     # get break position and convert to px
-    ip_x, ip_y = break_pos.position()
-    ip_x = int(ip_x * px_per_mm)
-    ip_y = int(ip_y * px_per_mm)
+    if isinstance(break_pos, SpecimenBreakPosition):
+        ip_x, ip_y = break_pos.position()
+    else:
+        ip_x, ip_y = break_pos
 
     # maximum radius
-    r_max = np.sqrt((img_w-ip_x)**2 + (img_h-ip_y)**2)
+    r_max = np.sqrt((w_mm-ip_x)**2 + (h_mm-ip_y)**2)
+    r_min = 10 # 1cm around impact has no splinters
 
     # calculate angle and radius steps
     n_t = int(360 / d_t_deg)
 
-
     # radius range
-    r_range = np.arange(0, r_max + d_r_mm * px_per_mm, d_r_mm * px_per_mm) / px_per_mm
+    r_range = np.arange(r_min, r_max + d_r_mm, d_r_mm)
+    # for i in range(len(r_range)):
+    #     xi = -((i / len(r_range))**1.2)+1
+    #     r_range[i] = r_range[i] / xi
     # angle range
     t_range = np.linspace(-180, 180, n_t+1, endpoint=True)
 
     return r_range,t_range
+
+def arrange_regions_px(
+    px_per_mm: float,
+    d_r_mm: int = 20,
+    d_t_deg: int = 360,
+    break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
+    w_mm: int = 500,
+    h_mm: int = 500,
+    **kwargs
+):
+    r_range,t_range = arrange_regions(
+        d_r_mm=d_r_mm,
+        d_t_deg=d_t_deg,
+        break_pos=break_pos,
+        w_mm=w_mm,
+        h_mm=h_mm,
+        **kwargs
+    )
+
+    return r_range*px_per_mm,t_range

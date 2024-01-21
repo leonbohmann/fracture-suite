@@ -2,6 +2,7 @@ from typing import Annotated
 import cv2
 
 import numpy as np
+from tqdm import tqdm
 import typer
 from matplotlib import colors as pltc
 from matplotlib import pyplot as plt
@@ -14,15 +15,17 @@ from rich.progress import track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.kernels import ObjectKerneler
-from fracsuite.core.model_layers import ModelLayer, arrange_regions, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
+from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
 from fracsuite.core.plotting import FigureSize, KernelContourMode, annotate_image, fill_polar_cell, get_fig_width, plot_kernel_results, renew_ticks_cb
 from fracsuite.core.progress import get_progress
-from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition, SpecimenBreakMode
+from fracsuite.core.specimen import Specimen
+from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import moving_average
 from fracsuite.core.vectors import angle_deg
 from fracsuite.general import GeneralSettings
+from fracsuite.splinters import create_filter_function
 from fracsuite.state import State, StateOutput
 
 layer_app = typer.Typer(callback=main_callback, help="Model related commands.")
@@ -81,7 +84,7 @@ def plot_impact_layer(
         r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
         # get data from splinter
-        a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
+        a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip_mm=ip)
 
         splinter_values[i,:] = (r, a)
 
@@ -160,6 +163,7 @@ def plot_impact_layer(
 
 @layer_app.command()
 def create_base_layer(
+    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
 ):
@@ -302,7 +306,7 @@ def create_impact_layer_intensity(
     for spec in specimens:
         if mode != 'intensity':
             def value_calculator(x: list[Splinter]):
-                return np.mean([s.get_splinter_data(prop=mode, ip=spec.get_impact_position()) for s in x])
+                return np.mean([s.get_splinter_data(prop=mode, ip_mm=spec.get_impact_position()) for s in x])
 
 
         result = spec.calculate_2d_polar(value_calculator=value_calculator)
@@ -328,6 +332,217 @@ def create_impact_layer_intensity(
         axs.set_ylabel("Angle to Impact [°]")
         axs.autoscale()
         State.output(StateOutput(fig, sz), f"{mode}-2d_{spec.name}", to_additional=True)
+
+@layer_app.command()
+def create_impact_layer2(
+    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
+    break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+    ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
+    thickness: Annotated[float, typer.Option(help='Specimen thickness.')] = None,
+    exclude_names: Annotated[str, typer.Option(help='Exclude specimens with these names. Seperated by comma.')] = "",
+    normalize: Annotated[bool, typer.Option(help='Normalize specimen value ranges.')] = False,
+    name_filter: Annotated[str, typer.Option(help='Filter specimen names.')] = "*",
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+    boundaries = {
+        1: '--',
+        2: '-',
+        3: ':',
+    }
+    # inverse bid
+    bid_r = {v: k for k, v in bid.items()}
+
+    if exclude_names != "":
+        exclude_names = exclude_names.split(',')
+
+    base_filter = create_filter_function(
+        name_filter,
+    )
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+
+        if break_mode is not None and specimen.break_mode != break_mode:
+            return False
+
+        if specimen.boundary == SpecimenBoundary.Unknown:
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        if thickness is not None and specimen.thickness != thickness:
+            return False
+
+        if specimen.name in exclude_names:
+            return False
+
+        return base_filter(specimen)
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True,max_n=300)
+
+    for spec in specimens:
+        area = np.sum([s.area for s in spec.splinters])
+        print(f'{spec.name}: {area:.2f} mm²')
+
+    if thickness is None:
+        thickness = 'all'
+    else:
+        thickness = f'{thickness:.0f}'
+
+    sz = FigureSize.ROW1
+
+    xlabel = "Distance from impact R [mm]"
+    ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+    ylabel_short = Splinter.get_mode_labels(mode, row3=True)
+    clabel = "Strain Energy U [J/m²]"
+
+
+    r_range, t_range = arrange_regions(d_r_mm=20,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
+
+    print(r_range)
+    print(t_range)
+    ########################
+    # Calculate value for every specimen and save results to arrays
+    ########################
+    results = np.ones((len(specimens), len(r_range)-1+3)) * np.nan
+    stddevs = np.ones((len(specimens), len(r_range)-1+3)) * np.nan
+
+    for si, specimen in tqdm(enumerate(specimens), total=len(specimens), desc='Specimens'):
+        specimen: Specimen
+
+        _,_,Z,Zstd = specimen.calculate_2d_polar(
+            prop=mode,
+            r_range_mm=r_range,
+            t_range_deg=t_range,
+        )
+
+        results[si,0] = specimen.U
+        results[si,1] = bid[specimen.boundary]
+        results[si,2] = si
+        results[si,3:] = (Z / (np.max(Z) if normalize else 1)).flatten() # normalization
+
+        stddevs[si,0] = results[si,0]
+        stddevs[si,1] = results[si,1]
+        stddevs[si,2] = results[si,2]
+        stddevs[si,3:] = Zstd.flatten()
+
+    # sort results after first column
+    results = results[results[:,0].argsort()]
+    stddevs = stddevs[stddevs[:,0].argsort()]
+
+    ########################
+    # Save results as layer
+    ########################
+    for b in bid:
+        # mask all results for the current boundary
+        mask = results[:,1] == bid[b]
+
+        # skip empty boundaries
+        if np.sum(mask) == 0:
+            continue
+
+        # boundary results
+        b_results = results[mask,:]
+        b_energies = b_results[:,0]
+        b_values = b_results[:,3:]
+        b_stddevs = stddevs[mask,3:]
+        b_r_range = r_range[:-1] # -1 because the last range is until infinity
+        # save layer
+        save_layer(
+            ModelLayer.IMPACT,
+            mode,
+            b,
+            break_pos,
+            False,
+            b_r_range,
+            b_energies,
+            b_values
+        )
+        # save stddev
+        save_layer(
+            ModelLayer.IMPACT,
+            mode,
+            b,
+            break_pos,
+            True,
+            b_r_range,
+            b_energies,
+            b_stddevs
+        )
+
+    # define an energy range to plot mean values in
+    d_ud = 50 # J/m²
+    ud_min = np.min(results[:,0])
+    ud_max = np.max(results[:,0])
+    ud_range = np.arange(ud_min, ud_max, d_ud)
+    ud_colors = [norm_color(get_color(ud, ud_min, ud_max)) for ud in ud_range]
+
+    # shift ranges to centers (alternatively use R and T from polar calculation)
+    x = r_range[:-1] + (r_range[1]-r_range[0])/2
+
+    # plot a figure for every boundary using the colorbar for energy
+    for b in bid:
+        b_mask = results[:,1] == bid[b]
+
+        # skip empty boundaries
+        if np.sum(b_mask) == 0:
+            continue
+
+        # boundary results
+        b_results = results[b_mask,:]
+        b_stddevs = stddevs[b_mask,:]
+
+        max_u = np.nanmax(b_results[:,0])
+        min_u = np.nanmin(b_results[:,0])
+
+        fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        colors = []
+
+        # plot all individual results
+        for i in range(len(b_results)):
+            # get color for current energy
+            c = norm_color(get_color(b_results[i,0], min_u, max_u))
+            colors.append(c)
+            axs.plot(x, b_results[i,3:], color=c, marker='x', linewidth=0.5, alpha=0.5, markersize=1.5)
+
+            # fill stddev
+            axs.fill_between(x, b_results[i,3:] - b_stddevs[i,3:], b_results[i,3:] + b_stddevs[i,3:], color=c, alpha=0.1)
+
+        # plot mean values
+        for i in range(len(ud_range)):
+            ud_mask = (b_results[:,0] >= ud_range[i]) & (b_results[:,0] < ud_range[i] + d_ud)
+            mean = np.nanmean(b_results[ud_mask,3:], axis=0)
+            axs.plot(x, mean, color=ud_colors[i], linewidth=2)
+
+        # for 12.110.A.05 scatter all points
+        for i in range(len(b_results)):
+            if specimens[int(b_results[i,2])].name == '12.110.A.05':
+                axs.scatter(x, b_results[i,3:], color=colors[i], marker='x', linewidth=0.5, alpha=0.5, s=1.5)
+
+
+        # put plot data onto axs
+        axs.set_xlabel(xlabel)
+        axs.set_ylabel(ylabel)
+        cmap = pltc.ListedColormap(colors)
+        norm = pltc.Normalize(min_u, max_u)
+        cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label="Strain Energy U [J/m²]")
+        renew_ticks_cb(cbar)
+        State.output(StateOutput(fig, sz), f"impact-layer_{b}_{mode}_{break_pos}_{thickness}", to_additional=True)
+
+    # print results: specimen name, mean U, max stddev
+    for i in range(len(specimens)):
+        print(f'{specimens[i].name}: {np.nanmean(results[i,3:]):.2f} +/- {np.nanmax(stddevs[i,3:]):.2f} (max: {np.nanmax(results[i,3:]):.2f}, min: {np.nanmin(results[i,3:]):.2f})')
+
 
 @layer_app.command()
 def create_impact_layer(
@@ -416,7 +631,7 @@ def create_impact_layer(
             r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
             # get data from splinter
-            a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
+            a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip_mm=ip)
 
             aspects[i,:] = (r, a) # (r, a)
 
@@ -716,7 +931,7 @@ def compare_boundaries(
             r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
             # get data from splinter
-            a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
+            a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip_mm=ip)
 
             aspects[i,:] = (r, a) # (r, a)
 
@@ -792,120 +1007,6 @@ def compare_boundaries(
     axs.legend()
     State.output(StateOutput(fig,sz), f'compare_{min_energy:.0f}-{max_energy:.0f}_{mode}_{break_pos}', to_additional=True)
 
-    # ########################
-    # # cluster results for a range of energies and save plots
-    # ########################
-
-    # # results for interpolation with different boundaries
-    # results_per_boundary = {
-    #     1: [],
-    #     2: [],
-    #     3: []
-    # }
-
-    # n_ud = 30
-    # ud_min = np.min(results[:,0])
-    # ud_max = np.max(results[:,0])
-    # ud_range = np.linspace(ud_min, ud_max, n_ud)
-
-
-    # fig,axs = plt.subplots(figsize=get_fig_width(sz))
-
-    # bfigs: list[tuple[Figure,Axes]] = []
-    # row3size = get_fig_width(FigureSize.ROW3)
-    # bfigs.append(plt.subplots(figsize=row3size))
-    # bfigs.append(plt.subplots(figsize=row3size))
-    # bfigs.append(plt.subplots(figsize=row3size))
-    # # cluster results for a range of energies
-    # for i in range(n_ud):
-    #     for ib, b in enumerate(boundaries):
-    #         # gruppieren von Ergebnissen nach erstem Eintrag (U,Ud,...)
-    #         if i == n_ud-1:
-    #             mask = (results[:,0] >= ud_range[i]) & (results[:,1] == b)
-    #         else:
-    #             mask = (results[:,0] >= ud_range[i]) & (results[:,0] < ud_range[i+1]) & (results[:,1] == b)
-
-    #         # get mean of all results (specimens) in this range
-    #         mean = np.nanmean(results[mask,3:], axis=0)
-
-    #         clr = norm_color(get_color(ud_range[i], ud_min, ud_max))
-
-    #         # plot all masked results as scatter plots
-    #         for j in range(len(results)):
-    #             if mask[j]:
-    #                 axs.scatter(r_range, results[j,3:], color=clr, marker='x', linewidth=0.5, s=1.5)
-    #                 bfigs[ib][1].scatter(r_range, results[j,3:], color=clr, marker='x', linewidth=0.5, s=1.5)
-
-    #                 id = int(results[j,2])
-    #                 s = specimens[id]
-    #                 print(f"{s.name} ({np.nanmean(results[j,3:]):.1f})")
-
-    #         ls = boundaries[b]
-    #         alpha = 0.7
-    #         axs.plot(r_range, mean,  color=clr, linestyle=ls, alpha=alpha)
-    #         bfigs[ib][1].plot(r_range, mean,  color=clr, linestyle='-', alpha=1)
-    #         # label=f"{uds[i]:.2f} - {uds[i+1]:.2f} J/m²",
-    #         results_per_boundary[b].append(mean)
-
-
-
-    # axs.set_xlabel(xlabel)
-    # # plt.ylabel("Splinter Orientation Strength $\Delta$ [-]")
-    # axs.set_ylabel(ylabel)
-    # # create legend for boundaries
-    # axs.plot([], [], label="A", linestyle=boundaries[1], color='k')
-    # axs.plot([], [], label="B", linestyle=boundaries[2], color='k')
-    # axs.plot([], [], label="Z", linestyle=boundaries[3], color='k')
-    # colors = [norm_color(get_color(x, ud_min, ud_max)) for x in ud_range]
-    # cmap = pltc.ListedColormap(colors)
-    # norm = pltc.Normalize(np.min(ud_range), np.max(ud_range))
-    # cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=axs)
-    # renew_ticks_cb(cbar)
-    # axs.legend(loc='upper right')
-
-    # if mode == 'asp':
-    #     # plt.ylim((0.9, 2.6))
-    #     pass
-    # elif mode == 'area':
-    #     axs.set_ylim((0, 30))
-
-    # State.output(StateOutput(fig,sz), f'U_{mode}_all_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
-
-    # xlabel = "Distance R [mm]"
-    # ylabel = Splinter.get_mode_labels(mode, row3=True)
-    # clabel = "U [J/m²]"
-    # for i_f, (f,a) in enumerate(bfigs):
-    #     a.set_xlabel(xlabel)
-    #     a.set_ylabel(ylabel)
-    #     cbar = f.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label=clabel, ax=a)
-    #     renew_ticks_cb(cbar)
-    #     State.output(StateOutput(f,FigureSize.ROW3), f'U_{mode}_{bid_r[i_f+1]}_{break_pos}_nr{n_r}_nud{n_ud}', to_additional=True)
-
-    # # ##
-    # # ## PLOT interpolated data as 2d plot for every boundary
-    # # print('> Plotting interpolated data...')
-    # # # num_results[ud,R]
-    # # for br_key in results_per_boundary: # different boundaries
-    # #     print('Boundary: ', br_key)
-    # #     nr_r = np.asarray(results_per_boundary[br_key])
-
-    # #     # format data storage for saving and interpolation
-    # #     x = r_range
-    # #     y = ud_range
-    # #     data = np.zeros((len(y)+1, len(x)+1))
-    # #     print(nr_r.shape)
-    # #     data[1:,1:] = nr_r
-    # #     data[1:,0] = ud_range
-    # #     data[0,1:] = r_range
-
-    # #     # this should save the original data that has not been clustered
-    # #     Z_path = State.get_general_outputfile(f'model/interpolate_{mode}_{bid_r[br_key]}_{break_pos}.npy')
-    # #     np.save(Z_path, data)
-
-    # #     fig = plt_model(x,y,nr_r, xlabel=xlabel, ylabel=clabel, clabel=ylabel, exclude_nan=exclude_nan_u)
-    # #     State.output(StateOutput(fig, FigureSize.ROW1), f'2d-{mode}_{bid_r[br_key]}_{break_pos}_n{n}_nud{n_ud}', to_additional=True)
-
-
 @layer_app.command()
 def graph_impact_layer(
     specimen_name: Annotated[str, typer.Argument(help='Specimen name.')],
@@ -942,7 +1043,7 @@ def graph_impact_layer(
         r = np.linalg.norm(dp)
 
         # get data from splinter
-        data = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip=ip)
+        data = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip_mm=ip)
 
         # calculate angle to impact
         # print(dv)
@@ -1020,7 +1121,7 @@ def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
     if len(spl) == 0:
         return np.nan
 
-    return np.mean([s.get_splinter_data(prop=prop, ip=ip,px_p_mm=pxpmm) for s in spl])
+    return np.mean([s.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=pxpmm) for s in spl])
 
 @layer_app.command()
 def test_polar(
@@ -1029,34 +1130,12 @@ def test_polar(
 ):
     specimen = Specimen.get(specimen_name, load=True)
     pxpmm = specimen.calculate_px_per_mm()
-    ip_px = specimen.get_impact_position() * pxpmm
+    ip_px = specimen.get_impact_position(True)
+    R,T,Z = specimen.calculate_2d_polar(prop=prop)
 
-    # create kerneler
-    kerneler = ObjectKerneler(
-        specimen.get_real_size(),
-        specimen.splinters,
-        None,
-        False
-    )
-
-    r_range,t_range = arrange_regions(specimen.calculate_px_per_mm())
-
-    print(r_range)
-    print(t_range)
-
-    R,T,Z = kerneler.polar(
-        calculator,
-        r_range,
-        t_range,
-        specimen.get_impact_position(),
-        (prop,specimen.get_impact_position(),specimen.calculate_px_per_mm())
-    )
-
-    print(R)
-    print(T)
-    print(Z)
-
-    T = np.radians(T)
+    # fetch radii and angles
+    r_range = specimen.layer_region.radii
+    t_range = specimen.layer_region.theta
 
     # plot the results in a colored plot
     sz = FigureSize.ROW1HL
@@ -1089,7 +1168,7 @@ def test_polar(
             clr = get_color(z, np.nanmin(Z), np.nanmax(Z))
             # print(clr)
             # fill cell with color
-            img_overlay = fill_polar_cell(img_overlay,ip_px, t0,t1,r0,r1, clr)
+            img_overlay = fill_polar_cell(img_overlay, ip_px, t0,t1,r0,r1, clr)
 
     result_img = cv2.addWeighted(img, 0.5, img_overlay, 0.5, 0.5)
 
@@ -1111,12 +1190,171 @@ def test_polar(
     State.output(output, f'polar-{specimen_name}_{prop}', to_additional=True)
 
 @layer_app.command()
-def plot_layer_regions(d_r: int, d_t: int, break_pos: SpecimenBreakPosition, w_mm: int, h_mm: int):
+def test_polar_impact(
+    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
+    break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+    ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
+    thickness: Annotated[float, typer.Option(help='Specimen thickness.')] = None,
+    exclude_names: Annotated[str, typer.Option(help='Exclude specimens with these names. Seperated by comma.')] = "",
+    normalize: Annotated[bool, typer.Option(help='Normalize specimen value ranges.')] = False,
+    boundary: Annotated[SpecimenBoundary, typer.Option(help='Boundary.')] = None,
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+    boundaries = {
+        1: '--',
+        2: '-',
+        3: ':',
+    }
+    # inverse bid
+    bid_r = {v: k for k, v in bid.items()}
+
+    if exclude_names != "":
+        exclude_names = exclude_names.split(',')
+
+    def add_filter(specimen: Specimen):
+        if break_pos is not None and specimen.break_pos != break_pos:
+            return False
+
+        if break_mode is not None and specimen.break_mode != break_mode:
+            return False
+
+        if specimen.boundary == SpecimenBoundary.Unknown:
+            return False
+
+        if boundary is not None and specimen.boundary != boundary:
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        if thickness is not None and specimen.thickness != thickness:
+            return False
+
+        if specimen.name in exclude_names:
+            return False
+
+        return True
+
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True, max_n=10)
+
+
+
+    sz = FigureSize.ROW1
+
+    xlabel = "Distance from impact R [mm]"
+    ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+    ylabel_short = Splinter.get_mode_labels(mode, row3=True)
+    clabel = f"$\Delta$ {ylabel_short}"
+
+    r_range,t_range = arrange_regions()
+
+    results = np.full((len(specimens), len(r_range)-1, len(t_range)-1), np.nan)
+    results_u = np.full((len(specimens)), np.nan)
+
+    for si, specimen in tqdm(enumerate(specimens), total=len(specimens), desc='Calculating individual specimens...'):
+        pxpmm = specimen.calculate_px_per_mm()
+        ip_px = specimen.get_impact_position() * pxpmm
+
+        # create kerneler
+        kerneler = ObjectKerneler(
+            specimen.get_real_size(),
+            specimen.splinters,
+            None,
+            False
+        )
+
+
+        print(r_range)
+        print(t_range)
+
+        R,T,Z = kerneler.polar(
+            calculator,
+            r_range,
+            t_range,
+            specimen.get_impact_position(),
+            (mode,specimen.get_impact_position(),specimen.calculate_px_per_mm())
+        )
+        T = np.radians(T)
+
+        results[si,:,:] = Z
+        results_u[si] = specimen.U
+
+    # sort results after results_u
+    results = results[results_u.argsort()]
+
+    # for every u get the maximum difference at each r and t
+    max_diff = np.zeros((len(r_range)-1, len(t_range)-1))
+    for r in range(len(r_range)-1):
+        for t in range(len(t_range)-1):
+            max_diff[r,t] = np.max(results[:,r,t]) - np.min(results[:,r,t])
+
+
+    img = specimens[0].get_fracture_image()
+    img_overlay = np.zeros_like(img)
+    # t_range = np.deg2rad(np.asarray(t_range))
+
+    for r in track(range(len(r_range)-1),total=len(r_range)-1,description='Plotting regions...'):
+        for t in range(len(t_range)-1):
+            r0,r1 = r_range[r],r_range[r+1]
+            t0,t1 = t_range[t],t_range[t+1]
+
+            r0,r1,t0,t1 = int(r0*pxpmm),int(r1*pxpmm),int(t0),int(t1)
+
+            # find value for this region
+            z = max_diff[r,t]
+
+            if np.isnan(z):
+                continue
+
+            # interpolate color value
+            clr = get_color(z, np.nanmin(max_diff), np.nanmax(max_diff))
+            # print(clr)
+            # fill cell with color
+            img_overlay = fill_polar_cell(img_overlay,ip_px, t0,t1,r0,r1, clr)
+
+    result_img = cv2.addWeighted(img, 0.5, img_overlay, 0.5, 0.5)
+
+    output = annotate_image(
+        result_img,
+        min_value = np.nanmin(Z),
+        max_value = np.nanmax(Z),
+        cbar_title=clabel,
+        clr_format='.0f',
+        figwidth=sz
+    )
+
+
+
+
+
+    State.output(output, f'polar_maxdiff-{mode}', to_additional=True)
+
+
+
+@layer_app.command()
+def plot_layer_regions(
+    d_r: int = 20,
+    d_t: int = 360,
+    break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
+    w_mm: int = 500,
+    h_mm: int = 500,
+    base_specimen_name: str = None
+):
     """
     Plots a 2D representation of polar layer regions.
     """
     pxpmm = 5
-    r_range, t_range = arrange_regions(pxpmm, d_r, d_t, break_pos, w_mm, h_mm)
+    r_range, t_range = arrange_regions_px(pxpmm, d_r, d_t, break_pos, w_mm, h_mm)
+    print(r_range)
+    print(t_range)
 
 
     img_w = int(w_mm * pxpmm)
@@ -1127,32 +1365,37 @@ def plot_layer_regions(d_r: int, d_t: int, break_pos: SpecimenBreakPosition, w_m
 
 
 
-    img = np.full((img_w,img_h,3), (255,255,255), dtype=np.uint8)
     stroke = 1 * pxpmm
+    wht = (255,255,255)
     blk = (0,0,0)
     red = (0,0,255)
+    img = np.full((img_w,img_h,3), blk, dtype=np.uint8)
 
-    # draw a square in the center
-    cv2.rectangle(img, (0,0), (img_w,img_h), blk, stroke)
-
-    r_range = np.asarray(r_range) * pxpmm
+    r_range = np.asarray(r_range)
     r_max = np.max(r_range) * 1.3
     t_range = np.deg2rad(np.asarray(t_range))
     # add circles
     for r in r_range:
         # draw circle
-        cv2.circle(img, (int(ip_x),int(ip_y)), int(r), blk, stroke)
+        cv2.circle(img, (int(ip_x),int(ip_y)), int(r), red, stroke)
         # annotate circle wth radius
-        cv2.putText(img, f"{r/pxpmm:.0f}", (int(ip_x+r),int(ip_y)), cv2.FONT_HERSHEY_DUPLEX, 1, blk, stroke // 2)
+        cv2.putText(img, f"{r/pxpmm:.0f}", (int(ip_x+r*np.sqrt(2)/2+5),int(ip_y+r*np.sqrt(2)/2+5)), cv2.FONT_HERSHEY_DUPLEX, 1, red, stroke // 2, bottomLeftOrigin=False)
 
     for t in t_range:
-        cv2.line(img, (int(ip_x),int(ip_y)), (int(ip_x+r_max*np.cos(t)),int(ip_y+r_max*np.sin(t))), blk, stroke)
+        cv2.line(img, (int(ip_x),int(ip_y)), (int(ip_x+r_max*np.cos(t)),int(ip_y+r_max*np.sin(t))), red, stroke)
         # annotate at a distance from ip
         cv2.putText(img, f"{np.degrees(t):.0f} deg", (int(ip_x+r_max/2*np.cos(t)),int(ip_y+r_max/2*np.sin(t))), cv2.FONT_HERSHEY_DUPLEX, 1, blk, stroke // 2)
 
     # mark impact red
     cv2.circle(img, (int(ip_x),int(ip_y)), stroke*2, red, -1)
 
+    if base_specimen_name is not None:
+        base_specimen = Specimen.get(base_specimen_name, load=True)
+        img_base = base_specimen.get_fracture_image()
+        img_base = cv2.resize(img_base, (img_w,img_h))
 
-    plt.imshow(img)
-    plt.show()
+        # overwrite img with img_base where img is black
+        black_pixels = np.all(img == [0, 0, 0], axis=-1)
+        img[black_pixels] = img_base[black_pixels]
+
+    State.output(StateOutput(img, FigureSize.ROW1, img_ext = 'jpeg'), f'layer-regions_{d_r}_{d_t}_{break_pos}_{w_mm}x{h_mm}', to_additional=True)
