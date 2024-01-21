@@ -311,7 +311,7 @@ def threshold(
     normthresh_frame.grid(row=0, column=2)
 
     # Create Sliders in Threshold Frame
-    block_size_slider = Scale(threshold_frame, from_=3, to_=500, orient="horizontal", label="Block Size", command=lambda x: update_image())
+    block_size_slider = Scale(threshold_frame, from_=3, to_=200, orient="horizontal", label="Block Size", command=lambda x: update_image())
     block_size_slider.pack()
     block_size_slider.set(213)
 
