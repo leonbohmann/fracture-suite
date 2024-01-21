@@ -1,8 +1,12 @@
+from multiprocessing import Pool
 from typing import Any, Callable, TypeVar
 import numpy as np
+from tomlkit import value
 from fracsuite.core.image import split_image
 from fracsuite.core.progress import get_progress
 from fracsuite.core.region import RectRegion
+from fracsuite.core.splinter import Splinter
+from fracsuite.core.vectors import angle_deg
 from fracsuite.state import State
 from rich.progress import track
 from fracsuite.general import GeneralSettings
@@ -48,6 +52,19 @@ def process_region(args):
 
     # Apply z_action to collected splinters
     return calculator(objects_in_region) if len(objects_in_region) > 0 else 0
+
+def check_polar_region(
+        args
+    ):
+        spl: list[Splinter]
+        # radii, angles, list of splinters
+        r0,r1,t0,t1,i,j,ip,spl,calculator,kwargs = args
+
+        mode, ip, pxpmm= kwargs
+
+        # calculate the value
+        mean_value = calculator(spl, mode, ip, pxpmm)
+        return (i,j,(r0+r1)/2,(t0+t1)/2,mean_value)
 
 
 class ImageKerneler():
@@ -159,6 +176,65 @@ class ObjectKerneler():
         self.data_objects = data_objects
         self.collector = collector
         self.skip_edge = skip_edge
+
+
+    def polar(
+        self,
+        calculator: Callable[[list[Splinter]], float],
+        r_range,
+        t_range,
+        ip,
+        calculator_kwargs
+    ):
+        # create 2d array to store the results
+        X = np.zeros(len(r_range)-1, dtype=np.float64)
+        Y = np.zeros(len(t_range)-1, dtype=np.float64)
+        Z = np.zeros((len(r_range)-1, len(t_range)-1), dtype=np.float64)
+
+        spl_groups = []
+        for i in range(len(r_range)-1):
+            new_l = []
+            spl_groups.append(new_l)
+            for j in range(len(t_range)-1):
+                new_l.append([])
+
+        # put all splinters in the correct group
+        for s in track(self.data_objects, description='Sorting splinters...', total=len(self.data_objects)):
+            dr = s.centroid_mm - ip
+            r = np.linalg.norm(dr)
+            a = angle_deg(dr)
+            for i in range(len(r_range)-1):
+                for j in range(len(t_range)-1):
+                    r0,r1=(r_range[i],r_range[i+1])
+                    t0,t1=(t_range[j],t_range[j+1])
+                    if not r0 <= r < r1:
+                        continue
+                    if not t0 <= a < t1:
+                        continue
+
+                    spl_groups[i][j].append(s)
+
+        # create args for every (r,t) region
+        args = []
+        for i in range(len(r_range)-1):
+            for j in range(len(t_range)-1):
+                # last r includes all remaining radii
+                r0,r1=(r_range[i],r_range[i+1])
+                t0,t1=(t_range[j],t_range[j+1])
+                spl = spl_groups[i][j]
+
+                args.append((r0,r1,t0,t1,i,j,ip,spl,calculator,calculator_kwargs))
+
+        # use multiprocessing pool
+        with Pool() as pool:
+            # create unordered imap and track progress
+            for result in track(pool.imap_unordered(check_polar_region, args), total=len(args), description='Calculating polar...'):
+                i, j, r_c, t_c, mean_value = result
+                Z[i,j] = mean_value
+                X[i] = r_c
+                Y[j] = t_c
+
+        return X,Y,Z
 
     def run(
         self,

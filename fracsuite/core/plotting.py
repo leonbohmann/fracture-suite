@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import tempfile
 from enum import Enum
+from tracemalloc import start
 from typing import Any, Callable
 
 from rich import print
@@ -51,7 +52,7 @@ class FigureSize(str, Enum):
     "The width of a figure in one row in landscape."
     ROW1HL = 'row1h_l'
     "Large landscape."
-    
+
     @staticmethod
     def has_value(value):
         return value in FigureSize.values()
@@ -870,3 +871,26 @@ def transparent_contour(img, contour, color, thickness, transparency: float):
     img2 = cv2.addWeighted(img, 1.0, line_img, transparency, 1)
 
     return img2
+
+
+
+def fill_polar_cell(
+    img,
+    center: tuple[int,int],
+    start_angle: float,
+    end_angle: float,
+    start_radius: float,
+    end_radius: float,
+    clr: tuple[int,int,int],
+    alpha: float = 1,
+):
+    mask = np.zeros_like(img, dtype=np.uint8)
+    center = (int(center[1]), int(center[0]))
+    # start by drawing a circle with the end radius
+    cv2.ellipse(mask, center, (int(end_radius), int(end_radius)), 0, start_angle, end_angle, clr, -1)
+
+    # then draw a circle with the start radius
+    cv2.ellipse(mask, center, (int(start_radius), int(start_radius)), 0, start_angle, end_angle, (0,0,0), -1)
+    img = cv2.addWeighted(img, 1, mask, alpha, 0.5)
+
+    return img

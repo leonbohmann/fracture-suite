@@ -237,6 +237,7 @@ def best_params(image):
 def threshold(
     image,
     region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = (250,250,100,100),
+    region_f: Annotated[tuple[float,float], typer.Option(help='Region center in percent.')] = None,
     realsize: tuple[int,int] = (500,500),
 ):
     # Initialize GUI
@@ -253,11 +254,17 @@ def threshold(
         specimen = Specimen.get(image)
         image = specimen.get_splinter_outfile("dummy")
         img = specimen.get_fracture_image()
+        px_per_mm = specimen.calculate_px_per_mm(realsize_mm=realsize)
         # take a small portion of the image
         if region is None:
-            region = np.array((250,250,500,500)) * specimen.calculate_px_per_mm(realsize_mm=realsize)
+            region = np.array((250,250,500,500)) * px_per_mm
         else:
-            region = np.array(region) * specimen.calculate_px_per_mm(realsize_mm=realsize)
+            region = np.array(region) * px_per_mm
+
+        if region_f is not None:
+            region = img.shape[1] * region_f[0], img.shape[0] * region_f[1], region[2], region[3]
+            region = np.asarray(region)
+
         print(region)
         region = region.astype(np.uint32)
         print(region)
@@ -462,7 +469,7 @@ def threshold(
 
 
         # Blend the original image with the red overlay
-        blended_img = cv2.addWeighted(to_rgb(img_processed), 1, red_overlay, 0.3, 0)
+        blended_img = cv2.addWeighted(to_rgb(img_gray), 1, red_overlay, 0.3, 0)
         splinters = Splinter.analyze_image(red_overlay, skip_preprocessing=True)
         ctrs = [x.contour for x in splinters]
         if len(ctrs) > 0:

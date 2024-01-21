@@ -275,14 +275,17 @@ def get_l1(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
 
 def arrange_regions(
     px_per_mm: float,
-    d_r_mm: int = 50,
+    d_r_mm: int = 20,
     d_t_deg: int = 15,
     break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
     w_mm: int = 500,
     h_mm: int = 500,
 ):
     """
+    Arranges polar regions for model layers.
 
+    Returns:
+        (r_range, t_range): The radius and angle ranges.
     """
     img_w = w_mm * px_per_mm
     img_h = h_mm * px_per_mm
@@ -301,8 +304,8 @@ def arrange_regions(
 
 
     # radius range
-    r_range = np.arange(0, r_max, d_r_mm * px_per_mm)
+    r_range = np.arange(0, r_max + d_r_mm * px_per_mm, d_r_mm * px_per_mm) / px_per_mm
     # angle range
-    t_range = np.linspace(0, 2*np.pi, n_t, endpoint=False)
+    t_range = np.linspace(-180, 180, n_t+1, endpoint=True)
 
     return r_range,t_range

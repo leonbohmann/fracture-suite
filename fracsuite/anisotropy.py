@@ -16,6 +16,7 @@ ani_app = typer.Typer(callback=main_callback, help=__doc__)
 @ani_app.command()
 def image_transform(
     specimen_range: str,
+    image_size: tuple[int,int] = typer.Option((4000,4000), help="Size of the images."),
     rotate: bool = typer.Option(True, help="Rotate images by 90 degrees."),
     overwrite: bool = typer.Option(False, help="Overwrite existing images."),
 ):
@@ -34,9 +35,10 @@ def image_transform(
     filter = create_filter_function(specimen_range, needs_scalp=False, needs_splinters=False)
     specimens: list[Specimen] = Specimen.get_all_by(filter, load=True)
 
+    img_size = image_size
+
     for specimen in specimens:
         image_paths = specimen.anisotropy.all_paths
-        img_size = specimen.get_image_size()
 
         for img_path in image_paths:
             if img_path is None:

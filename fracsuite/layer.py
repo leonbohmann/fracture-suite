@@ -13,8 +13,9 @@ from rich.progress import track
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
+from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
-from fracsuite.core.plotting import FigureSize, KernelContourMode, get_fig_width, plot_kernel_results, renew_ticks_cb
+from fracsuite.core.plotting import FigureSize, KernelContourMode, fill_polar_cell, get_fig_width, plot_kernel_results, renew_ticks_cb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition, SpecimenBreakMode
 from fracsuite.core.splinter import Splinter
@@ -1015,38 +1016,128 @@ def graph_impact_layer(
 
     State.output(StateOutput(fig,sz), f'graph-{specimen_name}_{mode}', to_additional=True)
 
+def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
+    if len(spl) == 0:
+        return np.nan
+
+    return np.mean([s.get_splinter_data(prop=prop, ip=ip,px_p_mm=pxpmm) for s in spl])
+
+@layer_app.command()
+def test_polar(
+    specimen_name: str,
+    prop: SplinterProp,
+):
+    specimen = Specimen.get(specimen_name, load=True)
+    pxpmm = specimen.calculate_px_per_mm()
+    ip_px = specimen.get_impact_position() * pxpmm
+
+    # create kerneler
+    kerneler = ObjectKerneler(
+        specimen.get_real_size(),
+        specimen.splinters,
+        None,
+        False
+    )
+
+    r_range,t_range = arrange_regions(specimen.calculate_px_per_mm())
+
+    print(r_range)
+    print(t_range)
+
+    R,T,Z = kerneler.polar(
+        calculator,
+        r_range,
+        t_range,
+        specimen.get_impact_position(),
+        (prop,specimen.get_impact_position(),specimen.calculate_px_per_mm())
+    )
+
+    print(R)
+    print(T)
+    print(Z)
+
+    T = np.radians(T)
+
+    # plot the results in a colored plot
+    sz = FigureSize.ROW1HL
+    # fig,axs = plt.subplots(figsize=get_fig_width(sz), subplot_kw=dict(projection='polar'))
+    # axs.pcolormesh(T, R, Z.T, cmap='turbo')  # y für Winkel, x für Radien
+    # # plt.colorbar(label='Z-Werte')
+    # # plot the results in a graph
+    # # axs.pcolormesh(X,Y,Z, cmap='turbo', shading='nearest')
+    # # axs.imshow(Z, cmap='turbo')
+    # axs.set_xlabel("Distance from impact R [mm]")
+    # axs.set_ylabel("Angle to impact [°]")
+    img = specimen.get_fracture_image()
+    img_overlay = np.zeros_like(img)
+    # t_range = np.deg2rad(np.asarray(t_range))
+
+    for r in track(range(len(r_range)-1),total=len(r_range)-1):
+        for t in range(len(t_range)-1):
+            r0,r1 = r_range[r],r_range[r+1]
+            t0,t1 = t_range[t],t_range[t+1]
+
+            r0,r1,t0,t1 = int(r0*pxpmm),int(r1*pxpmm),int(t0),int(t1)
+
+            # find value for this region
+            z = Z[r,t]
+
+            if np.isnan(z):
+                continue
+
+            # interpolate color value
+            clr = get_color(z, np.nanmin(Z), np.nanmax(Z))
+            # print(clr)
+            # fill cell with color
+            img_overlay = fill_polar_cell(img_overlay,ip_px, t0,t1,r0,r1, clr)
+
+    # img = cv2.ellipse(img, (int(ip_px[0]),int(ip_px[1])), (int(r_range[5]*pxpmm),int(r_range[5]*pxpmm)), 0, 355, 360, (0,0,255), 5)
+
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    axs.imshow(img)
+    axs.imshow(img_overlay, alpha=0.5)
+    plt.show()
+
+
+
+
+
+    State.output(StateOutput(fig,sz), f'polar-{specimen_name}_{prop}', to_additional=True)
+
 @layer_app.command()
 def plot_layer_regions(d_r: int, d_t: int, break_pos: SpecimenBreakPosition, w_mm: int, h_mm: int):
     """
     Plots a 2D representation of polar layer regions.
     """
-    f = 5
-    r_range, t_range = arrange_regions(f, d_r, d_t, break_pos, w_mm, h_mm)
+    pxpmm = 5
+    r_range, t_range = arrange_regions(pxpmm, d_r, d_t, break_pos, w_mm, h_mm)
 
 
-    img_w = int(w_mm * f)
-    img_h = int(h_mm * f)
+    img_w = int(w_mm * pxpmm)
+    img_h = int(h_mm * pxpmm)
     ip_x,ip_y = break_pos.position()
-    ip_x = int(ip_x * f)
-    ip_y = int(ip_y * f)
+    ip_x = int(ip_x * pxpmm)
+    ip_y = int(ip_y * pxpmm)
 
-    r_max = np.max(r_range) * 1.3
 
 
     img = np.full((img_w,img_h,3), (255,255,255), dtype=np.uint8)
-    stroke = 1 * f
+    stroke = 1 * pxpmm
     blk = (0,0,0)
     red = (0,0,255)
 
     # draw a square in the center
     cv2.rectangle(img, (0,0), (img_w,img_h), blk, stroke)
 
+    r_range = np.asarray(r_range) * pxpmm
+    r_max = np.max(r_range) * 1.3
+    t_range = np.deg2rad(np.asarray(t_range))
     # add circles
     for r in r_range:
         # draw circle
         cv2.circle(img, (int(ip_x),int(ip_y)), int(r), blk, stroke)
         # annotate circle wth radius
-        cv2.putText(img, f"{r/f:.0f}", (int(ip_x+r),int(ip_y)), cv2.FONT_HERSHEY_DUPLEX, 1, blk, stroke // 2)
+        cv2.putText(img, f"{r/pxpmm:.0f}", (int(ip_x+r),int(ip_y)), cv2.FONT_HERSHEY_DUPLEX, 1, blk, stroke // 2)
 
     for t in t_range:
         cv2.line(img, (int(ip_x),int(ip_y)), (int(ip_x+r_max*np.cos(t)),int(ip_y+r_max*np.sin(t))), blk, stroke)
