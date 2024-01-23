@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import typer
 from PIL import Image, ImageTk
-from rich import print
+from rich import inspect, print
 from rich.progress import Progress, track
 
 from fracsuite.callbacks import main_callback
@@ -249,6 +249,9 @@ def threshold(
     normal_thresh_filter_var = IntVar()
     correct_light_var = IntVar()
 
+    from fracsuite.core.preps import defaultPrepConfig
+    prep0 = defaultPrepConfig
+
     if re.match(r'.*\..*\..*\..*', image):
         print("[cyan]Specimen detected")
         specimen = Specimen.get(image)
@@ -273,6 +276,11 @@ def threshold(
 
         # img = img[region[0]-region[2]//2:region[0]+region[2]//2, region[1]-region[3]//2:region[1]-region[3]//2]
         is_specimen = True
+
+        print('Loading preprocessor config...')
+        if (pconf := specimen.get_prepconf()) is not None:
+            prep0 = pconf
+            inspect(prep0)
     else:
         # Load image and convert to grayscale
         img = cv2.imread(image, cv2.IMREAD_COLOR)
@@ -298,10 +306,7 @@ def threshold(
 
 
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(img_gray, 100, 200)
-    edge_density = np.sum(edges) / (edges.shape[0] * edges.shape[1])
-    blockSize = int(40*edge_density)
-    print('Edge density blocksize: ', blockSize)
+
     # Create Frames
     threshold_frame = Frame(root)
     threshold_frame.grid(row=0, column=0)
@@ -312,28 +317,29 @@ def threshold(
 
     # Create Sliders in Threshold Frame
     block_size_slider = Scale(threshold_frame, from_=3, to_=200, orient="horizontal", label="Block Size", command=lambda x: update_image())
+    block_size_slider.set(prep0.athresh_block_size)
     block_size_slider.pack()
-    block_size_slider.set(213)
 
     c_slider = Scale(threshold_frame, from_=-10, to_=10, orient="horizontal", label="C", command=lambda x: update_image())
     c_slider.pack()
+    c_slider.set(prep0.athresh_c)
 
     sz_slider = Scale(threshold_frame, from_=1, to_=31, orient="horizontal", label="Gauss Size", command=lambda x: update_image())
     sz_slider.pack()
-    sz_slider.set(5)
+    sz_slider.set(prep0.gauss_size[0])
     sig_slider = Scale(threshold_frame, from_=-10, to_=28, orient="horizontal", label="Gauss Sigma", command=lambda x: update_image())
     sig_slider.pack()
-    sig_slider.set(1)
+    sig_slider.set(prep0.gauss_sigma)
     lum_slider = Scale(threshold_frame, from_=-255, to_=255, orient="horizontal", label="Luminance Delta", command=lambda x: update_image())
     lum_slider.pack()
-    lum_slider.set(0)
+    lum_slider.set(prep0.lum)
 
     clahe_strength = Scale(second_frame, from_=0, to_=255, orient="horizontal", label="Clahe Strength", command=lambda x: update_image())
     clahe_strength.pack()
-    clahe_strength.set(5)
-    clahe_size = Scale(second_frame, from_=3, to_=15, orient="horizontal", label="Clahe Strength", command=lambda x: update_image())
+    clahe_strength.set(prep0.clahe_strength)
+    clahe_size = Scale(second_frame, from_=3, to_=15, orient="horizontal", label="Clahe Size", command=lambda x: update_image())
     clahe_size.pack()
-    clahe_size.set(8)
+    clahe_size.set(prep0.clahe_size)
 
     similarity_label = tk.Label(second_frame, text="Similarity: ")
     similarity_label.pack()
@@ -341,7 +347,8 @@ def threshold(
     # Create Sliders in Bilateral Frame (Initially Hidden)
     lower_slider = Scale(normthresh_frame, from_=-1, to_=255, orient="horizontal", label="Lower Bound", command=lambda x: update_image())
     upper_slider = Scale(normthresh_frame, from_=1, to_=255, orient="horizontal", label="Max Value", command=lambda x: update_image())
-    upper_slider.set(255)
+    lower_slider.set(prep0.nthresh_lower)
+    upper_slider.set(prep0.nthresh_upper)
     lower_slider.pack()
     upper_slider.pack()
 
@@ -353,10 +360,12 @@ def threshold(
     # Create Checkbox for bilateral filter
     norm_thresh_check = tk.Checkbutton(normthresh_frame, text="Use normal Thresh", variable=normal_thresh_filter_var, command=lambda: update_image())
     norm_thresh_check.pack()
+    normal_thresh_filter_var.set(True if prep0.mode == PrepMode.NORMAL else False)
 
     # Create Checkbox for bilateral filter
     correct_light_check = tk.Checkbutton(threshold_frame, text="Correct light", variable=correct_light_var, command=lambda: update_image())
     correct_light_check.pack()
+    correct_light_var.set(prep0.correct_light)
 
     def load_state(prep: PreprocessorConfig):
         block_size_slider.set(prep.athresh_block_size)
@@ -380,6 +389,8 @@ def threshold(
 
         lower_slider.set(prep.nthresh_lower)
         upper_slider.set(prep.nthresh_upper)
+
+        root.update()
 
 
     def save_state():
@@ -504,7 +515,8 @@ def threshold(
 
 
     # First display
-    update_image()
+    # update_image()
+    load_state(prep0)
 
     root.mainloop()
 

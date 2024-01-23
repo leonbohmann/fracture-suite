@@ -5,6 +5,7 @@ import json
 import os
 import pickle
 import re
+from stat import S_IREAD, S_IRGRP, S_IROTH
 from typing import Any, Callable, List, TypeVar
 
 import cv2
@@ -14,7 +15,7 @@ from rich.progress import track
 from fracsuite.core.anisotropy_images import AnisotropyImages
 from fracsuite.core.coloring import rand_col
 
-from fracsuite.core.imageprocessing import simplify_contour
+from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, simplify_contour
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
@@ -24,7 +25,7 @@ from fracsuite.core.specimenregion import SpecimenRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
-from fracsuite.helpers import checkmark, find_file
+from fracsuite.helpers import checkmark, find_file, find_files
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 
@@ -722,8 +723,62 @@ class Specimen(Outputtable):
         delta_edge = 10
         self.__splinters = [s for s in self.__splinters if s.centroid_mm[0] > delta_edge and s.centroid_mm[0] < self.settings['real_size_mm'][0] - delta_edge and s.centroid_mm[1] > delta_edge and s.centroid_mm[1] < self.settings['real_size_mm'][1] - delta_edge]
         # or within a 1cm radius to the impact point
-        delta_impact = 10
+        delta_impact = 20
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
+
+    def transform_fracture_images(
+        self,
+        resize_only: bool = False,
+        rotate_only: bool = False,
+        rotate: bool = True,
+        crop: bool = True,
+        size_px: tuple[int, int] = (4000, 4000)
+    ):
+        """
+        Transforms the fracture morphology images.
+
+        Args:
+            resize_only (bool, optional): Only resize the images. Defaults to False.
+            rotate_only (bool, optional): Only rotate the images. Defaults to False.
+            rotate (bool, optional): Rotate the images. Defaults to True.
+            crop (bool, optional): Crop the images. Defaults to True.
+            size (tuple[int, int], optional): Size of the images. Defaults to (500, 500).
+        """
+        path = self.fracture_morph_dir
+        if not os.path.exists(path):
+            raise Exception("Fracture morphology folder not found.")
+
+        frac_imgs = find_files(path, '*.bmp')
+        imgs = [(x, cv2.imread(x, cv2.IMREAD_GRAYSCALE)) for x in frac_imgs]
+
+        if len(imgs) == 0:
+            raise Exception("No fracture morphology images found.")
+
+        img0path, img0 = [(x,y) for x, y in imgs if "Transmission" in x][0]
+        _, M0 = crop_perspective(img0, size_px, False, True)
+
+        for file, img in imgs:
+            if not os.access(file, os.W_OK):
+                print(f"Skipping '{os.path.basename(file)}', no write access.")
+                continue
+
+            print(f"'{os.path.basename(file)}'...", end="")
+
+            if resize_only:
+                img = cv2.resize(img, size_px)
+
+            if not rotate_only and crop and not resize_only:
+                img = crop_matrix(img, M0, size_px)
+
+            if (rotate or rotate_only) and not resize_only:
+                img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+            cv2.imwrite(file, img)
+            os.chmod(os.path.join(path, file), S_IREAD | S_IRGRP | S_IROTH)
+
+            print("[green]OK")
+
+        return img0path, img0
 
     @staticmethod
     def get(name: str | Specimen, load: bool = True) -> Specimen:

@@ -302,3 +302,35 @@ def to_tex():
     output_file = State.get_output_file("A1_Specimens.tex")
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(latex_code)
+
+
+@app.command()
+def import_fracture(
+    specimen_name: str,
+    imgsize: tuple[int, int] = (4000, 4000),
+    realsize: tuple[float, float] = (500, 500),
+):
+    """
+    Imports fracture images and generates splinters of a specific specimen.
+
+    This function is safe to call because already transformed images are not overwritten and if
+    there are already splinters, an overwrite has to be confirmed.
+    """
+    specimen = Specimen.get(specimen_name, load=True)
+
+    assert specimen.has_fracture_scans, "Specimen has no fracture scans"
+
+    print('[yellow]> Transforming fracture images <')
+    img0path, img0 = specimen.transform_fracture_images(size_px=imgsize)
+
+    print('[yellow]> Running threshold tester <')
+    from fracsuite.tester import threshold
+    threshold(specimen.name)
+
+    print('[yellow]> Generating splinters <')
+    from fracsuite.splinters import gen
+    gen(specimen.name, realsize=realsize)
+
+    print('[yellow]> Drawing contours <')
+    from fracsuite.splinters import draw_contours
+    draw_contours(specimen.name)

@@ -974,6 +974,51 @@ def create_filter_function(name_filter,
     def all_names(s, filter) -> bool:
         return True
 
+    def custom_regex_filter(s: Specimen, filter: str) -> bool:
+        # format: t.sigma.b.nbr
+        values = filter.split(".")
+        # print(values)
+        t, sigma, b, nbr = values
+
+
+        rt = ""
+        rsigma = ""
+        rb = ""
+        rnbr = ""
+
+        if ":" in t:
+            t = t.split(":")
+            # create regex pattern which matches any possible t values
+            rt = "(" + "|".join(t) + ")"
+        else:
+            rt = t.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+        if ":" in sigma:
+            sigma = sigma.split(":")
+            # create regex pattern which matches any possible sigma values
+            rsigma = "(" + "|".join(sigma) + ")"
+        else:
+            rsigma = sigma.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+        if ":" in b:
+            b = b.split(":")
+            # create regex pattern which matches any possible b values
+            rb = "(" + "|".join(b) + ")"
+        else:
+            rb = b.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+        if ":" in nbr:
+            nbr = nbr.split(":")
+            # create regex pattern which matches any possible nbr values
+            rnbr = "(" + "|".join(nbr) + ")"
+        else:
+            rnbr = nbr.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+
+        regex = f"{rt}\.{rsigma}\.{rb}\.{rnbr}"
+        # print(regex)
+        return re.match(regex, s.name) is not None
+
     name_filter_function: Callable[[Specimen, Any], bool] = None
 
     # create name_filter_function based on name_filter
@@ -989,6 +1034,8 @@ def create_filter_function(name_filter,
         name_filter = [name_filter]
         print(f"Searching for specimen whose name is in: {name_filter}")
         name_filter_function = in_names_list
+    elif name_filter is not None and ":" in name_filter:
+        name_filter_function = custom_regex_filter
     elif name_filter is not None and any([c in "*[]^\\" for c in name_filter]):
         print(f"Searching for specimen whose name matches: {name_filter}")
         name_filter = name_filter.replace(".", "\.").replace("*", ".*").replace('!', '|')
@@ -1767,7 +1814,6 @@ def crop_fracture_morph(
         rotate_only (bool, optional): Only rotate the images. Defaults to False.
         resize_only (bool, optional): Only resizes the images. Defaults to False.
     """
-    from stat import S_IREAD, S_IRGRP, S_IROTH
     if all:
         specimens = Specimen.get_all()
     elif isinstance(specimen_name, Specimen):
@@ -1776,35 +1822,13 @@ def crop_fracture_morph(
         specimens = Specimen.get_all(specimen_name)
 
     for specimen in track(specimens):
-        path = specimen.fracture_morph_dir
-        if not os.path.exists(path):
-            continue
-
-        imgs = [(x, cv2.imread(x, cv2.IMREAD_GRAYSCALE)) for x in find_files(path, '*.bmp')]
-
-        if len(imgs) == 0:
-            continue
-
-        img0 = [y for x, y in imgs if "Transmission" in x][0]
-        _, M0 = crop_perspective(img0, size, False, True)
-
-        for file, img in imgs:
-            if not os.access(file, os.W_OK):
-                print(f"Skipping '{os.path.basename(file)}', no write access.")
-                continue
-
-            if resize_only:
-                img = cv2.resize(img, size)
-
-            if not rotate_only and crop and not resize_only:
-                img = crop_matrix(img, M0, size)
-
-            if (rotate or rotate_only) and not resize_only:
-                img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-
-            cv2.imwrite(file, img)
-            os.chmod(os.path.join(path, file), S_IREAD | S_IRGRP | S_IROTH)
-
+        specimen.transform_fracture_images(
+            resize_only=resize_only,
+            rotate_only=rotate_only,
+            rotate=rotate,
+            crop=crop,
+            size_px=size,
+        )
         # elif file.endswith(".bmp") and not os.access(os.path.join(path, file), os.W_OK):
         #     os.chmod(os.path.join(path, file), S_IWRITE)
 
