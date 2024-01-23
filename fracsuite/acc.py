@@ -15,7 +15,7 @@ import typer
 from apread import APReader, Channel
 from rich import print
 from rich.progress import track
-from fracsuite.core.plotting import FigureSize
+from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.state import State
 
 from fracsuite.general import GeneralSettings
@@ -501,7 +501,7 @@ def plot_impact(
 
     # plot the data
 
-    figsize = general.figure_size
+    figsize = get_fig_width(FigureSize.ROW2)
     if not no_legend:
         figsize = (figsize[0] * 1.2, figsize[1])
 
