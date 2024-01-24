@@ -679,10 +679,11 @@ class Specimen(Outputtable):
 
         if t_range_deg is None:
             t_range_deg = self.layer_region.theta
-            print(f"Using theta range {t_range_deg}.")
         if r_range_mm is None:
             r_range_mm = self.layer_region.radii
-            print(f"Using radius range {r_range_mm}.")
+
+        print(f"[cyan]POLAR[/cyan] Using theta range {t_range_deg}.")
+        print(f"[cyan]POLAR[/cyan] Using radius range {r_range_mm}.")
 
         R,T,Z,Zstd = kerneler.polar(
             calculator,
