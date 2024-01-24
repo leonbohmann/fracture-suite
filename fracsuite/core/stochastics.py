@@ -186,6 +186,9 @@ def similarity_count(reference,measure,binrange=100) -> float:
 
 
 def calculate_kde(data, bins=1000):
+    #filter nan values
+    data = data[~np.isnan(data)]
+
     kde = gaussian_kde(data)
     x_vals = np.linspace(min(data), max(data), bins)
     y_vals = kde(x_vals)
@@ -205,7 +208,17 @@ def calculate_dmode(data, bins: int = 1000):
         float: The most probable value of the distribution.
     """
     x_vals, y_vals = calculate_kde(data, bins)
-    return x_vals[np.argmax(y_vals)]
+
+    # calculate most probable value (mode)
+    mpv = x_vals[np.argmax(y_vals)]
+
+    # calculate probability of mode
+    y_vals = y_vals / np.sum(y_vals)
+
+    mpv_prob = y_vals[np.argmax(y_vals)]
+
+    return mpv, mpv_prob
+
 
 def distances(events: list[tuple[float,float]]):
     """

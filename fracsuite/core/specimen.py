@@ -24,6 +24,7 @@ from fracsuite.core.region import RectRegion
 from fracsuite.core.specimenregion import SpecimenRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
+from fracsuite.core.stochastics import calculate_dmode
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file, find_files
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -47,7 +48,11 @@ def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
     if len(spl) == 0:
         return (np.nan,np.nan)
 
-    values = [s.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=pxpmm) for s in spl]
+    values = np.asarray([s.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=pxpmm) for s in spl])
+
+    # calculate the most probable value
+    # mpv,mpv_prob = calculate_dmode(values, bins=100)
+
     return np.nanmean(values), np.nanstd(values)
 
 class Specimen(Outputtable):
@@ -660,9 +665,7 @@ class Specimen(Outputtable):
         Calculate a value in polar 2D.
 
         Returns:
-            tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]: R,T,Z,Zstd
-                R: Radius centers.
-                T: Angles.
+            tuple[Radii(n), Angles(m), Values(n,m), Stddev(n,m)]
         """
         impact_position = self.get_impact_position()
 

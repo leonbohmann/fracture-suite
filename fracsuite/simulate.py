@@ -3,32 +3,29 @@ from typing import Annotated
 import cv2
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from rich import inspect, print
+from rich import print
 from rich.progress import track
 import typer
 import numpy as np
 from fracsuite.callbacks import main_callback
-from fracsuite.core.contours import center
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.imageprocessing import dilateImg
-from fracsuite.core.model_layers import ModelLayer, interp_layer, interp_layer_stddev, load_layer
+from fracsuite.core.model_layers import ModelLayer, interp_layer
 from fracsuite.core.plotting import FigureSize, get_fig_width
-from fracsuite.core.point_process import CSR_process, strauss_process, gibbs_strauss_process
+from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress
 from fracsuite.core.region import RectRegion
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import calculate_khat, calculate_fhat, calculate_ghat
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from fracsuite.core.vectors import angle_between
 
 from fracsuite.state import State
 
-from spazial import gibbs_strauss_process as spazial_gibbs_strauss_process
-from spazial import csstraussproc, csstraussproc2
+from spazial import csstraussproc2
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 

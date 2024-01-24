@@ -7,6 +7,7 @@ import tempfile
 from enum import Enum
 from tracemalloc import start
 from typing import Any, Callable
+from matplotlib.collections import PolyCollection
 
 from rich import print
 
@@ -451,6 +452,10 @@ def renew_ticks_cb(cbar):
     labels[1].set_verticalalignment('center')
     labels[-1].set_verticalalignment('top')
 
+def renew_ticks_ax(ax):
+    labels = ax.get_yticklabels()
+
+    labels[-1].set_verticalalignment('top')
 
 # T2 = TypeVar('T2')
 # def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tuple[Figure, Axes]:
@@ -674,7 +679,7 @@ def datahist_to_ax(
     if plot_mean:
         mean_format = f'{{0:{mean_format}}}'
 
-        most_probable_area = calculate_dmode(data)
+        most_probable_area,_ = calculate_dmode(data)
         most_probable_area_value = 10**most_probable_area if as_log else most_probable_area
         most_probable_area_string = mean_format.format(most_probable_area_value)
         print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
@@ -684,6 +689,7 @@ def datahist_to_ax(
         ayd = ax.get_ylim()[1] - ax.get_ylim()[0]
         ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{most_probable_area_string}{unit}", color='red', alpha=alpha, ha='left', va='center', zorder=2)
     return None, binrange, binned_data
+
 
 
 def label_image(
@@ -894,3 +900,12 @@ def fill_polar_cell(
     img = cv2.addWeighted(img, 1, mask, alpha, 0.5)
 
     return img
+
+
+def shade(axs: Axes, X, y1, y2, color, alpha):
+    assert len(y1) == len(y2), "y1 and y2 must have the same length."
+
+    x = np.linspace(min(X), max(X), len(y1))
+    polygon = np.column_stack([np.hstack([x, x[::-1]]), np.hstack([y1, y2[::-1]])])  # this is equivalent to fill as it makes a polygon
+    col = PolyCollection([polygon], color=color, alpha=alpha)
+    axs.add_collection(col, autolim=False)

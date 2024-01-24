@@ -390,7 +390,9 @@ def analyze(
                 p0 = positions[ip] * px_per_mm
                 p1 = positions[ip+1] * px_per_mm
                 if status[ip] == CRACK_BRANCHING:
-                    cv2.ellipse(img, tuple(p0.astype(int)), (2,2), 0, 0, 360, (0,0,255), -1)
+                    cv2.ellipse(img, tuple(p0.astype(int)), (5,5), 0, 0, 360, (0,0,255), -1)
+                    cv2.ellipse(img, tuple(p0.astype(int)), (5,5), 0, 0, 360, (0,0,255), 1)
+
                 img = transparent_line(img, tuple(p0.astype(int)), tuple(p1.astype(int)), (0, 127, 255), 2, 0.4)
 
             # crop the image to the region

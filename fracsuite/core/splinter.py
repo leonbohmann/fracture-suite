@@ -794,56 +794,56 @@ class Splinter:
     def get_mode_labels(mode, row3 = False) -> str:
 
         if mode == SplinterProp.AREA:
-            ylabel = "$A_S$ [mm²]"
+            ylabel = "$A_S$ (mm²)"
         elif mode == SplinterProp.ORIENTATION:
-            ylabel = "$\Delta$ [-]"
+            ylabel = "$\Delta$"
         elif mode == SplinterProp.IMPACT_DEPENDENCY:
-            ylabel = "$\Psi$ [-]"
+            ylabel = "$\Psi$"
         elif mode == SplinterProp.ROUNDNESS:
-            ylabel = "$\lambda_c$ [-]"
+            ylabel = "$\lambda_c$"
         elif mode == SplinterProp.ROUGHNESS:
-            ylabel = "$\lambda_r$ [-]"
+            ylabel = "$\lambda_r$"
         elif mode == SplinterProp.ASP:
-            ylabel = "$L/L_p$ [-]"
+            ylabel = "$L/L_p$"
         elif mode == SplinterProp.ASP0:
-            ylabel = "$L_1/L_2$ [-]"
+            ylabel = "$L_1/L_2$"
         elif mode == SplinterProp.L1:
-            ylabel = "$L_1$ [mm]"
+            ylabel = "$L_1$ (mm)"
         elif mode == SplinterProp.L2:
-            ylabel = "$L_2$ [mm]"
+            ylabel = "$L_2$ (mm)"
         elif mode == SplinterProp.L1_WEIGHTED:
-            ylabel = "$\Delta \cdot L_1$ [mm]"
+            ylabel = "$\Delta \cdot L_1$ (mm)"
         elif mode == SplinterProp.CIRCUMFENCE:
-            ylabel = "Circumference [mm]"
+            ylabel = "Circumference (mm)"
         elif mode == SplinterProp.ANGLE:
-            ylabel = "Angle [°]"
+            ylabel = "Angle (°)"
         else:
             raise Exception(f"Invalid splinter-prop '{mode}'")
         if row3:
             return ylabel
 
         if mode == SplinterProp.AREA:
-            ylabel = "Area " + ylabel
+            ylabel = "Flächeninhalt " + ylabel
         elif mode == SplinterProp.ORIENTATION:
-            ylabel = "Orientation " + ylabel
+            ylabel = "Orientierung " + ylabel
         elif mode == SplinterProp.IMPACT_DEPENDENCY:
-            ylabel = "Impact dependency "
+            ylabel = "Anschlagabhängigkeit "
         elif mode == SplinterProp.ROUNDNESS:
-            ylabel = "Roundness " + ylabel
+            ylabel = "Rundheit " + ylabel
         elif mode == SplinterProp.ROUGHNESS:
-            ylabel = "Roughness " + ylabel
+            ylabel = "Rauheit " + ylabel
         elif mode == SplinterProp.ASP:
-            ylabel = "Weighted Aspect ratio " + ylabel
+            ylabel = "Gewichtetes Seitenverhältnis " + ylabel
         elif mode == SplinterProp.ASP0:
-            ylabel = "Aspect ratio " + ylabel
+            ylabel = "Seitenverhältnis " + ylabel
         elif mode == SplinterProp.L1:
-            ylabel = "Height " + ylabel
+            ylabel = "Höhe " + ylabel
         elif mode == SplinterProp.L2:
-            ylabel = "Width " + ylabel
+            ylabel = "Breite " + ylabel
         elif mode == SplinterProp.L1_WEIGHTED:
-            ylabel = "Weighted height " + ylabel
+            ylabel = "Gewichtete Höhe " + ylabel
         elif mode == SplinterProp.CIRCUMFENCE:
-            ylabel = "Circumference " + ylabel
+            ylabel = "Umfang " + ylabel
         elif mode == SplinterProp.ANGLE:
             ylabel = ylabel
         else:

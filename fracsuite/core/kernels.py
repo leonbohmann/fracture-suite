@@ -227,8 +227,8 @@ class ObjectKerneler():
             a = angle_deg(dr)
             for i in range(len(r_range_mm)-1):
                 for j in range(len(t_range_deg)-1):
-                    r0,r1=(r_range_mm[i],r_range_mm[i+1])
-                    t0,t1=(t_range_deg[j],t_range_deg[j+1])
+                    r0,r1 = (r_range_mm[i],r_range_mm[i+1])
+                    t0,t1 = (t_range_deg[j],t_range_deg[j+1])
                     if not r0 <= r < r1:
                         continue
                     if not t0 <= a < t1:
@@ -241,8 +241,8 @@ class ObjectKerneler():
         for i in range(len(r_range_mm)-1):
             for j in range(len(t_range_deg)-1):
                 # last r includes all remaining radii
-                r0,r1=(r_range_mm[i],r_range_mm[i+1])
-                t0,t1=(t_range_deg[j],t_range_deg[j+1])
+                r0,r1 = (r_range_mm[i],r_range_mm[i+1])
+                t0,t1 = (t_range_deg[j],t_range_deg[j+1])
                 spl = spl_groups[i][j]
 
                 args.append((r0,r1,t0,t1,i,j,ip_mm,spl,calculator,mode, pxpmm))
