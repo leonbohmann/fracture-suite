@@ -750,8 +750,7 @@ def annotate_image(
     image,
     title = None,
     cbar_title = None,
-    min_value:float = 0,
-    max_value:float = 1,
+    cbar_range: tuple[float,float] = None,
     figwidth = FigureSize.ROW1,
     return_fig=True,
     clr_format: str = None,
@@ -762,7 +761,7 @@ def annotate_image(
         image (Image): cv2.imread
         title (str): The title of the image.
     """
-    assert max_value > min_value, "Max value must be greater than min value."
+    assert cbar_range[1] > cbar_range[0], "Max color value must be greater than min value."
 
     figsize = get_fig_width(figwidth)
     fig, ax = plt.subplots(figsize=figsize)
@@ -781,16 +780,17 @@ def annotate_image(
     if title is not None:
         ax.set_title(title)
 
-    im = ax.imshow(image, cmap='turbo', aspect='equal', alpha=1)
+    im = ax.imshow(image, cmap='turbo', aspect='equal', alpha=1, vmin=cbar_range[0], vmax=cbar_range[1])
     ax.grid(False)
 
     if cbar_title is not None:
         cbar = fig.colorbar(mappable=im, ax=ax, label=cbar_title)
         renew_ticks_cb(cbar)
         if clr_format is not None:
-
             formatter = FuncFormatter(lambda x, p: f"{{0:{clr_format}}}".format(x))
             cbar.ax.yaxis.set_major_formatter(formatter)
+        if cbar_range is not None:
+            im.set_clim(*cbar_range)
 
     if return_fig:
         fig.tight_layout()
