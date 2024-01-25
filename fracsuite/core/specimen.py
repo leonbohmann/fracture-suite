@@ -90,7 +90,7 @@ class Specimen(Outputtable):
     def break_pos(self) -> SpecimenBreakPosition:
         "Break position of the specimen."
         assert "break_pos" in self.settings, "break_pos not in settings."
-        return self.settings["break_pos"]
+        return SpecimenBreakPosition(self.settings["break_pos"])
 
     @property
     def break_mode(self) -> SpecimenBreakMode:

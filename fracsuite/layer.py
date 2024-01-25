@@ -678,7 +678,7 @@ def graph_impact_layer(
         # plot x and y with c as colors
         scatter = axs.scatter(x_values, y_values, c=c_values, cmap='turbo', s=1.5, alpha=0.1)
         # add colorbar
-        cbar = fig.colorbar(scatter, label="Angle to impact [°]", ax=axs)
+        cbar = fig.colorbar(scatter, label="Winkel zum Anschlagpunkt (°)", ax=axs)
         renew_ticks_cb(cbar)
 
     # lineplot
@@ -700,11 +700,11 @@ def graph_impact_layer(
 
     # plot amounts to secondary axis
     axs2 = axs.twinx()
-    axs2.set_ylabel("Amount of splinters [-]")
+    axs2.set_ylabel("Anzahl Bruchstücke")
     axs2.grid(False)
     axs2.plot(r_range, amounts, color='g', linestyle='--')
 
-    axs.set_xlabel("Distance from impact R [mm]")
+    axs.set_xlabel("Abstand vom Anschlagpunkt (mm)")
     axs.set_ylabel(Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3))
 
 
@@ -777,15 +777,20 @@ def plot_layer_regions(
 def plot_layer_polar(
     specimen_name: str,
     prop: SplinterProp,
+    d_r: float = 20,
+    d_t: float = 360,
 ):
+    """Create an overlay of a specific splinter property on a fracture image using radial bands."""
     specimen = Specimen.get(specimen_name, load=True)
     pxpmm = specimen.calculate_px_per_mm()
     ip_px = specimen.get_impact_position(True)
-    _,_,Z,_ = specimen.calculate_2d_polar(prop=prop)
+    realsize = specimen.get_real_size()
 
     # fetch radii and angles
-    r_range = specimen.layer_region.radii
-    t_range = specimen.layer_region.theta
+    r_range,t_range = arrange_regions(d_r,d_t,specimen.break_pos,realsize[0],realsize[1])
+
+    _,_,Z,_ = specimen.calculate_2d_polar(prop=prop, r_range_mm=r_range, t_range_deg=t_range)
+
 
     # plot the results in a colored plot
     sz = FigureSize.ROW1HL
@@ -818,19 +823,19 @@ def plot_layer_polar(
 
     output = annotate_image(
         result_img,
-        cbar_range = (np.nanmin(Z[:,0]),np.nanmax(Z[:,0])),
+        cbar_range = (np.nanmin(Z),np.nanmax(Z)),
         cbar_title=clr_label,
         clr_format='.0f',
         figwidth=sz
     )
     print(Z)
-    print(np.nanmin(Z[:,0]))
-    print(np.nanmax(Z[:,0]))
+    print(np.nanmin(Z))
+    print(np.nanmax(Z))
 
-    State.output(output, f'polar-{specimen_name}_{prop}', to_additional=True)
+    State.output(output, f'polar-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
 @layer_app.command()
-def plot(
+def plot_layer(
     layer: Annotated[ModelLayer, typer.Argument(help="The layer to display")],
     mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
     boundary: Annotated[SpecimenBoundary, typer.Argument(help="Boundary condition")],
@@ -846,12 +851,12 @@ def plot(
         R,U,V = load_layer(model_name)
 
 
-    xlabel = 'Distance $R$ from Impact [mm]'
-    ylabel = 'Elastic Strain Energy U [J/m²]'
+    xlabel = 'Abstand $R$ zum Anschlagpunkt (mm)'
+    ylabel = 'Formänderungsenergie $U$ (J/m²)'
 
     if figwidth == FigureSize.ROW3:
-        xlabel = 'Distance $R$ [mm]'
-        ylabel = '$U$ [J/m²]'
+        xlabel = 'Abstand $R$ (mm)'
+        ylabel = '$U$ (J/m²)'
 
     clabel = Splinter.get_mode_labels(mode)
 
@@ -860,97 +865,98 @@ def plot(
     State.output(StateOutput(fig, figwidth), f"{layer}-2d_{mode}_{boundary}")
     plt.close(fig)
 
-@layer_app.command()
-def plot_impact_layer(
-    specimen_name: Annotated[str, typer.Argument(help="The specimen to display")],
-    mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
-):
-    """Overlay radial values on fracture image."""
-    specimen = Specimen.get(specimen_name)
 
-    # calculate mode for every splinter
-    splinter_values = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
-    ip = specimen.get_impact_position()
-    s_sz = specimen.get_image_size()
-    px_p_mm = specimen.calculate_px_per_mm()
-    for i, s in enumerate(specimen.splinters):
-        # calculate distance to impact point
-        r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
+# @layer_app.command()
+# def plot_layer(
+#     specimen_name: Annotated[str, typer.Argument(help="The specimen to display")],
+#     mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
+# ):
+#     """Overlay values on fracture image, using 2d kerneler and transforming it into polar coordinates."""
+#     specimen = Specimen.get(specimen_name)
 
-        # get data from splinter
-        a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip_mm=ip)
+#     # calculate mode for every splinter
+#     splinter_values = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
+#     ip = specimen.get_impact_position()
+#     s_sz = specimen.get_image_size()
+#     px_p_mm = specimen.calculate_px_per_mm()
+#     for i, s in enumerate(specimen.splinters):
+#         # calculate distance to impact point
+#         r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
 
-        splinter_values[i,:] = (r, a)
+#         # get data from splinter
+#         a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip_mm=ip)
 
-    # sort after the radius
-    splinter_values = splinter_values[splinter_values[:,0].argsort()]
+#         splinter_values[i,:] = (r, a)
 
-    fig,axs=plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+#     # sort after the radius
+#     splinter_values = splinter_values[splinter_values[:,0].argsort()]
 
-    # display the splinter fracture image
-    axs.imshow(specimen.get_fracture_image(), cmap='gray')
+#     fig,axs=plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
 
-    # now, overlay circles corresponding to the radii and the color the value
-    R,V,D = moving_average(splinter_values[:,0], splinter_values[:,1], np.linspace(0, np.max(splinter_values[:,0])))
-    R = R*px_p_mm
+#     # display the splinter fracture image
+#     axs.imshow(specimen.get_fracture_image(), cmap='gray')
 
-    # Erstellen Sie ein Gitter für den Contour-Plot
-    ip = ip * px_p_mm
-    x = np.linspace(0, s_sz[0], 100) - ip[0]
-    y = np.linspace(0, s_sz[1], 100) - ip[1]
-    x = np.absolute(x)
-    y = np.absolute(y)
+#     # now, overlay circles corresponding to the radii and the color the value
+#     R,V,D = moving_average(splinter_values[:,0], splinter_values[:,1], np.linspace(0, np.max(splinter_values[:,0])))
+#     R = R*px_p_mm
 
-    X, Y = np.meshgrid(x, y, indexing='xy')
-    Z = np.zeros_like(X)
-    Z.fill(np.nan)
+#     # Erstellen Sie ein Gitter für den Contour-Plot
+#     ip = ip * px_p_mm
+#     x = np.linspace(0, s_sz[0], 100) - ip[0]
+#     y = np.linspace(0, s_sz[1], 100) - ip[1]
+#     x = np.absolute(x)
+#     y = np.absolute(y)
 
-    # Berechnen Sie die Werte für den Contour-Plot
-    for i in range(len(R)-1):
-        if i == len(R):
-            mask = (X**2 + Y**2 >= R[i]**2)
-        else:
-            mask = (X**2 + Y**2 >= R[i]**2) & (X**2 + Y**2 <= R[i+1]**2)
+#     X, Y = np.meshgrid(x, y, indexing='xy')
+#     Z = np.zeros_like(X)
+#     Z.fill(np.nan)
 
-        Z[mask] = V[i]
+#     # Berechnen Sie die Werte für den Contour-Plot
+#     for i in range(len(R)-1):
+#         if i == len(R):
+#             mask = (X**2 + Y**2 >= R[i]**2)
+#         else:
+#             mask = (X**2 + Y**2 >= R[i]**2) & (X**2 + Y**2 <= R[i+1]**2)
 
-    # replace nan with mean
-    Z_mean = np.nanmean(Z)
-    Z[np.isnan(Z)] = Z_mean
+#         Z[mask] = V[i]
 
-    output = plot_kernel_results(
-        original_image=specimen.get_fracture_image(),
-        clr_label=Splinter.get_mode_labels(mode),
-        no_ticks=True,
-        plot_vertices=False,
-        mode=KernelContourMode.FILLED,
-        X=X,
-        Y=Y,
-        results=Z,
-        kw_px=None,
-        figwidth=FigureSize.ROW2,
-        clr_format=".2f",
-        crange=None,
-        plot_kernel=False,
-        fill_skipped_with_mean=False,
-        make_border_transparent=False
-    )
+#     # replace nan with mean
+#     Z_mean = np.nanmean(Z)
+#     Z[np.isnan(Z)] = Z_mean
 
-    # for i in range(len(R)):
-    #     c = norm_color(get_color(V[i], np.min(V), np.max(V)))
+#     output = plot_kernel_results(
+#         original_image=specimen.get_fracture_image(),
+#         clr_label=Splinter.get_mode_labels(mode),
+#         no_ticks=True,
+#         plot_vertices=False,
+#         mode=KernelContourMode.FILLED,
+#         X=X,
+#         Y=Y,
+#         results=Z,
+#         kw_px=None,
+#         figwidth=FigureSize.ROW2,
+#         clr_format=".2f",
+#         crange=None,
+#         plot_kernel=False,
+#         fill_skipped_with_mean=False,
+#         make_border_transparent=False
+#     )
 
-    #     # scale radii and impact point to pixels
-    #     r = R[i] * px_p_mm
+#     # for i in range(len(R)):
+#     #     c = norm_color(get_color(V[i], np.min(V), np.max(V)))
 
-    #     cp = axs.contourf(X, Y, Z, levels=np.linspace(np.min(V), np.max(V), 100), cmap='turbo', alpha=0.5)
+#     #     # scale radii and impact point to pixels
+#     #     r = R[i] * px_p_mm
+
+#     #     cp = axs.contourf(X, Y, Z, levels=np.linspace(np.min(V), np.max(V), 100), cmap='turbo', alpha=0.5)
 
 
-    #     # fill a circle with the color without overlapping smaller circles
-    #     # axs.add_patch(plt.Circle(ip, r, color=c, fill=True, linewidth=0, alpha=0.5))
+#     #     # fill a circle with the color without overlapping smaller circles
+#     #     # axs.add_patch(plt.Circle(ip, r, color=c, fill=True, linewidth=0, alpha=0.5))
 
-    #     # axs.add_patch(plt.Circle(ip, r, color=c, fill=True, linewidth=0, alpha=0.5))
+#     #     # axs.add_patch(plt.Circle(ip, r, color=c, fill=True, linewidth=0, alpha=0.5))
 
-    #     # axs.add_patch(plt.Circle(ip, R[i], color=c, fill=False, linewidth=1))
+#     #     # axs.add_patch(plt.Circle(ip, R[i], color=c, fill=False, linewidth=1))
 
-    # display the figure
-    State.output(output, f"impact-layer_{mode}", spec=specimen)
+#     # display the figure
+#     State.output(output, f"impact-layer_{mode}", spec=specimen)

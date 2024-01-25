@@ -785,12 +785,14 @@ def annotate_image(
 
     if cbar_title is not None:
         cbar = fig.colorbar(mappable=im, ax=ax, label=cbar_title)
+        if cbar_range is not None:
+            im.set_clim(*cbar_range)
+
         renew_ticks_cb(cbar)
+
         if clr_format is not None:
             formatter = FuncFormatter(lambda x, p: f"{{0:{clr_format}}}".format(x))
             cbar.ax.yaxis.set_major_formatter(formatter)
-        if cbar_range is not None:
-            im.set_clim(*cbar_range)
 
     if return_fig:
         fig.tight_layout()
