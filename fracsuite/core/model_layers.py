@@ -16,6 +16,38 @@ class ModelLayer(str, Enum):
     IMPACT = "impact-layer"
     BASE = "base-layer"
 
+    @classmethod
+    def create(
+        cls,
+        prop: SplinterProp,
+        boundary: SpecimenBoundary,
+        break_pos: SpecimenBreakPosition,
+        thickness_mm: float
+    ):
+        cls.prop = prop
+        "The represented splinter property."
+        cls.boundary = boundary
+        "The represented boundary mode."
+        cls.break_pos = break_pos
+        "The represented break position."
+        cls.thickness_mm = thickness_mm
+        "The represented thickness in mm."
+
+    def load(self):
+        return load_layer(f'{self}_{self.prop}_{self.boundary}_{self.break_pos}_{self.thickness_mm}.npy')
+
+    def save(self, X: np.ndarray, Y: np.ndarray, Z: np.ndarray):
+        save_layer(
+            self,
+            self.prop,
+            self.boundary,
+            self.break_pos,
+            self.thickness_mm,
+            X,
+            Y,
+            Z
+        )
+
 def get_layer_folder():
     return os.path.join(general.out_path, "layer")
 
@@ -275,7 +307,7 @@ def get_l1(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
 
 
 def arrange_regions(
-    d_r_mm: int = 20,
+    d_r_mm: int = 25,
     d_t_deg: int = 360,
     break_pos: SpecimenBreakPosition | tuple[float,float] = SpecimenBreakPosition.CORNER,
     w_mm: int = 500,
@@ -302,7 +334,7 @@ def arrange_regions(
     n_t = int(360 / d_t_deg)
 
     # radius range
-    r_range = np.arange(r_min, r_max + d_r_mm, d_r_mm)
+    r_range = np.arange(r_min, r_max, d_r_mm)
     # for i in range(len(r_range)):
     #     xi = -((i / len(r_range))**1.2)+1
     #     r_range[i] = r_range[i] / xi
@@ -313,7 +345,7 @@ def arrange_regions(
 
 def arrange_regions_px(
     px_per_mm: float,
-    d_r_mm: int = 20,
+    d_r_mm: int = 25,
     d_t_deg: int = 360,
     break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
     w_mm: int = 500,

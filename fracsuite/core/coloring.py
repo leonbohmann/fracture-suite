@@ -18,7 +18,7 @@ def rand_col():
 
 def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo'):
     # Normalize the value to be in the range [0, 1]
-    normalized_value = (value - min_value) / (max_value - min_value)
+    normalized_value = abs((value - min_value) / (max_value - min_value))
 
     # Choose the colormap
     colormap = mpl.colormaps[colormap_name]

@@ -178,6 +178,7 @@ class Specimen(Outputtable):
         name = f"'{self.name}'"
         print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)}, "
                 f"Splinters: {checkmark(self.has_splinters)}).")
+        print(f'\t t={self.measured_thickness:.2f}mm, U={self.U:.2f}J/mm², U_d={self.U_d:.2f}J/mm³, σ_s={self.sig_h:.2f}MPa')
 
 
     def __init__(self, path: str, log_missing = True, load = False):

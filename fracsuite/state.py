@@ -74,6 +74,12 @@ class StateOutput:
                         bbox_inches='tight',
                         pad_inches=0
                     )
+                    self.Data.savefig(
+                        outfile := f'{path}_{self.FigWidth}.png',
+                        dpi=200,
+                        bbox_inches='tight',
+                        pad_inches=0
+                    )
                 saved = True
 
             except PermissionError:

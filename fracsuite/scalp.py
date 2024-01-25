@@ -64,15 +64,22 @@ def fill_sheet():
     sigmas = {
         4: {}, 8: {}, 12: {}
     }
+    has_fracture = {
+        4: {}, 8: {}, 12: {}
+    }
     for spec in specimens:
         if spec.thickness not in sigmas:
             sigmas[spec.thickness] = {}
+            has_fracture[spec.thickness] = {}
         if spec.nom_stress not in sigmas[spec.thickness]:
             sigmas[spec.thickness][spec.nom_stress] = {}
+            has_fracture[spec.thickness][spec.nom_stress] = {}
         if spec.boundary not in sigmas[spec.thickness][spec.nom_stress]:
             sigmas[spec.thickness][spec.nom_stress][spec.boundary] = {}
+            has_fracture[spec.thickness][spec.nom_stress][spec.boundary] = {}
         if spec.nbr not in sigmas[spec.thickness][spec.nom_stress][spec.boundary]:
             sigmas[spec.thickness][spec.nom_stress][spec.boundary][spec.nbr] = spec.sig_h
+            has_fracture[spec.thickness][spec.nom_stress][spec.boundary][spec.nbr] = spec.has_splinters or spec.has_fracture_scans
 
 
     row = 2
@@ -84,6 +91,9 @@ def fill_sheet():
             i = int(db[f'D{row}'].value)
 
             db[f'H{row}'].value = sigmas[t][s][l][i]
+
+            if has_fracture[t][s][l][i]:
+                db[f'G{row}'].value = "Zerstört"
         except Exception:
             pass
 

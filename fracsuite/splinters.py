@@ -165,8 +165,7 @@ def plot_touching_len(specimen, splinters) -> StateOutput:
         output_image0,
         cbar_title="Amount of touching splinters",
         clr_format=".2f",
-        min_value=min_adj,
-        max_value=max_adj,
+        cbar_range=(min_adj,max_adj),
         figwidth=FigureSize.ROW2,
     )
 
@@ -238,8 +237,8 @@ def plot_adjacent(
     # create probability histogram plot of touching splinters
     lens = [len(x.adjacent_splinter_ids) for x in splinters]
     fig, axs = datahist_plot(
-        x_label='Amount of edges $N_e$',
-        y_label='Probability Density $p(N_e)$',
+        x_label='Kantenanzahl $N_e$',
+        y_label='Wahrscheinlichkeitsdichte $p(N_e)$',
         figwidth=FigureSize.ROW1,
     )
 
@@ -615,7 +614,7 @@ def plt_prop(
         cv2.drawContours(overlay_img, [splinter.contour], 0, clr, -1)
 
     cv2.drawContours(overlay_img, [x.contour for x in specimen.splinters], -1, (0, 0, 0), 1)
-    out_img = cv2.addWeighted(out_img, 0.5, overlay_img, 0.5, 0.5)
+    out_img = cv2.addWeighted(out_img, 0.3, overlay_img, 1, 1)
 
     State.output(out_img, f'{prop}_filled', spec=specimen, to_additional=True, figwidth=FigureSize.ROW2)
 
@@ -624,8 +623,7 @@ def plt_prop(
         out_img,
         cbar_title=clr_label,
         clr_format=".1f",
-        min_value=min_prop,
-        max_value=max_prop,
+        cbar_range=(min_prop, max_prop),
         figwidth=FigureSize.ROW2,
     )
 
@@ -866,10 +864,12 @@ def log_2d_histograms(
         y_stress: Annotated[bool, typer.Option(help='Show stress on y axis instead of energy.')] = False,
         maxspecimen: Annotated[int, typer.Option(help='Maximum amount of specimens.')] = 50,
         normalize: Annotated[bool, typer.Option(help='Normalize histograms.')] = False,
-        n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60):
+        n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = 60,
+        energy: Annotated[float, typer.Option(help='Energy range.')] = None,
+    ):
     """Plot a 2D histogram of splinter sizes and stress."""
 
-    filter = create_filter_function(names, sigmas, delta,
+    filter = create_filter_function(names, sigmas, delta, energy=energy,
                                     exclude=exclude,
                                     needs_scalp=True,
                                     needs_splinters=True)
@@ -909,16 +909,17 @@ def log_2d_histograms(
     stress, data = sort_two_arrays(stress, data, True)
     names = [x[1] for x in data]
     data = [x[0] for x in data]
-    axs.set_xlabel("Splinter Area $A_S$ [mm²]")
+    axs.set_xlabel("Bruchstückflächeninhalt $A_S$ (mm²)")
     if not y_stress:
-        axs.set_ylabel("Strain Energy [J/m²]")
+        axs.set_ylabel("$U$ (J/m²)")
     else:
-        axs.set_ylabel("Surface Stress [MPa]")
+        axs.set_ylabel("$\sigma_\\text{s}$ (MPa)")
 
-    str_mod = 5 if len(stress) > 15 else 1
-    x_ticks = np.arange(0, n_bins, 5)
+    x_ticks = np.arange(0, n_bins, 10)
     siz_mod = 2 if len(x_ticks) > 10 else 1
     axs.set_xticks(x_ticks, [f'{10 ** edges[x]:.2f}' if i % siz_mod == 0 else "" for i, x in enumerate(x_ticks)])
+
+    str_mod = 5 if len(stress) > 15 else 1
     axs.set_yticks(np.arange(0, len(stress), 1),
                    [f'{np.abs(x):.2f}' if i % str_mod == 0 else "" for i, x in enumerate(stress)])
 
@@ -947,6 +948,7 @@ def log_2d_histograms(
 def create_filter_function(name_filter,
                            sigmas=None,
                            sigma_delta=10,
+                           energy=None,
                            exclude: str = None,
                            needs_scalp=True,
                            needs_splinters=True
@@ -1070,7 +1072,8 @@ def create_filter_function(name_filter,
             return False
         elif sigmas is not None:
             return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
-
+        elif energy is not None:
+            return abs(specimen.U-energy) < 0.05 * energy
         return True
 
     return filter_specimens
@@ -1191,7 +1194,7 @@ def splinter_orientation_f(
         n_points=n_points,
         kw_px=w_px,
         z_action=mean_orientations,
-        clr_label="Normalized Orientation $\\bar{\Delta}$",
+        clr_label="Normalisierte Ausrichtung $\\bar{\Delta}$",
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         figwidth=figwidth,
         clr_format='.1f',
@@ -1391,6 +1394,85 @@ class EnergyUnit(str,Enum):
 
 
 @app.command()
+def test_navid_nfifty():
+    sz = FigureSize.ROW2
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    # get navids ud
+    from fracsuite.core.navid_results import nfifty_ud
+    ud_x = nfifty_ud[:,0]
+    ud_y = nfifty_ud[:,1]
+
+    ud0 = navid_nfifty_ud()
+    ud0_x = ud0[:,0]
+    ud0_y = ud0[:,1]
+
+    def ud(x):
+        return 0.255*x**2+109.28*x+5603
+    xs = np.linspace(1,200,100)
+    yud = ud(xs)
+
+    # plot the xs,yud to the background
+    axs.plot(xs,yud, color='k', label="Fit")
+
+    axs.scatter(ud_x, ud_y, label="Original", marker='o', facecolors='none', edgecolors='r')
+
+
+    for it,t in enumerate([4,8,12]):
+        mask = ud0[:,2] == t
+        ud0_x = ud0[mask,0]
+        ud0_y = ud0[mask,1]
+
+        axs.scatter(ud0_x, ud0_y, label=f"{t}mm from U", marker='osv'[it], facecolors='none', edgecolors='b')
+
+    axs.set_xlabel("Bruchstückdichte N50")
+    axs.set_ylabel("Formänderungsenergiedichte $U_d$ [J/m³]")
+    axs.set_xscale('log')
+    axs.set_yscale('log')
+    axs.legend()
+    State.output(fig, "ud", to_additional=True,figwidth=sz)
+
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    def u4(x):
+        return 0.58*x+49.47
+    def u8(x):
+        return 1.14*x+49.51
+    def u12(x):
+        return 1.92*x+48.24
+
+    tf = [
+        u4,u8,u12
+    ]
+
+    # now plot all thicknesses from u
+    for it, t in enumerate([4,8,12]):
+        navid_n50 = navid_nfifty(t)
+        navid_x = navid_n50[:,0]
+        navid_y = navid_n50[:,1]
+        # navids points
+        axs.scatter(
+            navid_x,
+            navid_y,
+            marker='osv'[it],
+            facecolors='none',
+            label=f'{t:.0f}mm',
+            edgecolors='rgb'[it],
+            linewidth=1,
+        )
+
+
+        ys = tf[it](xs)
+        axs.plot(xs,ys, color='rgb'[it])
+
+    axs.set_xlabel("Bruchstückdichte N50")
+    axs.set_ylabel("Formänderungsenergie $U$ [J/m²]")
+
+    axs.set_xscale('log')
+    axs.set_yscale('log')
+    axs.legend()
+    State.output(fig, "u", to_additional=True,figwidth=sz)
+@app.command()
 def nfifty(
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
     break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
@@ -1469,10 +1551,10 @@ def nfifty(
     id = idd[unit]
 
     id_name = {
-        0: "Strain Energy U [J/m²]",
-        1: "Strain Energy Density $U_d$ [J/m³]",
-        2: "Tensile Strain Energy $U_t$ [J/m²]",
-        3: "Tensile Strain Energy Density $U_{dt}$ [J/m³]",
+        0: "Formänderungsenergie $U$ [J/m²]",
+        1: "Formänderungsenergiedichte $U_d$ [J/m³]",
+        2: "Effektive Formänderungsenergie $U_t$ [J/m²]",
+        3: "Effektive Formänderungsenergiedichte $U_{dt}$ [J/m³]",
     }
 
     def U4(x):
@@ -1489,11 +1571,13 @@ def nfifty(
 
 
     sz = FigureSize.ROW3
+    lw = 0.3 # line width for scatter plots
 
     if sz == FigureSize.ROW3:
         for idn in id_name:
             id_name[idn] = " ".join(id_name[idn].split(" ")[-2:])
 
+    # hard coded n50 range
     min_N50 = 0
     max_N50 = 400
 
@@ -1504,18 +1588,24 @@ def nfifty(
     if unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
         navid_n50 = navid_nfifty_ud()
 
-        navid_x = navid_n50[:,0]
-        navid_y = navid_n50[:,1]
-        # navids points
-        axs.scatter(
-            navid_x,
-            navid_y,
-            marker='o',
-            facecolors='none',
-            edgecolors='k',
-            linewidth=0.6,
-            alpha = 0.4
-        )
+        for ith, th in enumerate([4,8,12]):
+            navid_r = navid_n50[navid_n50[:,2] == th]
+
+            navid_x = navid_r[:,0] #n50
+            navid_y = navid_r[:,1] #u|ud
+
+            # navids points
+            axs.scatter(
+                navid_x,
+                navid_y,
+                marker='osv'[ith],
+                facecolors='grb'[ith],
+                edgecolors='none',
+                label=f'{th:.0f}mm (old)',
+                linewidth=lw,
+                alpha = 0.4
+            )
+
     for it, thick in enumerate(thicknesses):
         clr = tcolors[it+1]
         mask = results[:,4] == thick
@@ -1534,11 +1624,16 @@ def nfifty(
                 navid_y,
                 marker='o',
                 facecolors='none',
+                label=f'{thick:.0f}mm (old)',
                 edgecolors=clr,
-                linewidth=0.6,
+                linewidth=lw,
                 alpha=0.4
             )
+        elif unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
+            navid_r = navid_n50[navid_n50[:,2] == thick]
 
+            navid_x = navid_r[:,0] #n50
+            navid_y = navid_r[:,1] #ud
 
         if len(y) > 0:
             # fit a curve
@@ -1564,6 +1659,13 @@ def nfifty(
             y = func(x, *popt)
             axs.plot(x, y, linestyle=(0,(1,1)), color=clr)
 
+            # calculate r^2
+            residuals = y - func(x, *popt)
+            ss_res = np.sum(residuals**2)
+            ss_tot = np.sum((y-np.mean(y))**2)
+            r_squared = 1 - (ss_res / ss_tot)
+            print(f'{thick}mm r^2:', r_squared)
+
         # navid_n50, navid_ud, navid_u = navid_nfifty_interpolated(thick)
         # if unit == EnergyUnit.U:
         #     # print(navid_n50, navid_ud, navid_u)
@@ -1575,8 +1677,8 @@ def nfifty(
 
         for b in bmarkers:
             mask = (results[:,4] == thick) & (results[:,-2] == b)
-            ms = 'x'
-            axs.scatter(results[mask,-1], results[mask,id], marker=ms, linewidth=0.6, color=clr)
+            ms = '*'
+            axs.scatter(results[mask,-1], results[mask,id], marker=ms, linewidth=lw, color=clr)
 
 
     ux = np.linspace(min_N50, max_N50, 100)
@@ -1611,7 +1713,7 @@ def nfifty(
         # plot the curve
         x = np.linspace(np.min(x), np.max(x), 100)
         y = func(x, *popt)
-        axs.plot(x, y, linestyle=(0,(1,1)), color='k', alpha=1, label='Bohmann (2024)')
+        # axs.plot(x, y, linestyle=(0,(1,1)), color='k', alpha=1, label='Bohmann (2024)')
 
     # labeling for leons data
     for b,t in zip(bid.values(), thicknesses):
@@ -1620,7 +1722,7 @@ def nfifty(
         axs.plot([],[], label=f"{t}mm", color=tcolors[b])
 
     axs.set_ylabel(id_name[id])
-    axs.set_xlabel("Fragment Density $N_{50}$")
+    axs.set_xlabel("Bruchstückdichte $N_\\text{50}$")
     # axs.legend(loc='best')
 
     name = 'nfifty' if not use_mean else 'nperwindow'
@@ -1677,7 +1779,7 @@ def fracture_intensity_img(
         w_px,
         n_points,
         z_action=mean_img_value,
-        clr_label="Black Pixels Value [$N_{BP}/A/N_t$]",
+        clr_label="Schwarzwert $N_\\text{schw. Pxl}$",
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         skip_edge=skip_edge,
         exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
@@ -1723,7 +1825,7 @@ def fracture_intensity_f(
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
         plot_kernel=plot_kernel,
-        clr_label="Fragment Density $N_{50}$ [$N_S/A_{50x50mm}$]",  # , $w_A,h_A$={w_mm}mm
+        clr_label="Bruchstückdichte $N_\\text{50}=N_\\text{S}/A_\\text{50x50mm}$]",  # , $w_A,h_A$={w_mm}mm
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
         skip_edge=skip_edge,

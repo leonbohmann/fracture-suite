@@ -320,6 +320,10 @@ def import_fracture(
 
     assert specimen.has_fracture_scans, "Specimen has no fracture scans"
 
+    if specimen.has_splinters:
+        if not typer.confirm("Specimen already has splinters. Overwrite?"):
+            return
+
     print('[yellow]> Transforming fracture images <')
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize)
 

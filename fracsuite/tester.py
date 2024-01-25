@@ -332,7 +332,7 @@ def threshold(
     sig_slider.set(prep0.gauss_sigma)
     lum_slider = Scale(threshold_frame, from_=-255, to_=255, orient="horizontal", label="Luminance Delta", command=lambda x: update_image())
     lum_slider.pack()
-    lum_slider.set(prep0.lum)
+    lum_slider.set(prep0.lum if prep0.lum is not None else 0)
 
     clahe_strength = Scale(second_frame, from_=0, to_=255, orient="horizontal", label="Clahe Strength", command=lambda x: update_image())
     clahe_strength.pack()
@@ -373,7 +373,7 @@ def threshold(
         sz_slider.set(prep.gauss_size[0])
         sig_slider.set(prep.gauss_sigma)
 
-        lum_slider.set(prep.lum)
+        lum_slider.set(prep.lum if prep.lum is not None else 0)
         clahe_strength.set(prep.clahe_strength)
         clahe_size.set(prep.clahe_size)
 

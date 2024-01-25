@@ -128,11 +128,25 @@ def est_break(
 
 @sim_app.command()
 def simulate_fracture(
-    energy: float,
+    sigma_s: float,
     thickness: float,
     size: tuple[float,float] = (500,500),
-    break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER
+    break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
+    E: float = 70e3,
+    nue: float = 0.23,
 ):
+    """
+    Simulate a fracture morphology using the given parameters.
+
+    Args:
+        sigma_s (float): Surface compressive stress [MPa].
+        thickness (float): Thickness of the specimen [mm].
+        size (tuple[float,float], optional): Real dimensions of the specimen. Defaults to (500,500).
+        break_pos (SpecimenBreakPosition, optional): The position, the specimen was broken in. Defaults to SpecimenBreakPosition.CORNER.
+
+    Returns:
+        None: This function creates data that is saved in its output folder.
+    """
     # fetch fracture intensity and hc radius from energy
     fracture_intensity = 0.0139
     hc_radius = 5
@@ -140,7 +154,9 @@ def simulate_fracture(
     impact_position = break_pos.position()
     area = size[0] * size[1]
     c = 4.169e-5
+    energy_u = 1/5 * (1-nue)/E * sigma_s**2 * thickness * 1e6
 
+    print(f'Energy: {energy_u:.2f} J/m²')
     print(f'Fracture intensity: {fracture_intensity:.2f} 1/mm²')
     print(f'HC Radius: {hc_radius:.2f} mm')
     print(f'Mean area: {mean_area:.2f} mm²')
@@ -175,7 +191,7 @@ def simulate_fracture(
         SplinterProp.ORIENTATION,
         SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
-        energy
+        energy_u
     )
 
     il_l1, il_l1_stddev = interp_layer(
@@ -183,7 +199,7 @@ def simulate_fracture(
         SplinterProp.L1,
         SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
-        energy
+        energy_u
     )
 
     il_l1l2, il_l1l2_stddev = interp_layer(
@@ -191,7 +207,7 @@ def simulate_fracture(
         SplinterProp.ASP,
         SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
-        energy
+        energy_u
     )
 
     # plot orientation
@@ -301,7 +317,7 @@ def simulate_fracture(
     plt.imshow(black_white_img)
     plt.show()
 
-    State.output(black_white_img, f'generated_{energy}_{thickness}', spec=None, figwidth=FigureSize.ROW2)
+    State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2)
 
 @sim_app.command()
 def create_spatial():

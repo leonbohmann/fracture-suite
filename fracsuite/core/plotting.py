@@ -564,7 +564,7 @@ def datahist_plot(
     nrows:int = 1,
     xlim: tuple[float,float] = None,
     x_format: str = "{0:.0f}",
-    x_label: str = 'Splinter Area $A_S$ [mm²]',
+    x_label: str = 'Bruchstückflächeninhalt $A_S$ (mm²)',
     y_format: str = "{0:.2f}",
     y_label: str = None,
     data_mode : DataHistMode = DataHistMode.PDF,
@@ -595,9 +595,9 @@ def datahist_plot(
             ax.set_ylabel(y_label)
         else:
             if data_mode == DataHistMode.PDF:
-                ax.set_ylabel('Probability density $p(A_S)$')
+                ax.set_ylabel('Wahrscheinlichkeitsdichte $p(A_S)$')
             elif data_mode == DataHistMode.CDF:
-                ax.set_ylabel('Cumulative Distr. Func. $C(A_S)$')
+                ax.set_ylabel('Kumulative Verteilungs Fkt. $C(A_S)$')
         ax.grid(True, which='both', axis='both')
 
     return fig, axs

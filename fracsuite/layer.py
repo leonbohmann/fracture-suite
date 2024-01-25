@@ -266,9 +266,9 @@ def create_impact_layer(
 
     specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True,max_n=300)
 
-    for spec in specimens:
-        area = np.sum([s.area for s in spec.splinters])
-        print(f'{spec.name}: {area:.2f} mm²')
+    # for spec in specimens:
+    #     area = np.sum([s.area for s in spec.splinters])
+    #     print(f'{spec.name}: {area:.2f} mm²')
 
     if thickness is None:
         thickness = 'all'
@@ -281,7 +281,7 @@ def create_impact_layer(
     ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
 
 
-    r_range, t_range = arrange_regions(d_r_mm=20,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
+    r_range, t_range = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
 
     print(r_range)
     print(t_range)
@@ -364,10 +364,10 @@ def create_impact_layer(
         )
 
     # define an energy range to plot mean values in
-    d_ud = 20 # J/m²
+    n_ud = 7 # J/m²
     ud_min = np.min(results[:,0])
     ud_max = np.max(results[:,0])
-    ud_range = np.arange(ud_min, ud_max, d_ud)
+    ud_range = np.linspace(ud_min, ud_max, n_ud)
     ud_colors = [norm_color(get_color(ud, ud_min, ud_max)) for ud in ud_range]
 
     # shift ranges to centers (alternatively use R and T from polar calculation)
@@ -389,7 +389,7 @@ def create_impact_layer(
         min_u = np.nanmin(b_results[:,0])
 
         fig,axs = plt.subplots(figsize=get_fig_width(sz))
-        # axs.set_autoscaley_on(False)
+        axs.set_autoscaley_on(False)
 
         colors = []
         print('Current Boundary: ', b)
@@ -404,17 +404,31 @@ def create_impact_layer(
             colors.append(c)
 
             # plot individual lines
-            axs.plot(x, b_results[i,3:], color=c, marker='x', linewidth=0.5, alpha=0.1, markersize=1.5) #, scaley=False
+            axs.plot(x, b_results[i,3:], color=c, marker='x', linewidth=0.5, alpha=0.1, markersize=1.5, scaley=False) #
 
             # fill stddev
             # axs.fill_between(x, b_results[i,3:] - b_stddevs[i,3:], b_results[i,3:] + b_stddevs[i,3:],
             #                  color=c, alpha=0.1)
 
         # plot mean values as thick lines
-        for i in range(len(ud_range)):
-            ud_mask = (b_results[:,0] >= ud_range[i]) & (b_results[:,0] < ud_range[i] + d_ud)
-            mean = np.nanmean(b_results[ud_mask,3:], axis=0)
-            axs.plot(x, mean, color=ud_colors[i], linewidth=2) #,scaley=True
+        for i in range(len(ud_range)-1):
+            cud = (ud_range[i] + ud_range[i+1]) / 2
+            if i < len(ud_range)-1:
+                ud_mask = (b_results[:,0] >= ud_range[i]) & (b_results[:,0] < ud_range[i+1])
+            else:
+                ud_mask = (b_results[:,0] >= ud_range[i])
+
+            if np.sum(ud_mask) == 0:
+                continue
+
+            ud_results = b_results[ud_mask,3:]
+            if np.nansum(ud_results) == 0:
+                continue
+
+            mean = np.nanmean(ud_results, axis=0)
+            c = norm_color(get_color(cud, min_u, max_u))
+
+            axs.plot(x, mean, color=c, linewidth=2, scaley=True)
 
         # # for 12.110.A.05 scatter all points
         # for i in range(len(b_results)):
@@ -422,6 +436,7 @@ def create_impact_layer(
         #         axs.scatter(x, b_results[i,3:], color=colors[i], marker='x', linewidth=0.5, alpha=0.5, s=1.5)
 
 
+        axs.autoscale(True)
         # put plot data onto axs
         axs.set_xlabel(xlabel)
         axs.set_ylabel(ylabel)
@@ -777,7 +792,7 @@ def plot_layer_regions(
 def plot_layer_polar(
     specimen_name: str,
     prop: SplinterProp,
-    d_r: float = 20,
+    d_r: float = 25,
     d_t: float = 360,
 ):
     """Create an overlay of a specific splinter property on a fracture image using radial bands."""

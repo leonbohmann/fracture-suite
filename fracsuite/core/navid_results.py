@@ -84,6 +84,7 @@ nfifty_sigm_t = np.array([
     [400, 18.43, 30.72, 40.96, 61.44, 81.92, 102.40, 122.88, 153.61, 194.57]
 ])
 
+# n50, u
 nfifty_u_4mm = np.array([
     [2.988570242547909,	54.43219732397485],
     [3.9591401203877608,	48.318625631898925],
@@ -99,6 +100,8 @@ nfifty_u_4mm = np.array([
     # [51.197776639187175	,68.90541230201934],
     # [44.419850496213165	,74.2072768294387],
 ])
+"(n50, u)"
+# n50, u
 nfifty_u_8mm = np.array([
     [3.9730034550451268	,55.42247692969174],
     [4.966326207445054	,55.93840463842206],
@@ -109,6 +112,8 @@ nfifty_u_8mm = np.array([
     [94.09537598368814	,143.9371346002303],
     [94.09537598368814	,147.31033426450102],
 ])
+"(n50, u)"
+# n50, u
 nfifty_u_12mm = np.array([
     [9.700277108603037	,75.59529817644722],
     [10.955887828441798	,78.08709948681407],
@@ -122,6 +127,9 @@ nfifty_u_12mm = np.array([
     [63.99814718591155	,154.29574130434008],
     [63.3522603232277	,157.91169728548246],
 ])
+"(n50, u)"
+
+# nfify, ud
 nfifty_ud = np.array([
     [2.98452e+0, 5.75806e+3],
     [3.00184e+0, 5.17661e+3],
@@ -152,8 +160,8 @@ nfifty_ud = np.array([
     [1.59778e+2, 2.99126e+4],
     [1.60705e+2, 2.87587e+4],
     [1.87875e+2, 3.45276e+4],
-
 ])
+"(n50, ud)"
 t = [1.8, 3, 4, 6, 8, 10, 12, 15, 19]
 n50 = nfifty_sigm_t[:, 0]
 E = 70e3
@@ -161,8 +169,39 @@ nue  = 0.23
 
 # sig_m[nfifty,sigm]
 
+########################################
+# transform u data to ud while preserving the thickness
+#
+# With this, we can plot all data from the N50(U) plot to the N50(Ud) plot.
+# It is shown using fracsuite splinters nfifty, that the data has been filtered to better fit the N50(Ud) curve.
+########################################
+total_len = len(nfifty_u_4mm) + len(nfifty_u_8mm) + len(nfifty_u_12mm)
 
+# t, n50, u, ud
+total_data = np.full((total_len, 4), np.nan)
 
+for i in range(len(nfifty_u_4mm)):
+    i4 = i
+
+    total_data[i4, 0] = 4
+    total_data[i4, 1] = nfifty_u_4mm[i, 0]
+    total_data[i4, 2] = nfifty_u_4mm[i, 1]
+    total_data[i4, 3] = nfifty_u_4mm[i, 1] / 0.0041
+for i in range(len(nfifty_u_8mm)):
+    i8 = i + len(nfifty_u_4mm)
+
+    total_data[i8, 0] = 8
+    total_data[i8, 1] = nfifty_u_8mm[i, 0]
+    total_data[i8, 2] = nfifty_u_8mm[i, 1]
+    total_data[i8, 3] = nfifty_u_8mm[i, 1] /  0.008
+
+for i in range(len(nfifty_u_12mm)):
+    i12 = i + len(nfifty_u_4mm) + len(nfifty_u_8mm)
+
+    total_data[i12, 0] = 12
+    total_data[i12, 1] = nfifty_u_12mm[i, 0]
+    total_data[i12, 2] = nfifty_u_12mm[i, 1]
+    total_data[i12, 3] = nfifty_u_12mm[i, 1] /  0.012
 
     # sig_m[:, i] = np.sqrt(sig_m[:, i])
 
@@ -176,9 +215,10 @@ def navid_nfifty_ud() -> np.ndarray:
         thickness (float): The thickness. Has to be 4, 8 or 12.
 
     Returns:
-        np.ndarray: NDarray with X,Y values per Row.
+        np.ndarray: NDarray with (n50, Ud, t)
     """
-    return nfifty_ud
+    #TODO: AUCH DIE DICKE MIT ÜBERGEBEN; DAMIT DIE DARGESTELLT WERDEN KANN
+    return total_data[:, [1, 3, 0]]
 
 def navid_nfifty(thickness: int, as_ud: bool = False) -> np.ndarray:
     """
