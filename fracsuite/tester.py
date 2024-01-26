@@ -235,7 +235,7 @@ def best_params(image):
 
 @tester_app.command()
 def threshold(
-    image,
+    source: Annotated[str, typer.Argument(help='Path to image file.')],
     region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = (250,250,100,100),
     region_f: Annotated[tuple[float,float], typer.Option(help='Region center in percent.')] = None,
     realsize: tuple[int,int] = (500,500),
@@ -252,10 +252,10 @@ def threshold(
     from fracsuite.core.preps import defaultPrepConfig
     prep0 = defaultPrepConfig
 
-    if re.match(r'.*\..*\..*\..*', image):
+    if "\\" not in source and re.fullmatch(r'^.*\..*\..*\..*$', source):
         print("[cyan]Specimen detected")
-        specimen = Specimen.get(image)
-        image = specimen.get_splinter_outfile("dummy")
+        specimen = Specimen.get(source)
+        source = specimen.get_splinter_outfile("dummy")
         img = specimen.get_fracture_image()
         px_per_mm = specimen.calculate_px_per_mm(realsize_mm=realsize)
         # take a small portion of the image
@@ -283,12 +283,12 @@ def threshold(
             inspect(prep0)
     else:
         # Load image and convert to grayscale
-        img = cv2.imread(image, cv2.IMREAD_COLOR)
+        img = cv2.imread(source, cv2.IMREAD_COLOR)
         is_specimen = False
 
     # plot_counts(img)
 
-    dir = os.path.dirname(image)
+    dir = os.path.dirname(source)
     label_path = find_file(dir, 'label.png')
     label_img = None
     if label_path is not None:
@@ -422,7 +422,7 @@ def threshold(
 
         with open(State.get_output_file('prep_config.json'), 'w') as f:
             d = prep.__json__()
-            d['meant_for'] = os.path.basename(image)
+            d['meant_for'] = os.path.basename(source)
             json.dump(d, f, indent=4)
 
         if is_specimen:
