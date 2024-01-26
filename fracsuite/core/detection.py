@@ -8,12 +8,18 @@ import numpy as np
 import numpy.typing as nptyp
 from rich import inspect, print
 from rich.progress import track
+from tqdm import tqdm
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageplotting import plotImage
 
 from fracsuite.core.imageprocessing import preprocess_spot_detect
 from fracsuite.core.progress import get_progress
 from fracsuite.state import State
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fracsuite.core.splinter import Splinter
 
 SM_IMAGE = "IMAGE_SM_SPLINT_DETECT"
 
@@ -488,3 +494,119 @@ def attach_connections(splinters, connections):
                 splinters[i].adjacent_splinter_ids.append(j)
             if i not in splinters[j].adjacent_splinter_ids:
                 splinters[j].adjacent_splinter_ids.append(i)
+
+
+
+def get_splinter_surface_area(args):
+    """
+    This function calculates the surface area of a splinter.
+
+    Args:
+        splinter (Splinter): Splinter object.
+        image (img): Original image that has been preprocessed.
+        t (float): Thickness of the splinter.
+
+    Returns:
+        None. This function modifies the splinter object.
+    """
+    splinter, image, t = args
+
+    # contour is always closed!
+    crack_area = 0
+
+    for ip in range(len(splinter.contour)-1):
+        if ip == len(splinter.contour)-1:
+            # current point
+            p0 = splinter.contour[ip+1][0]
+            # next point is the first point of contour
+            p1 = splinter.contour[0][0]
+        else:
+            # current point
+            p0 = splinter.contour[ip][0]
+            # next point
+            p1 = splinter.contour[ip+1][0]
+
+        # calculate vector between points
+        dc = p1 - p0
+        dc_norm = np.linalg.norm(dc)
+        dc = dc / dc_norm
+        # get perpendicular vector
+        dp = np.array([dc[1], -dc[0]])
+        dp_norm = np.linalg.norm(dp)
+        dp = dp / dp_norm
+
+        # t_star in each direction
+        lstar1 = 0
+        lstar2 = 0
+        # check the perpendicular line for maximum 50 pixels in each direction!
+        for i in range(1, 50):
+            p1 = p0 + i * dp
+
+            # clip to image size
+            if p1[0] >= image.shape[1] or p1[0] < 0:
+                break
+            if p1[1] >= image.shape[0] or p1[1] < 0:
+                break
+
+            # check if p1 or p2 has black pixel in image
+            if image[int(p1[1]), int(p1[0])] == 0:
+                lstar1 = np.linalg.norm(p1 - p0)
+            else:
+                break
+
+        for i in range(1, 50):
+            p2 = p0 - i * dp
+
+            # clip to image size
+            if p2[0] >= image.shape[1] or p2[0] < 0:
+                break
+            if p2[1] >= image.shape[0] or p2[1] < 0:
+                break
+
+            if image[int(p2[1]), int(p2[0])] == 0:
+                lstar2 = np.linalg.norm(p2 - p0)
+            else:
+                break
+        #
+        lstar = lstar1 + lstar2
+
+        # maximum possible length
+        Lm = t + lstar
+        # minimum posible length
+        Ld = np.sqrt(t**2 + lstar**2)
+
+        crack_area += (Lm+Ld)/2 * dc_norm * 0.5 # 0.5 because the crack is divided to the adjacent splinter!
+
+    return crack_area
+
+# methods for crack surface calculation
+def get_crack_surface(splinters: list, image, t):
+    """
+    Functions checks for every splinter contour the thickness of lines in the original image.
+
+    Args:
+        splinters (List[Splinter]): Splinter list.
+        image (img): Original image.
+
+    Returns:
+        None. This function modifies the splinter objects.
+    """
+    total_crack_area = 0
+
+    # create args
+    args = [(s, image, t) for s in splinters]
+
+    with Pool() as pool:
+        for crack_area in tqdm(pool.imap_unordered(get_splinter_surface_area, args), total=len(splinters)):
+            total_crack_area += crack_area
+
+
+    return total_crack_area
+
+
+def get_crack_surface_r(splinters, image, t, pxpmm):
+    from splintaz import calculate_fracture_surface
+
+    fracture_surface = calculate_fracture_surface([s.contour[:,0] for s in splinters], image, t, pxpmm)
+
+    return fracture_surface

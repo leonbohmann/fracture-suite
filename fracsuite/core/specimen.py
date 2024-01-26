@@ -69,6 +69,8 @@ class Specimen(Outputtable):
     "Key for the fracture intensity parameter in the simdata file."
     KEY_NFIFTY: str = "nfifty"
     "Key for the nfifty value in the simdata file."
+    KEY_CRACKSURFACE: str = "crack_surface"
+    "Key for the crack surface in the simdata file."
 
     @property
     def splinters(self) -> list[Splinter]:
@@ -160,6 +162,17 @@ class Specimen(Outputtable):
         "Strain Energy of the specimen."
         assert self.loaded, "Specimen not loaded."
         return self.__U
+
+    @property
+    def crack_surface(self):
+        "Total crack surface. Calculated using pixel algorithm."
+        if not hasattr(self, '_crack_surface') or self._crack_surface is None:
+            self._crack_surface = self.simdata.get(Specimen.KEY_CRACKSURFACE, None)
+        return self._crack_surface
+
+    def set_crack_surface(self, value):
+        self._crack_surface = value
+        self.set_data(Specimen.KEY_CRACKSURFACE, value)
 
     def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
@@ -307,7 +320,7 @@ class Specimen(Outputtable):
         self.settings[key] = value
         self.__save_settings()
 
-    def update_simdata(self, key: str, value):
+    def set_data(self, key: str, value):
         self.simdata[key] = value
         self.__save_simdata()
 
@@ -394,7 +407,7 @@ class Specimen(Outputtable):
         else:
             return arr
 
-    def get_prepconf(self) -> PreprocessorConfig | None:
+    def get_prepconf(self, warn=True) -> PreprocessorConfig | None:
         """
         Returns a prepconfig object or none, if not found.
         Can be created using 'fracsuite tester threshhold 8.100.Z.01'.
@@ -405,7 +418,9 @@ class Specimen(Outputtable):
                 js = json.load(f)
                 return PreprocessorConfig.from_json(js)
 
-        print("[yellow]No prep.json found. Using default.")
+        if warn:
+            print("[yellow]No prep.json found. Using default.")
+
         return defaultPrepConfig
 
     def get_splinters_asarray(self, simplify: float = -1) -> np.ndarray:
@@ -462,7 +477,7 @@ class Specimen(Outputtable):
                 fill_skipped_with_mean=True
             )
             f_intensity = int(np.mean(Z))
-            self.update_simdata(Specimen.KEY_FRACINTENSITY, f_intensity)
+            self.set_data(Specimen.KEY_FRACINTENSITY, f_intensity)
 
         return f_intensity
 
@@ -477,7 +492,7 @@ class Specimen(Outputtable):
             float: The fracture intensity parameter in 1/mm².
         """
         lam = self.calculate_NperWindow(force_recalc=force_recalc, D_mm=D_mm) / D_mm**2
-        self.update_simdata(Specimen.KEY_LAMBDA, lam)
+        self.set_data(Specimen.KEY_LAMBDA, lam)
         return lam
 
     def calculate_break_rhc(self, force_recalc: bool = False, d_max: float = 50) -> float:
@@ -503,8 +518,8 @@ class Specimen(Outputtable):
             r1 = x2[min_idx]
             acceptance = min_idx / len(y2)
 
-            self.update_simdata(Specimen.KEY_ACCEPTANCE_PROB, acceptance)
-            self.update_simdata(Specimen.KEY_HCRADIUS, r1)
+            self.set_data(Specimen.KEY_ACCEPTANCE_PROB, acceptance)
+            self.set_data(Specimen.KEY_HCRADIUS, r1)
 
         return r1,acceptance
 
@@ -578,7 +593,7 @@ class Specimen(Outputtable):
                 nfifty += nfiftyi
 
             nfifty = nfifty / len(centers)
-            self.update_simdata(Specimen.KEY_NFIFTY, nfifty)
+            self.set_data(Specimen.KEY_NFIFTY, nfifty)
             return nfifty
         else:
             return nfifty

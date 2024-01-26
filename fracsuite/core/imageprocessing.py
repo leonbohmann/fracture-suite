@@ -133,7 +133,7 @@ def preprocess_image(
         config (AnalyzerConfig): The configuration to use.
 
     Returns:
-        np.array: Preprocessed image.
+        np.array: Preprocessed image that is (m,n) 0-255.
     """
     assert is_rgb(image), "Image must be in RGB format for preprocessing."
 

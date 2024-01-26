@@ -56,6 +56,15 @@ class Splinter:
     has_centroid: bool
     "True if the centroid could be calculated."
 
+    @property
+    def crack_area(self):
+        if self._crack_area is None:
+            self._crack_area = self.circumfence
+
+        return self._crack_area
+
+    def set_crack_area(self, value):
+        self._crack_area = value
 
     def __init__(self, contour, index, px_per_mm: float):
         """Create a splinter from a contour.
@@ -76,6 +85,7 @@ class Splinter:
         # roughness
         self.roughness = self.calculate_roughness()
 
+        self._crack_area = None
 
         # centroid
         try:
@@ -753,6 +763,8 @@ class Splinter:
         Returns:
             float: Return value depending on mode in real dimensions (mm).
         """
+        assert prop in SplinterProp, f"Invalid splinter-prop '{prop}'."
+
         if prop == SplinterProp.ASP:
             assert ip_mm is not None, "Impact point must be set to calculate aspect ratio"
             a = self.measure_aligned_aspectratio(ip_mm)

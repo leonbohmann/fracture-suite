@@ -2,19 +2,26 @@
 Organisation module. Contains the Specimen class and some helpful tools to export specimens.
 """
 from __future__ import annotations
+from json import JSONEncoder
+import json
 
 import os
+from matplotlib import pyplot as plt
 
 import numpy as np
+from tqdm import tqdm
 import typer
 from rich import print
 from rich.progress import track
 from fracsuite.callbacks import main_callback
-from fracsuite.core.plotting import FigureSize
+from fracsuite.core.detection import get_crack_surface, get_crack_surface_r
+from fracsuite.core.imageprocessing import preprocess_image
+from fracsuite.core.plotting import FigureSize, get_fig_width
 
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
 from fracsuite.general import GeneralSettings
-from fracsuite.state import State
+from fracsuite.splinters import create_filter_function
+from fracsuite.state import State, StateOutput
 
 app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -173,8 +180,8 @@ def nfifty(name):
     nfifty = np.mean(nfifties)
 
     print(f"NFifty: {nfifty:.2f} (+- {np.std(nfifties):.2f})")
-    specimen.update_simdata("nfifty", nfifty)
-    specimen.update_simdata("nfifty_dev", np.std(nfifties))
+    specimen.set_data("nfifty", nfifty)
+    specimen.set_data("nfifty_dev", np.std(nfifties))
 
     State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)
 
@@ -338,3 +345,97 @@ def import_fracture(
     print('[yellow]> Drawing contours <')
     from fracsuite.splinters import draw_contours
     draw_contours(specimen.name)
+
+
+
+@app.command()
+def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False):
+    filter_func = create_filter_function("*.*.A.*", needs_scalp=True, needs_splinters=True)
+
+    specimens = Specimen.get_all_by(filter_func, load=True)
+
+    surfaces = {}
+    ############################
+    # calculate crack surface
+    for spec in tqdm(specimens):
+        if spec.crack_surface is not None:
+            print(f"Skipping {spec.name}, already calculated!")
+            continue
+
+        # transform splinters to json format
+        splinters = spec.splinters
+        frac_img = spec.get_fracture_image()
+        thickness = spec.measured_thickness
+
+        # preprocess frac_img
+        frac_img = preprocess_image(frac_img, spec.get_prepconf(warn=False))
+        # print('Image shape', frac_img.shape)
+        # print('Image range', np.min(frac_img), np.max(frac_img))
+
+
+        if not rust:
+            crack_surface = get_crack_surface(splinters, frac_img, thickness)
+        else:
+            crack_surface = get_crack_surface_r(splinters, frac_img, thickness, spec.calculate_px_per_mm())
+
+        surfaces[spec.name] = crack_surface
+
+        spec.set_crack_surface(crack_surface)
+        # print(f"{spec.name}: {crack_surface}")
+
+    for name,surface in surfaces.items():
+        print(f"{name}: {surface}")
+
+
+    sz = FigureSize.ROW2
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    b_marker = {
+        'A': 'o',
+        'B': 's',
+        'Z': 'D'
+    }
+    t_color = {
+        4: 'green',
+        8: 'red',
+        12: 'blue',
+    }
+
+    ##########################
+    # plot data
+    for spec in specimens:
+        v = spec.U_d if ud else spec.U
+        axs.scatter(v, spec.crack_surface, marker=b_marker[spec.boundary], color=t_color[spec.thickness])
+
+    vs = [spec.U_d if ud else spec.U for spec in specimens]
+    surfs = [spec.crack_surface for spec in specimens]
+
+    ##########################
+    # fit a line
+    from scipy.optimize import curve_fit
+    def func(x, a, b):
+        return a * x + b
+    popt, pcov = curve_fit(func, vs, surfs)
+
+
+    x = np.linspace(np.min(vs), np.max(vs), 100)
+    axs.plot(x, func(x, *popt), 'r-') #, label=f"Fit: {popt[0]:.2f}x + {popt[1]:.2f}"
+
+    ##########################
+    # create legends
+    if ud:
+        axs.set_xlabel("Formänderungsenergiedichte $U_d$ (J/m³)")
+    else:
+        axs.set_xlabel("Formänderungsenergie $U$ (J/m²)")
+
+    for t,c in t_color.items():
+        axs.scatter([],[], marker='o', color=c, label=f"$t={t}$mm")
+
+    axs.set_ylabel("Rissfläche $A_\\text{Riss}$ (mm²)")
+    axs.legend()
+
+    if aslog:
+        axs.set_xscale("log")
+        axs.set_yscale("log")
+
+    State.output(StateOutput(fig,sz), "cracksurface_vs_energy" + "" if not ud else "_ud")
