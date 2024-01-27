@@ -229,6 +229,9 @@ def to_tex():
         else:
             return None
 
+    def farea(s: Specimen):
+        return f"{s.crack_surface:.2f}" if s.crack_surface is not None else None
+
     columns = {
         "$\glsm{t}_{\\text{nom}}$": (t, "mm"),
         "$\glsm{sig_s}_{,\\text{nom}}$": (stress, "MPa"),
@@ -239,6 +242,7 @@ def to_tex():
         "$\glsm{fdens}$": (n50, "-"),
         "$\glsm{u}$": (u, "J/m²"),
         "$\glsm{ud}$": (ud, "J/m³"),
+        "$\glsm{farea}$": (farea, "mm²")
     }
 
     # create the table
@@ -310,6 +314,8 @@ def to_tex():
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(latex_code)
 
+    print(f"Saved to '{output_file}'")
+
 
 @app.command()
 def import_fracture(
@@ -350,7 +356,7 @@ def import_fracture(
 
 @app.command()
 def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False, overwrite: bool = False):
-    filter_func = create_filter_function("*.*.A.*", needs_scalp=True, needs_splinters=True)
+    filter_func = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
 
     specimens = Specimen.get_all_by(filter_func, load=True)
 
@@ -407,8 +413,8 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         v = spec.U_d if ud else spec.U
         axs.scatter(v, spec.crack_surface, marker=b_marker[spec.boundary], color=t_color[spec.thickness])
 
-    vs = [spec.U_d if ud else spec.U for spec in specimens]
-    surfs = [spec.crack_surface for spec in specimens]
+    vs = np.array([spec.U_d if ud else spec.U for spec in specimens])
+    surfs = np.array([spec.crack_surface for spec in specimens])
 
     ##########################
     # fit a line
@@ -417,9 +423,19 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         return a * x + b
     popt, pcov = curve_fit(func, vs, surfs)
 
+    # calculate R²
+    residuals = surfs - func(vs, *popt)
+    ss_res = np.sum(residuals**2)
+    ss_tot = np.sum((surfs-np.mean(surfs))**2)
+    r_squared = 1 - (ss_res / ss_tot)
+
 
     x = np.linspace(np.min(vs), np.max(vs), 100)
-    axs.plot(x, func(x, *popt), 'k-') #, label=f"Fit: {popt[0]:.2f}x + {popt[1]:.2f}"
+    fitting = axs.plot(x, func(x, *popt), 'k-') #, label=f"Fit: {popt[0]:.2f}x + {popt[1]:.2f}"
+
+    # annotate R² to fitting line
+    axs.annotate(f"$R^2={r_squared:.2f}$", (x[20],func(x[20], *popt)), ha="left", va="top")
+
 
     ##########################
     # create legends
