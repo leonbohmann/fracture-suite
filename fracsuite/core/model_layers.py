@@ -132,7 +132,7 @@ def load_layer_file(file_path):
     return R,U,V
 
 def interp_layer(
-    layer_name: ModelLayer,
+    layer: ModelLayer,
     mode: SplinterProp,
     boundary: SpecimenBoundary,
     thickness: int,
@@ -148,19 +148,16 @@ def interp_layer(
     # Y2    V21   V22     V23     V24
     # Y3    ...
     # Y4    ...
-    layer_name = ModelLayer.get_name(layer_name, mode, boundary, thickness, break_pos, False)
+    layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, False)
     X,Y,V = load_layer(layer_name)
     print('Loading layer: ', layer_name)
 
-    # print(X)
-    # print(Y)
-    # print(V)
     f = interp2d(X, Y, V, kind='linear')
 
     def r_func(r: float) -> float:
         return f(r, U)
 
-    layer_name = ModelLayer.get_name(layer_name, mode, boundary, thickness, break_pos, True)
+    layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, True)
     Xs,Ys,Vs = load_layer(layer_name)
 
     f_s = interp2d(Xs, Ys, Vs, kind='linear')
@@ -298,7 +295,7 @@ def arrange_regions(
     n_t = int(360 / d_t_deg)
 
     # radius range
-    r_range = np.arange(r_min, r_max, d_r_mm)
+    r_range = np.arange(r_min, r_max, d_r_mm, dtype=np.float64)
     # for i in range(len(r_range)):
     #     xi = -((i / len(r_range))**1.2)+1
     #     r_range[i] = r_range[i] / xi

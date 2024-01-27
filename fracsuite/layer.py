@@ -12,7 +12,7 @@ from rich import print
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
-from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
+from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, interp_layer, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
 from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, renew_ticks_cb
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen
@@ -22,7 +22,7 @@ from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import calculate_dmode, moving_average
 from fracsuite.core.vectors import angle_deg
 from fracsuite.general import GeneralSettings
-from fracsuite.splinters import create_filter_function
+from fracsuite.splinters import create_filter_function, u
 from fracsuite.state import State, StateOutput
 
 layer_app = typer.Typer(callback=main_callback, help="Model related commands.")
@@ -441,12 +441,6 @@ def create_impact_layer(
                 c = norm_color(get_color(cud, min_u, max_u))
 
                 axs.plot(x, mean, color=c, linewidth=2)
-
-            # # for 12.110.A.05 scatter all points
-            # for i in range(len(b_results)):
-            #     if specimens[int(b_results[i,2])].name == '12.110.A.05':
-            #         axs.scatter(x, b_results[i,3:], color=colors[i], marker='x', linewidth=0.5, alpha=0.5, s=1.5)
-
 
             # put plot data onto axs
             axs.set_xlabel(xlabel)
@@ -894,6 +888,44 @@ def plot_layer(
     State.output(StateOutput(fig, figwidth), f"{layer}-2d_{mode}_{boundary}_{thickness}_{break_pos}")
     plt.close(fig)
 
+@layer_app.command()
+def test_interpolation(
+    layer: Annotated[ModelLayer, typer.Argument(help="The layer to display")],
+    mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
+    boundary: Annotated[SpecimenBoundary, typer.Argument(help="Boundary condition")],
+    thickness: Annotated[int, typer.Argument(help="The thickness of the specimen")],
+    sigma: Annotated[float, typer.Argument(help="Prestress")],
+    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help="Break position")] = SpecimenBreakPosition.CORNER,
+    stddev: Annotated[bool, typer.Option(help="Plot standard deviation")] = False,
+    ignore_nan_plot: Annotated[bool, typer.Option(help="Filter NaN values")] = True,
+    file: Annotated[str, typer.Option(help="File that contains the model")] = None,
+    figwidth: Annotated[FigureSize, typer.Option(help="Figure width")] = FigureSize.ROW2,
+):
+    """Plot a layer from database-file."""
+    energy = u(sigma,thickness)
+
+    layer_f, layer_std = interp_layer(layer, mode, boundary, thickness, break_pos, energy)
+
+    r_range, _ = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
+
+    values = np.zeros((len(r_range)-1))
+    for i in range(len(r_range)-1):
+        values[i] = layer_f(r_range[i])
+
+    fig,axs = plt.subplots(figsize=get_fig_width(figwidth))
+
+    # plot the results in a colored plot
+    axs.plot(r_range[:-1], values, color='r', linestyle='-')
+
+
+    xlabel = 'Abstand $R$ zum Anschlagpunkt (mm)'
+    ylabel = 'Formänderungsenergie $U$ (J/m²)'
+    axs.set_xlabel(xlabel)
+    axs.set_ylabel(ylabel)
+
+
+    State.output(StateOutput(fig, figwidth), f"{layer}-2d_{mode}_{boundary}_{thickness}_{break_pos}")
+    plt.close(fig)
 
 # @layer_app.command()
 # def plot_layer(
