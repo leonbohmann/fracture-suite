@@ -16,42 +16,24 @@ class ModelLayer(str, Enum):
     IMPACT = "impact-layer"
     BASE = "base-layer"
 
-    @classmethod
-    def create(
-        cls,
-        prop: SplinterProp,
+    @staticmethod
+    def get_name(
+        layer_name: str,
+        mode: SplinterProp,
         boundary: SpecimenBoundary,
+        thickness: int,
         break_pos: SpecimenBreakPosition,
-        thickness_mm: float
+        is_stddev: bool
     ):
-        cls.prop = prop
-        "The represented splinter property."
-        cls.boundary = boundary
-        "The represented boundary mode."
-        cls.break_pos = break_pos
-        "The represented break position."
-        cls.thickness_mm = thickness_mm
-        "The represented thickness in mm."
+        stddev = "-stddev" if is_stddev else ""
+        return f'{layer_name}{stddev}_{mode}_{thickness:.0f}_{boundary}_{break_pos}.npy'
 
-    def load(self):
-        return load_layer(f'{self}_{self.prop}_{self.boundary}_{self.break_pos}_{self.thickness_mm}.npy')
 
-    def save(self, X: np.ndarray, Y: np.ndarray, Z: np.ndarray):
-        save_layer(
-            self,
-            self.prop,
-            self.boundary,
-            self.break_pos,
-            self.thickness_mm,
-            X,
-            Y,
-            Z
-        )
 
 def get_layer_folder():
     return os.path.join(general.out_path, "layer")
 
-def get_layer_file(file_name):
+def get_layer_filepath(file_name):
     return os.path.join(get_layer_folder(), file_name)
 
 def save_base_layer(
@@ -79,13 +61,14 @@ def save_base_layer(
         interpolated = np.interp(np.flatnonzero(nans[:,i]), np.flatnonzero(non_nans[:,i]), base_layer[non_nans[:,i],i])
         base_layer[nans[:,i],i] = interpolated
 
-    file_path = get_layer_file(layer_name)
+    file_path = get_layer_filepath(layer_name)
     np.save(file_path, base_layer)
 
 def save_layer(
     layer_name: ModelLayer,
     mode: SplinterProp,
     boundary: SpecimenBoundary,
+    thickness: int,
     break_pos: SpecimenBreakPosition,
     is_stddev: bool,
     X: np.ndarray,
@@ -98,10 +81,8 @@ def save_layer(
     assert X.ndim == 1, f"X has {X.ndim} dimensions, but should have 1"
     assert Y.ndim == 1, f"Y has {Y.ndim} dimensions, but should have 1"
 
-    stddev = "-stddev" if is_stddev else ""
-    layer_name = f'{layer_name}{stddev}_{mode}_{boundary}_{break_pos}.npy'
-
-    file_path = get_layer_file(layer_name)
+    layer_name = ModelLayer.get_name(layer_name, mode, boundary, thickness, break_pos, is_stddev)
+    file_path = get_layer_filepath(layer_name)
 
     # interpolate missing values (nan)
     nans = np.isnan(Z)
@@ -138,7 +119,7 @@ def load_layer(file_name):
         V : ndarray
             The interpolated values.
     """
-    file_path = get_layer_file(file_name)
+    file_path = get_layer_filepath(file_name)
     return load_layer_file(file_path)
 
 def load_layer_file(file_path):
@@ -154,6 +135,7 @@ def interp_layer(
     layer_name: ModelLayer,
     mode: SplinterProp,
     boundary: SpecimenBoundary,
+    thickness: int,
     break_pos: SpecimenBreakPosition,
     U: float
 ):
@@ -166,9 +148,9 @@ def interp_layer(
     # Y2    V21   V22     V23     V24
     # Y3    ...
     # Y4    ...
-
-    X,Y,V = load_layer(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
-    print(f'{layer_name}_{mode}_{boundary}_{break_pos}.npy')
+    layer_name = ModelLayer.get_name(layer_name, mode, boundary, thickness, break_pos, False)
+    X,Y,V = load_layer(layer_name)
+    print('Loading layer: ', layer_name)
 
     # print(X)
     # print(Y)
@@ -178,7 +160,8 @@ def interp_layer(
     def r_func(r: float) -> float:
         return f(r, U)
 
-    Xs,Ys,Vs = load_layer(f'{layer_name}-stddev_{mode}_{boundary}_{break_pos}.npy')
+    layer_name = ModelLayer.get_name(layer_name, mode, boundary, thickness, break_pos, True)
+    Xs,Ys,Vs = load_layer(layer_name)
 
     f_s = interp2d(Xs, Ys, Vs, kind='linear')
 
@@ -186,25 +169,6 @@ def interp_layer(
         return f_s(r, U)
 
     return r_func, r_func_s
-
-def interp_layer_stddev(
-    layer_name: ModelLayer,
-    mode: SplinterProp,
-    boundary: SpecimenBoundary,
-    break_pos: SpecimenBreakPosition,
-    U: float):
-    X,Y,V = load_layer(f'{layer_name}-stddev_{mode}_{boundary}_{break_pos}.npy')
-
-    # create an interpolation function for the given U
-    p = np.meshgrid(X, Y, indexing='xy')
-    points = np.vstack([p[0].ravel(), p[1].ravel()]).T
-    values = V.ravel()
-    f = interp2d(*points.T, values, kind='linear')
-
-    def r_func(r: float) -> float:
-        return f(r, U)[0]
-
-    return r_func
 
 def interp_impact_layer(model_path, U):
     """
