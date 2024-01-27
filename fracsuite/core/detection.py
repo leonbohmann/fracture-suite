@@ -605,6 +605,19 @@ def get_crack_surface(splinters: list, image, t):
 
 
 def get_crack_surface_r(splinters, image, t, pxpmm):
+    """
+    Functions checks for every splinter contour the thickness of lines in the original image and calculates the total
+    fracture surface of all splinters.
+
+    Args:
+        splinters (list[Splinter]): Splinter list.
+        image (np.ndarray): Base image, grayscale, 0-255.
+        t (float): Thickness of the glass.
+        pxpmm (float): Pixel per millimeter.
+
+    Returns:
+        float: The total fracture surface.
+    """
     from splintaz import calculate_fracture_surface
 
     fracture_surface = calculate_fracture_surface([s.contour[:,0] for s in splinters], image, t, pxpmm)
