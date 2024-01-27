@@ -349,7 +349,7 @@ def import_fracture(
 
 
 @app.command()
-def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False):
+def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False, overwrite: bool = False):
     filter_func = create_filter_function("*.*.A.*", needs_scalp=True, needs_splinters=True)
 
     specimens = Specimen.get_all_by(filter_func, load=True)
@@ -358,7 +358,7 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
     ############################
     # calculate crack surface
     for spec in tqdm(specimens):
-        if spec.crack_surface is not None:
+        if spec.crack_surface is not None and not overwrite:
             print(f"Skipping {spec.name}, already calculated!")
             continue
 
@@ -419,7 +419,7 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
 
 
     x = np.linspace(np.min(vs), np.max(vs), 100)
-    axs.plot(x, func(x, *popt), 'r-') #, label=f"Fit: {popt[0]:.2f}x + {popt[1]:.2f}"
+    axs.plot(x, func(x, *popt), 'k-') #, label=f"Fit: {popt[0]:.2f}x + {popt[1]:.2f}"
 
     ##########################
     # create legends
