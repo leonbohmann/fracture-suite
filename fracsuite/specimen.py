@@ -413,28 +413,32 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         v = spec.U_d if ud else spec.U
         axs.scatter(v, spec.crack_surface, marker=b_marker[spec.boundary], color=t_color[spec.thickness])
 
-    vs = np.array([spec.U_d if ud else spec.U for spec in specimens])
-    surfs = np.array([spec.crack_surface for spec in specimens])
 
     ##########################
     # fit a line
     from scipy.optimize import curve_fit
     def func(x, a, b):
         return a * x + b
-    popt, pcov = curve_fit(func, vs, surfs)
+    for t in ([4,8,12] if ud else [None]):
+        vs = np.array([spec.U_d if ud else spec.U for spec in specimens if t is None or spec.thickness == t])
+        surfs = np.array([spec.crack_surface for spec in specimens if t is None or spec.thickness == t])
 
-    # calculate R²
-    residuals = surfs - func(vs, *popt)
-    ss_res = np.sum(residuals**2)
-    ss_tot = np.sum((surfs-np.mean(surfs))**2)
-    r_squared = 1 - (ss_res / ss_tot)
+        popt, pcov = curve_fit(func, vs, surfs)
 
+        # calculate R²
+        residuals = surfs - func(vs, *popt)
+        ss_res = np.sum(residuals**2)
+        ss_tot = np.sum((surfs-np.mean(surfs))**2)
+        r_squared = 1 - (ss_res / ss_tot)
 
-    x = np.linspace(np.min(vs), np.max(vs), 100)
-    fitting = axs.plot(x, func(x, *popt), 'k-') #, label=f"Fit: {popt[0]:.2f}x + {popt[1]:.2f}"
+        # plot fitted curve
+        x = np.min(vs) + (np.max(vs) - np.min(vs))*0.6
 
-    # annotate R² to fitting line
-    axs.annotate(f"$R^2={r_squared:.2f}$", (x[20],func(x[20], *popt)), ha="left", va="top")
+        # create axline
+        axs.axline((x,popt[1]+popt[0]*x), slope=popt[0], color=t_color[t] if t is not None else 'k', linestyle='--', linewidth=0.5)
+
+        # annotate R² to fitting line
+        axs.annotate(f"$R^2={r_squared:.2f}$", (x,func(x, *popt)), ha="left", va="top")
 
 
     ##########################
@@ -454,4 +458,4 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         axs.set_xscale("log")
         axs.set_yscale("log")
 
-    State.output(StateOutput(fig,sz), "cracksurface_vs_energy" + "" if not ud else "_ud")
+    State.output(StateOutput(fig,sz), "cracksurface_vs_energy" + ("" if not ud else "_ud"))
