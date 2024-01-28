@@ -83,9 +83,11 @@ def est_break(
 ):
     specimen = Specimen.get(specimen_name)
 
+    print('Estimating intensity...')
     # find fracture intensity from first order statistics
     intensity = specimen.calculate_break_lambda(force_recalc=True)
 
+    print('Estimating rhc...')
     # find the hard core radius using second order statistics
     rhc,acceptance = specimen.calculate_break_rhc(force_recalc=True)
     print(f'Fracture intensity: {intensity:.2f} 1/mm²')
@@ -96,6 +98,7 @@ def est_break(
         # see Baddeley et al. S.206 K_pois
         return np.pi*d**2
 
+    print('Plotting kfunc...')
     x,y = specimen.kfun()
     fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
     ax.plot(x,y, label='$\hat{K}$')
@@ -106,6 +109,7 @@ def est_break(
     State.output(fig,'kfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
 
+    print('Plotting lfunc...')
     x2,y2 = specimen.lfun()
     min_L = rhc
 

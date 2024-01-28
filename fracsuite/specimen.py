@@ -9,6 +9,7 @@ import os
 from matplotlib import pyplot as plt
 
 import numpy as np
+from sklearn.metrics import mean_absolute_error
 from tqdm import tqdm
 import typer
 from rich import print
@@ -28,21 +29,49 @@ app = typer.Typer(help=__doc__, callback=main_callback)
 general = GeneralSettings.get()
 
 @app.command()
-def sync():
+def check():
     """
     Sync all specimen configs.
 
     This function iterates over all splinters and syncs their specimen configs.
     """
-    # iterate over all splinters
-    for name in track(os.listdir(general.base_path), description="Syncing specimen configs...", transient=False):
+    specs = Specimen.get_all()
 
-        spec_path = general.get_output_file(name)
-        if not os.path.isdir(spec_path):
+    desired_img_size = (4000, 4000)
+    desired_real_size = (500, 500)
+    desired_splinter_area = 490**2 - np.pi * 20**2
+
+    areas = []
+    for specimen in track(specs, description="Calculating splinter areas...",transient=True):
+        if not specimen.has_splinters:
+            continue
+        areas.append(specimen.splinter_area)
+
+        discr = abs(1 - specimen.splinter_area / desired_splinter_area) * 100
+        print(f"{specimen.name}: {discr:.2f}%")
+
+    for specimen in track(specs):
+        if not specimen.has_fracture_scans:
             continue
 
+        img_size = specimen.get_image_size()
 
-        s = Specimen(spec_path, log_missing=False, load=True)
+        if img_size[0] != desired_img_size[0] or img_size[1] != desired_img_size[1]:
+            print(f"Image size of {specimen.name} is {img_size}, resize to {desired_img_size}!")
+            continue
+
+        real_size = specimen.get_real_size()
+        if real_size[0] != desired_real_size[0] or real_size[1] != desired_real_size[1]:
+            print(f"Real size of {specimen.name} is {real_size}, resize to {desired_real_size}!")
+            continue
+
+        # print percentage of splinter area
+        if specimen.has_splinters:
+            discr = abs(1 - specimen.splinter_area / desired_splinter_area) * 100
+            if discr > 5:
+                print(f"[yellow]AREA WARNING[/yellow] '{specimen.name}': [red]{discr:.2f}[/red]%")
+
+
 
 
 @app.command()
@@ -322,6 +351,7 @@ def import_fracture(
     specimen_name: str,
     imgsize: tuple[int, int] = (4000, 4000),
     realsize: tuple[float, float] = (500, 500),
+    no_rotate: bool = False,
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -338,7 +368,7 @@ def import_fracture(
             return
 
     print('[yellow]> Transforming fracture images <')
-    img0path, img0 = specimen.transform_fracture_images(size_px=imgsize)
+    img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)
 
     print('[yellow]> Running threshold tester <')
     from fracsuite.tester import threshold

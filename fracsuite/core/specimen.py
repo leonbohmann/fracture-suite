@@ -6,9 +6,11 @@ import os
 import pickle
 import re
 from stat import S_IREAD, S_IRGRP, S_IROTH
+import tempfile
 from typing import Any, Callable, List, TypeVar
 
 import cv2
+from matplotlib import pyplot as plt
 import numpy as np
 from rich import print
 from rich.progress import track
@@ -18,6 +20,7 @@ from fracsuite.core.coloring import rand_col
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, simplify_contour
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.outputtable import Outputtable
+from fracsuite.core.plotting import FigureSize
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
@@ -34,6 +37,8 @@ from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPositio
 
 from spazial import k_test, l_test
 
+from fracsuite.state import State, StateOutput
+
 
 general: GeneralSettings = GeneralSettings.get()
 
@@ -42,6 +47,13 @@ general: GeneralSettings = GeneralSettings.get()
 class SpecimenException(Exception):
     """Exception for specimen related errors."""
     pass
+
+def default(x, _default):
+    return x if x is not None else _default
+
+# the maximum distance for the L-Function in polar calculations
+#   set this to None to calculate it automatically
+CALC_DMAX = None
 
 def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
     """Calculates a property for a list of splinters."""
@@ -55,10 +67,53 @@ def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
 
     return np.nanmean(values), np.nanstd(values)
 
+def int_calculator(spl: list[Splinter], *args,**kwargs):
+    """Calculate the mean intensity parameter lambda for a given set of splinters."""
+    total_area = np.sum([s.area for s in spl])
+    return len(spl) / total_area, 0
+
+def rhc_calculator(spl: list[Splinter], *args, **kwargs):
+    """Calculate the hard core radius for a given set of splinters."""
+    all_centroids = np.array([s.centroid_mm for s in spl])
+    total_area = np.sum([s.area for s in spl])
+    d_max = default(CALC_DMAX, np.sqrt(np.max([s.area for s in spl])))
+    x2,y2 = l_test(all_centroids, total_area, d_max)
+    min_idx = np.argmin(y2)
+    r1 = x2[min_idx]
+    # acceptance = min_idx / len(y2)
+
+    return r1, 0
+
+def acc_calculator(spl: list[Splinter], *args, **kwargs):
+    """Calculate the hard core radius for a given set of splinters."""
+    all_centroids = np.array([s.centroid_mm for s in spl])
+    total_area = np.sum([s.area for s in spl])
+    d_max = default(CALC_DMAX, np.sqrt(np.max([s.area for s in spl])))
+    x2,y2 = l_test(all_centroids, total_area, d_max)
+    min_idx = np.argmin(y2)
+    acceptance = min_idx / len(y2)
+
+    # this is debug output
+    # fig,axs = plt.subplots(1,1)
+    # axs.plot(x2,y2)
+    # file = tempfile.mktemp(".png")
+    # fig.savefig(file)
+
+    return acceptance, 0
+
+calculators = {
+    'Any': calculator,
+    SplinterProp.INTENSITY: int_calculator,
+    SplinterProp.RHC: rhc_calculator,
+    SplinterProp.ACCEPTANCE: acc_calculator
+}
+
+
+
 class Specimen(Outputtable):
     """ Container class for a specimen. """
-    adjacency_file: str = "adjacency.pkl"
-    "Name of the adjacency info file."
+
+    
     KEY_FRACINTENSITY: str = "frac_intensity"
     "Key for the fracture intensity in the simdata file."
     KEY_HCRADIUS: str = "hc_radius"
@@ -174,6 +229,18 @@ class Specimen(Outputtable):
         self._crack_surface = value
         self.set_data(Specimen.KEY_CRACKSURFACE, value)
 
+    @property
+    def splinter_area(self):
+        if not hasattr(self, '_splinter_area') or self._splinter_area is None:
+            self._splinter_area = np.sum([s.area for s in self.splinters])
+        return self._splinter_area
+
+    @splinter_area.setter
+    def splinter_area(self, value):
+        self._splinter_area = value
+        self.set_data('splinter_area', value)
+
+
     def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
 
@@ -189,9 +256,9 @@ class Specimen(Outputtable):
 
     def print_loaded(self):
         name = f"'{self.name}'"
-        print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)}, "
-                f"Splinters: {checkmark(self.has_splinters)}).")
-        print(f'\t t={self.measured_thickness:.2f}mm, U={self.U:.2f}J/mm², U_d={self.U_d:.2f}J/mm³, σ_s={self.sig_h:.2f}MPa')
+        print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)} , "
+                f"Splinters: {checkmark(self.has_splinters)} ) "
+                f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/mm², U_d={self.U_d:>9.2f}J/mm³, σ_s={self.sig_h:>7.2f}MPa')
 
 
     def __init__(self, path: str, log_missing = True, load = False):
@@ -235,7 +302,8 @@ class Specimen(Outputtable):
             "break_mode": "punch",
             "break_pos": "corner",
             "fall_height_m": 0.07,
-            "real_size_mm": (500,500)
+            "real_size_mm": (500,500),
+            "fall_repeat": 1
         }
 
         # load settings from config and overwrite defaults
@@ -247,7 +315,9 @@ class Specimen(Outputtable):
             with open(self.__cfg_path, "r") as f:
                 sets = json.load(f)
                 for k,v in sets.items():
-                    self.__settings[k] = v
+                    if k in self.__settings:
+                        self.__settings[k] = v
+            # update settings file
             with open(self.__cfg_path, "w") as f:
                 json.dump(self.__settings, f, indent=4)
 
@@ -511,8 +581,8 @@ class Specimen(Outputtable):
         acceptance = self.simdata.get(Specimen.KEY_ACCEPTANCE_PROB, None)
 
         if force_recalc or r1 is None or acceptance is None:
-            all_centroids = np.array([s.centroid_px for s in self.splinters])
-            pane_size = self.get_image_size()
+            all_centroids = np.array([s.centroid_mm for s in self.splinters])
+            pane_size = self.get_real_size()
             x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], d_max)
             min_idx = np.argmin(y2)
             r1 = x2[min_idx]
@@ -567,10 +637,6 @@ class Specimen(Outputtable):
         pane_size = self.get_image_size()
         x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], max_d)
         return x2,y2
-
-    def lfun_acceptance(self, rhc, max_d = 50):
-        x,y = self.lfun(max_d)
-
 
     def get_splinters_in_region(self, region: RectRegion) -> list[Splinter]:
         in_region = []
@@ -698,8 +764,14 @@ class Specimen(Outputtable):
         if r_range_mm is None:
             r_range_mm = self.layer_region.radii
 
+        if prop in calculators:
+            calcer = calculators[prop]
+        else:
+            calcer = calculators['Any']
+
+
         R,T,Z,Zstd = kerneler.polar(
-            calculator,
+            calcer,
             r_range_mm,
             t_range_deg,
             impact_position,
@@ -810,7 +882,7 @@ class Specimen(Outputtable):
         return Specimen(path, load=load)
 
     @staticmethod
-    def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = False) \
+    def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = True) \
         -> List[Specimen]:
         """
         Get a list of specimens by name. Raises exception, if any is not found.

@@ -803,61 +803,28 @@ class Splinter:
         #     a = angle
         return a
 
-    def get_mode_labels(mode, row3 = False) -> str:
 
-        if mode == SplinterProp.AREA:
-            ylabel = "$A_S$ (mm²)"
-        elif mode == SplinterProp.ORIENTATION:
-            ylabel = "$\Delta$"
-        elif mode == SplinterProp.IMPACT_DEPENDENCY:
-            ylabel = "$\Psi$"
-        elif mode == SplinterProp.ROUNDNESS:
-            ylabel = "$\lambda_c$"
-        elif mode == SplinterProp.ROUGHNESS:
-            ylabel = "$\lambda_r$"
-        elif mode == SplinterProp.ASP:
-            ylabel = "$L/L_p$"
-        elif mode == SplinterProp.ASP0:
-            ylabel = "$L_1/L_2$"
-        elif mode == SplinterProp.L1:
-            ylabel = "$L_1$ (mm)"
-        elif mode == SplinterProp.L2:
-            ylabel = "$L_2$ (mm)"
-        elif mode == SplinterProp.L1_WEIGHTED:
-            ylabel = "$\Delta \cdot L_1$ (mm)"
-        elif mode == SplinterProp.CIRCUMFENCE:
-            ylabel = "Circumference (mm)"
-        elif mode == SplinterProp.ANGLE:
-            ylabel = "Angle (°)"
-        else:
-            raise Exception(f"Invalid splinter-prop '{mode}'")
-        if row3:
-            return ylabel
+    splinter_prop_labels = {
+        SplinterProp.AREA: ("Flächeninhalt", "$A_S$ (mm²)"),
+        SplinterProp.ORIENTATION: ("Orientierung", "$\Delta$"),
+        SplinterProp.IMPACT_DEPENDENCY: ("Anschlagabhängigkeit", "$\Psi$"),
+        SplinterProp.ROUNDNESS: ("Rundheit", "$\lambda_c$"),
+        SplinterProp.ROUGHNESS: ("Rauheit", "$\lambda_r$"),
+        SplinterProp.ASP: ("Gewichtetes Seitenverhältnis", "$L/L_p$"),
+        SplinterProp.ASP0: ("Seitenverhältnis", "$L_1/L_2$"),
+        SplinterProp.L1: ("Höhe", "$L_1$ (mm)"),
+        SplinterProp.L2: ("Breite", "$L_2$ (mm)"),
+        SplinterProp.L1_WEIGHTED: ("Gewichtete Höhe", "$\Delta \cdot L_1$ (mm)"),
+        SplinterProp.CIRCUMFENCE: ("Umfang", "Circumference (mm)"),
+        SplinterProp.ANGLE: ("", "Angle (°)"),
+        SplinterProp.INTENSITY: ("", "Bruchintensität (1/mm)"),
+        SplinterProp.RHC: ("", "RHC (mm)"),
+        SplinterProp.ACCEPTANCE: ("", "Acceptance"),
+    }
 
-        if mode == SplinterProp.AREA:
-            ylabel = "Flächeninhalt " + ylabel
-        elif mode == SplinterProp.ORIENTATION:
-            ylabel = "Orientierung " + ylabel
-        elif mode == SplinterProp.IMPACT_DEPENDENCY:
-            ylabel = "Anschlagabhängigkeit "
-        elif mode == SplinterProp.ROUNDNESS:
-            ylabel = "Rundheit " + ylabel
-        elif mode == SplinterProp.ROUGHNESS:
-            ylabel = "Rauheit " + ylabel
-        elif mode == SplinterProp.ASP:
-            ylabel = "Gewichtetes Seitenverhältnis " + ylabel
-        elif mode == SplinterProp.ASP0:
-            ylabel = "Seitenverhältnis " + ylabel
-        elif mode == SplinterProp.L1:
-            ylabel = "Höhe " + ylabel
-        elif mode == SplinterProp.L2:
-            ylabel = "Breite " + ylabel
-        elif mode == SplinterProp.L1_WEIGHTED:
-            ylabel = "Gewichtete Höhe " + ylabel
-        elif mode == SplinterProp.CIRCUMFENCE:
-            ylabel = "Umfang " + ylabel
-        elif mode == SplinterProp.ANGLE:
-            ylabel = ylabel
-        else:
+    @classmethod
+    def get_mode_labels(cls, mode, row3 = False) -> str:
+        if mode not in cls.splinter_prop_labels:
             raise Exception(f"Missing or invalid splinter-prop '{mode}'")
-        return ylabel
+
+        return (cls.splinter_prop_labels[mode][0] + " " if not row3 else "") + cls.splinter_prop_labels[mode][1]

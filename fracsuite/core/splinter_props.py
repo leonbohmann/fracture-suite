@@ -17,3 +17,5 @@ class SplinterProp(str,Enum):
 
     # global properties
     INTENSITY = 'intensity'
+    RHC = 'rhc'
+    ACCEPTANCE = 'acceptance'

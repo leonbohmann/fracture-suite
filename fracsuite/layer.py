@@ -417,7 +417,7 @@ def create_impact_layer(
                 colors.append(c)
 
                 # plot individual lines
-                axs.plot(x, bt_energies, color=c, marker='x', linewidth=0.5, markersize=1.5) #
+                axs.plot(x, bt_energies, color=c, linewidth=1, markersize=1.5) #
 
                 # fill stddev
                 # axs.fill_between(x, b_results[i,3:] - b_stddevs[i,3:], b_results[i,3:] + b_stddevs[i,3:],
@@ -842,11 +842,13 @@ def plot_layer_polar(
 
     clr_label = Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3)
 
+    clr_format = ".0f" if np.nanmax(Z) > 10 else ".2f"
+
     output = annotate_image(
         result_img,
         cbar_range = (np.nanmin(Z),np.nanmax(Z)),
         cbar_title=clr_label,
-        clr_format='.0f',
+        clr_format=clr_format,
         figwidth=sz
     )
     print(Z)
@@ -930,7 +932,7 @@ def test_interpolation(
     axs.set_ylabel(ylabel)
 
 
-    State.output(StateOutput(fig, figwidth), f"{layer}-2d_{mode}_{boundary}_{thickness}_{break_pos}")
+    State.output(StateOutput(fig, figwidth), f"{layer}-interpolated_{mode}_{boundary}_{thickness}_{break_pos}")
     plt.close(fig)
 
 # @layer_app.command()

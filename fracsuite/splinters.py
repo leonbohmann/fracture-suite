@@ -134,6 +134,7 @@ def gen(
             with open(output_file, 'wb') as f:
                 pickle.dump(splinters, f)
             print(f'Saved splinters to "{output_file}"')
+            specimen.splinter_area = np.sum([x.area for x in splinters])
             progress.advance()
 
 
