@@ -1306,7 +1306,7 @@ def ud(sigma: float) -> float:
 def u(sigma: float, thickness: float) -> float:
     nue = 0.23
     E = 70e3
-    thickness = thickness * 1e-3
+    thickness = float(thickness) * 1e-3
     print("Strain Energy [J/m²]")
     print(f"U={thickness * 1e6/5 * (1-nue)/E * sigma ** 2:.2f} J/m²")
 

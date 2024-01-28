@@ -12,6 +12,7 @@ from rich import print
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
+from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, interp_layer, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
 from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, renew_ticks_cb
 from fracsuite.core.progress import get_progress
@@ -416,7 +417,7 @@ def create_impact_layer(
                 colors.append(c)
 
                 # plot individual lines
-                axs.plot(x, bt_energies, color=c, marker='x', linewidth=0.5, alpha=0.1, markersize=1.5, scaley=False) #
+                axs.plot(x, bt_energies, color=c, marker='x', linewidth=0.5, markersize=1.5) #
 
                 # fill stddev
                 # axs.fill_between(x, b_results[i,3:] - b_stddevs[i,3:], b_results[i,3:] + b_stddevs[i,3:],
@@ -440,7 +441,7 @@ def create_impact_layer(
                 mean = np.nanmean(ud_results, axis=0)
                 c = norm_color(get_color(cud, min_u, max_u))
 
-                axs.plot(x, mean, color=c, linewidth=2)
+                # axs.plot(x, mean, color=c, linewidth=2)
 
             # put plot data onto axs
             axs.set_xlabel(xlabel)
@@ -902,24 +903,29 @@ def test_interpolation(
     figwidth: Annotated[FigureSize, typer.Option(help="Figure width")] = FigureSize.ROW2,
 ):
     """Plot a layer from database-file."""
-    energy = u(sigma,thickness)
-
+    energy = U(sigma, thickness)
+    print('Energy :', energy)
     layer_f, layer_std = interp_layer(layer, mode, boundary, thickness, break_pos, energy)
 
     r_range, _ = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
 
     values = np.zeros((len(r_range)-1))
+    stddevs = np.zeros((len(r_range)-1))
     for i in range(len(r_range)-1):
         values[i] = layer_f(r_range[i])
+        stddevs[i] = layer_std(r_range[i])
 
     fig,axs = plt.subplots(figsize=get_fig_width(figwidth))
 
     # plot the results in a colored plot
     axs.plot(r_range[:-1], values, color='r', linestyle='-')
+    # fill stddev
+    axs.fill_between(r_range[:-1], values - stddevs, values + stddevs, \
+                        color='r', alpha=0.2)
 
 
     xlabel = 'Abstand $R$ zum Anschlagpunkt (mm)'
-    ylabel = 'Formänderungsenergie $U$ (J/m²)'
+    ylabel = Splinter.get_mode_labels(mode, row3=figwidth == FigureSize.ROW3)
     axs.set_xlabel(xlabel)
     axs.set_ylabel(ylabel)
 

@@ -152,7 +152,10 @@ def interp_layer(
     X,Y,V = load_layer(layer_name)
     print('Loading layer: ', layer_name)
 
-    f = interp2d(X, Y, V, kind='linear')
+    # print(X)
+    # print(Y)
+    # print(V)
+    f = interp2d(X, Y, V, kind='cubic')
 
     def r_func(r: float) -> float:
         return f(r, U)
@@ -160,7 +163,7 @@ def interp_layer(
     layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, True)
     Xs,Ys,Vs = load_layer(layer_name)
 
-    f_s = interp2d(Xs, Ys, Vs, kind='linear')
+    f_s = interp2d(Xs, Ys, Vs, kind='cubic')
 
     def r_func_s(r: float) -> float:
         return f_s(r, U)
