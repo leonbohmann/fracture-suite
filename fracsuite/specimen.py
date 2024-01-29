@@ -7,12 +7,13 @@ import json
 
 import os
 from matplotlib import pyplot as plt
+from matplotlib.figure import figaspect
 
 import numpy as np
 from sklearn.metrics import mean_absolute_error
 from tqdm import tqdm
 import typer
-from rich import print
+from rich import inspect, print
 from rich.progress import track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.detection import get_crack_surface, get_crack_surface_r
@@ -20,6 +21,7 @@ from fracsuite.core.imageprocessing import preprocess_image
 from fracsuite.core.plotting import FigureSize, get_fig_width
 
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
+from fracsuite.core.stress import relative_remaining_stress
 from fracsuite.general import GeneralSettings
 from fracsuite.splinters import create_filter_function
 from fracsuite.state import State, StateOutput
@@ -27,6 +29,13 @@ from fracsuite.state import State, StateOutput
 app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
+
+@app.command()
+def checksettings(name):
+    """Check the settings of a specimen."""
+    spec = Specimen.get(name)
+
+    inspect(spec.settings)
 
 @app.command()
 def check():
@@ -351,7 +360,9 @@ def import_fracture(
     specimen_name: str,
     imgsize: tuple[int, int] = (4000, 4000),
     realsize: tuple[float, float] = (500, 500),
+    imsize_factor: float = None,
     no_rotate: bool = False,
+    no_tester: bool = False,
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -367,12 +378,16 @@ def import_fracture(
         if not typer.confirm("Specimen already has splinters. Overwrite?"):
             return
 
+    if imsize_factor is not None:
+        imgsize = (int(realsize[0] * imsize_factor), int(realsize[1] * imsize_factor))
+
     print('[yellow]> Transforming fracture images <')
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)
 
     print('[yellow]> Running threshold tester <')
-    from fracsuite.tester import threshold
-    threshold(specimen.name)
+    if not no_tester:
+        from fracsuite.tester import threshold
+        threshold(specimen.name)
 
     print('[yellow]> Generating splinters <')
     from fracsuite.splinters import gen
@@ -440,7 +455,7 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
     ##########################
     # plot data
     for spec in specimens:
-        v = spec.U_d if ud else spec.U
+        v = spec.U_d if ud else spec.U * 0.25
         axs.scatter(v, spec.crack_surface, marker=b_marker[spec.boundary], color=t_color[spec.thickness])
 
 
@@ -450,7 +465,7 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
     def func(x, a, b):
         return a * x + b
     for t in ([4,8,12] if ud else [None]):
-        vs = np.array([spec.U_d if ud else spec.U for spec in specimens if t is None or spec.thickness == t])
+        vs = np.array([spec.U_d if ud else spec.U * 0.25 for spec in specimens if t is None or spec.thickness == t])
         surfs = np.array([spec.crack_surface for spec in specimens if t is None or spec.thickness == t])
 
         popt, pcov = curve_fit(func, vs, surfs)
@@ -468,18 +483,19 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         axs.axline((x,popt[1]+popt[0]*x), slope=popt[0], color=t_color[t] if t is not None else 'k', linestyle='--', linewidth=0.5)
 
         # annotate R² to fitting line
-        axs.annotate(f"$R^2={r_squared:.2f}$", (x,func(x, *popt)), ha="left", va="top")
-
+        axs.annotate(f"$R^2={r_squared:.2f}$ m={popt[0]:.2e}", (x,func(x, *popt)), ha="left", va="top")
+        print(f"> t={t}mm: m={popt[0]:.2e}mm²/J, b={popt[1]:2e}, R²={r_squared:.2f}")
+        print(f'\t{1/popt[0]:.2e}J/mm²')
 
     ##########################
     # create legends
     if ud:
         axs.set_xlabel("Formänderungsenergiedichte $U_d$ (J/m³)")
     else:
-        axs.set_xlabel("Formänderungsenergie $U$ (J/m²)")
+        axs.set_xlabel("Gesamtenergie $U_0$ (J)")
 
     for t,c in t_color.items():
-        axs.scatter([],[], marker='o', color=c, label=f"$t={t}$mm")
+        axs.scatter([],[], marker='o', color=c, label=f"{t}mm")
 
     axs.set_ylabel("Rissfläche $A_\\text{Riss}$ (mm²)")
     axs.legend()
@@ -489,3 +505,33 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         axs.set_yscale("log")
 
     State.output(StateOutput(fig,sz), "cracksurface_vs_energy" + ("" if not ud else "_ud"))
+
+@app.command()
+def energy_release_rate():
+    """Calculate the energy release rate for a range of velocities."""
+    def G(v: float):
+        cs = 3300 #m/s
+        cd = 5500 #m/s
+        alphas = np.sqrt(1-v**2/cs**2)
+        alphad = np.sqrt(1-v**2/cd**2)
+        D = 4*alphas*alphad-(1+alphas**2)**2
+        # schubmodul von glas
+        mu = 26e3 # N/mm²
+
+        K1 = 0.75 # MPa m^0.5
+
+        # kJ/m²
+        return 1e3 * (v**2 * alphad) / (2*cs**2*mu*D) * K1**2
+
+    urr = relative_remaining_stress(22**2, 8)
+    print('Relative remaining stress: ', urr)
+
+    x = np.linspace(1, 2700, 100)
+    y = G(x) * 1e3 * (1-urr)
+
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    axs.plot(x,y)
+    axs.set_xlabel("Geschwindigkeit $v$ (m/s)")
+    axs.set_ylabel("Energie-Freisetzungsrate $\mathcal{G}$ (J/m²)")
+
+    State.output(StateOutput(fig, FigureSize.ROW1), "energy_release_rate")

@@ -35,7 +35,7 @@ from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 
-from spazial import k_test, l_test
+from spazial import khat_test, lhatc_test, lhat_test
 
 from fracsuite.state import State, StateOutput
 
@@ -54,6 +54,19 @@ def default(x, _default):
 # the maximum distance for the L-Function in polar calculations
 #   set this to None to calculate it automatically
 CALC_DMAX = None
+DMAX_K = 50
+DMAX_L = 200
+
+def estimate_dmax(splinters: list[Splinter]) -> float:
+    """Function to estimate the maximum """
+    return DMAX_K
+    # find maximum splinter size
+    sizes = [s.area for s in splinters]
+    max_size = np.max(sizes)
+
+    # assume, that the longest side of a splinter is 2mm
+    d_max = (max_size / 2) / 2
+    return d_max
 
 def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
     """Calculates a property for a list of splinters."""
@@ -76,8 +89,8 @@ def rhc_calculator(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
-    d_max = default(CALC_DMAX, np.sqrt(np.max([s.area for s in spl])))
-    x2,y2 = l_test(all_centroids, total_area, d_max)
+    d_max = default(CALC_DMAX, estimate_dmax(spl))
+    x2,y2 = lhatc_test(all_centroids, total_area, d_max)
     min_idx = np.argmin(y2)
     r1 = x2[min_idx]
     # acceptance = min_idx / len(y2)
@@ -88,8 +101,8 @@ def acc_calculator(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
-    d_max = default(CALC_DMAX, np.sqrt(np.max([s.area for s in spl])))
-    x2,y2 = l_test(all_centroids, total_area, d_max)
+    d_max = default(CALC_DMAX, estimate_dmax(spl))
+    x2,y2 = lhatc_test(all_centroids, total_area, d_max)
     min_idx = np.argmin(y2)
     acceptance = min_idx / len(y2)
 
@@ -113,7 +126,7 @@ calculators = {
 class Specimen(Outputtable):
     """ Container class for a specimen. """
 
-    
+
     KEY_FRACINTENSITY: str = "frac_intensity"
     "Key for the fracture intensity in the simdata file."
     KEY_HCRADIUS: str = "hc_radius"
@@ -301,6 +314,9 @@ class Specimen(Outputtable):
         self.__settings = {
             "break_mode": "punch",
             "break_pos": "corner",
+            "custom_break_pos": None,
+            "custom_break_pos_exclusion_radius": None,
+            "custom_edge_exclusion_distance": None,
             "fall_height_m": 0.07,
             "real_size_mm": (500,500),
             "fall_repeat": 1
@@ -464,13 +480,10 @@ class Specimen(Outputtable):
         Origin is top left corner!
         """
         factor = self.calculate_px_per_mm() if in_px else 1
+        arr = self.break_pos.position() * factor
 
-        if self.break_pos == SpecimenBreakPosition.CENTER:
-            arr =  np.array((250,250)) * factor
-        elif self.break_pos == SpecimenBreakPosition.CORNER:
-            arr = np.array((50,50)) * factor
-        else:
-            raise Exception(f"Invalid break position {self.settings['break_pos']} in {self.name}.")
+        if (arr1 := self.settings.get('custom_break_pos', None)) is not None:
+            arr = arr1 * factor
 
         if as_tuple:
             return tuple(arr.astype(int))
@@ -565,9 +578,12 @@ class Specimen(Outputtable):
         self.set_data(Specimen.KEY_LAMBDA, lam)
         return lam
 
-    def calculate_break_rhc(self, force_recalc: bool = False, d_max: float = 50) -> float:
+    def calculate_break_rhc(self, force_recalc: bool = False) -> float:
         """
-        Use ripleys K-Function and L-Function to estimate the hard core radius between centroids.
+        Use ripleys K-Function and L-Function to estimate the hard core radius between centroids. The maximum distance to calculate is estimated using
+        the biggest splinter and assuming a minimum splinter width of 2mm. Making the maximum distance 1/4 of the
+        biggest splinter area root.
+
 
         Arguments:
             force_recalc (bool, optional): Recalculate. Defaults to False.
@@ -583,7 +599,8 @@ class Specimen(Outputtable):
         if force_recalc or r1 is None or acceptance is None:
             all_centroids = np.array([s.centroid_mm for s in self.splinters])
             pane_size = self.get_real_size()
-            x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], d_max)
+            d_max = estimate_dmax(self.splinters)
+            x2,y2 = lhatc_test(all_centroids, pane_size[0]*pane_size[1], d_max)
             min_idx = np.argmin(y2)
             r1 = x2[min_idx]
             acceptance = min_idx / len(y2)
@@ -607,36 +624,49 @@ class Specimen(Outputtable):
         assert frac_img is not None, "Fracture image not found."
         return frac_img.shape[0] / realsize[0]
 
-    def kfun(self, max_d = 50):
+    def kfun(self):
         """
-        Calculate the K function for a range of distances.
-
-        Arguments:
-            max_d: Maximum distance in mm.
+        Calculate the K function for a range of distances. The maximum distance to calculate is {DMAX_K}mm.
 
         Returns:
             tuple[d,K(d)]: Tuple of distances and K(d) values.
         """
-        all_centroids = np.array([s.centroid_px for s in self.splinters])
-        pane_size = self.get_image_size()
-        x2,y2 = k_test(all_centroids, pane_size[0]*pane_size[1], max_d)
-        return x2,y2
+        max_d = DMAX_K
+        all_centroids = np.array([s.centroid_mm for s in self.splinters])
+        pane_size = self.get_real_size()
+        x2,y2 = khat_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        return np.asarray(x2),np.asarray(y2)
 
-    def lfun(self, max_d = 50):
+    def lfun(self):
         """
-        Calculates the L function for a range of distances.
-
-        Arguments:
-            max_d: Maximum distance in mm.
+        Calculates the L function for a range of distances. The maximum distance to calculate is estimated using
+        the biggest splinter and assuming a minimum splinter width of 2mm. Making the maximum distance 1/4 of the
+        biggest splinter area root.
 
         Returns:
             tuple[d,L(d)]: Tuple of distances and L(d) values.
         """
-
-        all_centroids = np.array([s.centroid_px for s in self.splinters])
-        pane_size = self.get_image_size()
-        x2,y2 = l_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        max_d = DMAX_L
+        all_centroids = np.array([s.centroid_mm for s in self.splinters])
+        pane_size = self.get_real_size()
+        x2,y2 = lhat_test(all_centroids, pane_size[0]*pane_size[1], max_d)
         return x2,y2
+
+    def lcfun(self):
+        """
+        Calculates the centered L function for a range of distances. The maximum distance to calculate is estimated using
+        the biggest splinter and assuming a minimum splinter width of 2mm. Making the maximum distance 1/4 of the
+        biggest splinter area root.
+
+        Returns:
+            tuple[d,L(d)]: Tuple of distances and L(d) values.
+        """
+        max_d = DMAX_L
+        all_centroids = np.array([s.centroid_mm for s in self.splinters])
+        pane_size = self.get_real_size()
+        x2,y2 = lhatc_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        return x2,y2
+
 
     def get_splinters_in_region(self, region: RectRegion) -> list[Splinter]:
         in_region = []
@@ -808,12 +838,25 @@ class Specimen(Outputtable):
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
 
+        print(self.get_impact_position())
+
+
+        realsz = self.get_real_size()
+        len0=  len(self.__splinters)
         # remove all splinters whose centroid is closer than 1 cm to the edge
-        delta_edge = 10
-        self.__splinters = [s for s in self.__splinters if s.centroid_mm[0] > delta_edge and s.centroid_mm[0] < self.settings['real_size_mm'][0] - delta_edge and s.centroid_mm[1] > delta_edge and s.centroid_mm[1] < self.settings['real_size_mm'][1] - delta_edge]
-        # or within a 1cm radius to the impact point
-        delta_impact = 20
+        delta_edge = self.settings.get('custom_edge_exclusion_distance', None) or 10
+        self.__splinters = [s for s in self.__splinters
+                            if  delta_edge < s.centroid_mm[0] < realsz[0] - delta_edge
+                            and delta_edge < s.centroid_mm[1] < realsz[1] - delta_edge]
+        len1 = len(self.__splinters)
+        # or within a 2cm radius to the impact point
+        delta_impact = self.settings.get('custom_break_pos_exclusion_radius', None) or 20
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
+
+        len2 = len(self.__splinters)
+
+        print(f"Removed {len0-len1} splinters near the edge and {len1-len2} splinters near the impact point.")
+
 
     def transform_fracture_images(
         self,

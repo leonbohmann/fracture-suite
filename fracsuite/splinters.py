@@ -84,7 +84,7 @@ def gen(
     specimens: list[Specimen]
 
     if not all:
-        filter = create_filter_function(specimen_name, needs_splinters=False)
+        filter = create_filter_function(specimen_name, needs_splinters=False, needs_scalp=False)
 
         specimens = Specimen.get_all_by(filter, load=True)
     else:

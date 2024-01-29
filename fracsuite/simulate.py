@@ -105,7 +105,7 @@ def est_break(
     ax.plot(x,Kpois(np.asarray(x)), label='$\hat{K}_{t}$')
     ax.legend()
     ax.set_ylabel('$\hat{K}(d)$')
-    ax.set_xlabel('$d$ [mm]')
+    ax.set_xlabel('$d$ (mm)')
     State.output(fig,'kfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
 
@@ -119,8 +119,21 @@ def est_break(
     ax.axvline(rhc, linestyle='--', color='r', label=f'$r_{{hc}}={min_L:.1f}mm$')
     ax.legend()
     ax.set_ylabel('$\hat{L}(d)$')
-    ax.set_xlabel('$d$ [mm]')
+    ax.set_xlabel('$d$ (mm)')
     State.output(fig, 'lfunc', spec=specimen, figwidth=FigureSize.ROW2)
+
+    print('Plotting lfunc...')
+    x2,y2 = specimen.lcfun()
+    min_L = rhc
+
+    ax: Axes
+    fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+    ax.plot(x2,y2, label='$\hat{L}$')
+    ax.axvline(rhc, linestyle='--', color='r', label=f'$r_{{hc}}={min_L:.1f}mm$')
+    ax.legend()
+    ax.set_ylabel('$\hat{L}(d)-d$')
+    ax.set_xlabel('$d$ (mm)')
+    State.output(fig, 'lcfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
     # find the acceptance probability by finding radii smaller than rhc
     # and dividing it by the total number of point pairs

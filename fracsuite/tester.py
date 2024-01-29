@@ -252,9 +252,8 @@ def threshold(
     from fracsuite.core.preps import defaultPrepConfig
     prep0 = defaultPrepConfig
 
-    if "\\" not in source and re.fullmatch(r'^.*\..*\..*\..*$', source):
+    if (specimen := Specimen.get(source)) is not None:
         print("[cyan]Specimen detected")
-        specimen = Specimen.get(source)
         source = specimen.get_splinter_outfile("dummy")
         img = specimen.get_fracture_image()
         px_per_mm = specimen.calculate_px_per_mm(realsize_mm=realsize)

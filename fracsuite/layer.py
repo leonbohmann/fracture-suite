@@ -857,6 +857,16 @@ def plot_layer_polar(
 
     State.output(output, f'polar-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
+
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    x_values = r_range[:-1]
+    y_values = Z.flatten()
+    axs.plot(x_values, y_values, linewidth=0.5, marker='o', color='r')
+    axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
+    axs.set_ylabel(Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3))
+
+    State.output(StateOutput(fig,sz), f'polargraph-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
+
 @layer_app.command()
 def plot_layer(
     layer: Annotated[ModelLayer, typer.Argument(help="The layer to display")],

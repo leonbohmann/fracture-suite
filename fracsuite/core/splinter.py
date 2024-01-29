@@ -1,5 +1,4 @@
 from __future__ import annotations
-from re import S
 from typing import Any
 
 import cv2
@@ -9,7 +8,6 @@ from skimage.morphology import skeletonize
 
 from fracsuite.core.coloring import rand_col
 from fracsuite.core.detection import detect_fragments, remove_dark_spots
-from fracsuite.core.geometry import ellipse_radius
 from fracsuite.core.image import to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import (
@@ -22,8 +20,7 @@ from fracsuite.core.preps import PreprocessorConfig
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter_props import SplinterProp
 
-from fracsuite.core.vectors import alignment_between, alignment_cossim, angle_between, angle_deg
-from fracsuite.state import State
+from fracsuite.core.vectors import alignment_between, angle_deg
 
 class Splinter:
 
@@ -93,8 +90,8 @@ class Splinter:
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
 
-            self.centroid_mm =  (cX / px_per_mm, cY / px_per_mm)
-            self.centroid_px =  (cX, cY)
+            self.centroid_mm =  (cY / px_per_mm, cX / px_per_mm)
+            self.centroid_px =  (cY, cX)
             self.has_centroid = True
         except:
             self.centroid_mm = (np.nan, np.nan)
