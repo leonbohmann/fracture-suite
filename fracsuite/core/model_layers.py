@@ -298,7 +298,7 @@ def arrange_regions(
     n_t = int(360 / d_t_deg)
 
     # radius range
-    r_range = np.arange(r_min, r_max, d_r_mm, dtype=np.float64)
+    r_range = np.arange(r_min, r_max, d_r_mm, dtype=np.float64)[:-1]
     # for i in range(len(r_range)):
     #     xi = -((i / len(r_range))**1.2)+1
     #     r_range[i] = r_range[i] / xi
