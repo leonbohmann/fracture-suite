@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import tempfile
 from enum import Enum
-from tracemalloc import start
 from typing import Any, Callable
 from matplotlib.collections import PolyCollection
 
@@ -282,8 +281,8 @@ def plot_splinter_movavg(
     assert kw_px < np.min(original_image.shape[:2]), "kernel_width must be smaller than the image size."
     assert figwidth in general.figure_sizes_mm, f"figwidth {figwidth} not found."
 
-    region = (original_image.shape[1], original_image.shape[0])
-    # print(f'Creating intensity plot with region={region}...')
+    region = (original_image.shape[0], original_image.shape[1])
+    print(f'Creating intensity plot with region={region}...')
 
     kernel = ObjectKerneler(
         region,
