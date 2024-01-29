@@ -1,16 +1,13 @@
 from __future__ import annotations
-from enum import Enum
 
 import json
 import os
 import pickle
 import re
 from stat import S_IREAD, S_IRGRP, S_IROTH
-import tempfile
 from typing import Any, Callable, List, TypeVar
 
 import cv2
-from matplotlib import pyplot as plt
 import numpy as np
 from rich import print
 from rich.progress import track
@@ -20,14 +17,12 @@ from fracsuite.core.coloring import rand_col
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, simplify_contour
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.outputtable import Outputtable
-from fracsuite.core.plotting import FigureSize
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
 from fracsuite.core.specimenregion import SpecimenRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import calculate_dmode
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file, find_files
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -37,7 +32,6 @@ from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPositio
 
 from spazial import khat_test, lhatc_test, lhat_test
 
-from fracsuite.state import State, StateOutput
 
 
 general: GeneralSettings = GeneralSettings.get()
