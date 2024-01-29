@@ -449,7 +449,7 @@ def create_impact_layer(
             cmap = pltc.ListedColormap(colors)
             norm = pltc.Normalize(min_u, max_u)
             cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label="Formänderungsenergie $U$ (J/m²)")
-            renew_ticks_cb(cbar)
+            # renew_ticks_cb(cbar)
             # renew_ticks_ax(axs)
             State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{mode}_{break_pos}", to_additional=True)
 

@@ -22,6 +22,9 @@ general = GeneralSettings.get()
 
 SAVE_FORMAT = "[cyan]SAVE[/cyan] [dim white]{0:<11}[/dim white] '{1}'"
 
+def is_image(data):
+    return type(data).__module__ == np.__name__
+
 class StateOutput:
     Data: Any
     "Data of the output, may be an image or a figure."
@@ -67,17 +70,14 @@ class StateOutput:
                         data
                     )
                 elif self.is_figure:
-                    self.Data.tight_layout(pad=0)
                     self.Data.savefig(
                         outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
                         dpi=200,
-                        bbox_inches='tight',
                         pad_inches=0
                     )
                     self.Data.savefig(
                         outfile := f'{path}_{self.FigWidth}.png',
                         dpi=200,
-                        bbox_inches='tight',
                         pad_inches=0
                     )
                 saved = True
@@ -233,7 +233,11 @@ class State:
             if figwidth is not None:
                 print("[yellow]Warning: 'figwidth' is ignored when passing StateOutput.[/yellow]")
         else:
-            assert figwidth is not None, "figwidth must be set when passing a figure or image."
+            if not is_image(object):
+                assert figwidth is not None, "figwidth must be set when passing a figure."
+            if figwidth is None:
+                figwidth = 'img'
+
             object = StateOutput(object, figwidth)
 
         # use the subcommand as file name if no name is passed

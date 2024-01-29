@@ -29,6 +29,8 @@ from fracsuite.tester import tester_app
 from fracsuite.highspeedimg import app as highspeed_app
 from fracsuite.anisotropy import ani_app
 
+import scienceplots
+
 custom_theme = Theme({
     "info": "dim cyan",
     "warning": "magenta",
@@ -37,72 +39,61 @@ custom_theme = Theme({
 
 general = GeneralSettings.get()
 
-cmap1 = [
-    norm_color((38, 70, 83)),
-    norm_color((42, 157, 143)),
-    norm_color((233, 196, 106)),
-    norm_color((244, 162, 97)),
-    norm_color((231, 111, 81))
-]
+# cmap1 = [
+#     norm_color((38, 70, 83)),
+#     norm_color((42, 157, 143)),
+#     norm_color((233, 196, 106)),
+#     norm_color((244, 162, 97)),
+#     norm_color((231, 111, 81))
+# ]
 
-cmap2 = [
-    norm_color((255, 190, 11)),
-    norm_color((251, 86, 7)),
-    norm_color((255, 0, 110)),
-    norm_color((131, 56, 236)),
-    norm_color((58, 134, 255))
-]
+# cmap2 = [
+#     norm_color((255, 190, 11)),
+#     norm_color((251, 86, 7)),
+#     norm_color((255, 0, 110)),
+#     norm_color((131, 56, 236)),
+#     norm_color((58, 134, 255))
+# ]
 
-cmap3 = [
-    norm_color('#2E4057'),
-    norm_color('#FFA07A'),
-    norm_color('#5F9EA0'),
-    norm_color('#4682B4'),
-    norm_color('#FAD02E'),
-]
-cmap4 = [
-    norm_color('#4E79A7'),  # Blue
-    norm_color('#F28E2B'),  # Orange
-    norm_color('#E15759'),  # Red
-    norm_color('#76B7B2'),  # Teal
-    norm_color('#59A14F')   # Green
-]
-# get colormap
-cmap=plt.cm.Dark2
-# build cycler with 5 equally spaced colors from that colormap
-# c = cycler(color=cmap.colors)
-# c = cycler(color=cmap1)
+# cmap3 = [
+#     norm_color('#2E4057'),
+#     norm_color('#FFA07A'),
+#     norm_color('#5F9EA0'),
+#     norm_color('#4682B4'),
+#     norm_color('#FAD02E'),
+# ]
+# cmap4 = [
+#     norm_color('#4E79A7'),  # Blue
+#     norm_color('#F28E2B'),  # Orange
+#     norm_color('#E15759'),  # Red
+#     norm_color('#76B7B2'),  # Teal
+#     norm_color('#59A14F')   # Green
+# ]
+
+plt.style.use('science')
 
 params = {
     'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}\usepackage{mathpazo}',
     'text.usetex': True,
     'savefig.dpi': 150,  # to adjust notebook inline plot size
     'axes.labelsize': 9, # fontsize for x and y labels (was 10)
+    'figure.labelsize': 9,
     'axes.titlesize': 8,
     'font.size': 10, # was 10
     'legend.fontsize': 8,
     'xtick.labelsize': 8, # was 8
     'ytick.labelsize': 8, # was 8
-    # 'pdf.fonttype': 42,
-    # 'ps.fonttype': 42,
     'font.family': 'serif',
     'axes.grid': True,
     'axes.axisbelow': True,
     'grid.linestyle': '-',
     'grid.linewidth': 0.3,
     'lines.markersize': 3,
-    # 'axes.grid.which': 'both',
-    # 'xtick.minor.visible': True,
-    # 'ytick.minor.visible': True,
+    'savefig.bbox' : 'tight',
+    'savefig.pad_inches' : 0,
+    'figure.constrained_layout.use': True,
 }
 plt.rcParams.update(params)
-# plt.rc('axes', prop_cycle=c)
-# plt.rc('text.latex', preamble=r'\usepackage{amsmath}\usepackage{xfrac}')
-# plt.style.use('bmh')
-
-# cmap = plt.get_cmap('turbo')
-# num_colors = 10
-# color_cycle = [cmap(i) for i in np.linspace(0, 1, num_colors)]
 
 # import to redirect pickle import
 sys.modules['fracsuite.splinters.splinter'] = splt

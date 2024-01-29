@@ -113,12 +113,15 @@ def split_image(img, grid_size) -> SplitImage:
     # Das resultierende Bild zurückgeben
     return SplitImage(parts, grid_size, cols, rows)
 
-class FontSize(int, Enum):
+class FontSize(float, Enum):
     MEDIUM = 1
-    SMALL = MEDIUM + 0.3
-    LARGE = MEDIUM - 0.3
+    SMALL = MEDIUM - 0.3
+    LARGE = MEDIUM + 0.3
 
-def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0)):
+    HUGE = LARGE * 1.3
+    HUGEXL = HUGE * 1.3
+
+def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0),szf:float = 1.0,thickness=4):
     """
     Puts text on an image at a specified point.
 
@@ -130,8 +133,7 @@ def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0)):
         clr (tuple, optional): The color of the text. Defaults to (0,0,0).
     """
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = sz
-    thickness = 2
+    font_scale = sz * szf
 
     # calculate text size
     text_size, _ = cv2.getTextSize(text, font, font_scale, thickness)
@@ -141,4 +143,31 @@ def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0)):
     text_y = int(pt[1] + text_size[1] / 2)
 
     # draw text on image
-    cv2.putText(img, text, (text_x, text_y), font, font_scale, clr, thickness, cv2.LINE_AA)
+    return cv2.putText(img, text, (text_x, text_y), font, font_scale, clr, thickness, cv2.LINE_AA)
+
+def put_scale(scale, scale_length_px, img, sz, clr, szf=1.0):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = sz * szf
+    thickness = 4
+
+    scale_text = f"{scale} cm"
+
+    # calculate text size
+    text_size, _ = cv2.getTextSize(scale_text, font, font_scale, thickness)
+
+    # create a white background box to fit the text and scale
+    box_pad = 30
+    box_width = img.shape[1]
+    box_height = 4*box_pad
+    box = np.zeros((box_height, box_width, 3), dtype=np.uint8)
+    box.fill(255)
+
+    # draw scale
+    cv2.line(box, (5, box_height-box_pad), (int(scale_length_px + 5), box_height-box_pad), clr, thickness)
+    cv2.line(box, (5, box_height-box_pad-5), (5, box_height-box_pad+5), clr, thickness)
+    cv2.line(box, (int(scale_length_px + 5), box_height-box_pad-5), (int(scale_length_px + 5), box_height-box_pad+5), clr, thickness)
+    # draw text into x center of box
+    put_text(scale_text, box, (scale_length_px // 2, text_size[1]), sz, clr, szf)
+
+    # vertically stack images
+    return np.vstack((img, box))

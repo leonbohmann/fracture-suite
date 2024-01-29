@@ -53,6 +53,9 @@ class FigureSize(str, Enum):
     ROW1HL = 'row1h_l'
     "Large landscape."
 
+    IMG = 'img'
+    "Indifferent for images"
+
     @staticmethod
     def has_value(value):
         return value in FigureSize.values()
@@ -136,9 +139,8 @@ def get_figure_size_fraction(wf, hf=None, dimf=1.0) -> tuple[tuple[float,float],
     assert False, "This function is deprecated. Use get_fig_width instead."
 
 def to_img(fig):
-    fig.tight_layout()
     temp_file = tempfile.mkstemp("TEMP_FIG_TO_IMG.png")[1]
-    fig.savefig(temp_file, dpi=300, bbox_inches='tight', pad_inches=0)
+    fig.savefig(temp_file, dpi=300, bbox_inches=0, pad_inches=0)
     plt.close(fig)
     return to_rgb(cv2.imread(temp_file))
 
@@ -739,7 +741,6 @@ def label_image(
         ax.legend(handles=patches, bbox_to_anchor=(1, 1), loc='upper left')
 
     if return_fig:
-        fig.tight_layout()
         return StateOutput(fig, figwidth)
 
     return StateOutput(to_img(fig), figwidth, ax = ax)
@@ -794,7 +795,6 @@ def annotate_image(
             cbar.ax.yaxis.set_major_formatter(formatter)
 
     if return_fig:
-        fig.tight_layout()
         return StateOutput(fig, figwidth, ax=ax)
 
     return StateOutput(to_img(fig), figwidth, ax=ax)
@@ -839,7 +839,6 @@ def annotate_images(
         fig.colorbar(mappable=im, ax=axs[:-1], label=cbar_title)
 
     if return_fig:
-        fig.tight_layout()
         return fig
     return to_img(fig)
 

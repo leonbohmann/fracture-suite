@@ -18,6 +18,9 @@ general = GeneralSettings.get()
 def stress():
     """Compares all nominal stresses with real scalped stresses."""
     def has_stress(specimen: Specimen):
+        if specimen.thickness == 12:
+            return False
+
         return specimen.has_scalp and specimen.nom_stress != 0
     def get_spec(specimen: Specimen) -> Specimen:
         return specimen
@@ -26,7 +29,7 @@ def stress():
 
 
     thicknesses = {
-            4: {}, 8: {}, 12: {}
+            4: {}, 8: {}
         }
 
     for t in thicknesses:
@@ -36,11 +39,12 @@ def stress():
     for spec in specimens:
         thicknesses[spec.thickness][spec.nom_stress].append(np.abs(spec.sig_h))
 
-    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1HL))
+    sz = FigureSize.ROW1HL
+    fig, axs = plt.subplots(figsize=get_fig_width(sz))
     # axs.scatter(nominal_4, scalped_4, marker='x', color='orange', label="4mm")
     # axs.scatter(nominal_8+5, scalped_8, marker='o', color='blue', label="8mm")
     # axs.scatter(nominal_12+10, scalped_12, marker='v', color='green', label="12mm")
-    lbs = ["4mm", "8mm", "12mm"]
+    lbs = ["4mm", "8mm"]
     bars = []
     for it, nom_thick in enumerate(thicknesses):
         bars.append(None)
@@ -52,22 +56,28 @@ def stress():
             if bars[it] is None:
                 bars[it] = bar
 
-    axs.set_xlabel("Nominal surface stress [MPa]")
-    axs.set_ylabel("Measured surface stress $\sigma_S$ [MPa]")
+    axs.set_xlabel("Nenn-Oberflächenvorspannung $\sigma_\\text{S}$ (MPa)")
+    axs.set_ylabel("Gemessene $\sigma_\\text{S,meas}$ (MPa)")
 
     axs.axline((0, 0), slope=1, color="black", linestyle="-")
 
-    axs.set_xlim((0,200))
-    axs.set_ylim((0,200))
-    fig.tight_layout()
+    axs.set_xlim((50,160))
+    axs.set_ylim((50,160))
     axs.legend(bars, lbs, loc='lower right')
 
-    State.output(fig, 'compare_nominal_stress_to_real_stress', figwidth=FigureSize.ROW1HL)
+    State.output(fig, 'compare_nominal_stress_to_real_stress', figwidth=sz)
 
 @nominals_app.command()
-def thickness():
+def thickness(exclude_names: str = None):
     """Compares all nominal stresses with real scalped stresses."""
     def has_stress(specimen: Specimen):
+        if specimen.thickness == 12:
+            return False
+
+        if exclude_names is not None:
+            if specimen.name.startswith(exclude_names):
+                return False
+
         return specimen.has_scalp and specimen.measured_thickness != 0 \
             and specimen.thickness != 0
     def get_spec(specimen: Specimen) -> Specimen:
@@ -76,7 +86,7 @@ def thickness():
     specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec, load=True)
 
     thicknesses = {
-            4: [], 8: [], 12: []
+            4: [], 8: []
         }
 
     for spec in specimens:
@@ -85,40 +95,24 @@ def thickness():
 
     print(thicknesses)
 
+    sz = FigureSize.ROW1HL
 
-    fig, axs = plt.subplots(1,3, figsize=general.figure_size)
-    # axs.scatter(nominal_4, scalped_4, marker='x', color='orange', label="4mm")
-    # axs.scatter(nominal_8+5, scalped_8, marker='o', color='blue', label="8mm")
-    # axs.scatter(nominal_12+10, scalped_12, marker='v', color='green', label="12mm")
-    xspace = 0.3
-    yspace = 0.3
-    lbs = ["4mm", "8mm", "12mm"]
-    bars = []
+    fig,axs=plt.subplots(1,len(thicknesses),figsize=get_fig_width(sz))
+
     for it, nom_thick in enumerate(thicknesses):
+        real_thickness = thicknesses[nom_thick] # list of real thicknesses
+
         ax = axs[it]
-        ax.axline((nom_thick-1, nom_thick-1), slope=1, color="black", linestyle="-")
-        ax.set_xlim((nom_thick-xspace, nom_thick+xspace))
-        ax.set_ylim((nom_thick-yspace, nom_thick+yspace))
-        ax.set_title(f'{nom_thick}mm')
+        ax.set_title(f"{nom_thick}mm")
+        ax.hist(real_thickness, bins=10, label=f'{nom_thick}mm', alpha=0.9)
 
-        # show only the nom_thick x label
-        ax.set_xticks([nom_thick])
+        # tick format as integer and only integers
+        ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
 
-        print(f'{nom_thick}mm: {thicknesses[nom_thick]}')
-        real_thick = thicknesses[nom_thick]
-        bar = ax.errorbar(nom_thick, np.mean(real_thick), yerr=np.std(real_thick), fmt='ovx'[it], color='bgm'[it])
-        ax.scatter(np.full(len(real_thick), nom_thick), real_thick, marker='x', color='gray', linewidths=0.5, alpha=0.5)
-        bars.append(bar)
+        # plot hline at thickness
+        ax.axvline(x=nom_thick, color='black', linestyle='--')
 
-
-    axs[1].set_xlabel("Nominal glass thickness [mm]")
-    axs[0].set_ylabel("Measured glass thickness [mm]")
-
-
-
-    fig.legend(bars, lbs)
-
-    fig.tight_layout()
-
-
-    State.output(fig, 'compare_nominal_to_real_thickness', figwidth=FigureSize.ROW1)
+    fig.supxlabel("Gemessene Glasdicke (mm)")
+    fig.supylabel("Anzahl von Probekörpern")
+    # hide x ranges from 4.5 to 7.5 and 8.5 to 11.5
+    State.output(fig, 'thickness_distribution', figwidth=sz)

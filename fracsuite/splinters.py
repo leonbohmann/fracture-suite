@@ -26,7 +26,7 @@ from fracsuite.core.arrays import sort_arrays, sort_two_arrays
 from fracsuite.core.calculate import pooled
 from fracsuite.core.coloring import get_color, rand_col
 from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
-from fracsuite.core.image import put_text, to_gray, to_rgb
+from fracsuite.core.image import FontSize, put_scale, put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
@@ -378,6 +378,43 @@ def import_files(
         # copy the file into specimen splinter folder
         shutil.copy(file, specimen.get_splinter_outfile("splinters_v2.pkl"))
         print(f"Imported adjacent file for {specimen_name}.")
+
+@app.command()
+def extract_details(
+    names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
+    region: Annotated[tuple[int, int, int, int], typer.Option(help='Region to extract. X Y W H.')] = (1250, 1250, 200, 200),
+):
+    filterf = create_filter_function(names, needs_splinters=True, needs_scalp=False)
+    specimens: list[Specimen] = Specimen.get_all_by(filterf, load=True)
+
+    assert region is not None, "Region must be specified."
+
+    rsz_factor = 5
+
+    for specimen in specimens:
+        # get fracture image and take region
+        fracture_image = specimen.get_fracture_image()
+
+        x, y, w, h = region
+        fracture_image = fracture_image[y:y+h, x:x+w]
+
+        # calculate real size of region
+        px_per_mm = specimen.calculate_px_per_mm()
+        w_mm = w * rsz_factor / px_per_mm
+        pxpmm = w * rsz_factor / w_mm
+        scale_length_val = 20
+        scale_length_px = scale_length_val * pxpmm * rsz_factor
+
+        # upscale image using rsz_factor
+        fracture_image = cv2.resize(fracture_image, (0, 0), fx=rsz_factor, fy=rsz_factor)
+
+        # add text to center of line
+        fracture_image = put_scale(scale_length_val/10,scale_length_px, fracture_image, clr=(0,0,0), sz=FontSize.HUGE)
+
+        # save image
+        State.output(fracture_image, f"extracted_{specimen.name}", spec=specimen, to_additional=True, figwidth=FigureSize.ROW3)
+
+
 
 @app.command()
 def show_prep(specimen_name: str = None):
@@ -1031,6 +1068,9 @@ def create_filter_function(name_filter,
         name_filter_function = in_names_list
     elif name_filter is not None and " " in name_filter:
         name_filter = name_filter.split(" ")
+        print(f"Searching for specimen whose name is in: {name_filter}")
+        name_filter_function = in_names_list
+    elif isinstance(name_filter, list):
         print(f"Searching for specimen whose name is in: {name_filter}")
         name_filter_function = in_names_list
     elif name_filter is not None and all([c not in "*[]^\\" for c in name_filter]):
@@ -1815,7 +1855,7 @@ def fracture_intensity_f(
     w_px = int(w_mm * specimen.calculate_px_per_mm())
     print(f"Kernel width: {w_mm} mm")
 
-    original_image = specimen.get_fracture_image()
+    original_image = specimen.get_fracture_image(as_rgb=False)
 
     # this counts the splinters in the kernel by default
     fig = plot_splinter_movavg(
@@ -1826,12 +1866,12 @@ def fracture_intensity_f(
         z_action=lambda x: len(x),
         plot_vertices=plot_vertices,
         plot_kernel=plot_kernel,
-        clr_label="Bruchstückdichte $N_\\text{50}=N_\\text{S}/A_\\text{50x50mm}$]",  # , $w_A,h_A$={w_mm}mm
+        clr_label="Bruchstückdichte $N_\\text{50}=N_\\text{S}/A_\\text{50x50mm}$",  # , $w_A,h_A$={w_mm}mm
         mode=KernelContourMode.FILLED if not as_contours else KernelContourMode.CONTOURS,
         exclude_points=[specimen.get_impact_position(True)] if exclude_points else None,
         skip_edge=skip_edge,
         figwidth=figwidth,
-        clr_format='.0f',
+        clr_format='.1f',
         fill_skipped_with_mean=False,
         transparent_border=False,
     )

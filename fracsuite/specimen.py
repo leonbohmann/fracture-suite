@@ -225,7 +225,7 @@ def nfifty(name):
 
 
 @app.command()
-def to_tex():
+def to_tex(exclude_thickness: int = None):
     """
     Retrieves all specimens and exports them to a latex file.
 
@@ -235,6 +235,9 @@ def to_tex():
 
     # sort by thickness, then nominal stress, then boundary and then number
     all_specimens.sort(key=lambda x: (x.thickness, x.nom_stress, x.boundary, x.nbr))
+
+    if exclude_thickness is not None:
+        all_specimens = [x for x in all_specimens if x.thickness != exclude_thickness]
 
     # define some columns
     def t(s: Specimen):
@@ -249,6 +252,14 @@ def to_tex():
         if not s.has_scalp:
             return None
         return f"{s.measured_thickness:.2f}"
+
+    def u0(s: Specimen):
+        if not s.has_scalp:
+            return None
+        sz = s.get_real_size()
+        A = sz[0]*1e-3 * sz[1]*1e-3
+        return f"{s.U*A:.1f}"
+
     def u(s: Specimen):
         if not s.has_scalp:
             return None
@@ -268,24 +279,25 @@ def to_tex():
             return None
 
     def farea(s: Specimen):
-        return f"{s.crack_surface:.2f}" if s.crack_surface is not None else None
+        return f"{s.crack_surface*1e-6:.2f}" if s.crack_surface is not None else None
 
     columns = {
         "$\glsm{t}_{\\text{nom}}$": (t, "mm"),
         "$\glsm{sig_s}_{,\\text{nom}}$": (stress, "MPa"),
-        "Lagerung": (boundary, "-"),
-        "ID": (nbr, "-"),
+        "Lagerung": (boundary, None),
+        "ID": (nbr, None),
         "$t_{\\text{real}}$": (t_real, "mm"),
         "$\glsm{sig_s}_{,\\text{real}}$": (stress_real, "MPa"),
-        "$\glsm{fdens}$": (n50, "-"),
+        "$\glsm{fdens}$": (n50, None),
+        "$\glsm{ut}$": (u0, "J"),
         "$\glsm{u}$": (u, "J/m²"),
         "$\glsm{ud}$": (ud, "J/m³"),
-        "$\glsm{farea}$": (farea, "mm²")
+        "$\glsm{farea}$": (farea, "m²"),
     }
 
     # create the table
     table = []
-    for spec in all_specimens:
+    for spec in track(all_specimens, description='Creating rows...'):
         if spec.boundary == SpecimenBoundary.Unknown:
             continue
 
@@ -333,7 +345,10 @@ def to_tex():
     header_unit = ""
     for name, (_,unit) in columns.items():
         header += f"\t{name} & "
-        header_unit += "\\textcolor{gray}{\\small{{[{0}]}}} & ".replace("{0}", unit if unit != '' else '-')
+        if unit is not None:
+            header_unit += "\\textcolor{gray}{\\small{{({0})}}} & ".replace("{0}", unit)
+        else:
+            header_unit += "\t & "
 
     latex_code = latex_code.replace("(HEADER)", header[:-2])
     latex_code = latex_code.replace("(HEADER_UNITS)", header_unit[:-2])
@@ -354,7 +369,33 @@ def to_tex():
 
     print(f"Saved to '{output_file}'")
 
+@app.command()
+def import_experimental_data(
+    file: str
+):
+    # load csv file
+    with open(file, 'r') as f:
+        # skip first row
+        data: list[str] = f.readlines()[1:]
 
+    col = 7
+
+    for r in track(data, total=len(data)):
+        r = r.strip()
+        v = r.split(';')
+        d = np.array(v[1:]).astype(np.float64)
+
+        name = str(v[0])
+        print(name)
+        specimen = Specimen.get(name, load=False, panic=False)
+
+        if specimen is not None:
+            new_height = float(d[7])*1e-2
+            old_heiht = float(specimen.fall_height_m)
+            if new_height != old_heiht:
+                print(f"Fall height of {name} changed from {old_heiht} to {new_height}!")
+
+                specimen.set_setting(Specimen.SET_FALLHEIGHT, new_height)
 @app.command()
 def import_fracture(
     specimen_name: str,

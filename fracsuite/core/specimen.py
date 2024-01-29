@@ -121,18 +121,36 @@ class Specimen(Outputtable):
     """ Container class for a specimen. """
 
 
-    KEY_FRACINTENSITY: str = "frac_intensity"
+    DAT_FRACINTENSITY: str = "frac_intensity"
     "Key for the fracture intensity in the simdata file."
-    KEY_HCRADIUS: str = "hc_radius"
+    DAT_HCRADIUS: str = "hc_radius"
     "Key for the hard core radius in the simdata file."
-    KEY_ACCEPTANCE_PROB: str = "acceptance_prob"
+    DAT_ACCEPTANCE_PROB: str = "acceptance_prob"
     "Key for the acceptance probability in the simdata file."
-    KEY_LAMBDA: str = "lambda"
+    DAT_LAMBDA: str = "lambda"
     "Key for the fracture intensity parameter in the simdata file."
-    KEY_NFIFTY: str = "nfifty"
+    DAT_NFIFTY: str = "nfifty"
     "Key for the nfifty value in the simdata file."
-    KEY_CRACKSURFACE: str = "crack_surface"
+    DAT_CRACKSURFACE: str = "crack_surface"
     "Key for the crack surface in the simdata file."
+
+
+    SET_BREAKMODE: str = "break_mode"
+    "Break mode of the specimen (PUNCH, LASER, DRILL)."
+    SET_BREAKPOS: str = "break_pos"
+    "Break position of the specimen (CORNER,CENTER,EDGE)."
+    SET_CBREAKPOS: str = "custom_break_pos"
+    "Custom break position in (mm,mm)."
+    SET_CBREAKPOSEXCL: str = "custom_break_pos_exclusion_radius"
+    "Radius in mm to exclude from the break position."
+    SET_EDGEEXCL: str = "custom_edge_exclusion_distance"
+    "Distance in mm to exclude from the edge."
+    SET_FALLHEIGHT: str = "fall_height_m"
+    "Fall height in meters."
+    SET_REALSIZE: str = "real_size_mm"
+    "Real size of the specimen in mm."
+    SET_FALLREPEAT: str = "fall_repeat"
+    "Number of times the fallweight is dropped."
 
     @property
     def splinters(self) -> list[Splinter]:
@@ -175,12 +193,12 @@ class Specimen(Outputtable):
     @property
     def break_lambda(self):
         "Fracture intensity parameter."
-        return self.simdata.get(Specimen.KEY_LAMBDA, None)
+        return self.simdata.get(Specimen.DAT_LAMBDA, None)
 
     @property
     def break_rhc(self):
         "Hard core radius."
-        return self.simdata.get(Specimen.KEY_HCRADIUS, None)
+        return self.simdata.get(Specimen.DAT_HCRADIUS, None)
 
     @property
     def mean_splinter_area(self):
@@ -215,26 +233,26 @@ class Specimen(Outputtable):
 
     @property
     def U_d(self) -> float:
-        "Strain energy density of the specimen."
+        "Strain energy density of the specimen in J/m³."
         assert self.loaded, "Specimen not loaded."
         return self.__U_d
 
     @property
     def U(self) -> float:
-        "Strain Energy of the specimen."
+        "Strain Energy of the specimen in J/m²."
         assert self.loaded, "Specimen not loaded."
         return self.__U
 
     @property
     def crack_surface(self):
-        "Total crack surface. Calculated using pixel algorithm."
+        "Total crack surface in mm². Calculated using pixel algorithm."
         if not hasattr(self, '_crack_surface') or self._crack_surface is None:
-            self._crack_surface = self.simdata.get(Specimen.KEY_CRACKSURFACE, None)
+            self._crack_surface = self.simdata.get(Specimen.DAT_CRACKSURFACE, None)
         return self._crack_surface
 
     def set_crack_surface(self, value):
         self._crack_surface = value
-        self.set_data(Specimen.KEY_CRACKSURFACE, value)
+        self.set_data(Specimen.DAT_CRACKSURFACE, value)
 
     @property
     def splinter_area(self):
@@ -306,14 +324,14 @@ class Specimen(Outputtable):
 
         # set default settings (overwritten in the next step)
         self.__settings = {
-            "break_mode": "punch",
-            "break_pos": "corner",
-            "custom_break_pos": None,
-            "custom_break_pos_exclusion_radius": None,
-            "custom_edge_exclusion_distance": None,
-            "fall_height_m": 0.07,
-            "real_size_mm": (500,500),
-            "fall_repeat": 1
+            Specimen.SET_BREAKMODE: "punch",
+            Specimen.SET_BREAKPOS: "corner",
+            Specimen.SET_CBREAKPOS: None,
+            Specimen.SET_CBREAKPOSEXCL: None,
+            Specimen.SET_EDGEEXCL: None,
+            Specimen.SET_FALLHEIGHT: 0.07,
+            Specimen.SET_REALSIZE: (500,500),
+            Specimen.SET_FALLREPEAT: 1
         }
 
         # load settings from config and overwrite defaults
@@ -397,10 +415,12 @@ class Specimen(Outputtable):
         self.layer_region = SpecimenRegion(20, 360, self.get_impact_position(), self.get_real_size())
 
     def set_setting(self, key, value):
+        """Set an experimental setting of the specimen. Use Specimen.SET_* constants."""
         self.settings[key] = value
         self.__save_settings()
 
     def set_data(self, key: str, value):
+        """Set evaluated data of the specimen. Use Specimen.DAT_* constants."""
         self.simdata[key] = value
         self.__save_simdata()
 
@@ -535,7 +555,7 @@ class Specimen(Outputtable):
             int: The mean fracture intensity, Amount of Splinters in observation field N.
         """
 
-        f_intensity = self.simdata.get(Specimen.KEY_FRACINTENSITY, None)
+        f_intensity = self.simdata.get(Specimen.DAT_FRACINTENSITY, None)
         if force_recalc or f_intensity is None:
             region = self.settings['real_size_mm']
             kernel = ObjectKerneler(
@@ -554,7 +574,7 @@ class Specimen(Outputtable):
                 fill_skipped_with_mean=True
             )
             f_intensity = int(np.mean(Z))
-            self.set_data(Specimen.KEY_FRACINTENSITY, f_intensity)
+            self.set_data(Specimen.DAT_FRACINTENSITY, f_intensity)
 
         return f_intensity
 
@@ -569,7 +589,7 @@ class Specimen(Outputtable):
             float: The fracture intensity parameter in 1/mm².
         """
         lam = self.calculate_NperWindow(force_recalc=force_recalc, D_mm=D_mm) / D_mm**2
-        self.set_data(Specimen.KEY_LAMBDA, lam)
+        self.set_data(Specimen.DAT_LAMBDA, lam)
         return lam
 
     def calculate_break_rhc(self, force_recalc: bool = False) -> float:
@@ -587,8 +607,8 @@ class Specimen(Outputtable):
             float: The hard core radius in mm.
         """
 
-        r1 = self.simdata.get(Specimen.KEY_HCRADIUS, None)
-        acceptance = self.simdata.get(Specimen.KEY_ACCEPTANCE_PROB, None)
+        r1 = self.simdata.get(Specimen.DAT_HCRADIUS, None)
+        acceptance = self.simdata.get(Specimen.DAT_ACCEPTANCE_PROB, None)
 
         if force_recalc or r1 is None or acceptance is None:
             all_centroids = np.array([s.centroid_mm for s in self.splinters])
@@ -599,8 +619,8 @@ class Specimen(Outputtable):
             r1 = x2[min_idx]
             acceptance = min_idx / len(y2)
 
-            self.set_data(Specimen.KEY_ACCEPTANCE_PROB, acceptance)
-            self.set_data(Specimen.KEY_HCRADIUS, r1)
+            self.set_data(Specimen.DAT_ACCEPTANCE_PROB, acceptance)
+            self.set_data(Specimen.DAT_HCRADIUS, r1)
 
         return r1,acceptance
 
@@ -674,7 +694,7 @@ class Specimen(Outputtable):
         if centers == []:
             centers = [(400,400)]
 
-        nfifty = self.simdata.get(Specimen.KEY_NFIFTY, None)
+        nfifty = self.simdata.get(Specimen.DAT_NFIFTY, None)
         if nfifty is None or force_recalc:
             # area = float(size[0] * size[1])
             nfifty = 0.0
@@ -683,7 +703,7 @@ class Specimen(Outputtable):
                 nfifty += nfiftyi
 
             nfifty = nfifty / len(centers)
-            self.set_data(Specimen.KEY_NFIFTY, nfifty)
+            self.set_data(Specimen.DAT_NFIFTY, nfifty)
             return nfifty
         else:
             return nfifty
@@ -907,14 +927,17 @@ class Specimen(Outputtable):
         return img0path, img0
 
     @staticmethod
-    def get(name: str | Specimen, load: bool = True) -> Specimen:
+    def get(name: str | Specimen, load: bool = True, panic: bool = True) -> Specimen:
         """Gets a specimen by name. Raises exception, if not found."""
         if isinstance(name, Specimen):
             return name
 
         path = os.path.join(general.base_path, name)
         if not os.path.isdir(path):
-            raise SpecimenException(f"Specimen '{name}' not found.")
+            if panic:
+                raise SpecimenException(f"Specimen '{name}' not found.")
+            else:
+                return None
 
         return Specimen(path, load=load)
 
