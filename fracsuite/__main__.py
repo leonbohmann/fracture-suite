@@ -85,6 +85,7 @@ params = {
     'ytick.labelsize': 8, # was 8
     'font.family': 'serif',
     'axes.grid': True,
+    'axes.grid.which': 'major',
     'axes.axisbelow': True,
     'grid.linestyle': '-',
     'grid.linewidth': 0.3,

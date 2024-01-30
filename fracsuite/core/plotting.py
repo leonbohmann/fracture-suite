@@ -599,7 +599,7 @@ def datahist_plot(
                 ax.set_ylabel('Wahrscheinlichkeitsdichte $p(A_S)$')
             elif data_mode == DataHistMode.CDF:
                 ax.set_ylabel('Kumulative Verteilungs Fkt. $C(A_S)$')
-        ax.grid(True, which='both', axis='both')
+        ax.grid(True, which='major', axis='both')
 
     return fig, axs
 
