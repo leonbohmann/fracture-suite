@@ -153,6 +153,9 @@ def similarity(reference, measure, binrange=100, no_print=False):
     mape_val = mape(reference, measure)
     count = similarity_count(reference, measure)
     mae_val = mae(reference, measure)
+
+    abserr = np.sum(np.absolute(reference - measure))
+
     if not no_print:
         print(f"Pearson:            {r_pearson:>7.2f} %")
         print(f"Spearman:           {r_spearman:>7.2f} %")
@@ -167,7 +170,7 @@ def similarity(reference, measure, binrange=100, no_print=False):
         print(f"Count:              {count:>7.2f} %")
         print(f"MAE:                {mae_val:>7.2f} #²")
 
-    return r_pearson, r_spearman, lb_error, ks, count
+    return r_pearson, r_spearman, lb_error, ks, count, abserr
 
 def similarity_count(reference,measure,binrange=100) -> float:
     reference = np.histogram(reference, bins=binrange)[0]

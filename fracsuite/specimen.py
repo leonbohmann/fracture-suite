@@ -59,7 +59,7 @@ def check():
         discr = abs(1 - specimen.splinter_area / desired_splinter_area) * 100
         print(f"{specimen.name}: {discr:.2f}%")
 
-    for specimen in track(specs):
+    for specimen in track(specs, description='Checking specimens...', transient=True):
         if not specimen.has_fracture_scans:
             continue
 
@@ -67,12 +67,10 @@ def check():
 
         if img_size[0] != desired_img_size[0] or img_size[1] != desired_img_size[1]:
             print(f"Image size of {specimen.name} is {img_size}, resize to {desired_img_size}!")
-            continue
 
         real_size = specimen.get_real_size()
         if real_size[0] != desired_real_size[0] or real_size[1] != desired_real_size[1]:
             print(f"Real size of {specimen.name} is {real_size}, resize to {desired_real_size}!")
-            continue
 
         # print percentage of splinter area
         if specimen.has_splinters:
@@ -80,6 +78,8 @@ def check():
             if discr > 5:
                 print(f"[yellow]AREA WARNING[/yellow] '{specimen.name}': [red]{discr:.2f}[/red]%")
 
+        if specimen.has_adjacency:
+            print(f'[green]{specimen.name} has adjacency!')
 
 
 
@@ -533,7 +533,7 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
     if ud:
         axs.set_xlabel("Formänderungsenergiedichte $U_d$ (J/m³)")
     else:
-        axs.set_xlabel("Gesamtenergie $U_0$ (J)")
+        axs.set_xlabel("Gesamtenergie $U_t$ (J)")
 
     for t,c in t_color.items():
         axs.scatter([],[], marker='o', color=c, label=f"{t}mm")

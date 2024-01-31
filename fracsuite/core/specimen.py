@@ -852,7 +852,7 @@ class Specimen(Outputtable):
         with open(file, "rb") as f:
             self.__splinters = pickle.load(f)
 
-        print(self.get_impact_position())
+        # print(self.get_impact_position())
 
 
         realsz = self.get_real_size()
@@ -869,7 +869,8 @@ class Specimen(Outputtable):
 
         len2 = len(self.__splinters)
 
-        print(f"Removed {len0-len1} splinters near the edge and {len1-len2} splinters near the impact point.")
+
+        # print(f"Removed {len0-len1} splinters near the edge and {len1-len2} splinters near the impact point.")
 
 
     def transform_fracture_images(

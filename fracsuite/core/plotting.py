@@ -53,6 +53,8 @@ class FigureSize(str, Enum):
     ROW1HL = 'row1h_l'
     "Large landscape."
 
+    WIDE = 'wide'
+
     IMG = 'img'
     "Indifferent for images"
 
@@ -77,6 +79,12 @@ class KernelContourMode(str, Enum):
     @staticmethod
     def values():
         return list(map(lambda c: c.value, KernelContourMode))
+
+class AxLabels:
+    SPLINTER_AREA_SHORT = "A_\\text{S} (mm²)"
+    SPLINTER_AREA = "Bruchstückflächeninhalt $A_\\text{S}$ (mm²)"
+
+
 
 # @deprecated(action='always')
 def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:

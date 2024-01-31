@@ -100,6 +100,12 @@ class PreprocessorConfig:
 
         return c
 
+    @classmethod
+    def load(cls, filepath):
+        import json
+        with open(filepath, "r") as f:
+            return cls.from_json(json.load(f))
+
 # softerPrepConfig = PreprocessorConfig("soft", block=413)
 # softerPrepConfig = PreprocessorConfig("softer", block=313)
 # defaultPrepConfig = PreprocessorConfig("default")

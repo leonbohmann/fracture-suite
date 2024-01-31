@@ -32,6 +32,7 @@ from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
 from fracsuite.core.navid_results import navid_nfifty_ud, navid_nfifty
 from fracsuite.core.plotting import (
+    AxLabels,
     DataHistMode,
     DataHistPlotMode,
     FigureSize,
@@ -48,7 +49,7 @@ from fracsuite.core.plotting import (
     plot_image_movavg,
     plot_splinter_movavg,
 )
-from fracsuite.core.preps import defaultPrepConfig
+from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
@@ -238,8 +239,8 @@ def plot_adjacent(
     # create probability histogram plot of touching splinters
     lens = [len(x.adjacent_splinter_ids) for x in splinters]
     fig, axs = datahist_plot(
-        x_label='Kantenanzahl $N_e$',
-        y_label='Wahrscheinlichkeitsdichte $p(N_e)$',
+        x_label='Kantenanzahl $N_\\text{e}$',
+        y_label='Wahrscheinlichkeitsdichte $p(N_\\text{e})$',
         figwidth=FigureSize.ROW1,
     )
 
@@ -771,8 +772,6 @@ def size_vs_sigma(xlim: Annotated[tuple[float, float], typer.Option(help='X-Limi
     ax.set_ylim((min_size - 2, max_size + 2))
     if not nolegend:
         ax.legend(loc='best')
-    ax.grid(True, which='both', axis='both')
-    fig.tight_layout()
 
     State.output(fig, 'stress_vs_size')
 
@@ -886,7 +885,6 @@ def log2dhist_diag(
     # plt.show()
 
     # axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
-    fig.tight_layout()
 
     State.output(fig)
 
@@ -916,8 +914,9 @@ def log_2d_histograms(
 
     assert len(specimens) > 0, "[red]No specimens loaded.[/red]"
 
+    sz = FigureSize.WIDE
     binrange = np.linspace(0, 2, n_bins)
-    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1H))
+    fig, axs = plt.subplots(figsize=get_fig_width(sz))
 
     data = []
     stress = []
@@ -947,7 +946,7 @@ def log_2d_histograms(
     stress, data = sort_two_arrays(stress, data, True)
     names = [x[1] for x in data]
     data = [x[0] for x in data]
-    axs.set_xlabel("Bruchstückflächeninhalt $A_S$ (mm²)")
+    axs.set_xlabel(AxLabels.SPLINTER_AREA)
     if not y_stress:
         axs.set_ylabel("$U$ (J/m²)")
     else:
@@ -971,7 +970,6 @@ def log_2d_histograms(
     # plt.show()
 
     axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
-    fig.tight_layout()
 
     if sigmas is not None:
         out_name = f"{sigmas[0]}_{sigmas[1]}"
@@ -980,7 +978,12 @@ def log_2d_histograms(
 
     axs.grid(False)
 
-    State.output(fig, f'loghist2d_{out_name}', to_additional=True, figwidth=FigureSize.ROW1H)
+    # disable minor ticks on y axis
+    axs.yaxis.set_minor_locator(plt.NullLocator())
+    axy.yaxis.set_minor_locator(plt.NullLocator())
+
+
+    State.output(fig, f'loghist2d_{out_name}', to_additional=True, figwidth=sz)
 
 
 def create_filter_function(name_filter,
@@ -1766,6 +1769,11 @@ def nfifty(
     axs.set_xlabel("Bruchstückdichte $N_\\text{50}$")
     # axs.legend(loc='best')
 
+    y_max = np.max(results[:,id])
+    y_max = 10 ** np.ceil(np.log10(y_max))
+    # Anpassen der Y-Achsen-Grenzen
+    axs.set_ylim(bottom=axs.get_ylim()[0], top=y_max)
+
     name = 'nfifty' if not use_mean else 'nperwindow'
     State.output(StateOutput(fig, sz), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)
 
@@ -2052,7 +2060,6 @@ def watershed(
                    plot_mean=False)
     ax.legend()
     ax.autoscale()
-    fig.tight_layout()
 
     State.output(fig, specimen, override_name="splinter_sizes_watershed")
     plt.close(fig)
@@ -2067,7 +2074,6 @@ def watershed(
                    data_mode='cdf')
     ax.legend()
     ax.autoscale()
-    fig.tight_layout()
     State.output(fig, specimen, override_name="splinter_sizes_watershed_cdf")
 
 
@@ -2111,8 +2117,14 @@ def compare_manual(
         px_per_mm=1,
     )
 
+    config = None
+    # try to find preprocessor config in input directory
+    if (config_file := find_file(test_dir, "*_prep.json")) is not None:
+        config = PreprocessorConfig.load(config_file)
+        print(f"Loaded config from {config_file}")
+
     # get splinters from watershed
-    splinters = Splinter.analyze_image(input_img)
+    splinters = Splinter.analyze_image(input_img, prep=config)
 
     # get splinters from legacy method
     with open(find_file(test_dir, "splinters"), 'rb') as f:

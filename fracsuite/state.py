@@ -72,13 +72,9 @@ class StateOutput:
                 elif self.is_figure:
                     self.Data.savefig(
                         outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
-                        dpi=200,
-                        pad_inches=0
                     )
                     self.Data.savefig(
                         outfile := f'{path}_{self.FigWidth}.png',
-                        dpi=200,
-                        pad_inches=0
                     )
                 saved = True
 

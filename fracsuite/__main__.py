@@ -75,7 +75,6 @@ plt.style.use('science')
 params = {
     'text.latex.preamble': r'\usepackage{gensymb}\usepackage{amsmath}\usepackage{xfrac}\usepackage{mathpazo}',
     'text.usetex': True,
-    'savefig.dpi': 150,  # to adjust notebook inline plot size
     'axes.labelsize': 9, # fontsize for x and y labels (was 10)
     'figure.labelsize': 9,
     'axes.titlesize': 8,
@@ -91,7 +90,7 @@ params = {
     'grid.linewidth': 0.3,
     'lines.markersize': 3,
     'savefig.bbox' : 'tight',
-    'savefig.pad_inches' : 0,
+    'savefig.pad_inches' : 0.05,
     'figure.constrained_layout.use': True,
 }
 plt.rcParams.update(params)

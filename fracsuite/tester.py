@@ -73,14 +73,14 @@ def plot_counts(image):
     plt.legend()
     plt.show()
 
-def resize_images(img , label_img):
+def resize_images(img , *others):
     # calculate scale factor so that larger side is 500px
     scale_factor = 500 / max(img.shape[0], img.shape[1])
     img = cv2.resize(img, (int(img.shape[1]*scale_factor), int(img.shape[0]*scale_factor)))
-    if label_img is not None:
+    for label_img in others:
         label_img = cv2.resize(label_img, (int(label_img.shape[1]*scale_factor), int(label_img.shape[0]*scale_factor)))
 
-    return img, label_img
+    return img, *others
 
 def evaluate_params(params, img, label_areas):
     block, c, gauss_size, gauss_sigma, lum, correct_light, clahe_strength, clahe_size = params
@@ -99,10 +99,10 @@ def evaluate_params(params, img, label_areas):
     areas = [x.area for x in splinters]
 
     binrange = np.linspace(1, 9000, 20)
-    sim = similarity_count(areas, label_areas, binrange=binrange)
+    sim = similarity(areas, label_areas, binrange=binrange, no_print=True)[-1] # absolute error in splinters
     similarity_value = sim
 
-    return (params, similarity_value)
+    return (params, similarity_value,prep)
 @tester_app.command()
 def best_params_mp(image):
     img = cv2.imread(image, cv2.IMREAD_COLOR)
@@ -135,22 +135,24 @@ def best_params_mp(image):
     ))
 
     results = {}
-    best_similarity = float('-inf')
+    best_similarity = float('inf')
     best_params = None
+    best_prep = None
 
     with Progress() as progress:
         task = progress.add_task("[cyan]Optimizing Parameters...", total=len(param_combinations))
 
         with Pool() as pool:
             partial_evaluate_params = partial(evaluate_params, img=img, label_areas=label_areas)
-            for params, sim in pool.imap(partial_evaluate_params, param_combinations):
+            for params, sim, prep in pool.imap(partial_evaluate_params, param_combinations):
                 progress.update(task, advance=1)
 
                 results[params] = sim
 
-                if sim > best_similarity:
+                if sim < best_similarity:
                     best_similarity = sim
                     best_params = params
+                    best_prep = prep
                     progress.print("[bold green]<<< NEW BEST PARAM FOUND >>")
                     progress.print(f"{best_params}: {best_similarity:.2f}")
                     progress.update(task, description=f"Current best Similarity: {best_similarity}")
@@ -158,6 +160,13 @@ def best_params_mp(image):
 
     print("Best params: ", best_params)
     print("Best similarity: ", best_similarity)
+
+    inspect(best_prep)
+    # save prep to inout image directory
+    output_file = os.path.join(dir, "bestprep.json")
+    with open(output_file, 'w') as f:
+        d = best_prep.__json__()
+        json.dump(d, f, indent=4)
     return best_params, results
 
 
@@ -252,9 +261,14 @@ def threshold(
     from fracsuite.core.preps import defaultPrepConfig
     prep0 = defaultPrepConfig
 
-    if (specimen := Specimen.get(source)) is not None:
+    dir = os.path.dirname(source)
+
+    if (specimen := Specimen.get(source, panic=False)) is not None:
         print("[cyan]Specimen detected")
         source = specimen.get_splinter_outfile("dummy")
+        # switch directory to specimen directory
+        dir = os.path.dirname(source)
+
         img = specimen.get_fracture_image()
         px_per_mm = specimen.calculate_px_per_mm(realsize_mm=realsize)
         # take a small portion of the image
@@ -276,8 +290,8 @@ def threshold(
         # img = img[region[0]-region[2]//2:region[0]+region[2]//2, region[1]-region[3]//2:region[1]-region[3]//2]
         is_specimen = True
 
-        print('Loading preprocessor config...')
         if (pconf := specimen.get_prepconf()) is not None:
+            print('Loading preprocessor config...')
             prep0 = pconf
             inspect(prep0)
     else:
@@ -285,9 +299,11 @@ def threshold(
         img = cv2.imread(source, cv2.IMREAD_COLOR)
         is_specimen = False
 
-    # plot_counts(img)
+        if (prepfile := find_file(dir, 'prep.json')) is not None:
+            print('Loading preprocessor config...')
+            prep0 = PreprocessorConfig.load(prepfile)
+            inspect(prep0)
 
-    dir = os.path.dirname(source)
     label_path = find_file(dir, 'label.png')
     label_img = None
     if label_path is not None:
@@ -406,8 +422,16 @@ def threshold(
         cl_strength = clahe_strength.get()
         cl_size = clahe_size.get()
 
+        if not is_specimen:
+            name = os.path.basename(source)
+            if "." in name:
+                name = name[:name.rindex(".")]
+            name = name + "_prep"
+        else:
+            name = specimen.name + "_prep"
+
         prep = PreprocessorConfig(
-            specimen.name + "_prep",
+            name,
             mode=PrepMode.ADAPTIVE if not normal_thresh_filter_var.get() else PrepMode.NORMAL,
             block=blockSize,
             c=C,
@@ -429,6 +453,12 @@ def threshold(
             with open(output_file, 'w') as f:
                 d = prep.__json__()
                 json.dump(d, f, indent=4)
+        else:
+            output_file = os.path.join(dir, name) + ".json"
+            with open(output_file, 'w') as f:
+                d = prep.__json__()
+                json.dump(d, f, indent=4)
+
 
     save_state_button = tk.Button(threshold_frame, text="Save State", command=save_state)
     save_state_button.pack()
@@ -474,7 +504,7 @@ def threshold(
         label = None
         if label_img is not None:
             label = cv2.threshold(label_img, 0, 255, cv2.THRESH_BINARY)[1]
-            label = to_gray(label)
+            label = 255-to_gray(label)
             green_overlay = cv2.merge([label * 0, label* 1, label* 0])
 
 
@@ -484,7 +514,7 @@ def threshold(
         ctrs = [x.contour for x in splinters]
         if len(ctrs) > 0:
             ctrs_img = np.zeros(blended_img.shape)
-            cv2.drawContours(ctrs_img, ctrs, -1, (0,0,255), 1)
+            cv2.drawContours(ctrs_img, ctrs, -1, (0,0,255), 2)
 
         State.output_nopen(ctrs_img, 'contours', force_delete_old=True, no_print=True)
 
@@ -494,9 +524,10 @@ def threshold(
 
 
             sim = similarity(area0, label_areas, binrange=binrange, no_print=True)
-            sim = sim[2]
+            sim = sim[-1] # absolute error
+            sim = sim
             # print text to similarrity label
-            similarity_label.config(text=f"Similarity: {sim:.2f}%")
+            similarity_label.config(text=f"Difference: {sim:.0f} Spl.")
 
 
 
@@ -506,12 +537,11 @@ def threshold(
         blended_img[np.all(ctrs_img == (0,0,255), axis=-1)] = ctrs_img[np.all(ctrs_img == (0,0,255), axis=-1)]
 
 
-        blended_img = resize_images(blended_img, None)[0]
+        blended_img = resize_images(blended_img)[0]
         img_pil = Image.fromarray(cv2.cvtColor(blended_img, cv2.COLOR_BGR2RGB))
         img_tk = ImageTk.PhotoImage(image=img_pil)
         label_field.config(image=img_tk)
         label_field.image = img_tk
-
 
     # First display
     # update_image()
