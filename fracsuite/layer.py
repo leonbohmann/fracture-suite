@@ -238,6 +238,9 @@ def create(
     )
 
     def add_filter(specimen: Specimen):
+        if not specimen.broken_immediately:
+            return False
+
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
 

@@ -48,7 +48,7 @@ def put(name, setting, value):
     spec.set_setting(setting, value)
 
 @app.command()
-def check():
+def check(areas: bool = False):
     """
     Sync all specimen configs.
 
@@ -60,14 +60,15 @@ def check():
     desired_real_size = (500, 500)
     desired_splinter_area = 490**2 - np.pi * 20**2
 
-    areas = []
-    for specimen in track(specs, description="Calculating splinter areas...",transient=True):
-        if not specimen.has_splinters:
-            continue
-        areas.append(specimen.splinter_area)
+    if areas:
+        areas_values = []
+        for specimen in track(specs, description="Calculating splinter areas...",transient=True):
+            if not specimen.has_splinters:
+                continue
+            areas_values.append(specimen.splinter_area)
 
-        discr = abs(1 - specimen.splinter_area / desired_splinter_area) * 100
-        print(f"{specimen.name}: {discr:.2f}%")
+            discr = abs(1 - specimen.splinter_area / desired_splinter_area) * 100
+            print(f"{specimen.name}: {discr:.2f}%")
 
     for specimen in track(specs, description='Checking specimens...', transient=True):
         if not specimen.has_fracture_scans:
@@ -90,6 +91,11 @@ def check():
 
         if specimen.has_adjacency:
             print(f'[green]{specimen.name} has adjacency!')
+
+        if specimen.broken_immediately:
+            print(f'[green]{specimen.name} broke immediately!')
+        else:
+            print(f'[red]{specimen.name} did not break immediately!')
 
 
 

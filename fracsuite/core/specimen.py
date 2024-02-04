@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from rich import print
 from rich.progress import track
+from fracsuite.core.accelerationdata import AccelerationData
 from fracsuite.core.anisotropy_images import AnisotropyImages
 from fracsuite.core.coloring import rand_col
 
@@ -154,7 +155,8 @@ class Specimen(Outputtable):
     "Key for the nfifty value in the simdata file."
     DAT_CRACKSURFACE: str = "crack_surface"
     "Key for the crack surface in the simdata file."
-
+    DAT_BROKEN_IMMEDIATELY: str = "broken_immediately"
+    "Key for the broken immediately flag in the simdata file."
 
     SET_BREAKMODE: str = "break_mode"
     "Break mode of the specimen (PUNCH, LASER, DRILL)."
@@ -231,6 +233,10 @@ class Specimen(Outputtable):
     def break_rhc(self):
         "Hard core radius."
         return self.simdata.get(Specimen.DAT_HCRADIUS, None)
+    @property
+    def broken_immediately(self):
+        "Checks if the specimen was broken immediately after impactor hit."
+        return self.simdata.get(Specimen.DAT_BROKEN_IMMEDIATELY, False)
 
     @property
     def mean_splinter_area(self):
@@ -308,6 +314,8 @@ class Specimen(Outputtable):
             self.load_scalp()
         elif log_missing_data:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
+
+        self.load_acc()
 
         self.loaded = True
 
@@ -859,6 +867,13 @@ class Specimen(Outputtable):
 
         return R,T,Z,Zstd
 
+    def load_acc(self):
+        """Loads the acceleration data."""
+        if self.acc_file is None:
+            return
+
+        self.__acc = AccelerationData(self.acc_file)
+        self.set_data(Specimen.DAT_BROKEN_IMMEDIATELY, self.__acc.broken_immediately)
 
     def load_scalp(self, file = None):
         """Loads scalp data. Make sure to access self.__scalp until the load method returns. """

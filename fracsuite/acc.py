@@ -15,6 +15,7 @@ import typer
 from apread import APReader, Channel
 from rich import print
 from rich.progress import track
+from fracsuite.core.accelerationdata import AccelerationData
 from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.state import State
 
@@ -113,12 +114,11 @@ def mod_unit(unit):
 
     return time_f, unit
 
-def fft(data, time, plot=False, title=""):
+def fft_calc(data, time, plot=False, title=""):
     """Calculates the fft of the given data."""
     # calculate the fft
     fft = np.fft.fft(data)
     fft = np.abs(fft)
-    fft = fft[:int(len(fft)/2)]
 
     # calculate the frequencies
     freq = np.fft.fftfreq(len(fft), time[1]-time[0])
@@ -491,7 +491,7 @@ def plot_impact(
         fdata = savgol_filter(data, 9, 3)
         # freq, dfft = fft(data, chan.Time.data)
         imp_data = data[int(impact_time_i+1000):] # int(impact_time_i+3000)
-        freq, dfft = fft(imp_data, chan.Time.data, plot=False,title=chan.Name)
+        freq, dfft = fft_calc(imp_data, chan.Time.data, plot=False,title=chan.Name)
         g_data.append((chan, chan.Time.data, data, fdata, freq))
 
     drop_data = []
@@ -646,3 +646,26 @@ def to_csv(
         reader.plot()
 
     reader_to_csv(reader, acc_path, number_dot)
+
+@app.command()
+def fft(file):
+    """Calculates the fft of the given file."""
+    reader = APReader(file)
+    reader.printSummary()
+
+    chan = reader.collectChannelsLike('Fall_g')[0]
+    freq, ffts = fft_calc(chan.data, chan.Time.data, plot=False, title=chan.Name)
+
+    fig, ax = plt.subplots()
+    ax.plot(freq, ffts)
+    plt.show()
+
+@app.command()
+def test_data(file):
+    """Calculates the fft of the given file."""
+
+    if (spec := Specimen.get(file)) is not None:
+        file = spec.acc_file
+
+
+    accdata = AccelerationData(file)
