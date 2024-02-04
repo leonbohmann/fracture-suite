@@ -769,7 +769,7 @@ def annotate_image(
         image (Image): cv2.imread
         title (str): The title of the image.
     """
-    assert cbar_range[1] > cbar_range[0], f"Max color value must be greater than min value. Actual: {cbar_range}"
+    assert cbar_range[1] >= cbar_range[0], f"Max color value must be greater than min value. Actual: {cbar_range}"
 
     figsize = get_fig_width(figwidth)
     fig, ax = plt.subplots(figsize=figsize)

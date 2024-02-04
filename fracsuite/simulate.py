@@ -97,6 +97,9 @@ def est_break(
     def Kpois(d):
         # see Baddeley et al. S.206 K_pois
         return np.pi*d**2
+    def Lpois(d):
+        # see Baddeley et al. S.206 K_pois
+        return d
 
     print('Plotting kfunc...')
     x,y = specimen.kfun()
@@ -117,20 +120,22 @@ def est_break(
     fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
     ax.plot(x2,y2, label='$\hat{L}$')
     ax.axvline(rhc, linestyle='--', color='r', label=f'$r_{{hc}}={min_L:.1f}mm$')
+    ax.plot(x2,Lpois(np.asarray(x)), label='$\hat{K}_{t}$')
     ax.legend()
     ax.set_ylabel('$\hat{L}(d)$')
     ax.set_xlabel('$d$ (mm)')
     State.output(fig, 'lfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
-    print('Plotting lfunc...')
+    print('Plotting centered lfunc...')
     x2,y2 = specimen.lcfun()
     min_L = rhc
 
     ax: Axes
     fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
-    ax.plot(x2,y2, label='$\hat{L}$')
+    ax.plot(x2,y2, label='$\hat{L}-d$')
     ax.axvline(rhc, linestyle='--', color='r', label=f'$r_{{hc}}={min_L:.1f}mm$')
     ax.legend()
+
     ax.set_ylabel('$\hat{L}(d)-d$')
     ax.set_xlabel('$d$ (mm)')
     State.output(fig, 'lcfunc', spec=specimen, figwidth=FigureSize.ROW2)
@@ -204,7 +209,6 @@ def simulate_fracture(
     # apply layers to points
     # modification 1: impact layer
     il_orientation, il_orientation_stddev = interp_layer(
-        ModelLayer.IMPACT,
         SplinterProp.ORIENTATION,
         SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
@@ -212,7 +216,6 @@ def simulate_fracture(
     )
 
     il_l1, il_l1_stddev = interp_layer(
-        ModelLayer.IMPACT,
         SplinterProp.L1,
         SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,
@@ -220,7 +223,6 @@ def simulate_fracture(
     )
 
     il_l1l2, il_l1l2_stddev = interp_layer(
-        ModelLayer.IMPACT,
         SplinterProp.ASP,
         SpecimenBoundary.A,
         SpecimenBreakPosition.CORNER,

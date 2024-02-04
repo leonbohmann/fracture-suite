@@ -35,180 +35,180 @@ bid = {
         'Z': 3,
     }
 
+# @layer_app.command()
+# def create_base_layer(
+#     mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+#     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
+#     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+# ):
+#     bid = {
+#         'A': 1,
+#         'B': 2,
+#         'Z': 3,
+#     }
+#     boundaries = {
+#         1: '--',
+#         2: '-',
+#         3: ':',
+#     }
+#     # inverse bid
+#     bid_r = {v: k for k, v in bid.items()}
+
+#     def add_filter(specimen: Specimen):
+#         if break_pos is not None and specimen.break_pos != break_pos:
+#             return False
+
+#         if break_mode is not None and specimen.break_mode != break_mode:
+#             return False
+
+#         if specimen.boundary == SpecimenBoundary.Unknown:
+#             return False
+
+#         if not specimen.has_splinters:
+#             return False
+
+#         if specimen.U_d is None or not np.isfinite(specimen.U_d):
+#             return False
+
+#         return True
+
+#     specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=False)
+
+#     # [U, boundary, lambda, rhc]
+#     values = np.zeros((len(specimens), 5))
+#     with get_progress(title='Calculating base layer', total=len(specimens)) as progress:
+#         progress.set_total(len(specimens))
+#         for id, spec in enumerate(specimens):
+#             progress.set_description(f"Specimen {spec.name}")
+#             progress.advance()
+#             values[id,0] = spec.U
+#             values[id,1] = bid[spec.boundary]
+#             values[id,2] = spec.measured_thickness
+#             values[id,3] = spec.calculate_break_lambda()
+#             values[id,4] = spec.calculate_break_rhc()[0]
+
+#     # sort value after first column
+#     values = values[values[:,0].argsort()]
+
+#     sz = get_fig_width(FigureSize.ROW1)
+#     fig,lam_axs = plt.subplots(figsize=sz)
+#     fig2,rhc_axs = plt.subplots(figsize=sz)
+#     # save values
+#     for b in boundaries:
+#         mask = values[:,1] == b
+
+#         # values for the current boundary
+#         b_values = values[mask,:]
+
+#         # save layer
+#         save_base_layer(b_values, bid_r[b], break_pos)
+
+#         # plot fracture intensity parameter
+#         lam_axs.plot(b_values[:,0], b_values[:,3], label=bid_r[b], linestyle=boundaries[b])
+
+#         # plot hard core radius
+#         rhc_axs.plot(b_values[:,0], b_values[:,4], label=bid_r[b], linestyle=boundaries[b])
+
+#     lam_axs.set_xlabel("Strain Energy U [J/m²]")
+#     lam_axs.set_ylabel("Fracture Intensity Parameter $\lambda$ [-]")
+#     lam_axs.legend()
+#     State.output(StateOutput(fig, FigureSize.ROW1), f"base-layer-lambda_{break_pos}", to_additional=True)
+
+#     rhc_axs.set_xlabel("Strain Energy U [J/m²]")
+#     rhc_axs.set_ylabel("Hard Core Radius $r_{hc}$ [mm]")
+#     rhc_axs.legend()
+#     State.output(StateOutput(fig2, FigureSize.ROW1), f"base-layer-rhc_{break_pos}", to_additional=True)
+
+# @layer_app.command()
+# def create_impact_layer_intensity(
+#     mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+#     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
+#     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
+#     specimen_name: Annotated[str, typer.Option(help='Specimen name.')] = None,
+# ):
+#     """
+#     Plots the fracture intensity parameter for every specimen via distance and angle to impact.
+
+#     In specimen_name, supply the full specimen name!
+#     """
+#     bid = {
+#         'A': 1,
+#         'B': 2,
+#         'Z': 3,
+#     }
+#     boundaries = {
+#         1: '--',
+#         2: '-',
+#         3: ':',
+#     }
+#     # inverse bid
+#     bid_r = {v: k for k, v in bid.items()}
+
+#     def add_filter(specimen: Specimen):
+#         if specimen_name is not None and not specimen.name.startswith(specimen_name):
+#             return False
+
+#         if break_pos is not None and specimen.break_pos != break_pos:
+#             return False
+
+#         if break_mode is not None and specimen.break_mode != break_mode:
+#             return False
+
+#         if specimen.boundary == SpecimenBoundary.Unknown:
+#             return False
+
+#         if not specimen.has_splinters:
+#             return False
+
+#         if specimen.U_d is None or not np.isfinite(specimen.U_d):
+#             return False
+
+#         return True
+
+#     specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True, max_n=1)
+#     sz = FigureSize.ROW1
+
+#     if mode == 'intensity':
+#         def value_calculator(x):
+#             return len(x)
+
+#         clrlabel = 'Fracture Intensity $N_{50}$ [-]'
+#     else:
+
+#         clrlabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+
+#     for spec in specimens:
+#         if mode != 'intensity':
+#             def value_calculator(x: list[Splinter]):
+#                 return np.mean([s.get_splinter_data(prop=mode, ip_mm=spec.get_impact_position()) for s in x])
+
+
+#         result = spec.calculate_2d_polar(value_calculator=value_calculator)
+
+#         X = result[0,1:]
+#         Y = result[1:,0]
+#         Z = result[1:,1:]
+
+#         # print(X)
+#         # print(Y)
+#         # print(Z)
+
+#         # plot results as 2d contour plot
+#         fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+#         # axs.imshow(Z, cmap='turbo')
+#         X, Y = np.meshgrid(X, Y, indexing='xy')
+#         mesh = axs.pcolormesh(X, Y, Z, shading='auto', cmap='turbo')
+#         cbar = fig.colorbar(mesh, label=clrlabel)
+#         renew_ticks_cb(cbar)
+
+
+#         axs.set_xlabel("Distance to Impact [mm]")
+#         axs.set_ylabel("Angle to Impact [°]")
+#         axs.autoscale()
+#         State.output(StateOutput(fig, sz), f"{mode}-2d_{spec.name}", to_additional=True)
+
 @layer_app.command()
-def create_base_layer(
-    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
-    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
-    break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
-):
-    bid = {
-        'A': 1,
-        'B': 2,
-        'Z': 3,
-    }
-    boundaries = {
-        1: '--',
-        2: '-',
-        3: ':',
-    }
-    # inverse bid
-    bid_r = {v: k for k, v in bid.items()}
-
-    def add_filter(specimen: Specimen):
-        if break_pos is not None and specimen.break_pos != break_pos:
-            return False
-
-        if break_mode is not None and specimen.break_mode != break_mode:
-            return False
-
-        if specimen.boundary == SpecimenBoundary.Unknown:
-            return False
-
-        if not specimen.has_splinters:
-            return False
-
-        if specimen.U_d is None or not np.isfinite(specimen.U_d):
-            return False
-
-        return True
-
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=False)
-
-    # [U, boundary, lambda, rhc]
-    values = np.zeros((len(specimens), 5))
-    with get_progress(title='Calculating base layer', total=len(specimens)) as progress:
-        progress.set_total(len(specimens))
-        for id, spec in enumerate(specimens):
-            progress.set_description(f"Specimen {spec.name}")
-            progress.advance()
-            values[id,0] = spec.U
-            values[id,1] = bid[spec.boundary]
-            values[id,2] = spec.measured_thickness
-            values[id,3] = spec.calculate_break_lambda()
-            values[id,4] = spec.calculate_break_rhc()[0]
-
-    # sort value after first column
-    values = values[values[:,0].argsort()]
-
-    sz = get_fig_width(FigureSize.ROW1)
-    fig,lam_axs = plt.subplots(figsize=sz)
-    fig2,rhc_axs = plt.subplots(figsize=sz)
-    # save values
-    for b in boundaries:
-        mask = values[:,1] == b
-
-        # values for the current boundary
-        b_values = values[mask,:]
-
-        # save layer
-        save_base_layer(b_values, bid_r[b], break_pos)
-
-        # plot fracture intensity parameter
-        lam_axs.plot(b_values[:,0], b_values[:,3], label=bid_r[b], linestyle=boundaries[b])
-
-        # plot hard core radius
-        rhc_axs.plot(b_values[:,0], b_values[:,4], label=bid_r[b], linestyle=boundaries[b])
-
-    lam_axs.set_xlabel("Strain Energy U [J/m²]")
-    lam_axs.set_ylabel("Fracture Intensity Parameter $\lambda$ [-]")
-    lam_axs.legend()
-    State.output(StateOutput(fig, FigureSize.ROW1), f"base-layer-lambda_{break_pos}", to_additional=True)
-
-    rhc_axs.set_xlabel("Strain Energy U [J/m²]")
-    rhc_axs.set_ylabel("Hard Core Radius $r_{hc}$ [mm]")
-    rhc_axs.legend()
-    State.output(StateOutput(fig2, FigureSize.ROW1), f"base-layer-rhc_{break_pos}", to_additional=True)
-
-@layer_app.command()
-def create_impact_layer_intensity(
-    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
-    break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
-    break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
-    specimen_name: Annotated[str, typer.Option(help='Specimen name.')] = None,
-):
-    """
-    Plots the fracture intensity parameter for every specimen via distance and angle to impact.
-
-    In specimen_name, supply the full specimen name!
-    """
-    bid = {
-        'A': 1,
-        'B': 2,
-        'Z': 3,
-    }
-    boundaries = {
-        1: '--',
-        2: '-',
-        3: ':',
-    }
-    # inverse bid
-    bid_r = {v: k for k, v in bid.items()}
-
-    def add_filter(specimen: Specimen):
-        if specimen_name is not None and not specimen.name.startswith(specimen_name):
-            return False
-
-        if break_pos is not None and specimen.break_pos != break_pos:
-            return False
-
-        if break_mode is not None and specimen.break_mode != break_mode:
-            return False
-
-        if specimen.boundary == SpecimenBoundary.Unknown:
-            return False
-
-        if not specimen.has_splinters:
-            return False
-
-        if specimen.U_d is None or not np.isfinite(specimen.U_d):
-            return False
-
-        return True
-
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True, max_n=1)
-    sz = FigureSize.ROW1
-
-    if mode == 'intensity':
-        def value_calculator(x):
-            return len(x)
-
-        clrlabel = 'Fracture Intensity $N_{50}$ [-]'
-    else:
-
-        clrlabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
-
-    for spec in specimens:
-        if mode != 'intensity':
-            def value_calculator(x: list[Splinter]):
-                return np.mean([s.get_splinter_data(prop=mode, ip_mm=spec.get_impact_position()) for s in x])
-
-
-        result = spec.calculate_2d_polar(value_calculator=value_calculator)
-
-        X = result[0,1:]
-        Y = result[1:,0]
-        Z = result[1:,1:]
-
-        # print(X)
-        # print(Y)
-        # print(Z)
-
-        # plot results as 2d contour plot
-        fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-        # axs.imshow(Z, cmap='turbo')
-        X, Y = np.meshgrid(X, Y, indexing='xy')
-        mesh = axs.pcolormesh(X, Y, Z, shading='auto', cmap='turbo')
-        cbar = fig.colorbar(mesh, label=clrlabel)
-        renew_ticks_cb(cbar)
-
-
-        axs.set_xlabel("Distance to Impact [mm]")
-        axs.set_ylabel("Angle to Impact [°]")
-        axs.autoscale()
-        State.output(StateOutput(fig, sz), f"{mode}-2d_{spec.name}", to_additional=True)
-
-@layer_app.command()
-def create_impact_layer(
+def create(
     mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
@@ -306,7 +306,7 @@ def create_impact_layer(
         results[si,2] = bid[specimen.boundary]
         results[si,3] = si
         results[si,4:] = (Z / (np.max(Z) if normalize else 1)).flatten() # normalization
-
+        print(Z)
         stddevs[si,0] = results[si,0]
         stddevs[si,1] = results[si,1]
         stddevs[si,2] = results[si,2]
@@ -903,11 +903,11 @@ def plot_layer(
 
 @layer_app.command()
 def test_interpolation(
-    layer: Annotated[ModelLayer, typer.Argument(help="The layer to display")],
     mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
     boundary: Annotated[SpecimenBoundary, typer.Argument(help="Boundary condition")],
     thickness: Annotated[int, typer.Argument(help="The thickness of the specimen")],
     sigma: Annotated[float, typer.Argument(help="Prestress")],
+    layer: Annotated[ModelLayer, typer.Option(help="The layer to display")] = ModelLayer.IMPACT,
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help="Break position")] = SpecimenBreakPosition.CORNER,
     stddev: Annotated[bool, typer.Option(help="Plot standard deviation")] = False,
     ignore_nan_plot: Annotated[bool, typer.Option(help="Filter NaN values")] = True,
@@ -917,7 +917,7 @@ def test_interpolation(
     """Plot a layer from database-file."""
     energy = U(sigma, thickness)
     print('Energy :', energy)
-    layer_f, layer_std = interp_layer(layer, mode, boundary, thickness, break_pos, energy)
+    layer_f, layer_std = interp_layer(mode, boundary, thickness, break_pos, energy)
 
     r_range, _ = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
 

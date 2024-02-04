@@ -14,7 +14,6 @@ general = GeneralSettings.get()
 
 class ModelLayer(str, Enum):
     IMPACT = "impact-layer"
-    BASE = "base-layer"
 
     @staticmethod
     def get_name(
@@ -36,36 +35,7 @@ def get_layer_folder():
 def get_layer_filepath(file_name):
     return os.path.join(get_layer_folder(), file_name)
 
-def save_base_layer(
-    base_layer: np.ndarray,
-    boundary: SpecimenBoundary,
-    break_pos: SpecimenBreakPosition
-):
-    """
-    Saves the base layer to a file.
-
-    Args:
-        base_layer (np.ndarray): 2D Array with [n, 5] with columns:
-            0: Strain Energy
-            1: Boundary condition (A: 0, B: 1, Z: 2)
-            2: Measured thickness
-            3: Lambda (Fracture Intensity Parameter)
-            4: Rhc (Hard Core Radius)
-    """
-    layer_name = f'{ModelLayer.BASE}_{boundary}_{break_pos}.npy'
-
-    # interpolate missing values (nan) column-wise
-    nans = np.isnan(base_layer)
-    non_nans = ~nans
-    for i in range(base_layer.shape[1]):
-        interpolated = np.interp(np.flatnonzero(nans[:,i]), np.flatnonzero(non_nans[:,i]), base_layer[non_nans[:,i],i])
-        base_layer[nans[:,i],i] = interpolated
-
-    file_path = get_layer_filepath(layer_name)
-    np.save(file_path, base_layer)
-
 def save_layer(
-    layer_name: ModelLayer,
     mode: SplinterProp,
     boundary: SpecimenBoundary,
     thickness: int,
@@ -132,12 +102,12 @@ def load_layer_file(file_path):
     return R,U,V
 
 def interp_layer(
-    layer: ModelLayer,
     mode: SplinterProp,
     boundary: SpecimenBoundary,
     thickness: int,
     break_pos: SpecimenBreakPosition,
-    U: float
+    U: float,
+    layer: ModelLayer = ModelLayer.IMPACT,
 ):
     # X: Distance from Impact
     # Y: Energy
@@ -165,34 +135,10 @@ def interp_layer(
 
     f_s = interp2d(Xs, Ys, Vs, kind='cubic')
 
-    def r_func_s(r: float) -> float:
+    def r_func_std(r: float) -> float:
         return f_s(r, U)
 
-    return r_func, r_func_s
-
-def interp_impact_layer(model_path, U):
-    """
-    Interpolates the impact layer for a given U.
-
-    Args:
-        model_path (str): Path to the model file.
-        U (float): Elastic strain energy.
-
-    Returns:
-        Callable: A function that takes the radius and returns the model value.
-    """
-    X,Y,V = load_layer(model_path)
-
-    # create an interpolation function for the given U
-    p = np.meshgrid(X, Y, indexing='xy')
-    points = np.vstack([p[0].ravel(), p[1].ravel()]).T
-    values = V.ravel()
-    f = interp2d(*points.T, values, kind='linear')
-
-    def r_func(r: float) -> float:
-        return f(r, U)[0]
-
-    return r_func
+    return r_func, r_func_std
 
 def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="~",interpolate=True,figwidth=FigureSize.ROW1) -> Figure:
     """
@@ -242,7 +188,7 @@ def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="
     axs.set_xlim((0, R[-3]))
     return fig
 
-def get_asp(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
+def get_asp(U: float, boundary: SpecimenBoundary, thickness: int, break_pos: SpecimenBreakPosition) -> Callable[[float], float]:
     """
     Returns the aspect ratio function for a given elastic strain energy and a boundary mode.
 
@@ -253,9 +199,9 @@ def get_asp(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
     Returns:
         Callable[[float], float]: A function that takes the radius and returns the aspect ratio.
     """
-    return interp_impact_layer(f'impact-layer_asp_{boundary}_corner.npy', U)
+    return interp_layer(SplinterProp.ASP, boundary, thickness, break_pos, U)
 
-def get_l1(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
+def get_l1(U: float, boundary: SpecimenBoundary, thickness: int, break_pos: SpecimenBreakPosition) -> Callable[[float], float]:
     """
     Returns the aspect ratio function for a given elastic strain energy and a boundary mode.
 
@@ -266,8 +212,7 @@ def get_l1(U: float, boundary: SpecimenBoundary) -> Callable[[float], float]:
     Returns:
         Callable[[float], float]: A function that takes the radius and returns the aspect ratio.
     """
-    return interp_impact_layer(f'impact-layer_l1_{boundary}_corner.npy', U)
-
+    return interp_layer(SplinterProp.L1, boundary, thickness, break_pos, U)
 
 
 def arrange_regions(

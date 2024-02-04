@@ -38,6 +38,16 @@ def checksettings(name):
     inspect(spec.settings)
 
 @app.command()
+def put(name, setting, value):
+    if setting not in Specimen.setting_keys():
+        print(f"Setting '{setting}' not found!")
+        return
+
+    spec = Specimen.get(name)
+
+    spec.set_setting(setting, value)
+
+@app.command()
 def check():
     """
     Sync all specimen configs.

@@ -5,9 +5,11 @@ import os
 import pickle
 import re
 from stat import S_IREAD, S_IRGRP, S_IROTH
+import tempfile
 from typing import Any, Callable, List, TypeVar
 
 import cv2
+from matplotlib import pyplot as plt
 import numpy as np
 from rich import print
 from rich.progress import track
@@ -36,7 +38,19 @@ from spazial import khat_test, lhatc_test, lhat_test
 
 general: GeneralSettings = GeneralSettings.get()
 
-
+sensor_positions = {
+    "corner": {
+        1: (450, 50),
+        2: (0, 0),
+        3: (250, 250),
+        4: (450, 450),
+        5: (50, 450),
+        6: (0, 0),
+    },
+    "center": {
+        1: None, # has to be implemented
+    },
+}
 
 class SpecimenException(Exception):
     """Exception for specimen related errors."""
@@ -49,7 +63,7 @@ def default(x, _default):
 #   set this to None to calculate it automatically
 CALC_DMAX = None
 DMAX_K = 50
-DMAX_L = 200
+DMAX_L = 50
 
 def estimate_dmax(splinters: list[Splinter]) -> float:
     """Function to estimate the maximum """
@@ -83,19 +97,26 @@ def rhc_calculator(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
-    d_max = default(CALC_DMAX, estimate_dmax(spl))
+    d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
     x2,y2 = lhatc_test(all_centroids, total_area, d_max)
+    # print(x2)
+    # print(y2)
     min_idx = np.argmin(y2)
     r1 = x2[min_idx]
-    # acceptance = min_idx / len(y2)
 
+    # acceptance = min_idx / len(y2)
+    # this is debug output
+    # fig,axs = plt.subplots(1,1)
+    # axs.plot(x2,y2)
+    # file = tempfile.mktemp(".png")
+    # fig.savefig(file)
     return r1, 0
 
 def acc_calculator(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
-    d_max = default(CALC_DMAX, estimate_dmax(spl))
+    d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
     x2,y2 = lhatc_test(all_centroids, total_area, d_max)
     min_idx = np.argmin(y2)
     acceptance = min_idx / len(y2)
@@ -151,6 +172,17 @@ class Specimen(Outputtable):
     "Real size of the specimen in mm."
     SET_FALLREPEAT: str = "fall_repeat"
     "Number of times the fallweight is dropped."
+    SET_EXCLUDED_SENSOR_POSITIONS: str = "excluded_sensor_positions"
+    "Excluded sensor positions."
+
+    @staticmethod
+    def setting_keys():
+        # find all members that start with "SET_"
+        ret = []
+        for k in dir(Specimen):
+            if k.startswith("SET_"):
+                ret.append(getattr(Specimen, k))
+        return ret
 
     @property
     def splinters(self) -> list[Splinter]:
@@ -331,7 +363,8 @@ class Specimen(Outputtable):
             Specimen.SET_EDGEEXCL: None,
             Specimen.SET_FALLHEIGHT: 0.07,
             Specimen.SET_REALSIZE: (500,500),
-            Specimen.SET_FALLREPEAT: 1
+            Specimen.SET_FALLREPEAT: 1,
+            Specimen.SET_EXCLUDED_SENSOR_POSITIONS: [],
         }
 
         # load settings from config and overwrite defaults
@@ -940,7 +973,9 @@ class Specimen(Outputtable):
             else:
                 return None
 
-        return Specimen(path, load=load)
+        spec = Specimen(path, load=load)
+        spec.print_loaded()
+        return spec
 
     @staticmethod
     def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = True) \
