@@ -11,7 +11,8 @@ from fracsuite.callbacks import main_callback
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.imageprocessing import dilateImg
-from fracsuite.core.model_layers import ModelLayer, interp_layer
+from fracsuite.core.mechanics import U
+from fracsuite.core.model_layers import ModelLayer, arrange_regions, has_layer, interp_layer
 from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress
@@ -29,6 +30,9 @@ from spazial import csstraussproc2
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
+def stdrand(mean, stddev):
+    """Returns a random number between -0.5 and 0.5"""
+    return np.random.normal(mean, stddev)
 
 @sim_app.command()
 def sim_break(
@@ -149,10 +153,11 @@ def est_break(
 
 
 @sim_app.command()
-def simulate_fracture(
+def fracture(
     sigma_s: float,
     thickness: float,
     size: tuple[float,float] = (500,500),
+    boundary: SpecimenBoundary = SpecimenBoundary.A,
     break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
     E: float = 70e3,
     nue: float = 0.23,
@@ -169,14 +174,32 @@ def simulate_fracture(
     Returns:
         None: This function creates data that is saved in its output folder.
     """
+    assert has_layer(SplinterProp.INTENSITY, boundary, thickness, break_pos), 'Intensity layer not found'
+    assert has_layer(SplinterProp.RHC, boundary, thickness, break_pos), 'RHC layer not found'
+    assert has_layer(SplinterProp.ORIENTATION, boundary, thickness, break_pos), 'RHC layer not found'
+
+
+    # calculate energy
+    energy_u = U(sigma_s, thickness)
+    # load layer for rhc and intensity
+    intensity, intensity_std = interp_layer(SplinterProp.INTENSITY, boundary, thickness, break_pos,energy_u)
+    rhc, rhc_std = interp_layer(SplinterProp.RHC, boundary, thickness, break_pos, energy_u)
+    # create radii
+    r_range, t_range = arrange_regions(break_pos=break_pos, w_mm=size[0], h_mm=size[1])
+
+    fracture_intensity = np.mean(intensity(r_range))
+    hc_radius = np.mean(rhc(r_range))
+    fint_std = np.mean(intensity_std(r_range))
+    rhc_std = np.mean(rhc_std(r_range))
+
+    fracture_intensity = stdrand(fracture_intensity, fint_std)
+    hc_radius = stdrand(hc_radius, rhc_std)
+
     # fetch fracture intensity and hc radius from energy
-    fracture_intensity = 0.0139
-    hc_radius = 5
     mean_area = 1 / fracture_intensity
     impact_position = break_pos.position()
     area = size[0] * size[1]
     c = 4.169e-5
-    energy_u = 1/5 * (1-nue)/E * sigma_s**2 * thickness * 1e6
 
     print(f'Energy: {energy_u:.2f} J/m²')
     print(f'Fracture intensity: {fracture_intensity:.2f} 1/mm²')
@@ -211,6 +234,7 @@ def simulate_fracture(
     il_orientation, il_orientation_stddev = interp_layer(
         SplinterProp.ORIENTATION,
         SpecimenBoundary.A,
+        thickness,
         SpecimenBreakPosition.CORNER,
         energy_u
     )
@@ -218,6 +242,7 @@ def simulate_fracture(
     il_l1, il_l1_stddev = interp_layer(
         SplinterProp.L1,
         SpecimenBoundary.A,
+        thickness,
         SpecimenBreakPosition.CORNER,
         energy_u
     )
@@ -225,6 +250,7 @@ def simulate_fracture(
     il_l1l2, il_l1l2_stddev = interp_layer(
         SplinterProp.ASP,
         SpecimenBoundary.A,
+        thickness,
         SpecimenBreakPosition.CORNER,
         energy_u
     )

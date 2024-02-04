@@ -866,10 +866,10 @@ def plot_layer_polar(
 
 @layer_app.command()
 def plot_layer(
-    layer: Annotated[ModelLayer, typer.Argument(help="The layer to display")],
     mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
     boundary: Annotated[SpecimenBoundary, typer.Argument(help="Boundary condition")],
     thickness: Annotated[int, typer.Argument(help="The thickness of the specimen")],
+    layer: Annotated[ModelLayer, typer.Option(help="The layer to display")] = ModelLayer.IMPACT,
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help="Break position")] = SpecimenBreakPosition.CORNER,
     stddev: Annotated[bool, typer.Option(help="Plot standard deviation")] = False,
     ignore_nan_plot: Annotated[bool, typer.Option(help="Filter NaN values")] = True,

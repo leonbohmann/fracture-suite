@@ -439,7 +439,7 @@ def plot_mean(
 @app.command()
 def plot_impact(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
-    time_unit: Annotated[str, typer.Option(help="The unit to show on the x-axis.", )] = "s",
+    time_unit: Annotated[str, typer.Option(help="The unit to show on the x-axis.", )] = "ms",
     file: Annotated[str, typer.Option(help="The file to plot.", )] = None,
     fig_title: Annotated[str, typer.Option(help="Title of the figure.", )] = None,
     apply_filter: Annotated[bool, typer.Option(help="Apply filter function.", )] = False,

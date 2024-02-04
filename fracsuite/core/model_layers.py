@@ -95,12 +95,27 @@ def load_layer(file_name):
 
 def load_layer_file(file_path):
     """Loads a layer from a file path."""
+    assert os.path.exists(file_path), f"File {file_path} does not exist"
+
     data = np.load(file_path)
     R = data[0,1:]
     U = data[1:,0]
     V = data[1:,1:]
 
     return R,U,V
+
+def has_layer(
+    mode: SplinterProp,
+    boundary: SpecimenBoundary,
+    thickness: int,
+    break_pos: SpecimenBreakPosition,
+    is_stddev: bool,
+    layer_name: str = ModelLayer.IMPACT
+):
+    layer_name = ModelLayer.get_name(layer_name, mode, boundary, thickness, break_pos, is_stddev)
+    file_path = get_layer_filepath(layer_name)
+    return os.path.exists(file_path)
+
 
 def interp_layer(
     mode: SplinterProp,
@@ -129,6 +144,7 @@ def interp_layer(
     f = interp2d(X, Y, V, kind='cubic')
 
     def r_func(r: float) -> float:
+        """Calculate the value of the layer at a given radius. The energy was given to interp_layer."""
         return f(r, U)
 
     layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, True)
