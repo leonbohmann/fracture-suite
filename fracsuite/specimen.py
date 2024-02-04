@@ -442,7 +442,7 @@ def import_fracture(
 
 @app.command()
 def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False, overwrite: bool = False):
-    filter_func = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
+    filter_func = create_filter_function("*.*.B.*", needs_scalp=True, needs_splinters=True)
 
     specimens = Specimen.get_all_by(filter_func, load=True)
 
@@ -479,7 +479,7 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         print(f"{name}: {surface}")
 
 
-    sz = FigureSize.ROW2
+    sz = FigureSize.ROW1HL
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
 
     b_marker = {
@@ -493,10 +493,13 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
         12: 'blue',
     }
 
+    def rud(u):
+        return u * 0.25
+
     ##########################
     # plot data
     for spec in specimens:
-        v = spec.U_d if ud else spec.U * 0.25
+        v = spec.U_d if ud else rud(spec.U)
         axs.scatter(v, spec.crack_surface, marker=b_marker[spec.boundary], color=t_color[spec.thickness])
 
 
@@ -506,7 +509,7 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
     def func(x, a, b):
         return a * x + b
     for t in ([4,8,12] if ud else [None]):
-        vs = np.array([spec.U_d if ud else spec.U * 0.25 for spec in specimens if t is None or spec.thickness == t])
+        vs = np.array([spec.U_d if ud else rud(spec.U) for spec in specimens if t is None or spec.thickness == t])
         surfs = np.array([spec.crack_surface for spec in specimens if t is None or spec.thickness == t])
 
         popt, pcov = curve_fit(func, vs, surfs)
@@ -568,7 +571,7 @@ def energy_release_rate():
     print('Relative remaining stress: ', urr)
 
     x = np.linspace(1, 2700, 100)
-    y = G(x) * 1e3 * (1-urr)
+    y = G(x) * 1e3
 
     fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
     axs.plot(x,y)

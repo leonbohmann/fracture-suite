@@ -28,6 +28,7 @@ from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
 from fracsuite.highspeedimg import app as highspeed_app
 from fracsuite.anisotropy import ani_app
+from fracsuite.tools import tools_app
 
 import scienceplots
 
@@ -133,6 +134,7 @@ app.add_typer(sim_app, name="simulate")
 app.add_typer(layer_app, name="layer")
 app.add_typer(highspeed_app, name="highspeed")
 app.add_typer(ani_app, name="anisotropy")
+app.add_typer(tools_app, name="tools")
 
 class PrintWrapper():
 

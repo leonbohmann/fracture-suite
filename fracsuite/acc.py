@@ -468,7 +468,7 @@ def plot_impact(
     reader.printSummary()
 
     # get the channels
-    g_channels = reader.collectChannelsLike('Acc_')
+    g_channels = reader.collectChannelsLike('Acc')
     drop_channels = reader.collectChannelsLike('Fall_g')
     # g_channels = reader.collectChannelsLike('shock')
     # drop_channels = reader.collectChannelsLike('Force')

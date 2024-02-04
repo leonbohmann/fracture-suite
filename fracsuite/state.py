@@ -38,7 +38,7 @@ class StateOutput:
 
     img_ext: str
 
-    def __init__(self, data, figwidth, img_ext = None, **additional_data):
+    def __init__(self, data, figwidth, img_ext = None, img_rsz = 1.0, **additional_data):
         assert isinstance(data, Figure) or type(data).__module__ == np.__name__, f"Data must be a matplotlib figure or a numpy array. Is '{type(data)}'."
 
         self.Data = data
@@ -52,7 +52,8 @@ class StateOutput:
         self.has_detailed_image = 'img_detailed' in additional_data
 
         self.img_ext = img_ext
-
+        if self.is_image and img_rsz != 1.0:
+            self.Data = cv2.resize(self.Data, (0, 0), fx=img_rsz, fy=img_rsz)
         # if self.is_figure:
         #     sz = get_fig_width(figwidth)
         #     self.Data.set_size_inches(sz[0], sz[1])
@@ -144,6 +145,7 @@ class State:
     to_temp: bool = False
     "Redirect all output to the temp folder."
     output_name_mod: str = ""
+    save_plots: bool = False
 
     __progress_started: bool = False
 
