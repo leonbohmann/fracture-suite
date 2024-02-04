@@ -25,7 +25,7 @@ class ModelLayer(str, Enum):
         is_stddev: bool
     ):
         stddev = "-stddev" if is_stddev else ""
-        return f'{layer_name}{stddev}_{mode}_{thickness:.0f}_{boundary}_{break_pos}.npy'
+        return f'{layer_name}{stddev}_{thickness:.0f}_{boundary}_{mode}_{break_pos}.npy'
 
 
 
@@ -43,7 +43,8 @@ def save_layer(
     is_stddev: bool,
     X: np.ndarray,
     Y: np.ndarray,
-    Z: np.ndarray
+    Z: np.ndarray,
+    layer_name: str = ModelLayer.IMPACT
 ):
     # assert, that Z is has the same x-length as x and y-length as y
     assert Z.shape == (len(Y), len(X)), f"Z has shape {Z.shape}, but should have shape ({len(Y)}, {len(X)})"
@@ -64,8 +65,8 @@ def save_layer(
     # the first row and column are the x and y values
     # the rest is the z values
     data = np.zeros((len(Y)+1, len(X)+1))
-    data[0,1:] = X
-    data[1:,0] = Y
+    data[0,1:] = X.flatten()
+    data[1:,0] = Y.flatten()
     data[1:,1:] = Z
 
     np.save(file_path, data)

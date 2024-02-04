@@ -13,9 +13,8 @@ from rich import print
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.mechanics import U
-from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, interp_layer, load_layer, load_layer_file, plt_layer, save_base_layer, save_layer
+from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, interp_layer, load_layer, load_layer_file, plt_layer, save_layer
 from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, renew_ticks_cb
-from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
@@ -23,7 +22,7 @@ from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import calculate_dmode, moving_average
 from fracsuite.core.vectors import angle_deg
 from fracsuite.general import GeneralSettings
-from fracsuite.splinters import create_filter_function, u
+from fracsuite.splinters import create_filter_function
 from fracsuite.state import State, StateOutput
 
 layer_app = typer.Typer(callback=main_callback, help="Model related commands.")
@@ -209,7 +208,7 @@ bid = {
 
 @layer_app.command()
 def create(
-    mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+    prop: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
     ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
@@ -276,7 +275,7 @@ def create(
     sz = FigureSize.ROW1
 
     xlabel = "Abstand zum Anschlagpunkt (mm)"
-    ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
+    ylabel = Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3)
 
 
     r_range, t_range = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
@@ -296,7 +295,7 @@ def create(
         specimen: Specimen
 
         _,_,Z,Zstd = specimen.calculate_2d_polar(
-            prop=mode,
+            prop=prop,
             r_range_mm=r_range,
             t_range_deg=t_range,
         )
@@ -306,7 +305,7 @@ def create(
         results[si,2] = bid[specimen.boundary]
         results[si,3] = si
         results[si,4:] = (Z / (np.max(Z) if normalize else 1)).flatten() # normalization
-        print(Z)
+
         stddevs[si,0] = results[si,0]
         stddevs[si,1] = results[si,1]
         stddevs[si,2] = results[si,2]
@@ -345,8 +344,7 @@ def create(
 
             # save layer
             save_layer(
-                ModelLayer.IMPACT,
-                mode,
+                prop,
                 b,
                 t,
                 break_pos,
@@ -357,8 +355,7 @@ def create(
             )
             # save stddev
             save_layer(
-                ModelLayer.IMPACT,
-                mode,
+                prop,
                 b,
                 t,
                 break_pos,
@@ -451,7 +448,7 @@ def create(
             cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label="Formänderungsenergie $U$ (J/m²)")
             # renew_ticks_cb(cbar)
             # renew_ticks_ax(axs)
-            State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{mode}_{break_pos}", to_additional=True)
+            State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{prop}_{break_pos}", to_additional=True)
 
 @layer_app.command()
 def compare_boundaries(
