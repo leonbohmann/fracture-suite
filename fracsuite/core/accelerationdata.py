@@ -115,7 +115,7 @@ class AccelerationData:
         # drop_data = remove_freq(time, chan_g1.data, 5000, 15000, 1/(time[1]-time[0]))
 
         # remove all frequencies that may originate from the drop weight
-        drop_data = lowpass(time, chan_g1.data, 2500, 1/(time[1]-time[0]))
+        drop_data = lowpass(time, chan_g1.data, 3500, 1/(time[1]-time[0]))
 
         # normalize time, backrecorded for 0.5 seconds
         time = time - time[0] - 0.5

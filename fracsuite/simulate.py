@@ -26,13 +26,16 @@ from fracsuite.core.vectors import angle_between
 
 from fracsuite.state import State
 
-from spazial import csstraussproc2
+from spazial import csstraussproc2, csstraussproc_rhciter
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
+rng = np.random.default_rng()
 def stdrand(mean, stddev):
     """Returns a random number between -0.5 and 0.5"""
-    return np.random.normal(mean, stddev)
+    d = rng.standard_normal()
+    return mean + d * stddev
+
 
 @sim_app.command()
 def sim_break(
@@ -174,9 +177,9 @@ def fracture(
     Returns:
         None: This function creates data that is saved in its output folder.
     """
-    assert has_layer(SplinterProp.INTENSITY, boundary, thickness, break_pos), 'Intensity layer not found'
-    assert has_layer(SplinterProp.RHC, boundary, thickness, break_pos), 'RHC layer not found'
-    assert has_layer(SplinterProp.ORIENTATION, boundary, thickness, break_pos), 'RHC layer not found'
+    assert has_layer(SplinterProp.INTENSITY, boundary, thickness, break_pos, False), 'Intensity layer not found'
+    assert has_layer(SplinterProp.RHC, boundary, thickness, break_pos, False), 'RHC layer not found'
+    assert has_layer(SplinterProp.ORIENTATION, boundary, thickness, break_pos, False), 'RHC layer not found'
 
 
     # calculate energy
@@ -197,7 +200,7 @@ def fracture(
 
     # fetch fracture intensity and hc radius from energy
     mean_area = 1 / fracture_intensity
-    impact_position = break_pos.position()
+    impact_position = break_pos.default_position()
     area = size[0] * size[1]
     c = 4.169e-5
 
@@ -214,8 +217,14 @@ def fracture(
     # create spatial points
     # points = spazial_gibbs_strauss_process(fracture_intensity, hc_radius, 0.55, size)
     # points = csstraussproc(size, hc_radius, int(fracture_intensity*area), c, int(1e6))
-    points = csstraussproc2(size[0], size[1], hc_radius, int(fracture_intensity*area), c, int(1e6))
+    # points = csstraussproc2(size[0], size[1], hc_radius, int(fracture_intensity*area), c, int(1e6))
 
+    # interpolate rhc values
+    rhc_values = rhc(r_range)
+    # create array with r_range in column 0 and rhc_values in 1
+    rhc_array = np.column_stack((r_range, rhc_values))
+    # start point process with rhc values
+    points = csstraussproc_rhciter(size[0], size[1], rhc_array, impact_position, int(fracture_intensity*area), c, int(1e6))
 
 
     # plot points
@@ -223,7 +232,8 @@ def fracture(
     axs.scatter(*zip(*points))
     plt.show()
 
-    size_f = 2
+    # scaling factor (realsize > pixel size)
+    size_f = 20
     # create output image store
     markers = np.zeros((int(size[0]*size_f),int(size[1]*size_f)), dtype=np.uint8)
     for point in points:
@@ -283,6 +293,7 @@ def fracture(
         # return np.random.normal(mue, sigma)
         return mue
 
+    exceptions = []
     with get_progress() as progress:
         # iterate points
         for p in points:
@@ -309,14 +320,16 @@ def fracture(
             v0 = (p-impact_position)/r
             # calculate angle from current point to impact position
             angle0 = angle_between(v0, np.asarray((1,0)))
-            angle = angle0 # + np.sign(np.random.random()-0.5) * np.pi/2 * (1-orientation) # this gives +- 90° deviation
+            angle = angle0 # + np.pi/2 * (0.5-orientation) # this gives +- 90° deviation
+
+            # angle = int(angle)
 
             # rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
             # v1 = np.dot(rotation_matrix, v0)
 
             ## calculate length of major axis using l1 and its deviation
             # calculate length of major axis (this is radius, so divide by 2)
-            l_major = l1
+            l_major = l1 / 2
             l_minor = l_major / l1l2
             ## modify the point using the major axis
             # calculate new point
@@ -324,7 +337,8 @@ def fracture(
                 markers = cv2.ellipse(
                     markers,
                     (int(p[1]*size_f), int(p[0]*size_f)), # location
-                    (int(l_minor * size_f / 2), int(l_major * size_f / 2)), # axes lengths
+                    (int(1), int(l_major * size_f / 2)), # axes lengths
+                    # (int(l_minor * size_f / 2), int(l_major * size_f / 2)), # axes lengths
                     np.rad2deg(angle)-180, # angle
                     0, 360, # start and end angle
                     255, # color
@@ -332,6 +346,10 @@ def fracture(
                 )
             except Exception as e:
                 print(f'Point: {p}, r: {r}, angle: {np.rad2deg(angle)}, l_major: {l_major}, l_minor: {l_minor}')
+                exceptions.append(e)
+
+
+    print(f'Exceptions: {[e for e in exceptions]}')
 
 
     # cv2.ellipse(markers, impact_position.astype(np.uint8)*size_f, (int(20), int(5)), 0, 0, 360, (0,255,0), 1)

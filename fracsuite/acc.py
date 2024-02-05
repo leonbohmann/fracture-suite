@@ -648,12 +648,16 @@ def to_csv(
     reader_to_csv(reader, acc_path, number_dot)
 
 @app.command()
-def fft(file):
+def fft(file, chan: str = "Fall_g"):
     """Calculates the fft of the given file."""
+
+    if (spec := Specimen.get(file)) is not None:
+        file = spec.acc_file
+
     reader = APReader(file)
     reader.printSummary()
 
-    chan = reader.collectChannelsLike('Fall_g')[0]
+    chan = reader.collectChannelsLike(chan)[0]
     freq, ffts = fft_calc(chan.data, chan.Time.data, plot=False, title=chan.Name)
 
     fig, ax = plt.subplots()

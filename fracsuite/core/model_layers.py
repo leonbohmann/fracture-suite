@@ -135,6 +135,9 @@ def interp_layer(
     # Y3    ...
     # Y4    ...
     layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, False)
+
+    assert has_layer(mode, boundary, thickness, break_pos, False, layer), f"Layer {layer_name} does not exist"
+
     X,Y,V = load_layer(layer_name)
     print('Loading layer: ', layer_name)
 

@@ -145,3 +145,39 @@ def geometry():
             State.output(StateOutput(img_rect, 'img'), name, open=False)
             namee = f"{specimen.name}_{spl}_ellipse.png"
             State.output(StateOutput(img_ellipse, 'img'), namee, open=False)
+
+
+@tools_app.command()
+def plate_freq(
+    a: float = 0.500,
+    b: float = 0.500,
+    h: float = 0.008,
+    E: float = 70e9,
+    rho: float = 2500,
+    n_modes: int =5
+):
+    """
+    Berechnet die Eigenfrequenzen einer allseitig gelagerten Platte.
+
+    Parameter:
+        a (float): Länge der Platte (m)
+        b (float): Breite der Platte (m)
+        h (float): Dicke der Platte (m)
+        E (float): Elastizitätsmodul des Materials (Pa)
+        rho (float): Dichte des Materials (kg/m^3)
+        n_modes (int): Anzahl der zu berechnenden Eigenfrequenzen (Standardwert: 5)
+
+    Returns:
+        frequencies (list[float]): Liste der Eigenfrequenzen (Hz)
+    """
+    D = E*h**3 / (12*(1 - 0.3**2))  # Biegesteifigkeit der Platte
+    frequencies = []
+
+    for m in range(1, n_modes + 1):
+        for n in range(1, n_modes + 1):
+            freq = (np.pi**2) * np.sqrt(D / (rho * h)) * np.sqrt((m/a)**2 + (n/b)**2) / (2 * np.pi)
+            frequencies.append(freq)
+
+    frequencies.sort()
+    frequencies = frequencies[:n_modes]
+    print(frequencies)
