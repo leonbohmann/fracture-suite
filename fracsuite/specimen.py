@@ -133,13 +133,14 @@ def mark_center(name):
         # save the marked position
         marked_pos = np.asarray([x,y]) / px_p_mm
         print(f"Marked center at {marked_pos}")
+        fig.canvas.draw()
 
 
     fig.canvas.mpl_connect('button_press_event', onclick)
     # make cursor red
     fig.canvas.mpl_connect('motion_notify_event', lambda event: plt.gcf().canvas.set_cursor(1))
 
-    plt.show()
+    plt.show(block=True)
 
     global marked_pos
     print(f"Marked position: {marked_pos}")

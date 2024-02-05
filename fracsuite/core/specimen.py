@@ -686,7 +686,7 @@ class Specimen(Outputtable):
 
         frac_img = self.get_fracture_image()
         assert frac_img is not None, "Fracture image not found."
-        return frac_img.shape[0] / realsize[0]
+        return frac_img.shape[0] / realsize[1]
 
     def kfun(self):
         """
@@ -915,13 +915,13 @@ class Specimen(Outputtable):
         realsz = self.get_real_size()
         len0=  len(self.__splinters)
         # remove all splinters whose centroid is closer than 1 cm to the edge
-        delta_edge = self.settings.get('custom_edge_exclusion_distance', None) or 10
+        delta_edge = self.settings.get(Specimen.SET_EDGEEXCL, None) or 10
         self.__splinters = [s for s in self.__splinters
                             if  delta_edge < s.centroid_mm[0] < realsz[0] - delta_edge
                             and delta_edge < s.centroid_mm[1] < realsz[1] - delta_edge]
         len1 = len(self.__splinters)
         # or within a 2cm radius to the impact point
-        delta_impact = self.settings.get('custom_break_pos_exclusion_radius', None) or 20
+        delta_impact = self.settings.get(Specimen.SET_CBREAKPOSEXCL, None) or 20
         # print(self.get_impact_position())
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
