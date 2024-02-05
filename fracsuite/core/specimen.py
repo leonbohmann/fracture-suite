@@ -162,7 +162,7 @@ class Specimen(Outputtable):
     "Break mode of the specimen (PUNCH, LASER, DRILL)."
     SET_BREAKPOS: str = "break_pos"
     "Break position of the specimen (CORNER,CENTER,EDGE)."
-    SET_CBREAKPOS: str = "custom_break_pos"
+    SET_ACTUALBREAKPOS: str = "actual_break_pos"
     "Custom break position in (mm,mm)."
     SET_CBREAKPOSEXCL: str = "custom_break_pos_exclusion_radius"
     "Radius in mm to exclude from the break position."
@@ -366,7 +366,7 @@ class Specimen(Outputtable):
         self.__settings = {
             Specimen.SET_BREAKMODE: "punch",
             Specimen.SET_BREAKPOS: "corner",
-            Specimen.SET_CBREAKPOS: None,
+            Specimen.SET_ACTUALBREAKPOS: None,
             Specimen.SET_CBREAKPOSEXCL: None,
             Specimen.SET_EDGEEXCL: None,
             Specimen.SET_FALLHEIGHT: 0.07,
@@ -470,8 +470,17 @@ class Specimen(Outputtable):
             json.dump(self.simdata, f, indent=4)
 
     def __save_settings(self):
-        with open(self.__cfg_path, "w") as f:
-            json.dump(self.settings, f, indent=4)
+        with open(self.__cfg_path, "r") as f:
+            backup = f.readlines()
+
+        try:
+            with open(self.__cfg_path, "w") as f:
+                json.dump(self.settings, f, indent=4)
+        except Exception as e:
+            with open(self.__cfg_path, "w") as f:
+                f.writelines(backup)
+
+            raise e
 
     def get_output_funcs(self) -> dict[str, Callable[[str], str]]:
         paths = {
@@ -534,11 +543,11 @@ class Specimen(Outputtable):
 
         Origin is top left corner!
         """
-        factor = self.calculate_px_per_mm() if in_px else 1
-        arr = self.break_pos.position() * factor
+        factor = self.calculate_px_per_mm() if in_px else 1.0
+        arr = self.break_pos.default_position() * factor
 
-        if (arr1 := self.settings.get('custom_break_pos', None)) is not None:
-            arr = arr1 * factor
+        if (arr1 := self.settings.get(Specimen.SET_ACTUALBREAKPOS, None)) is not None:
+            arr = np.asarray(arr1) * factor
 
         if as_tuple:
             return tuple(arr.astype(int))
@@ -913,6 +922,7 @@ class Specimen(Outputtable):
         len1 = len(self.__splinters)
         # or within a 2cm radius to the impact point
         delta_impact = self.settings.get('custom_break_pos_exclusion_radius', None) or 20
+        # print(self.get_impact_position())
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
         len2 = len(self.__splinters)

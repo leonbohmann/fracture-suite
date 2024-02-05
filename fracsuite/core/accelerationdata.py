@@ -2,6 +2,8 @@ import re
 import os
 
 import numpy as np
+
+from rich import print
 from apread import APReader
 from apread.entries import Channel
 from matplotlib import pyplot as plt

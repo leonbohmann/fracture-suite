@@ -9,7 +9,9 @@ class SpecimenBreakPosition(str,Enum):
     CORNER = "corner"
     NAVID = "navid"
 
-    def position(self):
+
+
+    def default_position(self):
         if self == SpecimenBreakPosition.CENTER:
             return np.array((250,250))
         elif self == SpecimenBreakPosition.CORNER:
@@ -18,6 +20,9 @@ class SpecimenBreakPosition(str,Enum):
             return np.array((1050,10))
         else:
             raise Exception(f"Invalid break position {self}.")
+
+    def position(self):
+        assert False, "Check implementation, if this is really to be used. You should use Specimen.get_impact_position() instead."
 
 class SpecimenBreakMode(str,Enum):
     PUNCH = "punch"

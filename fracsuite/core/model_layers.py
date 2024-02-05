@@ -246,9 +246,9 @@ def arrange_regions(
     Returns:
         (r_range, t_range): The radius and angle ranges.
     """
-    # get break position and convert to px
+    # get break position
     if isinstance(break_pos, SpecimenBreakPosition):
-        ip_x, ip_y = break_pos.position()
+        ip_x, ip_y = break_pos.default_position()
     else:
         ip_x, ip_y = break_pos
 

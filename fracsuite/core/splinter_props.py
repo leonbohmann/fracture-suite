@@ -13,7 +13,7 @@ class SplinterProp(str,Enum):
     CIRCUMFENCE = 'circ'
     L1_WEIGHTED = 'l1w'
     ANGLE = 'angle'
-
+    ANGLE0 = 'angle0'
 
     # global properties
     INTENSITY = 'intensity'

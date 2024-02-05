@@ -238,8 +238,11 @@ def create(
     )
 
     def add_filter(specimen: Specimen):
-        if not specimen.broken_immediately:
-            return False
+
+        ## this is not necessary, it was shown that the impactor energy is not big enough to cause
+        ##  discrepancies in layer creation
+        # if not specimen.broken_immediately:
+        #     return False
 
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
@@ -808,8 +811,8 @@ def plot_layer_polar(
     realsize = specimen.get_real_size()
 
     # fetch radii and angles
-    r_range,t_range = arrange_regions(d_r,d_t,specimen.break_pos,realsize[0],realsize[1])
 
+    r_range,t_range = arrange_regions(d_r,d_t,specimen.get_impact_position(),realsize[0],realsize[1])
     _,_,Z,_ = specimen.calculate_2d_polar(prop=prop, r_range_mm=r_range, t_range_deg=t_range)
 
 
@@ -861,7 +864,7 @@ def plot_layer_polar(
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
     x_values = r_range[:-1]
     y_values = Z.flatten()
-    axs.plot(x_values, y_values, linewidth=0.5, marker='o', color='r')
+    axs.plot(x_values, y_values)
     axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
     axs.set_ylabel(Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3))
 

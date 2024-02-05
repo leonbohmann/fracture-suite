@@ -90,8 +90,8 @@ class Splinter:
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
 
-            self.centroid_mm =  (cY / px_per_mm, cX / px_per_mm)
-            self.centroid_px =  (cY, cX)
+            self.centroid_mm =  (cX / px_per_mm, cY / px_per_mm)
+            self.centroid_px =  (cX, cY)
             self.has_centroid = True
         except:
             self.centroid_mm = (np.nan, np.nan)
@@ -99,7 +99,9 @@ class Splinter:
 
             self.has_centroid = False
 
-
+        # create arrays
+        self.centroid_mm = np.array(self.centroid_mm)
+        self.centroid_px = np.array(self.centroid_px)
 
         self.angle = self.__calculate_orientation()
 
@@ -415,7 +417,12 @@ class Splinter:
         A = np.asarray(impact_position) - np.asarray(self.centroid_mm)
         B,_,_ = self.get_ellipse_axes()
 
+
         self.alignment = alignment_between(A, B)
+        # print(impact_position)
+        # print(B)
+        # print(self.alignment)
+        # print()
         return self.alignment
 
     def measure_size(self, impact_position: tuple[float,float] = None, ) -> tuple[float,float]:
@@ -795,6 +802,10 @@ class Splinter:
             assert ip_mm is not None, "Impact point must be set to calculate angle"
             dp = np.array(self.centroid_mm) - np.array(ip_mm)
             a = angle_deg(dp)
+        elif prop == SplinterProp.ANGLE0:
+            dp,_,_ = self.get_ellipse_axes()
+            a = angle_deg(dp)
+
         # elif prop == SplinterProp.ANGLE:
         #     _, _, angle = cv2.minAreaRect(self.contour)
         #     a = angle
@@ -814,6 +825,7 @@ class Splinter:
         SplinterProp.L1_WEIGHTED: ("Gewichtete Höhe", "$\Delta \cdot L_1$ (mm)"),
         SplinterProp.CIRCUMFENCE: ("Umfang", "Circumference (mm)"),
         SplinterProp.ANGLE: ("", "Angle (°)"),
+        SplinterProp.ANGLE0: ("", "$Angle^0$ (°)"),
         SplinterProp.INTENSITY: ("", "Bruchintensität (1/mm)"),
         SplinterProp.RHC: ("", "RHC (mm)"),
         SplinterProp.ACCEPTANCE: ("", "Acceptance"),

@@ -98,6 +98,53 @@ def check(areas: bool = False):
             print(f'[red]{specimen.name} did not break immediately!')
 
 
+marked_pos = None
+@app.command()
+def mark_center(name):
+    specimen = Specimen.get(name)
+
+    if not specimen.has_fracture_scans:
+        print("Specimen has no fracture scans!")
+        return
+
+    img = specimen.get_fracture_image()
+    img = preprocess_image(img, specimen.get_prepconf(warn=False))
+
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    axs.imshow(img, cmap='gray')
+    axs.set_title(f"Mark center of {name}")
+
+
+    px_p_mm = specimen.calculate_px_per_mm()
+
+    # when clicking, mark the position but dont save yet
+    def onclick(event):
+        global marked_pos
+
+        x = int(event.xdata)
+        y = int(event.ydata)
+
+        # display the marked point and remove the previous one
+        if hasattr(onclick, 'mark'):
+            onclick.mark.remove()
+
+        onclick.mark = axs.plot(x, y, 'ro', markersize=8)[0]
+
+        # save the marked position
+        marked_pos = np.asarray([x,y]) / px_p_mm
+        print(f"Marked center at {marked_pos}")
+
+
+    fig.canvas.mpl_connect('button_press_event', onclick)
+    # make cursor red
+    fig.canvas.mpl_connect('motion_notify_event', lambda event: plt.gcf().canvas.set_cursor(1))
+
+    plt.show()
+
+    global marked_pos
+    print(f"Marked position: {marked_pos}")
+    specimen.set_setting(Specimen.SET_ACTUALBREAKPOS, tuple(marked_pos))
+
 
 @app.command()
 def export():

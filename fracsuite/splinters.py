@@ -608,7 +608,7 @@ def plt_prop_f(
 @app.command()
 def plt_prop(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
-    prop: Annotated[SplinterProp, typer.Option(help='Property to plot.')] = SplinterProp.AREA,
+    prop: Annotated[SplinterProp, typer.Argument(help='Property to plot.')],
 ):
     """
     Create a plot of a specimen where the splinters are filled with a color representing the selected property.
@@ -643,7 +643,7 @@ def plt_prop(
     # max_r = np.median(rough) + d
     overlay_img = np.zeros_like(out_img, dtype=np.uint8)
 
-    for splinter in track(specimen.splinters, description="Calculating roughness", transient=True):
+    for splinter in track(specimen.splinters, description=f"Calculating {prop}", transient=True):
         if splinter.ID not in prop_values_dict:
             continue
 
@@ -655,7 +655,7 @@ def plt_prop(
     cv2.drawContours(overlay_img, [x.contour for x in specimen.splinters], -1, (0, 0, 0), 1)
     out_img = cv2.addWeighted(out_img, 0.3, overlay_img, 1, 1)
 
-    State.output(out_img, f'{prop}_filled', spec=specimen, to_additional=True, figwidth=FigureSize.ROW2)
+    State.output(out_img, f'{prop}_filled_raw', spec=specimen, to_additional=True, figwidth=FigureSize.IMG)
 
     clr_label = Splinter.get_mode_labels(prop)
     out_img = annotate_image(

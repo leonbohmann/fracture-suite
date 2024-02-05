@@ -67,7 +67,7 @@ class StateOutput:
                     extension = self.img_ext if self.img_ext is not None else general.image_extension
                     data = cv2.resize(self.Data, (0, 0), fx=resize_factor, fy=resize_factor)
                     cv2.imwrite(
-                        outfile := f'{path}_{self.FigWidth}.{extension}',
+                        outfile := f'{path}.{extension}',
                         data
                     )
                 elif self.is_figure:
