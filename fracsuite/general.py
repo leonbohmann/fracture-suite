@@ -30,6 +30,7 @@ class GeneralSettings:
             "GeneralSettings must be created using GeneralSettings.get()."
 
         self.base_path: str = ""
+        self.simulation_path: str = ""
         self.out_path: str = ""
         self.plot_extension: str = "pdf"
         self.image_extension: str = "png"

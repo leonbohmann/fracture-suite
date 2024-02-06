@@ -17,6 +17,7 @@ from fracsuite.core.plotting import FigureSize, get_fig_width
 from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress
 from fracsuite.core.region import RectRegion
+from fracsuite.core.simulation import Simulation
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
@@ -177,9 +178,9 @@ def fracture(
     Returns:
         None: This function creates data that is saved in its output folder.
     """
-    assert has_layer(SplinterProp.INTENSITY, boundary, thickness, break_pos, False), 'Intensity layer not found'
-    assert has_layer(SplinterProp.RHC, boundary, thickness, break_pos, False), 'RHC layer not found'
-    assert has_layer(SplinterProp.ORIENTATION, boundary, thickness, break_pos, False), 'RHC layer not found'
+    assert has_layer(SplinterProp.INTENSITY, boundary, thickness, break_pos, False), f'Intensity layer not found for {boundary} {thickness} {break_pos}'
+    assert has_layer(SplinterProp.RHC, boundary, thickness, break_pos, False), f'RHC layer not found for {boundary} {thickness} {break_pos}'
+    assert has_layer(SplinterProp.ORIENTATION, boundary, thickness, break_pos, False), f'RHC layer not found for {boundary} {thickness} {break_pos}'
 
 
     # calculate energy
@@ -381,6 +382,14 @@ def fracture(
     plt.show()
 
     State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2)
+
+
+    print('[yellow] Creating simulation...')
+    sim = Simulation.create(thickness, sigma_s, boundary, splinters)
+    print(f'[green] Simulation created: {sim.name}[/green]')
+    contour_img_file = sim.get_file('contours.png')
+    cv2.imwrite(contour_img_file, out_img)
+
 
 @sim_app.command()
 def create_spatial():

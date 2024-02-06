@@ -179,6 +179,8 @@ class Specimen(Outputtable):
     SET_EXCLUDE_ALL_SENSORS: str = "exclude_all_sensors"
     "Excludes all sensors from the calculation."
 
+    SPLINTER_FILE_NAME = "splinters_v2.pkl"
+
     @staticmethod
     def setting_keys():
         # find all members that start with "SET_"
@@ -252,9 +254,16 @@ class Specimen(Outputtable):
         assert self.splinters is not None, "Splinters not loaded."
         return np.mean([s.area for s in self.splinters]) * self.calculate_px_per_mm()**2
 
+    @property
+    def name(self):
+        return self.__name
+
+    @name.setter
+    def name(self, value):
+        self.__name = value
     path: str
     "Specimen folder."
-    name: str
+    __name_store: str
     "Specimen name."
     __settings: dict[str, Any]
     "Settings of the specimen."
@@ -323,10 +332,13 @@ class Specimen(Outputtable):
 
     def print_loaded(self):
         name = f"'{self.name}'"
-        print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)} , "
-                f"Splinters: {checkmark(self.has_splinters)} ) "
-                f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/mm², U_d={self.U_d:>9.2f}J/mm³, σ_s={self.sig_h:>7.2f}MPa')
 
+        if not self.is_simulation:
+            print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)} , "
+                    f"Splinters: {checkmark(self.has_splinters)} ) "
+                    f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/mm², U_d={self.U_d:>9.2f}J/mm³, σ_s={self.sig_h:>7.2f}MPa')
+        else:
+            print(f"[cyan]SIM[/cyan] Loaded {name:>15}")
 
     def __init__(self, path: str, log_missing = True, load = False):
         """Create a new specimen.
@@ -334,6 +346,7 @@ class Specimen(Outputtable):
         Args:
             path (str): Path of the specimen.
         """
+        self.is_simulation = False
 
         self.__splinters: list[Splinter] = None
         self.__scalp: ScalpSpecimen = None
@@ -431,7 +444,7 @@ class Specimen(Outputtable):
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
         "Path to the splinter output folder."
         self.__splinters_file_legacy = find_file(self.splinters_path, "splinters_v1.pkl")
-        self.splinters_file = find_file(self.splinters_path, "splinters_v2.pkl")
+        self.splinters_file = find_file(self.splinters_path, Specimen.SPLINTER_FILE_NAME)
         "File that contains splinter information."
         self.has_splinters = self.splinters_file is not None
         "States wether there is a file with splinter information or not."
@@ -441,7 +454,7 @@ class Specimen(Outputtable):
 
         self.anisotropy_dir = os.path.join(self.path, "anisotropy")
         "Path to anisotropy scans."
-        self.anisotropy = AnisotropyImages(self.anisotropy_dir)
+        self.anisotropy = AnisotropyImages(self.anisotropy_dir) if not self.is_simulation else None
 
         self.simdata_path = self.get_splinter_outfile("simdata.json")
         "Path to the simulation data file."
@@ -994,7 +1007,7 @@ class Specimen(Outputtable):
         return img0path, img0
 
     @staticmethod
-    def get(name: str | Specimen, load: bool = True, panic: bool = True) -> Specimen:
+    def get(name: str | Specimen, load: bool = True, panic: bool = True, printout:bool=True) -> Specimen:
         """Gets a specimen by name. Raises exception, if not found."""
         if isinstance(name, Specimen):
             return name
@@ -1007,7 +1020,9 @@ class Specimen(Outputtable):
                 return None
 
         spec = Specimen(path, load=load)
-        spec.print_loaded()
+
+        if printout:
+            spec.print_loaded()
         return spec
 
     @staticmethod

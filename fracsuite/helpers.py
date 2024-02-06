@@ -9,6 +9,8 @@ import numpy as np
 from fracsuite.general import GeneralSettings
 
 general = GeneralSettings.get()
+
+
 def print_to_log(message: str):
     with open("log.txt", "a") as file:
         file.write(f"{message}\n")
