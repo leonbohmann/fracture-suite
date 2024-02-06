@@ -651,7 +651,7 @@ def to_csv(
 def fft(file, chan: str = "Fall_g"):
     """Calculates the fft of the given file."""
 
-    if (spec := Specimen.get(file)) is not None:
+    if (spec := Specimen.get(file, panic=False)) is not None:
         file = spec.acc_file
 
     reader = APReader(file)
@@ -668,7 +668,7 @@ def fft(file, chan: str = "Fall_g"):
 def test_data(file):
     """Calculates the fft of the given file."""
 
-    if (spec := Specimen.get(file)) is not None:
+    if (spec := Specimen.get(file, panic=False)) is not None:
         file = spec.acc_file
 
 

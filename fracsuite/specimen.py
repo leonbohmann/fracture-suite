@@ -468,6 +468,7 @@ def import_fracture(
     imsize_factor: float = None,
     no_rotate: bool = False,
     no_tester: bool = False,
+    exclude_all_sensors: bool = False,
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -486,6 +487,9 @@ def import_fracture(
     if imsize_factor is not None:
         imgsize = (int(realsize[0] * imsize_factor), int(realsize[1] * imsize_factor))
 
+    # set settings on specimen
+    specimen.set_setting(Specimen.SET_EXCLUDE_ALL_SENSORS, exclude_all_sensors)
+
     print('[yellow]> Transforming fracture images <')
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)
 
@@ -493,6 +497,9 @@ def import_fracture(
     if not no_tester:
         from fracsuite.tester import threshold
         threshold(specimen.name)
+
+    print('[yellow]> Marking impact point <')
+    mark_center(specimen.name)
 
     print('[yellow]> Generating splinters <')
     from fracsuite.splinters import gen

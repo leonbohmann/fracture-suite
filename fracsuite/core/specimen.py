@@ -42,11 +42,11 @@ general: GeneralSettings = GeneralSettings.get()
 sensor_positions = {
     "corner": {
         1: (450, 50),
-        2: (0, 0),
+        # 2: (-500, -500), # can't really be excluded
         3: (250, 250),
         4: (450, 450),
         5: (50, 450),
-        6: (0, 0),
+        # 6: (-500, -500), # can't really be excluded
     },
     "center": {
         1: None, # has to be implemented
@@ -175,7 +175,9 @@ class Specimen(Outputtable):
     SET_FALLREPEAT: str = "fall_repeat"
     "Number of times the fallweight is dropped."
     SET_EXCLUDED_SENSOR_POSITIONS: str = "excluded_sensor_positions"
-    "Excluded sensor positions."
+    "Excluded sensor positions. This setting is a list of integers giving the sensor number."
+    SET_EXCLUDE_ALL_SENSORS: str = "exclude_all_sensors"
+    "Excludes all sensors from the calculation."
 
     @staticmethod
     def setting_keys():
@@ -373,6 +375,7 @@ class Specimen(Outputtable):
             Specimen.SET_REALSIZE: (500,500),
             Specimen.SET_FALLREPEAT: 1,
             Specimen.SET_EXCLUDED_SENSOR_POSITIONS: [],
+            Specimen.SET_EXCLUDE_ALL_SENSORS: False,
         }
 
         # load settings from config and overwrite defaults
@@ -518,7 +521,7 @@ class Specimen(Outputtable):
 
     def get_real_size(self):
         """Returns the real size of the specimen in mm."""
-        return self.settings['real_size_mm']
+        return self.settings[Specimen.SET_REALSIZE]
 
     def get_acc_outfile(self, name: str) -> str:
         return os.path.join(self.path, 'fracture', 'acceleration', name)
@@ -531,10 +534,10 @@ class Specimen(Outputtable):
         return path
 
     def get_fall_height_m(self):
-        return self.settings['fall_height_m']
+        return self.settings[Specimen.SET_FALLHEIGHT]
 
     def get_impact_position_name(self):
-        return self.settings['break_pos']
+        return self.settings[Specimen.SET_BREAKPOS]
 
     def get_impact_position(self, in_px = False, as_tuple = False):
         """
@@ -607,7 +610,7 @@ class Specimen(Outputtable):
 
         f_intensity = self.simdata.get(Specimen.DAT_FRACINTENSITY, None)
         if force_recalc or f_intensity is None:
-            region = self.settings['real_size_mm']
+            region = self.settings[Specimen.SET_REALSIZE]
             kernel = ObjectKerneler(
                 region,
                 self.splinters,
@@ -676,12 +679,12 @@ class Specimen(Outputtable):
 
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. px/mm."""
-        realsize = realsize_mm if realsize_mm is not None else self.settings['real_size_mm']
+        realsize = realsize_mm if realsize_mm is not None else self.settings[Specimen.SET_REALSIZE]
         assert realsize is not None, "Real size not found."
         assert realsize[0] > 0 and realsize[1] > 0, "Real size must be greater than zero."
 
         if realsize_mm is not None:
-            self.set_setting('real_size_mm', realsize_mm)
+            self.set_setting(Specimen.SET_REALSIZE, realsize_mm)
 
 
         frac_img = self.get_fracture_image()
@@ -913,22 +916,27 @@ class Specimen(Outputtable):
 
 
         realsz = self.get_real_size()
-        len0=  len(self.__splinters)
         # remove all splinters whose centroid is closer than 1 cm to the edge
         delta_edge = self.settings.get(Specimen.SET_EDGEEXCL, None) or 10
         self.__splinters = [s for s in self.__splinters
                             if  delta_edge < s.centroid_mm[0] < realsz[0] - delta_edge
                             and delta_edge < s.centroid_mm[1] < realsz[1] - delta_edge]
-        len1 = len(self.__splinters)
+
         # or within a 2cm radius to the impact point
         delta_impact = self.settings.get(Specimen.SET_CBREAKPOSEXCL, None) or 20
-        # print(self.get_impact_position())
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
-        len2 = len(self.__splinters)
+        # remove all splinters within 1cm of sensor positions
+        excl_sensor_positions = self.settings.get(Specimen.SET_EXCLUDED_SENSOR_POSITIONS, [])
 
+        if self.settings.get(Specimen.SET_EXCLUDE_ALL_SENSORS, False):
+            excl_sensor_positions = [1,3,4,5]
 
-        # print(f"Removed {len0-len1} splinters near the edge and {len1-len2} splinters near the impact point.")
+        for pos in excl_sensor_positions:
+            sensor_position = sensor_positions[self.break_pos][pos]
+
+            # filter splinters
+            self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(sensor_position)) > 10]
 
 
     def transform_fracture_images(
