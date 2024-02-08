@@ -355,9 +355,9 @@ def create(
                 t,
                 break_pos,
                 False,
-                b_r_range,
-                b_energies,
-                b_values
+                b_r_range,      # 1d radius array
+                b_energies,     # 1d energy array
+                b_values        # 2d array
             )
             # save stddev
             save_layer(
@@ -893,6 +893,9 @@ def plot(
         R,U,V = load_layer(model_name)
 
 
+    print('R:', R)
+    print('U:', U)
+
     xlabel = 'Abstand $R$ zum Anschlagpunkt (mm)'
     ylabel = 'Formänderungsenergie $U$ (J/m²)'
 
@@ -903,7 +906,7 @@ def plot(
     clabel = Splinter.get_mode_labels(mode)
 
     fig = plt_layer(R,U,V,ignore_nan=ignore_nan_plot, xlabel=xlabel, ylabel=ylabel, clabel=clabel,
-                    interpolate=False,figwidth=figwidth)
+                    interpolate=True,figwidth=figwidth)
     State.output(StateOutput(fig, figwidth), f"{layer}-2d_{mode}_{boundary}_{thickness}_{break_pos}")
     plt.close(fig)
 
@@ -927,18 +930,16 @@ def test_interpolation(
 
     r_range, _ = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
 
-    values = np.zeros((len(r_range)-1))
-    stddevs = np.zeros((len(r_range)-1))
-    for i in range(len(r_range)-1):
-        values[i] = layer_f(r_range[i])
-        stddevs[i] = layer_std(r_range[i])
+    # extract values using range
+    values = layer_f(r_range)
+    stddevs = layer_std(r_range)
 
     fig,axs = plt.subplots(figsize=get_fig_width(figwidth))
 
     # plot the results in a colored plot
-    axs.plot(r_range[:-1], values, color='r', linestyle='-')
+    axs.plot(r_range, values, color='r', linestyle='-')
     # fill stddev
-    axs.fill_between(r_range[:-1], values - stddevs, values + stddevs, \
+    axs.fill_between(r_range, values - stddevs, values + stddevs, \
                         color='r', alpha=0.2)
 
 

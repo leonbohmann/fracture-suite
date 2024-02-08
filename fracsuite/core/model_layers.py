@@ -1,13 +1,15 @@
 from enum import Enum
 import os
+from pyexpat.errors import XML_ERROR_SUSPEND_PE
 from typing import Callable
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
+from fracsuite.core.LinearestInterpolator import LinearestInterpolator
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
-from scipy.interpolate import interp2d, griddata
+from scipy.interpolate import interp2d, griddata, bisplrep, LinearNDInterpolator
 from fracsuite.core.specimenprops import SpecimenBreakPosition, SpecimenBoundary
 
 general = GeneralSettings.get()
@@ -55,7 +57,10 @@ def save_layer(
     layer_name = ModelLayer.get_name(layer_name, mode, boundary, thickness, break_pos, is_stddev)
     file_path = get_layer_filepath(layer_name)
 
-    # interpolate missing values (nan)
+    # show error if any in Z is nan
+    assert not np.isnan(Z).any(), "Z contains NaN values"
+
+    # horizontally interpolate missing values (nan)
     nans = np.isnan(Z)
     non_nans = ~nans
     interpolated_Z = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), Z[non_nans])
@@ -93,7 +98,7 @@ def load_layer(file_name):
     file_path = get_layer_filepath(file_name)
     return load_layer_file(file_path)
 
-def load_layer_file(file_path):
+def load_layer_file(file_path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Loads a layer from a file path."""
     assert os.path.exists(file_path), f"File {file_path} does not exist"
 
@@ -141,22 +146,35 @@ def interp_layer(
     X,Y,V = load_layer(layer_name)
     print('Loading layer: ', layer_name)
 
-    # print(X)
-    # print(Y)
-    # print(V)
-    f = interp2d(X, Y, V, kind='linear')
+    # print('Radii', X)
+    # print('Energies', Y)
+    # print('Values', V)
+    X,Y = np.meshgrid(X,Y)
+    X = X.flatten()
+    Y = Y.flatten()
+    V = V.flatten()
 
+    interpolator = LinearestInterpolator(np.vstack([X,Y]).T, V)
+
+    # f = interp2d(X, Y, V, kind='linear')
+    # f = bisplrep(X, Y, V,  s=0.1)
     def r_func(r: float) -> float:
         """Calculate the value of the layer at a given radius. The energy was given to interp_layer."""
-        return f(r, U)
+        return interpolator(r, U)
 
     layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, True)
     Xs,Ys,Vs = load_layer(layer_name)
 
-    f_s = interp2d(Xs, Ys, Vs, kind='linear')
+    Xs,Ys = np.meshgrid(Xs,Ys)
+    Xs = Xs.flatten()
+    Ys = Ys.flatten()
+    Vs = Vs.flatten()
+    # print(Xs)
+    # print(Ys)
+    interpolator_std = LinearestInterpolator(np.vstack([Xs,Ys]).T, Vs)
 
     def r_func_std(r: float) -> float:
-        return f_s(r, U)
+        return interpolator_std(r, U)
 
     return r_func, r_func_std
 
@@ -263,7 +281,7 @@ def arrange_regions(
     n_t = int(360 / d_t_deg)
 
     # radius range
-    r_range = np.arange(r_min, r_max, d_r_mm, dtype=np.float64)[:-1]
+    r_range = np.arange(r_min, r_max, d_r_mm, dtype=np.float64)
     # for i in range(len(r_range)):
     #     xi = -((i / len(r_range))**1.2)+1
     #     r_range[i] = r_range[i] / xi
