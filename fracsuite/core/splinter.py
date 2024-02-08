@@ -805,7 +805,8 @@ class Splinter:
         elif prop == SplinterProp.ANGLE0:
             dp,_,_ = self.get_ellipse_axes()
             a = angle_deg(dp)
-
+        else:
+            raise Exception(f"'{prop}' not implemented for individual splinters.")
         # elif prop == SplinterProp.ANGLE:
         #     _, _, angle = cv2.minAreaRect(self.contour)
         #     a = angle
@@ -826,7 +827,7 @@ class Splinter:
         SplinterProp.CIRCUMFENCE: ("Umfang", "Circumference (mm)"),
         SplinterProp.ANGLE: ("", "Angle (°)"),
         SplinterProp.ANGLE0: ("", "$Angle^0$ (°)"),
-        SplinterProp.INTENSITY: ("", "Bruchintensität (1/mm)"),
+        SplinterProp.INTENSITY: ("", "Bruchintensität (1/mm²)"),
         SplinterProp.RHC: ("", "RHC (mm)"),
         SplinterProp.ACCEPTANCE: ("", "Acceptance"),
     }

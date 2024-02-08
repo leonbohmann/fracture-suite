@@ -86,7 +86,6 @@ class AxLabels:
 
 
 
-# @deprecated(action='always')
 def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     """
     Calculates the figure width and height in inches based on the given width factor, height factor and dimension factor.
@@ -567,7 +566,6 @@ class DataHistPlotMode(str, Enum):
     HIST = 'hist'
     "Histogram."
 
-@deprecated(action='always')
 def datahist_plot(
     ncols:int = 1,
     nrows:int = 1,
@@ -611,7 +609,6 @@ def datahist_plot(
 
     return fig, axs
 
-@deprecated(action='always')
 def datahist_to_ax(
     ax: Axes,
     data: list[float],
@@ -638,6 +635,8 @@ def datahist_to_ax(
     assert data_mode in ['pdf', 'cdf'], "data_mode must be either 'pdf' or 'cdf'."
     if n_bins is None and binrange is None:
         n_bins = general.hist_bins
+    if isinstance(ax, list) and len(ax) == 1:
+        ax = ax[0]
 
     def cvt(x):
         return np.log10(x) if as_log else x

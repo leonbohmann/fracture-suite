@@ -616,7 +616,7 @@ def compare_boundaries(
     State.output(StateOutput(fig,sz), f'compare_{min_energy:.0f}-{max_energy:.0f}_{mode}_{break_pos}', to_additional=True)
 
 @layer_app.command()
-def graph_impact_layer(
+def graph(
     specimen_name: Annotated[str, typer.Argument(help='Specimen name.')],
     mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
     colored_angle: Annotated[bool, typer.Option(help='Color the scatterplot by angle to impact.')] = False,
@@ -736,7 +736,7 @@ def graph_impact_layer(
 
 
 @layer_app.command()
-def plot_layer_regions(
+def plot_regions(
     d_r: int = 20,
     d_t: int = 360,
     break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
@@ -798,13 +798,16 @@ def plot_layer_regions(
 
 
 @layer_app.command()
-def plot_layer_polar(
+def plot_polar(
     specimen_name: str,
     prop: SplinterProp,
     d_r: float = 25,
     d_t: float = 360,
 ):
-    """Create an overlay of a specific splinter property on a fracture image using radial bands."""
+    """
+    Create an overlay of a specific splinter property on a fracture image using radial bands and also plot the mean values
+    of each radius over the property.
+    """
     specimen = Specimen.get(specimen_name, load=True)
     pxpmm = specimen.calculate_px_per_mm()
     ip_px = specimen.get_impact_position(True)
@@ -871,7 +874,7 @@ def plot_layer_polar(
     State.output(StateOutput(fig,sz), f'polargraph-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
 @layer_app.command()
-def plot_layer(
+def plot(
     mode: Annotated[SplinterProp, typer.Argument(help="The mode to display")],
     boundary: Annotated[SpecimenBoundary, typer.Argument(help="Boundary condition")],
     thickness: Annotated[int, typer.Argument(help="The thickness of the specimen")],

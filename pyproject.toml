@@ -7,7 +7,7 @@ dependencies = ["matplotlib", "opencv-python", "numpy",
         "tqdm", "scikit-image", "rich",
         "scipy", "apread==1.1.2a9", "Pillow", "reportlab",
         "pylibdmtx", "typer", "openpyxl", "xlsxwriter",
-        "deprecated", "spazial==0.1.0-alpha10", "splintaz==0.1.5",]
+        "deprecated", "spazial==0.1.2", "splintaz==0.1.5",]
 
 name = "fracsuite"
 version = "0.2.0a3"

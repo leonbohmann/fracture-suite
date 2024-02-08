@@ -144,7 +144,7 @@ def interp_layer(
     # print(X)
     # print(Y)
     # print(V)
-    f = interp2d(X, Y, V, kind='cubic')
+    f = interp2d(X, Y, V, kind='linear')
 
     def r_func(r: float) -> float:
         """Calculate the value of the layer at a given radius. The energy was given to interp_layer."""
@@ -153,7 +153,7 @@ def interp_layer(
     layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, True)
     Xs,Ys,Vs = load_layer(layer_name)
 
-    f_s = interp2d(Xs, Ys, Vs, kind='cubic')
+    f_s = interp2d(Xs, Ys, Vs, kind='linear')
 
     def r_func_std(r: float) -> float:
         return f_s(r, U)

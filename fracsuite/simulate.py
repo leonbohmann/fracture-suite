@@ -13,7 +13,7 @@ from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.imageprocessing import dilateImg
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, has_layer, interp_layer
-from fracsuite.core.plotting import FigureSize, get_fig_width
+from fracsuite.core.plotting import FigureSize, datahist_plot, datahist_to_ax, get_fig_width
 from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress
 from fracsuite.core.region import RectRegion
@@ -27,7 +27,7 @@ from fracsuite.core.vectors import angle_between
 
 from fracsuite.state import State
 
-from spazial import csstraussproc2, csstraussproc_rhciter
+from spazial import csstraussproc2, csstraussproc_rhciter, bohmann_process
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -37,9 +37,13 @@ def stdrand(mean, stddev):
     d = rng.standard_normal()
     return mean + d * stddev
 
+def meanrand(mean, stddev):
+    """Returns a random number between mean-stdev and mean+stdev"""
+    d = rng.random() - 0.5
+    return mean + d * stddev
 
 @sim_app.command()
-def sim_break(
+def nbreak(
     specimen_name: Annotated[str, typer.Argument(help="Specimen name.")],
     nue: Annotated[float, typer.Option(help="Poissons ratio.")] = 0.23,
     E: Annotated[float, typer.Option(help="Youngs modulus [MPa].")] = 70e3,
@@ -157,7 +161,7 @@ def est_break(
 
 
 @sim_app.command()
-def fracture(
+def lbreak(
     sigma_s: float,
     thickness: float,
     size: tuple[float,float] = (500,500),
@@ -182,6 +186,9 @@ def fracture(
     assert has_layer(SplinterProp.RHC, boundary, thickness, break_pos, False), f'RHC layer not found for {boundary} {thickness} {break_pos}'
     assert has_layer(SplinterProp.ORIENTATION, boundary, thickness, break_pos, False), f'RHC layer not found for {boundary} {thickness} {break_pos}'
 
+    # this will create the
+    sim = Simulation.create(thickness, sigma_s, boundary, None)
+
 
     # calculate energy
     energy_u = U(sigma_s, thickness)
@@ -194,22 +201,22 @@ def fracture(
     fracture_intensity = np.mean(intensity(r_range))
     hc_radius = np.mean(rhc(r_range))
     fint_std = np.mean(intensity_std(r_range))
-    rhc_std = np.mean(rhc_std(r_range))
+    rhc_stddev = np.mean(rhc_std(r_range))
 
-    fracture_intensity = stdrand(fracture_intensity, fint_std)
-    hc_radius = stdrand(hc_radius, rhc_std)
+    fracture_intensity = meanrand(fracture_intensity, fint_std)
+    hc_radius = meanrand(hc_radius, rhc_stddev)
 
     # fetch fracture intensity and hc radius from energy
     mean_area = 1 / fracture_intensity
     impact_position = break_pos.default_position()
     area = size[0] * size[1]
-    c = 4.169e-5
+    c = 4e-5
 
-    print(f'Energy: {energy_u:.2f} J/m²')
-    print(f'Fracture intensity: {fracture_intensity:.2f} 1/mm²')
-    print(f'HC Radius: {hc_radius:.2f} mm')
-    print(f'Mean area: {mean_area:.2f} mm²')
-    print(f'Impact position: {impact_position}')
+    print(f'Energy:             {energy_u:>15.2f} J/m²')
+    print(f'Fracture intensity: {fracture_intensity:>15.4f} 1/mm²')
+    print(f'HC Radius:          {hc_radius:>15.2f} mm')
+    print(f'Mean area:          {mean_area:>15.2f} mm²')
+    print(f'Impact position:    {impact_position}')
     # estimate acceptance probability
     urr = relative_remaining_stress(mean_area, thickness)
     nue = 1 - urr
@@ -224,27 +231,46 @@ def fracture(
     rhc_values = rhc(r_range)
     # create array with r_range in column 0 and rhc_values in 1
     rhc_array = np.column_stack((r_range, rhc_values))
-    # start point process with rhc values
-    points = csstraussproc_rhciter(size[0], size[1], rhc_array, impact_position, int(fracture_intensity*area), c, int(1e6))
+    # # start point process with rhc values
+    # points = csstraussproc_rhciter(size[0], size[1], rhc_array, impact_position, int(fracture_intensity*area), c, int(1e6))
 
+    l_values = intensity(r_range)
+    l_array = np.column_stack((r_range, l_values))
+    points = bohmann_process(size[0], size[1], r_range, l_array, rhc_array, impact_position, c, int(1e6))
+
+    # print region
+    region = (0,0,0.2,0.2)
 
     # plot points
     fig,axs = plt.subplots()
     axs.scatter(*zip(*points))
+    # find maximum region from points
+    x,y = zip(*points)
+    x_min = np.min(x) * region[0]
+    x_max = np.max(x) * region[2]
+    y_min = np.min(y) * region[1]
+    y_max = np.max(y) * region[3]
+    axs.set_xlim(x_min, x_max)
+    axs.set_ylim(y_min, y_max)
     plt.show()
 
     # scaling factor (realsize > pixel size)
     size_f = 20
+    region_scaled = (x_min, x_max, y_min, y_max)
     # create output image store
     markers = np.zeros((int(size[0]*size_f),int(size[1]*size_f)), dtype=np.uint8)
     for point in points:
         markers[int(point[0]*size_f), int(point[1]*size_f)] = 0
 
+    # clip region from markers
+    markers_clipped = cropimg(region_scaled, size_f, markers)
+    cv2.imwrite(sim.get_file('points.png'), markers_clipped)
+
     # apply layers to points
     # modification 1: impact layer
     il_orientation, il_orientation_stddev = interp_layer(
         SplinterProp.ORIENTATION,
-        SpecimenBoundary.A,
+        boundary,
         thickness,
         SpecimenBreakPosition.CORNER,
         energy_u
@@ -252,50 +278,54 @@ def fracture(
 
     il_l1, il_l1_stddev = interp_layer(
         SplinterProp.L1,
-        SpecimenBoundary.A,
+        boundary,
         thickness,
         SpecimenBreakPosition.CORNER,
         energy_u
     )
 
+    il_l2, il_l2_stddev = interp_layer(
+        SplinterProp.L2,
+        boundary,
+        thickness,
+        SpecimenBreakPosition.CORNER,
+        energy_u
+    )
     il_l1l2, il_l1l2_stddev = interp_layer(
-        SplinterProp.ASP,
-        SpecimenBoundary.A,
+        SplinterProp.ASP0,
+        boundary,
         thickness,
         SpecimenBreakPosition.CORNER,
         energy_u
     )
 
-    # plot orientation
-    r_range = np.linspace(0, np.sqrt(450**2+450**2), 100)
-    fig,axs = plt.subplots()
-    r_ori = il_orientation(r_range)
-    r_ori_stddev = il_orientation_stddev(r_range)
-    print(r_ori)
-    axs.plot(r_range, r_ori, label='orientation')
-    # add error bars to plot
-    axs.fill_between(r_range, r_ori-r_ori_stddev/2, r_ori+r_ori_stddev/2, alpha=0.3)
-    axs.legend()
-    plt.show()
+    layers = {
+        'orientation': (il_orientation, il_orientation_stddev, Splinter.get_mode_labels(SplinterProp.ORIENTATION), 'orientation'),
+        'l1': (il_l1, il_l1_stddev, Splinter.get_mode_labels(SplinterProp.L1), 'l1'),
+        'l2': (il_l2, il_l2_stddev, Splinter.get_mode_labels(SplinterProp.L2), 'l2'),
+        'l1l2': (il_l1l2, il_l1l2_stddev, Splinter.get_mode_labels(SplinterProp.ASP0), 'l1l2'),
+        'intensity': (intensity, intensity_std, Splinter.get_mode_labels(SplinterProp.INTENSITY), 'intensity'),
+        'rhc': (rhc, rhc_std, Splinter.get_mode_labels(SplinterProp.RHC), 'rhc'),
+    }
 
-
-    fig,axs = plt.subplots()
-    r_l1 = il_l1(r_range)
-    r_l1_stddev = il_l1_stddev(r_range)
-    print(r_l1)
-    axs.plot(r_range, r_l1, label='$l_1$')
-    # add error bars to plot
-    axs.fill_between(r_range, r_l1-r_l1_stddev/2, r_l1+r_l1_stddev/2, alpha=0.3)
-    axs.legend()
-    plt.show()
-
-    def rand2(mue,sigma):
-        """Returns a random number between -0.5 and 0.5"""
-        # return np.random.normal(mue, sigma)
-        return mue
+    for layer in layers:
+        print(f'Plotting {layer}...')
+        il, il_stddev, mode_labels, name = layers[layer]
+        r_range = np.linspace(0, np.sqrt(450**2+450**2), 100)
+        fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW3))
+        r_il = il(r_range)
+        r_il_stddev = il_stddev(r_range)
+        axs.plot(r_range, r_il)
+        # add error bars to plot
+        axs.fill_between(r_range, r_il-r_il_stddev/2, r_il+r_il_stddev/2, alpha=0.3)
+        axs.set_ylabel(mode_labels)
+        plt.show()
+        fig.savefig(sim.get_file(f'{name}.pdf'))
 
     exceptions = []
     with get_progress() as progress:
+        progress.set_description('Creating spatial points')
+        progress.set_total(len(points))
         # iterate points
         for p in points:
             progress.advance()
@@ -304,25 +334,31 @@ def fracture(
             # calculate orientation
             orientation = il_orientation(r)
             orientation_stddev = il_orientation_stddev(r)
-            orientation = rand2(orientation,orientation_stddev)
+            orientation = meanrand(orientation,orientation_stddev)
 
             # calculate l1
             l1 = il_l1(r)
             l1_stddev = il_l1_stddev(r)
-            l1 = rand2(l1,l1_stddev)
+            l1 = meanrand(l1,l1_stddev)
+
+            # calculate l1
+            l2 = il_l2(r)
+            l2_stddev = il_l2_stddev(r)
+            l2 = meanrand(l2,l2_stddev)
+
 
             # calculate aspect ratio
             l1l2 = il_l1l2(r)
             l1l2_stddev = il_l1l2_stddev(r)
-            l1l2 = rand2(l1l2,l1l2_stddev)
+            l1l2 = meanrand(l1l2,l1l2_stddev)
 
             ## calculate major axis vector using orientation and its deviation
             # create major axis vector
             v0 = (p-impact_position)/r
             # calculate angle from current point to impact position
             angle0 = angle_between(v0, np.asarray((1,0)))
-            angle = angle0 # + np.pi/2 * (0.5-orientation) # this gives +- 90° deviation
-
+            angle = float(meanrand(angle0, (1-orientation) * np.pi/2))
+            # print(angle)
             # angle = int(angle)
 
             # rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
@@ -330,33 +366,52 @@ def fracture(
 
             ## calculate length of major axis using l1 and its deviation
             # calculate length of major axis (this is radius, so divide by 2)
-            l_major = l1 / 2
-            l_minor = l_major / l1l2
+            l_major = l1 / 2 # this will be filled from the algorithm
+            l_minor = l2 / 2 # before: l_major / l1l2
+
+            # make dimensions smaller so that the algorithm can fill it
+            l_major = l_major * 0.5
+            l_minor = l_minor * 0.5
+
             ## modify the point using the major axis
-            # calculate new point
-            try:
-                markers = cv2.ellipse(
+            markers = cv2.ellipse(
                     markers,
                     (int(p[1]*size_f), int(p[0]*size_f)), # location
-                    (int(1), int(l_major * size_f / 2)), # axes lengths
-                    # (int(l_minor * size_f / 2), int(l_major * size_f / 2)), # axes lengths
-                    np.rad2deg(angle)-180, # angle
+                    # (int(2), int(2)), # axes lengths
+                    # (int(2), int(l_major * size_f)), # axes lengths
+                    (int(l_minor * size_f), int(l_major * size_f)), # axes lengths
+                    np.rad2deg(angle), # angle
                     0, 360, # start and end angle
                     255, # color
-                    -1 # thickness
+                    -1, # thickness
+                    cv2.LINE_AA # line type
                 )
-            except Exception as e:
-                print(f'Point: {p}, r: {r}, angle: {np.rad2deg(angle)}, l_major: {l_major}, l_minor: {l_minor}')
-                exceptions.append(e)
+            # try:
+            #     markers = cv2.ellipse(
+            #         markers,
+            #         (int(p[1]*size_f), int(p[0]*size_f)), # location
+            #         # (int(1), int(l_major * size_f / 2)), # axes lengths
+            #         (int(l_minor * size_f / 2), int(l_major * size_f / 2)), # axes lengths
+            #         np.rad2deg(angle)-180, # angle
+            #         0, 360, # start and end angle
+            #         255, # color
+            #         -1 # thickness
+            #     )
+            # except Exception as e:
+            #     print(f'Point: {p}, r: {r}, angle: {np.rad2deg(angle)}, l_major: {l_major}, l_minor: {l_minor}')
+            #     exceptions.append(e)
 
+    if len(exceptions) > 0:
+        print(f'Exceptions: {[e for e in exceptions]}')
 
-    print(f'Exceptions: {[e for e in exceptions]}')
-
-
+    print('[yellow] Simulating...')
     # cv2.ellipse(markers, impact_position.astype(np.uint8)*size_f, (int(20), int(5)), 0, 0, 360, (0,255,0), 1)
     # cv2.ellipse(markers, (400*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (0,255,0), -1)
     # cv2.ellipse(markers, (200*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (255,120,0), -1)
     plotImage(markers, 'markers', force=True)
+    markers_clipped = cropimg(region_scaled, size_f, markers)
+    cv2.imwrite(sim.get_file('layered_points.png'), markers_clipped)
+
 
     markers = cv2.connectedComponents(np.uint8(markers))[1]
     shape = (int(size[0]*size_f),int(size[1]*size_f),3)
@@ -365,9 +420,11 @@ def fracture(
 
     m_img = np.zeros(shape, dtype=np.uint8)
     m_img[markers == -1] = 255
+    m_img_clipped = cropimg(region_scaled, size_f, m_img)
+    cv2.imwrite(sim.get_file('watershed_0.png'), m_img_clipped)
 
     black_white_img = np.zeros((shape[0], shape[1]), dtype=np.uint8)
-    splinters = Splinter.analyze_contour_image(m_img)
+    splinters = Splinter.analyze_contour_image(m_img, px_per_mm=size_f)
 
     out_img = np.zeros((shape[0], shape[1], 3), dtype=np.uint8)
     for s in splinters:
@@ -382,13 +439,72 @@ def fracture(
     plt.show()
 
     State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2)
+    cv2.imwrite(sim.get_file('filled.png'), out_img)
 
+    print('[yellow] Saving...')
+    sim.put_splinters(splinters)
+    print(f'[green] Simulation created: {sim.name}_{sim.nbr}[/green]')
+    return sim
 
-    print('[yellow] Creating simulation...')
-    sim = Simulation.create(thickness, sigma_s, boundary, splinters)
-    print(f'[green] Simulation created: {sim.name}[/green]')
-    contour_img_file = sim.get_file('contours.png')
-    cv2.imwrite(contour_img_file, out_img)
+def cropimg(region, size_f, markers):
+    x_min, x_max, y_min, y_max = region
+    markers_clipped = markers[int(x_min*size_f):int(x_max*size_f), int(y_min*size_f):int(y_max*size_f)]
+    return markers_clipped
+
+@sim_app.command()
+def like(name):
+
+    specimen = Specimen.get(name)
+
+    sigma_s = np.abs(specimen.sig_h)
+    thickness = specimen.thickness
+    size = specimen.get_real_size()
+    boundary = specimen.boundary
+    break_pos = specimen.break_pos
+    E = 70e3
+    nue = 0.23
+
+    # create simulation
+    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue)
+    # compare simulation with input
+    compare(simulation.fullname, specimen.name)
+
+@sim_app.command()
+def compare(
+    simulation_name: Annotated[str, typer.Argument(help="Simulation name.")],
+    specimen_name: Annotated[str, typer.Argument(help="Specimen name.")],
+):
+    """
+    Compare a simulation with a real specimen.
+
+    Args:
+        simulation_name (str): Name of the simulation.
+        specimen_name (str):
+    """
+    sim = Simulation.get(simulation_name)
+    specimen = Specimen.get(specimen_name)
+
+    max_area = np.min([np.max([s.area for s in sim.splinters]), np.max([s.area for s in specimen.splinters])])
+
+    # create histogram of simulation
+    sim_splinters = sim.splinters
+    sim_areas = [s.area for s in sim_splinters]
+    sim_hist, sim_bins = np.histogram(sim_areas, bins=30, density=True, range=(0, max_area))
+
+    # create histogram of specimen
+    spec_splinters = specimen.splinters
+    spec_areas = [s.area for s in spec_splinters]
+    spec_hist, spec_bins = np.histogram(spec_areas, bins=30, density=True, range=(0, max_area))
+
+    # plot histograms
+    fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
+    datahist_to_ax(axs, spec_areas, 30, label='Specimen')
+    datahist_to_ax(axs, sim_areas, 30, label='Simulation')
+    axs[0].legend()
+    State.output(fig, f'{specimen.name}--{sim.name}_{sim.nbr}', figwidth=FigureSize.ROW2)
+
+    print('Specimen: ', len(spec_splinters))
+    print('Simulation: ', len(sim_splinters))
 
 
 @sim_app.command()
