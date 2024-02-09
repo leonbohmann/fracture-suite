@@ -47,6 +47,7 @@ from fracsuite.core.plotting import (
     label_image,
     modified_turbo,
     plot_image_movavg,
+    plot_kernel_results,
     plot_splinter_movavg,
 )
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
@@ -575,6 +576,33 @@ def roughness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')]):
     """Plot the roundness of a specimen."""
     plt_prop(specimen_name, prop=SplinterProp.ROUNDNESS)
+
+@app.command()
+def plt_prop_f2(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
+    prop: Annotated[SplinterProp, typer.Argument(help='Property to plot.')],
+):
+    n_points = 25
+    w_mm = 50
+
+    specimen = Specimen.get(specimen_name)
+
+    X,Y,Z,Zstd = specimen.calculate_2d(prop, w_mm, n_points)
+
+    output = plot_kernel_results(
+        specimen.get_fracture_image(),
+        Splinter.get_mode_labels(prop),
+        True,
+        False,
+        KernelContourMode.FILLED,
+        X, Y, Z,
+        0,
+        FigureSize.ROW2,
+        crange=(np.nanmin(Z), np.nanmax(Z)),
+        clr_format=".2f",
+    )
+    output.overlayImpact(specimen)
+    State.output(output, f'{prop}_2d',spec=specimen, to_additional=True)
 
 @app.command()
 def plt_prop_f(

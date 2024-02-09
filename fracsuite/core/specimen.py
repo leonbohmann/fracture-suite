@@ -78,7 +78,7 @@ def estimate_dmax(splinters: list[Splinter]) -> float:
     d_max = (max_size / 2) / 2
     return d_max
 
-def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
+def any_calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
     """Calculates a property for a list of splinters."""
     if len(spl) == 0:
         return (np.nan,np.nan)
@@ -88,7 +88,7 @@ def calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
     # calculate the most probable value
     # mpv,mpv_prob = calculate_dmode(values, bins=100)
 
-    return np.nanmean(values), np.nanstd(values)
+    return (np.nanmean(values), np.nanstd(values))
 
 def int_calculator(spl: list[Splinter], *args,**kwargs):
     """Calculate the mean intensity parameter lambda for a given set of splinters."""
@@ -136,7 +136,7 @@ def acc_calculator(spl: list[Splinter], *args, **kwargs):
     return acceptance, 0
 
 calculators = {
-    'Any': calculator,
+    'Any': any_calculator,
     SplinterProp.INTENSITY: int_calculator,
     SplinterProp.RHC: rhc_calculator,
     SplinterProp.ACCEPTANCE: acc_calculator
@@ -847,6 +847,44 @@ class Specimen(Outputtable):
         nue = 0.23
         E = 70e3
         return 1e6 * (128/125) * (1-nue)/E * (self.scalp.sig_h ** 2)
+
+    def calculate_2d(
+        self,
+        prop: SplinterProp,
+        kw: int = 50,
+        n_points: int = 25
+    ):
+        """
+        Calculate a value in 2D.
+
+        Returns:
+            tuple[X(n), Y(m), Values(n,m), Stddev(n,m)]
+        """
+        impact_position = self.get_impact_position()
+
+        # create kerneler
+        kerneler = ObjectKerneler(
+            self.get_real_size(),
+            self.splinters,
+            None,
+            False
+        )
+
+        if prop in calculators:
+            calcer = calculators[prop]
+        else:
+            calcer = calculators['Any']
+
+        X,Y,Z,Zstd = kerneler.window(
+            prop,
+            calcer,
+            kw,
+            n_points,
+            impact_position,
+            self.calculate_px_per_mm()
+        )
+
+        return X,Y,Z,Zstd
 
     def calculate_2d_polar(
         self,

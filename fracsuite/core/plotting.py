@@ -371,7 +371,7 @@ def plot_kernel_results(
     fig,axs = plt.subplots(figsize=figsize)
 
     if crange is None:
-        crange = (np.min(results), np.max(results))
+        crange = (np.nanmin(results), np.nanmax(results))
         print(f"crange: {crange}")
 
     def show_img():

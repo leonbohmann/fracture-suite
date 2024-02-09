@@ -8,6 +8,7 @@ from fracsuite.state import State
 from tqdm import tqdm
 from fracsuite.general import GeneralSettings
 from rich import print
+from dataclasses import dataclass
 
 SKIP_VALUE = np.nan
 
@@ -25,32 +26,7 @@ def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
 
     return i_w, i_h
 
-def process_region(args):
-    i, j, xd, yd, kw, exclude_points, data_objects, collector, calculator = args
-
-    x1,x2=(xd[i]-kw//2,xd[i]+kw//2)
-    y1,y2=(yd[j]-kw//2,yd[j]+kw//2)
-
-    # Create a region (x1, y1, x2, y2)
-    region = RectRegion(x1, y1, x2, y2)
-
-    is_excluded = False
-    if exclude_points is not None:
-        for p in exclude_points:
-            if region.is_point_in(p):
-                is_excluded = True
-                break
-
-    if is_excluded:
-        return SKIP_VALUE
-
-    # Collect objects in the current region
-    objects_in_region = [obj for obj in data_objects if collector(obj, region)]
-
-    # Apply z_action to collected splinters
-    return calculator(objects_in_region) if len(objects_in_region) > 0 else 0
-
-def check_polar_region(
+def process_polar(
         args
     ):
     """
@@ -65,6 +41,40 @@ def check_polar_region(
     # calculate the value
     mean_value, stddev = calculator(spl, mode, ip, pxpmm)
     return (i,j,(r0+r1)/2,(t0+t1)/2, mean_value, stddev)
+
+@dataclass
+class WindowArguments:
+    i: int
+    j: int
+    x1: float
+    x2: float
+    y1: float
+    y2: float
+    objects_in_region: list
+    calculator: Callable[[list], float]
+    prop: str
+    impact_position: tuple[float,float]
+    pxpmm: float
+
+@dataclass
+class WindowResult:
+    i: int
+    "Index i"
+    j: int
+    "Index j"
+    x: float
+    "Center x coordinate"
+    y: float
+    "Center y coordinate"
+    value: float
+    "Mean value of the region"
+    stddev: float
+    "Standard deviation of the region"
+
+def process_window(args: WindowArguments):
+    mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm) \
+        if len(args.objects_in_region) > 0 else (SKIP_VALUE, SKIP_VALUE)
+    return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, mean_value, stddev)
 
 
 class ImageKerneler():
@@ -255,12 +265,109 @@ class ObjectKerneler():
             # use multiprocessing pool
             with Pool() as pool:
                 # create unordered imap and track progress
-                for result in tqdm(pool.imap_unordered(check_polar_region, args), desc='Calculating polar...', total=len(args), leave=False):
+                for result in tqdm(pool.imap_unordered(process_polar, args), desc='Calculating polar...', total=len(args), leave=False):
                     put_result(result)
         else:
             for arg in tqdm(args, desc='Calculating polar...', total=len(args), leave=False):
-                result = check_polar_region(arg)
+                result = process_polar(arg)
                 put_result(result)
+
+        return X,Y,Z,Zstd
+
+    def window(
+        self,
+        prop,
+        calculator: Callable[[list[T]], float],
+        kw: int,
+        n_points: int | tuple[int,int],
+        impact_position: tuple[float,float],
+        pxpmm: float,
+    ):
+        assert n_points > 0 or n_points == -1, \
+            "n_points must be greater than 0 or -1."
+        assert kw < self.region[0], \
+            "Kernel width must be smaller than the region width."
+        assert kw < self.region[1], \
+            "Kernel width must be smaller than the region height."
+        assert kw > 10, \
+            "Kernel width must be greater than 10."
+        assert len(self.data_objects) > 0, \
+            "There must be at least one object in the list."
+
+        print(f'[cyan]KERNELER[/cyan] [green]START[/green]')
+        print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
+        print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
+        print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
+
+        # Get the ranges for x and y
+        minx = kw // 2
+        maxx = self.region[0] - kw // 2
+        miny = kw // 2
+        maxy = self.region[1] - kw // 2
+
+        i_w, i_h = convert_npoints(n_points, self.region, kw)
+
+        # create X Y and Z and Zstd arrays
+        X = np.zeros(i_w, dtype=np.float64)
+        Y = np.zeros(i_h, dtype=np.float64)
+        Z = np.zeros((i_h, i_w), dtype=np.float64)
+        Zstd = np.zeros((i_h, i_w), dtype=np.float64)
+
+        def put_result(result):
+            i,j = result[0], result[1]
+            X[i] = result[2]
+            Y[j] = result[3]
+            Z[i, j] = result[4]
+            Zstd[i, j] = result[5]
+
+
+        # create groups of objects that lie in each window
+        windows = []
+        for w in range(i_w):
+            new_l = []
+            windows.append(new_l)
+            for h in range(i_h):
+                new_l.append([])
+
+        # sort objects into windows
+        for obj in tqdm(self.data_objects, desc='Sorting objects...', leave=False):
+            c = obj.centroid_mm
+            is_sorted = False
+            for w in range(i_w):
+                for h in range(i_h):
+                    x1 = (w/n_points) * self.region[0] - kw // 2
+                    y1 = (h/n_points) * self.region[1] - kw // 2
+                    x2 = x1 + kw
+                    y2 = y1 + kw
+
+                    if x1 < c[0] < x2 and y1 < c[1] < y2:
+                        windows[w][h].append(obj)
+                        is_sorted = True
+                        break
+
+                if is_sorted:
+                    break
+
+        # create args for every (x,y) region
+        args = []
+        for w in range(i_w):
+            for h in range(i_h):
+                x1 = (w/n_points) * self.region[0] - kw // 2
+                y1 = (h/n_points) * self.region[1] - kw // 2
+                x2 = x1 + kw
+                y2 = y1 + kw
+
+                objects_in_region = windows[w][h]
+
+                args.append(WindowArguments(w,h,x1,x2,y1,y2,objects_in_region,calculator,prop, impact_position, pxpmm))
+
+        # iterate to calculate the values
+        with Pool() as pool:
+            for result in tqdm(pool.imap_unordered(process_window, args), desc='Calculating windows...', total=len(args), leave=False):
+                # print(result)
+                put_result(result)
+
+        X, Y = np.meshgrid(X, Y)
 
         return X,Y,Z,Zstd
 
