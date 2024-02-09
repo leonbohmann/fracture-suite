@@ -152,11 +152,25 @@ def est_break(
     ax.set_xlabel('$d$ (mm)')
     State.output(fig, 'lcfunc', spec=specimen, figwidth=FigureSize.ROW2)
 
-    # find the acceptance probability by finding radii smaller than rhc
-    # and dividing it by the total number of point pairs
-    # calculate the total number of point pairs
-    n_points = len(specimen.splinters)
-    # calculate the number of point pairs with distance < rhc
+    # create actual voronoi plots
+    size = specimen.get_real_size()
+    area = size[0] * size[1]
+    n_points = int(intensity * area)
+    points = gibbs_strauss_process(
+        n_points,
+        rhc,
+        acceptance_possibility=acceptance,
+        area=area)
+    fig,axs = plt.subplots()
+    axs.scatter(*zip(*points))
+    plt.show()
+
+
+    # create voronoi of points
+    vor = Voronoi(points)
+    fig,axs = plt.subplots()
+    voronoi_plot_2d(vor, ax=axs, show_points=False, show_vertices=False)
+    plt.show()
 
 
 
@@ -454,7 +468,7 @@ def cropimg(region, size_f, markers):
     return markers_clipped
 
 @sim_app.command()
-def like(name):
+def lbreak_like(name):
 
     specimen = Specimen.get(name)
 
@@ -509,154 +523,154 @@ def compare(
     print('Simulation: ', len(sim_splinters))
 
 
-@sim_app.command()
-def create_spatial():
-    area = (500,500)
-    intensity = 0.1
-    n_points = 500
-    image = np.zeros((area[0],area[1],3), dtype=np.uint8)
+# @sim_app.command()
+# def create_spatial():
+#     area = (500,500)
+#     intensity = 0.1
+#     n_points = 500
+#     image = np.zeros((area[0],area[1],3), dtype=np.uint8)
 
-    points = gibbs_strauss_process(n_points, 20, intensity, area=area)
-    # points = CSR_process(10, area[0])
-    x,y = zip(*points)
+#     points = gibbs_strauss_process(n_points, 20, intensity, area=area)
+#     # points = CSR_process(10, area[0])
+#     x,y = zip(*points)
 
-    plt.figure()
-    plt.scatter(x,y)
-    plt.show()
+#     plt.figure()
+#     plt.scatter(x,y)
+#     plt.show()
 
-    # perform watershed on the points
-    markers = np.zeros(area, dtype=np.uint8)
-    for point in points:
-        markers[int(point[0]), int(point[1])] = 255
+#     # perform watershed on the points
+#     markers = np.zeros(area, dtype=np.uint8)
+#     for point in points:
+#         markers[int(point[0]), int(point[1])] = 255
 
-    markers = dilateImg(markers, 5)
-    markers_rgb = to_rgb(markers)
-    # from top left elongate markers
-    p0 = np.asarray((area[0]*0.2,area[1]*0.2))
-    max_elong = 20
-    elong_d = 2 #px
-    ds = np.linspace(0, np.sqrt(area[0]**2+area[1]**2), 100)
+#     markers = dilateImg(markers, 5)
+#     markers_rgb = to_rgb(markers)
+#     # from top left elongate markers
+#     p0 = np.asarray((area[0]*0.2,area[1]*0.2))
+#     max_elong = 20
+#     elong_d = 2 #px
+#     ds = np.linspace(0, np.sqrt(area[0]**2+area[1]**2), 100)
 
-    dmax = np.max(ds)
-    done = []
-    print(ds)
-    for d in track(ds):
-        fd = 1-d/dmax
-        print(fd)
+#     dmax = np.max(ds)
+#     done = []
+#     print(ds)
+#     for d in track(ds):
+#         fd = 1-d/dmax
+#         print(fd)
 
-        for i,p in enumerate(points):
-            if i in done:
-                continue
+#         for i,p in enumerate(points):
+#             if i in done:
+#                 continue
 
-            p = np.asarray(p)
+#             p = np.asarray(p)
 
-            # get vector from p0 to p
-            v = p-p0
-            # normalize
-            dp = np.linalg.norm(v)
+#             # get vector from p0 to p
+#             v = p-p0
+#             # normalize
+#             dp = np.linalg.norm(v)
 
-            if dp > d:
-                continue
+#             if dp > d:
+#                 continue
 
-            done.append(i)
+#             done.append(i)
 
-            v = v/dp
-            for j in np.linspace(0, max_elong*fd, int(max_elong*fd/elong_d)*5):
-                # calculate new point from p with v0 and elong_d distance
-                new_point = p+v*j
-                # and other side as well
-                new_point2 = p-v*j
-                # print(p)
-                # print(v)
-                # print(new_point)
-                # print(new_point2)
-                # input("")
-                # add filled circle to both new points
-                # cv2.circle(markers_rgb, (int(p[1]), int(p[0])), elong_d, (0,255,255), -1)
-                # cv2.circle(markers_rgb, (int(new_point[1]), int(new_point[0])), elong_d, (255,0,0), -1)
-                cv2.circle(markers, (int(new_point[1]), int(new_point[0])), elong_d, 255, -1)
-                cv2.circle(markers, (int(new_point2[1]), int(new_point2[0])), elong_d, 255, -1)
-
-
-
-    plotImage(markers, 'elongated markers', force=True)
-
-    markers = cv2.connectedComponents(np.uint8(markers))[1]
-
-    markers = cv2.watershed(np.zeros_like(image), markers)
-
-    m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-    m_img[markers == -1] = 255
-
-    splinters = Splinter.analyze_contour_image(m_img)
-
-    out_img = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
-    for s in splinters:
-        clr = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-        cv2.drawContours(out_img, [s.contour], -1, clr, -1)
-
-    plt.imshow(out_img)
-    plt.show()
-
-@sim_app.command()
-def compare_spatial(specimen_name):
-    specimen = Specimen.get(specimen_name)
+#             v = v/dp
+#             for j in np.linspace(0, max_elong*fd, int(max_elong*fd/elong_d)*5):
+#                 # calculate new point from p with v0 and elong_d distance
+#                 new_point = p+v*j
+#                 # and other side as well
+#                 new_point2 = p-v*j
+#                 # print(p)
+#                 # print(v)
+#                 # print(new_point)
+#                 # print(new_point2)
+#                 # input("")
+#                 # add filled circle to both new points
+#                 # cv2.circle(markers_rgb, (int(p[1]), int(p[0])), elong_d, (0,255,255), -1)
+#                 # cv2.circle(markers_rgb, (int(new_point[1]), int(new_point[0])), elong_d, (255,0,0), -1)
+#                 cv2.circle(markers, (int(new_point[1]), int(new_point[0])), elong_d, 255, -1)
+#                 cv2.circle(markers, (int(new_point2[1]), int(new_point2[0])), elong_d, 255, -1)
 
 
-    size = 300
-    x1 = 500
-    x2 = x1 + size
-    y1 = 500
-    y2 = y1 + size
 
-    # choose a region to replicate
-    region = RectRegion(x1,y1,x2,y2)
+#     plotImage(markers, 'elongated markers', force=True)
 
-    # get region from specimen fracture image
-    splinters_in_region = specimen.get_splinters_in_region(region)
-    frac_img = specimen.get_fracture_image()
+#     markers = cv2.connectedComponents(np.uint8(markers))[1]
 
-    image = np.zeros((size,size,3), dtype=np.uint8)
+#     markers = cv2.watershed(np.zeros_like(image), markers)
 
-    orig_contours = to_rgb(np.zeros_like(frac_img, dtype=np.uint8))
+#     m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+#     m_img[markers == -1] = 255
 
-    # perform watershed on the points
-    markers = np.zeros((size,size), dtype=np.uint8)
-    for s in splinters_in_region:
-        point = s.centroid_px
-        ix = np.max([np.min([int(point[0])-x1, size-1]), 0])
-        iy = np.max([np.min([int(point[1])-y1, size-1]), 0])
-        markers[ix,iy] = 255
+#     splinters = Splinter.analyze_contour_image(m_img)
 
-        cv2.drawContours(orig_contours, [s.contour], -1, (0,0,255), 2)
+#     out_img = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
+#     for s in splinters:
+#         clr = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+#         cv2.drawContours(out_img, [s.contour], -1, clr, -1)
 
-    orig_contours = orig_contours[x1:x2, y1:y2,:]
+#     plt.imshow(out_img)
+#     plt.show()
 
-    markers = dilateImg(markers, 3, it=3)
-    plt.imshow( markers)
-    plt.show()
-
-    markers = cv2.connectedComponents(np.uint8(markers))[1]
-
-    markers = cv2.watershed(np.zeros_like(image), markers)
-
-    m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-    m_img[markers == -1] = 255
-
-    splinters = Splinter.analyze_contour_image(m_img)
-
-    gen_contours = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
-    for s in splinters:
-        clr = (255,0,0)
-        cv2.drawContours(gen_contours, [s.contour], -1, clr, 1)
-
-    print(orig_contours.shape)
-    print(gen_contours.shape)
-    comparison = cv2.addWeighted(orig_contours, 0.5, gen_contours, 0.5, 0)
+# @sim_app.command()
+# def compare_spatial(specimen_name):
+#     specimen = Specimen.get(specimen_name)
 
 
-    plt.imshow(comparison)
-    plt.show()
+#     size = 300
+#     x1 = 500
+#     x2 = x1 + size
+#     y1 = 500
+#     y2 = y1 + size
+
+#     # choose a region to replicate
+#     region = RectRegion(x1,y1,x2,y2)
+
+#     # get region from specimen fracture image
+#     splinters_in_region = specimen.get_splinters_in_region(region)
+#     frac_img = specimen.get_fracture_image()
+
+#     image = np.zeros((size,size,3), dtype=np.uint8)
+
+#     orig_contours = to_rgb(np.zeros_like(frac_img, dtype=np.uint8))
+
+#     # perform watershed on the points
+#     markers = np.zeros((size,size), dtype=np.uint8)
+#     for s in splinters_in_region:
+#         point = s.centroid_px
+#         ix = np.max([np.min([int(point[0])-x1, size-1]), 0])
+#         iy = np.max([np.min([int(point[1])-y1, size-1]), 0])
+#         markers[ix,iy] = 255
+
+#         cv2.drawContours(orig_contours, [s.contour], -1, (0,0,255), 2)
+
+#     orig_contours = orig_contours[x1:x2, y1:y2,:]
+
+#     markers = dilateImg(markers, 3, it=3)
+#     plt.imshow( markers)
+#     plt.show()
+
+#     markers = cv2.connectedComponents(np.uint8(markers))[1]
+
+#     markers = cv2.watershed(np.zeros_like(image), markers)
+
+#     m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+#     m_img[markers == -1] = 255
+
+#     splinters = Splinter.analyze_contour_image(m_img)
+
+#     gen_contours = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
+#     for s in splinters:
+#         clr = (255,0,0)
+#         cv2.drawContours(gen_contours, [s.contour], -1, clr, 1)
+
+#     print(orig_contours.shape)
+#     print(gen_contours.shape)
+#     comparison = cv2.addWeighted(orig_contours, 0.5, gen_contours, 0.5, 0)
+
+
+#     plt.imshow(comparison)
+#     plt.show()
 
 
 @sim_app.command()

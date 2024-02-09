@@ -310,14 +310,14 @@ def analyze(
         dst_ax = axs   # axes for distance
 
         # distance plot
-        dst_line = dst_ax.plot(stime,sdistance, label="Distance", color='orange', zorder=10)
-        dst_ax.set_xlabel("Time [$\mu$s]")
-        dst_ax.set_ylabel("Distance [mm]")
+        dst_line = dst_ax.plot(stime,sdistance, label="Weg", color='orange', zorder=10)
+        dst_ax.set_xlabel("Zeit [$\mu$s]")
+        dst_ax.set_ylabel("Weg [mm]")
 
         # angle plot
         ang_ax = dst_ax.twinx()
-        ang_line = ang_ax.plot(stime, sangle, label="Angle", color='gray', linestyle='-.', linewidth=0.75)
-        ang_ax.set_ylabel("Relative angle [°]")
+        ang_line = ang_ax.plot(stime, sangle, label="Rel. Winkel", color='gray', linestyle='-.', linewidth=0.75)
+        ang_ax.set_ylabel("Rel. Winkel [°]")
         ang_ax.tick_params(axis='y', colors='gray')
         ang_ax.grid(False)
 
@@ -325,8 +325,8 @@ def analyze(
         vel_ax = dst_ax.twinx()   # axes for velocity
         vel_ax.spines['right'].set_position(('outward', 40))  # move the right spine outward
         vel_ax.tick_params(axis='y', colors='blue')
-        vline = vel_ax.plot(velocity_time, velocity, color='blue', linestyle='--', label="Velocity", linewidth=0.75)
-        vel_ax.set_ylabel("Velocity [m/s]")
+        vline = vel_ax.plot(velocity_time, velocity, color='blue', linestyle='--', label="Geschwindigkeit", linewidth=0.75)
+        vel_ax.set_ylabel("Geschwindigkeit [m/s]")
         vel_ax.grid(False)
 
         # create a linear fit for the distance
@@ -337,7 +337,9 @@ def analyze(
         # plot the fitting function
         dst_ax.plot(stime, mean_velocity*np.asarray(stime)+intercept, color='orange', linestyle='--', linewidth=0.75)
         # plot the mean_velocity as hline
-        vel_ax.axhline(mean_velocity *1e3, color='blue', linestyle='--', linewidth=0.5)
+        vel_ax.axhline(mean_velocity * 1e3, color='blue', linestyle='--', linewidth=0.5)
+        # annotate the axhline with the mean_velocity
+        vel_ax.annotate(f"{mean_velocity*1e3:.2f}m/s", (stime[-3], mean_velocity * 1e3), textcoords="offset points", xytext=(0.5,0), ha='center', color='blue')
 
 
         # mark branchings in plot as points
@@ -355,8 +357,7 @@ def analyze(
 
         dst_ax.set_zorder(3)
         dst_ax.set_frame_on(False)
-        dst_ax.legend([dst_line[0], ang_line[0], vline[0]], ["Distance", "Angle", "Velocity"], loc='upper left')
-        fig.tight_layout()
+        dst_ax.legend([dst_line[0], ang_line[0], vline[0]], ["Weg", "Rel. Winkel", "Geschwindigkeit"], loc='best')
 
         State.output(fig, f"{folder_name}/sys{c}_plot", figwidth=fig_width)
         print('Mean velocity: ', mean_velocity)

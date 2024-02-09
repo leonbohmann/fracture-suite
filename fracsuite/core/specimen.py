@@ -26,6 +26,7 @@ from fracsuite.core.region import RectRegion
 from fracsuite.core.specimenregion import SpecimenRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
+from fracsuite.core.stochastics import calculate_dmode
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file, find_files
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -97,11 +98,15 @@ def int_calculator(spl: list[Splinter], *args,**kwargs):
 def rhc_calculator(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
     all_centroids = np.array([s.centroid_mm for s in spl])
+    # # calculate distance between all centroids
+    # distances = np.linalg.norm(all_centroids[:,None] - all_centroids[None,:], axis=-1)
+    # # find mean distance
+    # mean_distance, _ = calculate_dmode(distances, bins=100)
+    # return mean_distance, 0
+
     total_area = np.sum([s.area for s in spl])
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
     x2,y2 = lhatc_test(all_centroids, total_area, d_max)
-    # print(x2)
-    # print(y2)
     min_idx = np.argmin(y2)
     r1 = x2[min_idx]
 

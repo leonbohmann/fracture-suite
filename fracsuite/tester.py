@@ -559,7 +559,7 @@ def preprocess(name):
     splinters = Splinter.analyze_image(fracture_image, prep=prep, px_per_mm=px_per_mm)
 
 @tester_app.command()
-def roundrect():
+def roundrect(angle: int = 100):
     # create an image and draw a couple of rotated rectangles with different angles on it
     img = np.ones((200,200,3), np.uint8) * 255
 
@@ -569,14 +569,58 @@ def roundrect():
     cv2.drawContours(img,[box],0,(0,0,255),2)
     print('Width', 50)
 
-    # # draw a rectangle with a 60 degree angle
-    # rotrect = ((100,100),(50,20),60)
-    # box = np.int0(cv2.boxPoints(rotrect))
-    # cv2.drawContours(img,[box],0,(0,255,0),2)
-    # print('Width', 50)
+    # draw a rectangle with a 60 degree angle
+    rotrect = ((100,100),(50,20),60)
+    box = np.int0(cv2.boxPoints(rotrect))
+    cv2.drawContours(img,[box],0,(0,255,0),2)
+    print('Width', 50)
+
+
+    # plt.imshow(img)
+    # plt.show()
+
+    img = np.zeros((200,200,3), np.uint8)
+
+    # draw an ellipse into the image
+    ellipse = (100,100), (100,50), angle
+    cv2.ellipse(img, ellipse, (255,255,255), -1)
+
+    # perfrom contour detection
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 127, 255, 0)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    # draw the contours into the image
+    cv2.drawContours(img, contours, -1, (0,255,0), 1)
+    # plt.imshow(img)
+    # plt.show()
+
+    img = np.zeros((200,200,3), np.uint8)
+    cv2.ellipse(img, ellipse, (255,255,255), -1)
+
+    # fit an ellipse to the contours
+    ellipse_fit = cv2.fitEllipse(contours[0])
+    # draw the fitted ellipse into the image
+    cv2.ellipse(img, ellipse_fit, (0,0,255), 1)
+
+    # find major axis and minor axis vectors
+    a = ellipse_fit[1][0] / 2
+    b = ellipse_fit[1][1] / 2
+    major_axis = (a * np.cos(np.deg2rad(ellipse_fit[2])), a * np.sin(np.deg2rad(ellipse_fit[2])))
+    minor_axis = (b * np.cos(np.deg2rad(ellipse_fit[2] + 90)), b * np.sin(np.deg2rad(ellipse_fit[2] + 90)))
+    # plot them to the image
+    center = (int(ellipse_fit[0][0]), int(ellipse_fit[0][1]))
+    cv2.arrowedLine(img, center, (int(center[0] + major_axis[0]), int(center[1] + major_axis[1])), (125,0,255), 2)
+    cv2.arrowedLine(img, center, (int(center[0] + minor_axis[0]), int(center[1] + minor_axis[1])), (0,125,255), 2)
+
+    print('Fitted', ellipse_fit)
+    print('angle', np.degrees(angle_between(major_axis, [1,0])))
+
 
     plt.imshow(img)
     plt.show()
+
+
 
 @tester_app.command()
 def alignment(

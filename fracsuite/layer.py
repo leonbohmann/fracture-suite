@@ -1,3 +1,4 @@
+import re
 from typing import Annotated
 import cv2
 
@@ -208,15 +209,30 @@ bid = {
 
 @layer_app.command()
 def create(
-    prop: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
+    prop: Annotated[str, typer.Argument(help='Mode for the aspect ratio.')],
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
     ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
     thickness: Annotated[float, typer.Option(help='Specimen thickness.')] = None,
     exclude_names: Annotated[str, typer.Option(help='Exclude specimens with these names. Seperated by comma.')] = "",
+    exclude_name_filter: Annotated[str, typer.Option(help='Exclude specimens matching this filter.')] = None,
     normalize: Annotated[bool, typer.Option(help='Normalize specimen value ranges.')] = False,
     name_filter: Annotated[str, typer.Option(help='Filter specimen names.')] = "*",
 ):
+    if "," in prop or prop == "all":
+        if prop == "all":
+            prop = "intensity,rhc,acceptance,orientation,l1,l2,asp,asp0"
+            pass
+
+        props = prop.split(',')
+        for p in tqdm(props, desc='Properties'):
+            p = SplinterProp(p)
+            print(f"[cyan]Creating layer for {p}.")
+            create(p, break_pos, break_mode, ignore_nan_u, thickness, exclude_names, exclude_name_filter, normalize, name_filter)
+        return
+
+    prop = SplinterProp(prop)
+
     bid = {
         'A': 1,
         'B': 2,
@@ -244,6 +260,10 @@ def create(
         # if not specimen.broken_immediately:
         #     return False
 
+        if exclude_name_filter is not None:
+            if re.match(exclude_name_filter, specimen.name) is not None:
+                return False
+
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
 
@@ -265,6 +285,8 @@ def create(
         if specimen.name in exclude_names:
             return False
 
+
+
         return base_filter(specimen)
 
     specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True,max_n=300)
@@ -278,7 +300,7 @@ def create(
     else:
         thickness = f'{thickness:.0f}'
 
-    sz = FigureSize.ROW1
+    sz = FigureSize.ROW2
 
     xlabel = "Abstand zum Anschlagpunkt (mm)"
     ylabel = Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3)

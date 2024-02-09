@@ -244,15 +244,23 @@ class ObjectKerneler():
 
                 args.append((r0,r1,t0,t1,i,j,ip_mm,spl,calculator,mode, pxpmm))
 
-        # use multiprocessing pool
-        with Pool() as pool:
-            # create unordered imap and track progress
-            for result in tqdm(pool.imap_unordered(check_polar_region, args), desc='Calculating polar...', total=len(args), leave=False):
-                i, j, r_c, t_c, mean_value, stddev = result
-                Z[i,j] = mean_value
-                Zstd[i,j] = stddev
-                X[i] = r_c
-                Y[j] = t_c
+        def put_result(result):
+            i, j, r_c, t_c, mean_value, stddev = result
+            Z[i,j] = mean_value
+            Zstd[i,j] = stddev
+            X[i] = r_c
+            Y[j] = t_c
+
+        if len(args) > 120:
+            # use multiprocessing pool
+            with Pool() as pool:
+                # create unordered imap and track progress
+                for result in tqdm(pool.imap_unordered(check_polar_region, args), desc='Calculating polar...', total=len(args), leave=False):
+                    put_result(result)
+        else:
+            for arg in tqdm(args, desc='Calculating polar...', total=len(args), leave=False):
+                result = check_polar_region(arg)
+                put_result(result)
 
         return X,Y,Z,Zstd
 

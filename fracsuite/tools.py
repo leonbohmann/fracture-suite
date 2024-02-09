@@ -1,5 +1,7 @@
+from collections import defaultdict
 from email.mime import image
 from glob import glob
+from itertools import groupby
 import os
 import numpy as np
 from sklearn import base
@@ -7,7 +9,12 @@ import typer
 import cv2
 
 from fracsuite.callbacks import main_callback
+from fracsuite.core.model_layers import get_layer_folder
+from fracsuite.core.splinter import Splinter
+from fracsuite.general import GeneralSettings
 from fracsuite.state import State, StateOutput
+
+from rich import print
 
 tools_app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -181,3 +188,130 @@ def plate_freq(
     frequencies.sort()
     frequencies = frequencies[:n_modes]
     print(frequencies)
+
+
+# Hilfsfunktion zum Gruppieren der Layer-Props
+def group_layer_props(layer_props):
+    grouped = defaultdict(lambda: defaultdict(list))
+    for boundary, thickness, prop in layer_props:
+        grouped[prop][boundary].append(thickness)
+    return grouped
+
+@tools_app.command()
+def layers_to_tex(base_path: str = ""):
+    layer_folder = get_layer_folder()
+    layer_folder = os.path.join(layer_folder, "create")
+
+    # get all layers
+    layers = glob(os.path.join(layer_folder, "impact-layer_*.pdf"))
+
+    # settings
+    plots_per_figure = 9
+    rows_per_page = 4
+
+    main_latex = r"""
+    \chapter{LBREAK Layer}
+    [PROPERTIES]
+    """
+
+    property_latex = r"""
+    \section*{[PROPERTY]}
+    [BOUNDARIES]
+    """
+
+    # create latex
+    boundary_latex = r"""
+    \subsection*{[BOUNDARY]}
+    [THICKNESSES]
+    """
+
+    imagelist_latex = r"""
+    \begin{figure}[H]
+        \centering
+        [IMAGELIST]
+        \caption[]{[CAPTION]}
+        \label{fig:[FIGURENAME]}
+    \end{figure}
+    """
+
+    def imgtolatex(imgpath, imgname,i):
+        return r"""
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{[basepath]/[imgpath]}
+        \caption[]{[thickness] mm}
+        \label{fig:[imgname]}
+    \end{subfigure}
+    """.replace("[imgpath]", f"{imgname}") \
+        .replace("[imgname]", f"{imgname}") \
+        .replace("[thickness]", f"{i}") \
+        .replace("[imgindex]", str(i)) \
+        .replace("[basepath]", base_path)
+
+    import re
+
+    # create an image list for each page
+    groups = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+
+    layer_props = []
+    for layer in layers:
+        match = re.match(r"impact-layer_(.*?)_(.*?)_(.*?)_", os.path.basename(layer))
+        if match:
+            props = match.groups()
+            layer_props.append((*props, layer))
+
+            boundary, thickness, prop = props
+
+            groups[prop][boundary][str(thickness)] = layer
+
+    groups = {prop: {boundary: {thickness : groups[prop][boundary][thickness] for thickness in groups[prop][boundary]} for boundary in groups[prop]} for prop in groups}
+
+    print(groups)
+
+    prop_latexs = []
+    for prop in groups:
+        boundaries = groups[prop]
+        b_latexs = []
+
+        for boundary in boundaries:
+            thicknesses = boundaries[boundary]
+            image_list = r"\hfill%".join([imgtolatex(thicknesses[x], os.path.basename(thicknesses[x]), x) for i,x in enumerate(thicknesses) if x != "12"])
+            imLatex = imagelist_latex.replace("[IMAGELIST]", image_list) \
+                .replace("[FIGURENAME]", f"{prop}_{boundary}") \
+                .replace("[CAPTION]", f"{Splinter.get_mode_labels(prop).strip()} in Abhängigkeit des Abstands zum Anschlagpunkt bei verschiedenen Glasdicken; Farbig markiert ist die Formänderungsenergie U.")
+
+            b_latex = boundary_latex.replace("[THICKNESSES]", imLatex).replace("[BOUNDARY]", boundary)
+            b_latexs.append(b_latex)
+
+        prop_latex = property_latex.replace("[BOUNDARIES]", "\n".join(b_latexs)).replace("[PROPERTY]", Splinter.get_mode_labels(prop).strip())
+        prop_latexs.append(prop_latex)
+
+
+    main_latex = main_latex.replace("[PROPERTIES]", "\n".join(prop_latexs))
+
+    # create an output latex file
+    with open(os.path.join(layer_folder, "A_lbreak_LAYERS.tex"), "w", encoding='utf-8') as f:
+        f.write(main_latex)
+
+
+    # # create latex for each page
+    # prop_latexs = []
+    # for prop in grouped_layer_props:
+    #     boundaries = grouped_layer_props[prop]
+    #     b_latexs = []
+
+    #     for boundary in boundaries:
+    #         thicknesses = boundaries[boundary]
+    #         image_list = r"\hfill%".join([imgtolatex(x, os.path.basename(x), i) for i,x in enumerate(thicknesses)])
+    #         b_latex = boundary_latex.replace("[THICKNESSES]", image_list).replace("[BOUNDARY]", boundary)
+    #         b_latexs.append(b_latex)
+
+    #     prop_latex = property_latex.replace("[BOUNDARIES]", "\n".join(b_latexs)).replace("[PROPERTY]", prop)
+    #     prop_latexs.append(prop_latex)
+
+    # main_latex = main_latex.replace("[PROPERTIES]", "\n".join(prop_latexs))
+
+    # # create an output latex file
+    # with open(os.path.join(layer_folder, "layers.tex"), "w") as f:
+
+    #     f.write(main_latex)

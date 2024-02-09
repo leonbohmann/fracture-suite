@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 
 import cv2
+from deprecated import deprecated
 import numpy as np
 from rich import print
 from skimage.morphology import skeletonize
@@ -52,16 +53,6 @@ class Splinter:
     "Centroid of the splinter in px."
     has_centroid: bool
     "True if the centroid could be calculated."
-
-    @property
-    def crack_area(self):
-        if self._crack_area is None:
-            self._crack_area = self.circumfence
-
-        return self._crack_area
-
-    def set_crack_area(self, value):
-        self._crack_area = value
 
     def __init__(self, contour, index, px_per_mm: float):
         """Create a splinter from a contour.
@@ -425,6 +416,7 @@ class Splinter:
         # print()
         return self.alignment
 
+    # @deprecated(reason="Use measure_size instead")
     def measure_size(self, impact_position: tuple[float,float] = None, ) -> tuple[float,float]:
         """
         Measure the main and secondary axis of a fitting ellipse.
@@ -443,8 +435,11 @@ class Splinter:
         """
         # look also at: fracsuite tester roundrect
         #   the angle describes the first length returned (l_a), the second length is l_b
-
         (x,y), (l_a,l_b), la_angle = cv2.minAreaRect(self.contour)
+
+        # if len(self.contour) <= 5:
+        # else:
+        #     (x,y), (l_a,l_b), la_angle = cv2.fitEllipse(self.contour)
 
         # with no impact position supplied, calculate the aspect ratio
         if impact_position is None:

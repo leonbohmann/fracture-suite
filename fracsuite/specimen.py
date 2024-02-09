@@ -6,10 +6,12 @@ from json import JSONEncoder
 import json
 
 import os
+import re
 from matplotlib import pyplot as plt
 from matplotlib.figure import figaspect
 
 import numpy as np
+from pygments import highlight
 from sklearn.metrics import mean_absolute_error
 from tqdm import tqdm
 import typer
@@ -512,8 +514,11 @@ def import_fracture(
 
 
 @app.command()
-def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False, overwrite: bool = False):
-    filter_func = create_filter_function("*.*.B.*", needs_scalp=True, needs_splinters=True)
+def test_crack_surface(
+    rust: bool = False, ud: bool = False, aslog: bool = False, overwrite: bool = False,
+    highlight_filter: str = None
+):
+    filter_func = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
 
     specimens = Specimen.get_all_by(filter_func, load=True)
 
@@ -571,7 +576,11 @@ def test_crack_surface(rust: bool = False, ud: bool = False, aslog: bool = False
     # plot data
     for spec in specimens:
         v = spec.U_d if ud else rud(spec.U)
-        axs.scatter(v, spec.crack_surface, marker=b_marker[spec.boundary], color=t_color[spec.thickness])
+
+        if highlight_filter is not None and re.match(highlight_filter, spec.name):
+            axs.scatter(v, spec.crack_surface, marker='x', label=spec.name, s=10)
+        else:
+            axs.scatter(v, spec.crack_surface, marker=b_marker[spec.boundary], color=t_color[spec.thickness])
 
 
     ##########################
