@@ -386,8 +386,8 @@ def lbreak(
             l_minor = l2 / 2 # before: l_major / l1l2
 
             # make dimensions smaller so that the algorithm can fill it
-            l_major = l_major * 0.5
-            l_minor = l_minor * 0.5
+            l_major = l_major
+            l_minor = l_minor
 
             ## modify the point using the major axis
             markers = cv2.ellipse(
@@ -400,7 +400,20 @@ def lbreak(
                     0, 360, # start and end angle
                     255, # color
                     -1, # thickness
-                    cv2.LINE_AA # line type
+                    cv2.LINE_8 # line type
+                )
+
+            markers = cv2.ellipse(
+                    markers,
+                    (int(p[1]*size_f), int(p[0]*size_f)), # location
+                    # (int(2), int(2)), # axes lengths
+                    # (int(2), int(l_major * size_f)), # axes lengths
+                    (int(l_minor * size_f), int(l_major * size_f)), # axes lengths
+                    np.rad2deg(angle), # angle
+                    0, 360, # start and end angle
+                    0, # color
+                    size_f//2, # thickness
+                    cv2.LINE_8 # line type
                 )
             # try:
             #     markers = cv2.ellipse(
@@ -420,7 +433,6 @@ def lbreak(
     if len(exceptions) > 0:
         print(f'Exceptions: {[e for e in exceptions]}')
 
-    print('[yellow] Simulating...')
     # cv2.ellipse(markers, impact_position.astype(np.uint8)*size_f, (int(20), int(5)), 0, 0, 360, (0,255,0), 1)
     # cv2.ellipse(markers, (400*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (0,255,0), -1)
     # cv2.ellipse(markers, (200*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (255,120,0), -1)
@@ -429,6 +441,7 @@ def lbreak(
     cv2.imwrite(sim.get_file('layered_points.png'), markers_clipped)
 
 
+    print('[yellow] Performing detection...')
     markers = cv2.connectedComponents(np.uint8(markers))[1]
     shape = (int(size[0]*size_f),int(size[1]*size_f),3)
     blank_image = np.zeros(shape, dtype=np.uint8)
@@ -439,6 +452,7 @@ def lbreak(
     m_img_clipped = cropimg(region_scaled, size_f, m_img)
     cv2.imwrite(sim.get_file('watershed_0.png'), m_img_clipped)
 
+    print('[yellow] Digitalizing image...')
     black_white_img = np.zeros((shape[0], shape[1]), dtype=np.uint8)
     splinters = Splinter.analyze_contour_image(m_img, px_per_mm=size_f)
 
