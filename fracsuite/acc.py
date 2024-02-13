@@ -3,6 +3,7 @@ Acceleration tools.
 """
 
 import os
+import re
 from typing import Annotated
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
@@ -17,6 +18,7 @@ from rich import print
 from rich.progress import track
 from fracsuite.core.accelerationdata import AccelerationData
 from fracsuite.core.plotting import FigureSize, get_fig_width
+from fracsuite.core.signal import lowpass
 from fracsuite.state import State
 
 from fracsuite.general import GeneralSettings
@@ -673,3 +675,52 @@ def test_data(file):
 
 
     accdata = AccelerationData(file)
+
+@app.command()
+def transform(
+    specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
+):
+    specimen = Specimen.get(specimen_name)
+
+    accdata = specimen.accdata
+
+    reader = accdata.reader
+
+    groups = reader.Groups
+
+    # perform lowpass filter on Fall_g1 sensor data
+    for group in groups:
+        for chan in group.ChannelsY:
+            if re.match("[Ff]all(_?)g1", chan.Name):
+                chan.data = lowpass(chan.Time.data, chan.data, 4500, 1/(chan.Time.data[1]-chan.Time.data[0]))
+                break
+
+    # create csv file
+    csv_file = specimen.get_acc_outfile("data.csv")
+
+    # write csv
+    with open(csv_file, 'w') as f:
+        # header
+        for group in reader.Groups:
+            f.write(f"{group.ChannelX.Name} [{group.ChannelX.unit}];")
+
+            for chan in group.ChannelsY:
+                f.write(f"{chan.Name} [{chan.unit}];")
+
+        f.write("\n")
+
+        # data
+        max_len = np.max([np.max([len(x.data) for x in group.ChannelsY]) for group in reader.Groups])
+        print(max_len)
+        for i in range(max_len):
+            for group in reader.Groups:
+                if i < len(group.ChannelX.data):
+                    f.write(f"{group.ChannelX.data[i]};")
+                else:
+                    f.write(";")
+                for chan in group.ChannelsY:
+                    if i < len(chan.data):
+                        f.write(f"{chan.data[i]};")
+                    else:
+                        f.write(";")
+            f.write("\n")

@@ -319,6 +319,11 @@ class Specimen(Outputtable):
         self._splinter_area = value
         self.set_data('splinter_area', value)
 
+    @property
+    def accdata(self) -> AccelerationData:
+        "Acceleration data."
+        assert self.loaded, "Specimen not loaded."
+        return self.__acc
 
     def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
@@ -340,7 +345,7 @@ class Specimen(Outputtable):
 
         print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)} , "
                 f"Splinters: {checkmark(self.has_splinters)} ) "
-                    f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/mm², U_d={self.U_d:>9.2f}J/mm³, σ_s={self.sig_h:>7.2f}MPa')
+                    f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
 
     def __init__(self, path: str, log_missing = True, load = False):
         """Create a new specimen.

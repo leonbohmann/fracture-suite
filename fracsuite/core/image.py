@@ -120,6 +120,7 @@ class FontSize(float, Enum):
 
     HUGE = LARGE * 1.3
     HUGEXL = HUGE * 1.3
+    HUGEXXL = HUGEXL * 2
 
 def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0),szf:float = 1.0,thickness=4):
     """
@@ -148,7 +149,7 @@ def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0),szf:fl
 def put_scale(scale, scale_length_px, img, sz, clr, szf=1.0):
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = sz * szf
-    thickness = 4
+    thickness = int(4 * font_scale // 2.0)
 
     scale_text = f"{scale} cm"
 
@@ -156,9 +157,9 @@ def put_scale(scale, scale_length_px, img, sz, clr, szf=1.0):
     text_size, _ = cv2.getTextSize(scale_text, font, font_scale, thickness)
 
     # create a white background box to fit the text and scale
-    box_pad = 30
+    box_pad = 20
     box_width = img.shape[1]
-    box_height = 4*box_pad
+    box_height = 3*box_pad + text_size[1]
     box = np.zeros((box_height, box_width, 3), dtype=np.uint8)
     box.fill(255)
 
@@ -167,7 +168,7 @@ def put_scale(scale, scale_length_px, img, sz, clr, szf=1.0):
     cv2.line(box, (5, box_height-box_pad-5), (5, box_height-box_pad+5), clr, thickness)
     cv2.line(box, (int(scale_length_px + 5), box_height-box_pad-5), (int(scale_length_px + 5), box_height-box_pad+5), clr, thickness)
     # draw text into x center of box
-    put_text(scale_text, box, (scale_length_px // 2, text_size[1]), sz, clr, szf)
+    put_text(scale_text, box, (scale_length_px // 2, text_size[1] // 2 + box_pad), sz, clr, szf)
 
     # vertically stack images
     return np.vstack((img, box))

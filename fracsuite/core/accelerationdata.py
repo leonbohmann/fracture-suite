@@ -95,6 +95,7 @@ class AccelerationData:
     def load(self):
         # create APReader to read the file
         reader = APReader(self.file)
+        self.reader = reader
 
         if not any([re.match("Fall_g1", channel.Name) for channel in reader.Channels]):
             print(f"\t> [red]File {os.path.basename(self.file)} does not contain the necessary channels, Fall_g1 not found.")
@@ -168,6 +169,9 @@ class AccelerationData:
             axs.plot(time2[peak_ind2],acc2.data[peak_ind2],'o')
             plt.show()
 
+
+    def get_acc_chans(self) -> list[Channel]:
+        return [channel for channel in self.channels if re.match("[Aa]cc(_?)", channel.Name) is not None]
 
     def get_channel_like(self, filter: str) -> Channel:
         for channel in self.channels:

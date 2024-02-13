@@ -8,12 +8,12 @@ from rich.progress import track
 import typer
 import numpy as np
 from fracsuite.callbacks import main_callback
-from fracsuite.core.image import to_rgb
+from fracsuite.core.image import is_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.imageprocessing import dilateImg
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, has_layer, interp_layer
-from fracsuite.core.plotting import FigureSize, datahist_plot, datahist_to_ax, get_fig_width
+from fracsuite.core.plotting import FigureSize, datahist_2d, datahist_plot, datahist_to_ax, get_fig_width
 from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress
 from fracsuite.core.region import RectRegion
@@ -30,6 +30,12 @@ from fracsuite.state import State
 from spazial import csstraussproc2, csstraussproc_rhciter, bohmann_process
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
+
+def section(title: str):
+    print(f'[yellow]{title}')
+
+def info(message: str):
+    print(f' [blue]{message}')
 
 rng = np.random.default_rng()
 def stdrand(mean, stddev):
@@ -95,16 +101,16 @@ def est_break(
 ):
     specimen = Specimen.get(specimen_name)
 
-    print('Estimating intensity...')
+    section('Estimating intensity...')
     # find fracture intensity from first order statistics
     intensity = specimen.calculate_break_lambda(force_recalc=True)
 
-    print('Estimating rhc...')
+    section('Estimating rhc...')
     # find the hard core radius using second order statistics
     rhc,acceptance = specimen.calculate_break_rhc(force_recalc=True)
-    print(f'Fracture intensity: {intensity:.2f} 1/mm²')
-    print(f'HC Radius: {rhc:.2f} mm')
-    print(f'Acceptance: {acceptance:.2f}')
+    info(f'Fracture intensity: {intensity:.2f} 1/mm²')
+    info(f'HC Radius: {rhc:.2f} mm')
+    info(f'Acceptance: {acceptance:.2f}')
 
     def Kpois(d):
         # see Baddeley et al. S.206 K_pois
@@ -113,7 +119,7 @@ def est_break(
         # see Baddeley et al. S.206 K_pois
         return d
 
-    print('Plotting kfunc...')
+    section('Plotting kfunc...')
     x,y = specimen.kfun()
     fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
     ax.plot(x,y, label='$\hat{K}$')
@@ -121,10 +127,10 @@ def est_break(
     ax.legend()
     ax.set_ylabel('$\hat{K}(d)$')
     ax.set_xlabel('$d$ (mm)')
-    State.output(fig,'kfunc', spec=specimen, figwidth=FigureSize.ROW2)
+    State.output(fig,'kfunc', spec=specimen, figwidth=FigureSize.ROW2, open=State.debug)
 
 
-    print('Plotting lfunc...')
+    section('Plotting lfunc...')
     x2,y2 = specimen.lfun()
     min_L = rhc
 
@@ -136,9 +142,9 @@ def est_break(
     ax.legend()
     ax.set_ylabel('$\hat{L}(d)$')
     ax.set_xlabel('$d$ (mm)')
-    State.output(fig, 'lfunc', spec=specimen, figwidth=FigureSize.ROW2)
+    State.output(fig, 'lfunc', spec=specimen, figwidth=FigureSize.ROW2, open=State.debug)
 
-    print('Plotting centered lfunc...')
+    section('Plotting centered lfunc...')
     x2,y2 = specimen.lcfun()
     min_L = rhc
 
@@ -150,28 +156,48 @@ def est_break(
 
     ax.set_ylabel('$\hat{L}(d)-d$')
     ax.set_xlabel('$d$ (mm)')
-    State.output(fig, 'lcfunc', spec=specimen, figwidth=FigureSize.ROW2)
+    State.output(fig, 'lcfunc', spec=specimen, figwidth=FigureSize.ROW2, open=State.debug)
 
+    section('Plotting voronoi...')
     # create actual voronoi plots
     size = specimen.get_real_size()
     area = size[0] * size[1]
     n_points = int(intensity * area)
-    points = gibbs_strauss_process(
-        n_points,
-        rhc,
-        acceptance_possibility=acceptance,
-        area=area)
+    acceptance = 4.5e-5
+    points = csstraussproc2(size[0], size[1], rhc, n_points, acceptance, int(1e6))
     fig,axs = plt.subplots()
     axs.scatter(*zip(*points))
-    plt.show()
+    if State.debug:
+        plt.show()
+
+    State.output(fig, f'points_{specimen.name}', spec=specimen, figwidth=FigureSize.ROW2, open=State.debug)
 
 
     # create voronoi of points
-    vor = Voronoi(points)
-    fig,axs = plt.subplots()
-    voronoi_plot_2d(vor, ax=axs, show_points=False, show_vertices=False)
-    plt.show()
+    voronoi = Voronoi(points)
+    if State.debug:
+        fig,axs = plt.subplots()
+        voronoi_plot_2d(voronoi, ax=axs, show_points=False, show_vertices=False, line_colors='k')
+        plt.show()
 
+
+    section('Transforming voronoi...')
+    voronoi_img = np.zeros((int(size[1]), int(size[0])), dtype=np.uint8)
+    if not is_gray(voronoi_img):
+        voronoi_img = cv2.cvtColor(voronoi_img, cv2.COLOR_BGR2GRAY)
+    for i, r in enumerate(voronoi.regions):
+        if -1 not in r and len(r) > 0:
+            polygon = [voronoi.vertices[i] for i in r]
+            polygon = np.array(polygon, dtype=int)
+            cv2.polylines(voronoi_img, [polygon], isClosed=True, color=255, thickness=1)
+
+    State.output(voronoi_img, f'voronoi_{specimen.name}', spec=specimen, figwidth=FigureSize.ROW2, open=State.debug)
+
+
+    section('Digitalize splinters...')
+    splinters = Splinter.analyze_contour_image(voronoi_img, px_per_mm=1)
+
+    return splinters
 
 
 @sim_app.command()
@@ -243,6 +269,7 @@ def lbreak(
     # points = csstraussproc(size, hc_radius, int(fracture_intensity*area), c, int(1e6))
     # points = csstraussproc2(size[0], size[1], hc_radius, int(fracture_intensity*area), c, int(1e6))
 
+    section("Spatial point distribution...")
     # interpolate rhc values
     rhc_values = rhc(r_range)
     # create array with r_range in column 0 and rhc_values in 1
@@ -257,18 +284,23 @@ def lbreak(
     # print region
     region = (0,0,0.2,0.2)
 
+    section("Plotting points...")
+    x,y = zip(*points)
     # plot points
     fig,axs = plt.subplots()
-    axs.scatter(*zip(*points))
+    axs.scatter(x,y)
     # find maximum region from points
-    x,y = zip(*points)
     x_min = np.min(x) * region[0]
     x_max = np.max(x) * region[2]
     y_min = np.min(y) * region[1]
     y_max = np.max(y) * region[3]
     axs.set_xlim(x_min, x_max)
     axs.set_ylim(y_min, y_max)
-    plt.show()
+
+    if State.debug:
+        plt.show()
+    fig.savefig(sim.get_file('pointsfig.png'))
+
 
     # scaling factor (realsize > pixel size)
     size_f = 20
@@ -282,6 +314,7 @@ def lbreak(
     markers_clipped = cropimg(region_scaled, size_f, markers)
     cv2.imwrite(sim.get_file('points.png'), markers_clipped)
 
+    section("Loading layers...")
     # apply layers to points
     # modification 1: impact layer
     il_orientation, il_orientation_stddev = interp_layer(
@@ -324,8 +357,9 @@ def lbreak(
         'rhc': (rhc, rhc_std, Splinter.get_mode_labels(SplinterProp.RHC), 'rhc'),
     }
 
+    section("Plotting layers...")
     for layer in layers:
-        print(f'Plotting {layer}...')
+        info(layer)
         il, il_stddev, mode_labels, name = layers[layer]
         r_range = np.linspace(0, np.sqrt(450**2+450**2), 100)
         fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW3))
@@ -335,9 +369,11 @@ def lbreak(
         # add error bars to plot
         axs.fill_between(r_range, r_il-r_il_stddev/2, r_il+r_il_stddev/2, alpha=0.3)
         axs.set_ylabel(mode_labels)
-        plt.show()
+        if State.debug:
+            plt.show()
         fig.savefig(sim.get_file(f'{name}.pdf'))
 
+    section("Create spatial points...")
     exceptions = []
     with get_progress() as progress:
         progress.set_description('Creating spatial points')
@@ -412,7 +448,7 @@ def lbreak(
                     np.rad2deg(angle), # angle
                     0, 360, # start and end angle
                     0, # color
-                    size_f//2, # thickness
+                    size_f, # thickness
                     cv2.LINE_8 # line type
                 )
             # try:
@@ -436,12 +472,12 @@ def lbreak(
     # cv2.ellipse(markers, impact_position.astype(np.uint8)*size_f, (int(20), int(5)), 0, 0, 360, (0,255,0), 1)
     # cv2.ellipse(markers, (400*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (0,255,0), -1)
     # cv2.ellipse(markers, (200*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (255,120,0), -1)
-    plotImage(markers, 'markers', force=True)
+    plotImage(markers, 'markers')
     markers_clipped = cropimg(region_scaled, size_f, markers)
     cv2.imwrite(sim.get_file('layered_points.png'), markers_clipped)
 
 
-    print('[yellow] Performing detection...')
+    section("Watershed")
     markers = cv2.connectedComponents(np.uint8(markers))[1]
     shape = (int(size[0]*size_f),int(size[1]*size_f),3)
     blank_image = np.zeros(shape, dtype=np.uint8)
@@ -452,7 +488,7 @@ def lbreak(
     m_img_clipped = cropimg(region_scaled, size_f, m_img)
     cv2.imwrite(sim.get_file('watershed_0.png'), m_img_clipped)
 
-    print('[yellow] Digitalizing image...')
+    section('Digitalizing image')
     black_white_img = np.zeros((shape[0], shape[1]), dtype=np.uint8)
     splinters = Splinter.analyze_contour_image(m_img, px_per_mm=size_f)
 
@@ -462,16 +498,17 @@ def lbreak(
         cv2.drawContours(out_img, [s.contour], -1, clr, -1)
         cv2.drawContours(black_white_img, [s.contour], -1, 255, 1)
 
-    plt.imshow(out_img)
-    plt.show()
+    if State.debug:
+        plt.imshow(out_img)
+        plt.show()
 
-    plt.imshow(black_white_img)
-    plt.show()
+        plt.imshow(black_white_img)
+        plt.show()
 
-    State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2)
+    State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2, open=State.debug)
     cv2.imwrite(sim.get_file('filled.png'), out_img)
 
-    print('[yellow] Saving...')
+    section('Saving...')
     sim.put_splinters(splinters)
     print(f'[green] Simulation created: {sim.name}_{sim.nbr}[/green]')
     return sim
@@ -500,9 +537,37 @@ def lbreak_like(name):
     compare(simulation.fullname, specimen.name)
 
 @sim_app.command()
+def compare_all(name):
+    specimen = Specimen.get(name)
+
+    if not specimen.has_scalp:
+        print('[red]Specimen has not been scalped.')
+        return
+
+    sigma_s = np.abs(specimen.sig_h)
+    thickness = specimen.thickness
+    size = specimen.get_real_size()
+    boundary = specimen.boundary
+    break_pos = specimen.break_pos
+    E = 70e3
+    nue = 0.23
+
+    # create simulation
+    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue)
+
+    voronoi = est_break(specimen.name)
+    # compare simulation with input
+    compare(simulation.fullname, specimen.name, voronoi)
+
+def get_log_range(data, bins=30):
+    data = np.log10(data)
+    return np.linspace(np.min(data), np.max(data), bins)
+
+@sim_app.command()
 def compare(
     simulation_name: Annotated[str, typer.Argument(help="Simulation name.")],
     specimen_name: Annotated[str, typer.Argument(help="Specimen name.")],
+    voronoi = None
 ):
     """
     Compare a simulation with a real specimen.
@@ -528,14 +593,37 @@ def compare(
 
     # plot histograms
     fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
-    datahist_to_ax(axs, spec_areas, 30, label='Specimen')
-    datahist_to_ax(axs, sim_areas, 30, label='Simulation')
+    binrange = get_log_range(spec_areas, 30)
+
+    if voronoi is not None:
+        vor_splinters = voronoi
+        vor_areas = [s.area for s in vor_splinters]
+        datahist_to_ax(axs, vor_areas, binrange=binrange, label='Voronoi')
+    datahist_to_ax(axs, spec_areas, binrange=binrange, label='Probekörper')
+    datahist_to_ax(axs, sim_areas, binrange=binrange, label='Simulation')
+
+
     axs[0].legend()
     State.output(fig, f'{specimen.name}--{sim.name}_{sim.nbr}', figwidth=FigureSize.ROW2)
 
     print('Specimen: ', len(spec_splinters))
     print('Simulation: ', len(sim_splinters))
 
+
+    data_list = [
+            (U(sim.nom_stress,sim.thickness), 'Simulation', sim_areas),
+            (specimen.U, 'Probekörper', spec_areas),
+        ]
+    if voronoi is not None:
+        data_list.append((U(sim.nom_stress,sim.thickness), 'Voronoi', vor_areas))
+
+    fig2d = datahist_2d(
+        data_list,
+        30,
+        False
+    )
+
+    State.output(fig2d, f'{specimen.name}--{sim.fullname}--voronoi', figwidth=FigureSize.ROW2)
 
 # @sim_app.command()
 # def create_spatial():
@@ -685,7 +773,7 @@ def compare(
 
 #     plt.imshow(comparison)
 #     plt.show()
-
+# endregion
 
 @sim_app.command()
 def create_voronoi():

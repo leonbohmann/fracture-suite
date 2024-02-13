@@ -20,6 +20,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from fracsuite.core.arrays import sort_two_arrays
 
 from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
@@ -623,7 +624,7 @@ def datahist_to_ax(
     as_density = True,
     plot_mode: DataHistPlotMode = DataHistPlotMode.HIST,
     unit: str = "mm²",
-    mean_format: str = ".2f"
+    mean_format: str = ".1f"
 ) -> tuple[Any, list[float], Any]:
     """
     Plot a histogram of the data to axes ax.
@@ -652,6 +653,9 @@ def datahist_to_ax(
     data.sort()
 
     data = cvt(data)
+
+    # find amount of hist plots already in axs
+    n_plots = len(ax.patches) if plot_mode == DataHistPlotMode.HIST else len(ax.lines)
 
 
     if data_mode == DataHistMode.PDF:
@@ -691,14 +695,81 @@ def datahist_to_ax(
         most_probable_area_value = 10**most_probable_area if as_log else most_probable_area
         most_probable_area_string = mean_format.format(most_probable_area_value)
         print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
-        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"Ø={most_probable_area_string}{unit}", color='red', alpha=alpha)
+        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"{most_probable_area_string}{unit}", color=color, alpha=alpha)
 
-        axd = ax.get_xlim()[1] - ax.get_xlim()[0]
-        ayd = ax.get_ylim()[1] - ax.get_ylim()[0]
-        ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{most_probable_area_string}{unit}", color='red', alpha=alpha, ha='left', va='center', zorder=2)
+        # axd = ax.get_xlim()[1] - ax.get_xlim()[0]
+        # ayd = ax.get_ylim()[1] - ax.get_ylim()[0]
+
+        # # draw text on the plot so it doesnt overlap previous texts (from n_plots)
+        # ax.text(most_probable_area + axd*0.01 , ayd * 0.03 + n_plots*0.01, f"{most_probable_area_string}{unit}", color=color, alpha=alpha, ha='left', va='center', zorder=2)
+
+
+        # ax.text(most_probable_area + axd*0.01 , ayd * 0.03, f"{most_probable_area_string}{unit}", color=color, alpha=alpha, ha='left', va='center', zorder=2)
     return None, binrange, binned_data
 
+def datahist_2d(
+    data: list,
+    n_bins: int = 30,
+    y_stress: bool = False,
+):
+    """
+    Plot a 2D histogram of the data.
 
+    Args:
+        data (list): The data to plot. [stress|energy, name, x_values]
+        n_bins (int, optional): Number of bins. Defaults to 30.
+        y_stress (bool, optional): States if the first entry of data is stress or energy. Defaults to False.
+    """
+    # logarthmic binning
+    binrange = np.linspace(0, 2, n_bins)
+
+    data = sorted(data, key=lambda x: x[0])
+
+    def transform_x_value(y_value):
+        return np.histogram(y_value, bins=binrange, density=True, range=(np.min(binrange), np.max(binrange)))
+
+    y_values = [x[0] for x in data]
+    names = [x[1] for x in data]
+    x_values = [transform_x_value(x[2]) for x in data]
+
+
+    sz = FigureSize.WIDE
+
+    fig, axs = plt.subplots(figsize=get_fig_width(sz))
+    # sort data and names for ascending stress
+    axs.set_xlabel(AxLabels.SPLINTER_AREA)
+    if not y_stress:
+        axs.set_ylabel("$U$ (J/m²)")
+    else:
+        axs.set_ylabel("$\sigma_\\text{s}$ (MPa)")
+
+    x_ticks = np.arange(0, n_bins, 10)
+    siz_mod = 2 if len(x_ticks) > 10 else 1
+    axs.set_xticks(x_ticks, [f'{10 ** binrange[x]:.2f}' if i % siz_mod == 0 else "" for i, x in enumerate(x_ticks)])
+
+    str_mod = 5 if len(y_values) > 15 else 1
+    axs.set_yticks(np.arange(0, len(y_values), 1),
+                   [f'{np.abs(x):.2f}' if i % str_mod == 0 else "" for i, x in enumerate(y_values)])
+
+    axy = axs.secondary_yaxis('right')
+    axy.set_yticks(axs.get_yticks(), [x for i, x in enumerate(names)])
+
+    dt = np.array(x_values)
+    axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
+    fig.colorbar(axim, ax=axs, orientation='vertical', label='WD $p(A_S)$', pad=0.2)
+    # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
+    # plt.show()
+
+    axy.set_yticks(np.linspace(axy.get_yticks()[0], axy.get_yticks()[-1], len(axs.get_yticks())))
+
+    axs.grid(False)
+
+    # disable minor ticks on y axis
+    axs.yaxis.set_minor_locator(plt.NullLocator())
+    axy.yaxis.set_minor_locator(plt.NullLocator())
+
+
+    return fig,axs
 
 def label_image(
     image,

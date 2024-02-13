@@ -24,7 +24,7 @@ from rich.progress import track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.arrays import sort_arrays, sort_two_arrays
 from fracsuite.core.calculate import pooled
-from fracsuite.core.coloring import get_color, rand_col
+from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.detection import attach_connections, get_adjacent_splinters_parallel
 from fracsuite.core.image import FontSize, put_scale, put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
@@ -317,20 +317,73 @@ def plot_adjacent_detail(
 
         State.output(im0, 'splinter_detail',spec=specimen, to_additional=True, mods=[i])
 
+@app.command()
+def nielsen_n50(
+
+):
+    def n50(sig_s: float):
+        return (sig_s*0.5/14.96) ** 4
+
+
+    specimens: list[Specimen] = Specimen.get_all_by(lambda x: x.has_splinters, load=True)
+    x = np.zeros(len(specimens))
+    y_real = np.zeros(len(specimens))
+    y_nielsen = np.zeros(len(specimens))
+
+    for i, specimen in enumerate(specimens):
+        sig_s = np.abs(specimen.sig_h)
+
+        real_n50 = specimen.calculate_nfifty()
+        nielsen_spec_n50 = n50(sig_s)
+
+        x[i] = sig_s
+        y_real[i] = real_n50
+        y_nielsen[i] = nielsen_spec_n50
+
+    sz = FigureSize.ROW2
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    axs.scatter(x, y_real, label='Real')
+
+    axs.set_xlabel('Stress $\sigma_s$ [MPa]')
+    axs.set_ylabel('N50 [-]')
+
+    # nielsen fit
+    x_fit = np.linspace(np.min(x), np.max(x), 100)
+    y_fit = n50(x_fit)
+    axs.plot(x_fit, y_fit, label='Nielsen')
+
+    # # real fit
+    # popt,pcov = curve_fit(fitter, x, y_real)
+    # y_fit = fitter(x_fit, *popt)
+    # axs.plot(x_fit, y_fit, label='Real')
+
+
+    axs.legend()
+    State.output(fig, 'nielsen_n50', to_additional=True, figwidth=sz)
+
 
 @app.command()
 def draw_contours(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
     fill: Annotated[bool, typer.Option(help='Fill contours.')] = False,
     ls: Annotated[int, typer.Option(help='Line size.')] = 2,
+    color: Annotated[str, typer.Option(help='Color of the contours.')] = None,
+    label: Annotated[bool, typer.Option(help='Label the splinters.')] = False,
 ):
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
     splinters = specimen.splinters
 
-    out_img = specimen.get_fracture_image()
+    if not label:
+        out_img = specimen.get_fracture_image()
+    else:
+        out_img = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
     for splinter in track(splinters, description="Drawing contours...", transient=True):
-        clr = rand_col()
+        if color == "random":
+            clr = rand_col()
+        else:
+            clr = norm_color(color, 255)
+
         cv2.drawContours(out_img, [splinter.contour], 0, clr, ls if not fill else -1)
 
     State.output(out_img, 'contours', spec=specimen, to_additional=True)
@@ -402,6 +455,7 @@ def import_files(
 def extract_details(
     names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
     region: Annotated[tuple[int, int, int, int], typer.Option(help='Region to extract. X Y W H.')] = (1250, 1250, 200, 200),
+    fontscale: Annotated[str, typer.Option(help='Font scale.')] = FontSize.HUGEXL,
 ):
     filterf = create_filter_function(names, needs_splinters=True, needs_scalp=False)
     specimens: list[Specimen] = Specimen.get_all_by(filterf, load=True)
@@ -428,10 +482,10 @@ def extract_details(
         fracture_image = cv2.resize(fracture_image, (0, 0), fx=rsz_factor, fy=rsz_factor)
 
         # add text to center of line
-        fracture_image = put_scale(scale_length_val/10,scale_length_px, fracture_image, clr=(0,0,0), sz=FontSize.HUGE)
+        fracture_image = put_scale(scale_length_val/10,scale_length_px, fracture_image, clr=(0,0,0), sz=FontSize[fontscale.upper()])
 
         # save image
-        State.output(fracture_image, f"extracted_{specimen.name}", spec=specimen, to_additional=True, figwidth=FigureSize.ROW3)
+        State.output(fracture_image, f"extracted_{specimen.name}_{specimen.sig_h:.0f}", spec=specimen, to_additional=True, figwidth=FigureSize.ROW3)
 
 
 
