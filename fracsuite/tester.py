@@ -247,7 +247,6 @@ def threshold(
     source: Annotated[str, typer.Argument(help='Path to image file.')],
     region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = (250,250,100,100),
     region_f: Annotated[tuple[float,float], typer.Option(help='Region center in percent.')] = None,
-    realsize: tuple[int,int] = (500,500),
 ):
     # Initialize GUI
     root = tk.Tk()
@@ -270,7 +269,9 @@ def threshold(
         dir = os.path.dirname(source)
 
         img = specimen.get_fracture_image()
-        px_per_mm = specimen.calculate_px_per_mm(realsize_mm=realsize)
+        px_per_mm = specimen.calculate_px_per_mm()
+        print("px/mm: ", px_per_mm)
+        
         # take a small portion of the image
         if region is None:
             region = np.array((250,250,500,500)) * px_per_mm
@@ -281,9 +282,9 @@ def threshold(
             region = img.shape[1] * region_f[0], img.shape[0] * region_f[1], region[2], region[3]
             region = np.asarray(region)
 
-        print(region)
         region = region.astype(np.uint32)
         print(region)
+        print(img.shape)
         # get region cx cy w h from image
         img = img[region[1]-region[3]//2:region[1]+region[3]//2, region[0]-region[2]//2:region[0]+region[2]//2]
 

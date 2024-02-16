@@ -102,33 +102,40 @@ def rhc_calculator(spl: list[Splinter], *args, **kwargs):
     # return mean_distance, 0
 
     total_area = np.sum([s.area for s in spl])
+    w = np.sqrt(total_area)
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
-    x2,y2 = lhatc_xy(all_centroids, total_area, d_max)
+    x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
     min_idx = first_minimum(y2)
     r1 = x2[min_idx]
 
-    # acceptance = min_idx / len(y2)
     # this is debug output
-    # fig,axs = plt.subplots(1,1)
-    # axs.plot(x2,y2)
-    # file = tempfile.mktemp(".png")
-    # fig.savefig(file)
+    if "debug" in kwargs and kwargs["debug"]:
+        fig,axs = plt.subplots(1,1)
+        axs.plot(x2,y2)
+        file = tempfile.mktemp(".png", "rhc")
+        fig.savefig(file)
+        plt.close(fig)
     return r1, 0
 
 def acc_calculator(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
+    assert 'max_distance' in kwargs, "max_distance not passed to kernel function!"
+
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
     x2,y2 = lhatc_xy(all_centroids, total_area, d_max)
     min_idx = np.argmin(y2)
-    acceptance = min_idx / len(y2)
+
+    acceptance = min_idx / kwargs['max_distance']
 
     # this is debug output
-    # fig,axs = plt.subplots(1,1)
-    # axs.plot(x2,y2)
-    # file = tempfile.mktemp(".png")
-    # fig.savefig(file)
+    if "debug" in kwargs and kwargs["debug"]:
+        fig,axs = plt.subplots(1,1)
+        axs.plot(x2,y2)
+        file = tempfile.mktemp(".png", "acc")
+        fig.savefig(file)
+        plt.close(fig)
 
     return acceptance, 0
 
@@ -144,9 +151,6 @@ calculators = {
 class Specimen(Outputtable):
     """ Container class for a specimen. """
 
-
-    DAT_FRACINTENSITY: str = "frac_intensity"
-    "Key for the fracture intensity in the simdata file."
     DAT_HCRADIUS: str = "hc_radius"
     "Key for the hard core radius in the simdata file."
     DAT_ACCEPTANCE_PROB: str = "acceptance_prob"
@@ -322,6 +326,10 @@ class Specimen(Outputtable):
         assert self.loaded, "Specimen not loaded."
         return self.__acc
 
+    @property
+    def has_fracture_scans(self):
+        return self.__has_fracture_scans
+
     def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
 
@@ -343,6 +351,13 @@ class Specimen(Outputtable):
         print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)} , "
                 f"Splinters: {checkmark(self.has_splinters)} ) "
                     f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
+
+
+    def put_fracture_image(self, img: np.ndarray):
+        """Puts the fracture image into the specimen folder."""
+        cv2.imwrite(os.path.join(self.fracture_morph_dir, "Transmission.bmp"), img)
+        self.__has_fracture_scans = True
+
 
     def __init__(self, path: str, log_missing = True, load = False):
         """Create a new specimen.
@@ -442,7 +457,7 @@ class Specimen(Outputtable):
 
         # splinters requisites
         self.fracture_morph_dir = os.path.join(self.path, "fracture", "morphology")
-        self.has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
+        self.__has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
             and find_file(self.fracture_morph_dir, "*.bmp") is not None
         self.splinters_path = os.path.join(self.path, "fracture", "splinter")
         "Path to the splinter output folder."
@@ -485,8 +500,20 @@ class Specimen(Outputtable):
         self.__save_simdata()
 
     def __save_simdata(self):
-        with open(self.simdata_path, "w") as f:
-            json.dump(self.simdata, f, indent=4)
+        backup = None
+        if os.path.exists(self.simdata_path):
+            with open(self.simdata_path, "r") as f:
+                backup = f.readlines()
+
+        try:
+            with open(self.simdata_path, "w") as f:
+                json.dump(self.simdata, f, indent=4)
+        except Exception as e:
+            if backup is not None:
+                with open(self.simdata_path, "w") as f:
+                    f.writelines(backup)
+
+            raise e
 
     def __save_settings(self):
         with open(self.__cfg_path, "r") as f:
@@ -520,11 +547,12 @@ class Specimen(Outputtable):
 
     def get_fracture_image(self, as_rgb = True):
         """Gets the fracture image. Default is RGB."""
-        transmission_file = find_file(self.fracture_morph_dir, "*Transmission*")
+        transmission_file = find_file(self.fracture_morph_dir, "*transmission*")
         if transmission_file is not None:
             return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
+
     def get_transmission_image(self, as_rgb = True):
-        transmission_file = find_file(os.path.join(self.path, "anisotropy"), "*Transmission*")
+        transmission_file = find_file(os.path.join(self.path, "anisotropy"), "*transmission*")
         if transmission_file is not None:
             return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
@@ -612,19 +640,24 @@ class Specimen(Outputtable):
 
         return np.array(id_list), np.array(p_list)
 
-    def calculate_NperWindow(self, force_recalc: bool = False, D_mm: float = 50) -> int:
+    def calculate_intensity(self, force_recalc: bool = False, D_mm: float = 50) -> int:
         """
-        Calculates the mean splinter count in a observation window of D_mm*D_mm on the fracture image.
+        Calculates the fracture intensity by running a kde over the whole pane domain.
+
+        The fracture intensity is
+        `lambda = N / A`
+        where N is the number of splinters and A is the area of the window. Using a KDE
+        this value is averaged over the whole pane domain.
 
         Arguments:
             force_recalc (bool, optional): Recalculate. Defaults to False.
-            D (float, optional): Window width in mm. Defaults to 50.
+            D_mm (float, optional): Window width in mm. Defaults to 50.
 
         Returns:
-            int: The mean fracture intensity, Amount of Splinters in observation field N.
+            float: The mean fracture intensity in 1/mm².
         """
 
-        f_intensity = self.simdata.get(Specimen.DAT_FRACINTENSITY, None)
+        f_intensity = self.simdata.get(Specimen.DAT_LAMBDA, None)
         if force_recalc or f_intensity is None:
             region = self.settings[Specimen.SET_REALSIZE]
             kernel = ObjectKerneler(
@@ -633,19 +666,36 @@ class Specimen(Outputtable):
                 collector=lambda x,r: x.in_region(r),
                 skip_edge=True,
             )
-
-            _, _, Z = kernel.run(
-                lambda x: len(x),
+            # run the kernel window, use int_calculator
+            _,_,Z,_ = kernel.window(
+                SplinterProp.INTENSITY,
+                int_calculator,
                 D_mm,
-                50,
-                mode="area",
-                exclude_points=[self.get_impact_position()],
-                fill_skipped_with_mean=True
+                n_points=25,
+                impact_position=self.get_impact_position(),
+                pxpmm = self.calculate_px_per_mm(),
             )
-            f_intensity = int(np.mean(Z))
-            self.set_data(Specimen.DAT_FRACINTENSITY, f_intensity)
+
+            f_intensity = np.nanmean(Z)
+            self.set_data(Specimen.DAT_LAMBDA, f_intensity)
 
         return f_intensity
+
+    def calculate_break_params(self, force_recalc: bool = False, D_mm: float = 50.0):
+        """
+        Calculate the fracture intensity parameter according to the BREAK approach.
+
+        Args:
+            force_recalc (bool, optional): Recalculate. Defaults to False.
+            D_mm (float, optional): Window width in mm. Defaults to 50.
+
+        Returns:
+            lambda, rhc, acc: The fracture intensity parameter in 1/mm², the hard core radius in mm and the acceptance probability.
+        """
+        lam = self.calculate_break_lambda(force_recalc, D_mm)
+        rhc, acc = self.calculate_break_rhc(force_recalc)
+        return lam, rhc, acc
+
 
     def calculate_break_lambda(self, force_recalc: bool = False, D_mm: float = 50.0) -> float:
         """
@@ -657,7 +707,7 @@ class Specimen(Outputtable):
         Returns:
             float: The fracture intensity parameter in 1/mm².
         """
-        lam = self.calculate_NperWindow(force_recalc=force_recalc, D_mm=D_mm) / D_mm**2
+        lam = self.calculate_intensity(force_recalc, D_mm)
         self.set_data(Specimen.DAT_LAMBDA, lam)
         return lam
 
@@ -673,23 +723,29 @@ class Specimen(Outputtable):
             d_max (float, optional): Maximum distance in mm. Defaults to 50.
 
         Returns:
-            float: The hard core radius in mm.
+            float, float: The hard core radius in mm and the acceptance probability.
         """
 
         r1 = self.simdata.get(Specimen.DAT_HCRADIUS, None)
         acceptance = self.simdata.get(Specimen.DAT_ACCEPTANCE_PROB, None)
 
         if force_recalc or r1 is None or acceptance is None:
-            all_centroids = np.array([s.centroid_mm for s in self.splinters])
+            all_centroids = np.asarray([s.centroid_mm for s in self.splinters])
             pane_size = self.get_real_size()
             d_max = estimate_dmax(self.splinters)
             x2,y2 = lhatc_xy(all_centroids, pane_size[0], pane_size[1], d_max)
             min_idx = first_minimum(y2)
-            r1 = x2[min_idx]
-            acceptance = min_idx / len(y2)
 
-            self.set_data(Specimen.DAT_ACCEPTANCE_PROB, acceptance)
-            self.set_data(Specimen.DAT_HCRADIUS, r1)
+            if min_idx == -1:
+                r1 = np.nan
+                acceptance = np.nan
+            else:
+                r1 = x2[min_idx]
+                # acceptance parameter is simply the ratio of the first minimum to the maximum distance
+                acceptance = r1 / (np.sqrt(pane_size[0]**2 + pane_size[1]**2))
+
+                self.set_data(Specimen.DAT_ACCEPTANCE_PROB, float(acceptance))
+                self.set_data(Specimen.DAT_HCRADIUS, float(r1))
 
         return r1,acceptance
 
@@ -702,10 +758,9 @@ class Specimen(Outputtable):
         if realsize_mm is not None:
             self.set_setting(Specimen.SET_REALSIZE, realsize_mm)
 
-
         frac_img = self.get_fracture_image()
         assert frac_img is not None, "Fracture image not found."
-        return frac_img.shape[0] / realsize[1]
+        return frac_img.shape[1] / realsize[0]
 
     def kfun(self):
         """
@@ -759,7 +814,24 @@ class Specimen(Outputtable):
 
         return in_region
 
-    def calculate_nfifty(self, centers = [], size = (50,50), force_recalc=False, simple = False):
+    def calculate_nfifty_kde(self, D = 50.0, force_recalc=False):
+        """
+        Calculate the nfifty value using a KDE.
+
+        The mean intensity value is calculated using `calculate_intensity`.
+        The area of the window is calculated using `D**2`. `N50 = l * D**2`.
+
+        Args:
+            D (float, optional): Window width in mm. Defaults to 50.0.
+            force_recalc (bool, optional): Forces a recalculation of the intensity, even if it has been calculated before. Defaults to False.
+
+        Returns:
+            float: The average number of splinters in a window of size D.
+        """
+        intensity = self.calculate_intensity(force_recalc, D)
+        return intensity * D**2
+
+    def calculate_nfifty_count(self, centers = [], size = (50,50), force_recalc=False, simple = False):
 
 
         if centers == [] or simple:
@@ -886,7 +958,7 @@ class Specimen(Outputtable):
             n_points,
             impact_position,
             self.calculate_px_per_mm(),
-            len(self.splinters)
+            total_len=len(self.splinters)
         )
 
         return X,Y,Z,Zstd
@@ -904,10 +976,10 @@ class Specimen(Outputtable):
             tuple[Radii(n), Angles(m), Values(n,m), Stddev(n,m)]
         """
         impact_position = self.get_impact_position()
-
+        size = self.get_real_size()
         # create kerneler
         kerneler = ObjectKerneler(
-            self.get_real_size(),
+            size,
             self.splinters,
             None,
             False

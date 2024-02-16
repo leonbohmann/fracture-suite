@@ -674,7 +674,7 @@ def datahist_to_ax(
             edgecolor = 'gray' if plot_mode == DataHistPlotMode.HIST else 'none'
 
             # density: normalize the bins data count to the total amount of data
-            binned_data,edges,bin_container = ax.hist2d(data, bins=binrange,
+            binned_data,edges,bin_container = ax.hist(data, bins=binrange,
                     density=as_density,
                     histtype='step' if plot_mode == DataHistPlotMode.STEPS else 'bar',
                     color=fillcolor,
@@ -982,7 +982,7 @@ def fill_polar_cell(
     alpha: float = 1,
 ):
     mask = np.zeros_like(img, dtype=np.uint8)
-    center = (int(center[1]), int(center[0]))
+    center = (int(center[0]), int(center[1]))
     # start by drawing a circle with the end radius
     cv2.ellipse(mask, center, (int(end_radius), int(end_radius)), 0, start_angle, end_angle, clr, -1)
 

@@ -370,32 +370,37 @@ def quadrat_count(points, size, d, alpha=0.05):
 
 def first_minimum(data):
     mins = argrelextrema(data, np.less, order=2)
-    first_min = mins[0][0]
+    first_min = mins[0]
+    if len(first_min) > 1:
+        first_min = first_min[0]
+    elif len(first_min) == 0:
+        first_min = -1
+
     return first_min
 
-def khat(points, width, height, d):
-    return np.array(khat_test(points, width, height, d))
+def khat(points, width, height, d, use_weights=True):
+    return np.array(khat_test(points, width, height, d, use_weights))
 
-def lhat(points, width, height, d):
-    return np.array(lhat_test(points, width, height, d))
+def lhat(points, width, height, d, use_weights=True):
+    return np.array(lhat_test(points, width, height, d, use_weights))
 
-def lhatc(points, width, height, d):
-    return np.array(lhatc_test(points, width, height, d))
+def lhatc(points, width, height, d, use_weights=True):
+    return np.array(lhatc_test(points, width, height, d, use_weights))
 
-def khat_xy(points, width, height, d):
-    p = np.array(khat_test(points, width, height, d))
+def khat_xy(points, width, height, d, use_weights=True):
+    p = khat(points, width, height, d, use_weights=use_weights)
     x = p[:,0]
     y = p[:,1]
     return x,y
 
-def lhat_xy(points, width, height, d):
-    p = np.array(lhat_test(points, width, height, d))
+def lhat_xy(points, width, height, d, use_weights=True):
+    p = lhat(points, width, height, d, use_weights=use_weights)
     x = p[:,0]
     y = p[:,1]
     return x,y
 
-def lhatc_xy(points, width, height, d):
-    p = np.array(lhatc_test(points, width, height, d))
+def lhatc_xy(points, width, height, d, use_weights=True):
+    p = lhatc(points, width, height, d, use_weights)
     x = p[:,0]
     y = p[:,1]
     return x,y

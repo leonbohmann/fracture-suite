@@ -1,3 +1,4 @@
+import json
 from multiprocessing import Pool
 from typing import Any, Callable, TypeVar
 import numpy as np
@@ -11,6 +12,9 @@ from rich import print
 from dataclasses import dataclass
 
 SKIP_VALUE = np.nan
+
+def deepcopy(obj):
+    return json.loads(json.dumps(obj))
 
 def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
     if isinstance(n_points, tuple):
@@ -26,21 +30,14 @@ def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
 
     return i_w, i_h
 
-def process_polar(
-        args
-    ):
-    """
-    args: r0,r1,t0,t1,i,j,ip,spl,calculator, mode, ip, pxpmm
 
-    """
-    spl: list[Splinter]
-    # radii, angles, list of splinters
-    r0,r1,t0,t1,i,j,ip,spl,calculator, mode, pxpmm = args
+#TODO: For kernels, the passed arguments are still cumbersome and not straightforward.
+#      The kerneler should be able to handle the arguments itself and raise Exceptions, if any expected argument is missing.
+#   The kerneler could start with checks:
+#       assert "n_points" in kwargs, "n_points must be set."
+#       assert "kw" in kwargs, "kw must be set."
+#       ...
 
-
-    # calculate the value
-    mean_value, stddev = calculator(spl, mode, ip, pxpmm)
-    return (i,j,(r0+r1)/2,(t0+t1)/2, mean_value, stddev)
 
 @dataclass
 class WindowArguments:
@@ -50,6 +47,7 @@ class WindowArguments:
     x2: float
     y1: float
     y2: float
+    max_d: float
     objects_in_region: list
     calculator: Callable[[list], float]
     prop: str
@@ -72,8 +70,11 @@ class WindowResult:
     stddev: float
     "Standard deviation of the region"
 
+
+
 def process_window(args: WindowArguments):
-    mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm) \
+    """Wrapper function for the window kerneler."""
+    mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, **args.kwargs) \
         if len(args.objects_in_region) > 0 else (SKIP_VALUE, SKIP_VALUE)
     return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, mean_value, stddev)
 
@@ -196,6 +197,7 @@ class ObjectKerneler():
         ip_mm,
         mode,
         pxpmm,
+        **kwargs
     ):
         """
         Calculate the polar distribution of the data.
@@ -207,6 +209,7 @@ class ObjectKerneler():
             ip_mm (tuple[float,float]): Impact position in mm.
             mode (SplinterProp): Property to calculate.
             pxpmm (float): Pixel per millimeter factor.
+            kwargs: Additional arguments for the calculator.
 
         Returns:
             R,T,Z,Zstd:
@@ -245,7 +248,7 @@ class ObjectKerneler():
                     spl_groups[i][j].append(s)
 
         # create args for every (r,t) region
-        args = []
+        args: list[WindowArguments] = []
         for i in range(len(r_range_mm)-1):
             for j in range(len(t_range_deg)-1):
                 # last r includes all remaining radii
@@ -253,7 +256,10 @@ class ObjectKerneler():
                 t0,t1 = (t_range_deg[j],t_range_deg[j+1])
                 spl = spl_groups[i][j]
 
-                args.append((r0,r1,t0,t1,i,j,ip_mm,spl,calculator,mode, pxpmm))
+                c = 2*np.pi*((r1-r0)/2 + r0)
+                max_d = c * (t1-t0) / 360
+
+                args.append(WindowArguments(i,j,r0,r1,t0,t1,max_d,spl,calculator, mode, ip_mm, pxpmm, kwargs))
 
         def put_result(result):
             i, j, r_c, t_c, mean_value, stddev = result
@@ -262,15 +268,18 @@ class ObjectKerneler():
             X[i] = r_c
             Y[j] = t_c
 
+        # this might raise an error
+        process_window(args[0])
+
         if len(args) > 120:
             # use multiprocessing pool
             with Pool() as pool:
                 # create unordered imap and track progress
-                for result in tqdm(pool.imap_unordered(process_polar, args), desc='Calculating polar...', total=len(args), leave=False):
+                for result in tqdm(pool.imap_unordered(process_window, args), desc='Calculating polar...', total=len(args), leave=False):
                     put_result(result)
         else:
             for arg in tqdm(args, desc='Calculating polar...', total=len(args), leave=False):
-                result = process_polar(arg)
+                result = process_window(arg)
                 put_result(result)
 
         return X,Y,Z,Zstd
@@ -279,12 +288,26 @@ class ObjectKerneler():
         self,
         prop,
         calculator: Callable[[list[T]], float],
-        kw: int,
+        kw: float,
         n_points: int | tuple[int,int],
         impact_position: tuple[float,float],
         pxpmm: float,
         **kwargs
     ):
+        """
+        Calculate the window distribution of the data.
+
+        Args:
+            prop (_type_): _description_
+            calculator (Callable[[list[T]], float]): _description_
+            kw (int): _description_
+            n_points (int | tuple[int,int]): _description_
+            impact_position (tuple[float,float]): _description_
+            pxpmm (float): _description_
+
+        Returns:
+            X,Y,Z,Zstd
+        """
         assert n_points > 0 or n_points == -1, \
             "n_points must be greater than 0 or -1."
         assert kw < self.region[0], \
@@ -300,12 +323,6 @@ class ObjectKerneler():
         print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
         print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
         print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
-
-        # Get the ranges for x and y
-        minx = kw // 2
-        maxx = self.region[0] - kw // 2
-        miny = kw // 2
-        maxy = self.region[1] - kw // 2
 
         i_w, i_h = convert_npoints(n_points, self.region, kw)
 
@@ -361,7 +378,11 @@ class ObjectKerneler():
 
                 objects_in_region = windows[w][h]
 
-                args.append(WindowArguments(w,h,x1,x2,y1,y2,objects_in_region,calculator,prop, impact_position, pxpmm, kwargs))
+                max_d = np.sqrt((x2-x1)**2 + (y2-y1)**2)
+                args.append(WindowArguments(w,h,x1,x2,y1,y2, max_d,objects_in_region,calculator,prop, impact_position, pxpmm, kwargs))
+
+        # make a test run, it may raise an exception
+        process_window(args[0])
 
         # iterate to calculate the values
         with Pool() as pool:

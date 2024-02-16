@@ -8,6 +8,7 @@ import json
 import os
 from pickle import NONE
 import re
+import cv2
 from matplotlib import pyplot as plt
 from matplotlib.figure import figaspect
 
@@ -148,7 +149,7 @@ def check(areas: bool = False):
 
 marked_pos = None
 @app.command()
-def mark_center(name):
+def mark_impact(name):
     specimen = Specimen.get(name)
 
     if not specimen.has_fracture_scans:
@@ -192,7 +193,8 @@ def mark_center(name):
 
     global marked_pos
     print(f"Marked position: {marked_pos}")
-    specimen.set_setting(Specimen.SET_ACTUALBREAKPOS, tuple(marked_pos))
+    if marked_pos is not None:
+        specimen.set_setting(Specimen.SET_ACTUALBREAKPOS, tuple(marked_pos))
 
 
 @app.command()
@@ -386,7 +388,7 @@ def to_tex(exclude_thickness: int = None):
         return f"{s.sig_h:.2f}"
     def n50(s: Specimen):
         if s.has_fracture_scans and s.has_splinters:
-            return f"{s.calculate_nfifty():.2f}"
+            return f"{s.calculate_nfifty_count():.2f}"
         else:
             return None
 
@@ -517,6 +519,8 @@ def import_fracture(
     no_rotate: bool = False,
     no_tester: bool = False,
     exclude_all_sensors: bool = False,
+    exclude_impact_radius: float = None,
+    fracture_image: str = None
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -524,7 +528,25 @@ def import_fracture(
     This function is safe to call because already transformed images are not overwritten and if
     there are already splinters, an overwrite has to be confirmed.
     """
-    specimen = Specimen.get(specimen_name, load=True)
+    specimen = Specimen.get(specimen_name, load=True, panic=False)
+
+    if specimen is None:
+        print(f"Specimen '{specimen_name}' not found! Creating...")
+        create(specimen_name)
+
+        assert fracture_image is not None, "Fracture image is required for new specimen!"
+
+        specimen = Specimen.get(specimen_name, load=True, panic=True, printout=False)
+        # put fracture image into specimen!
+        img = cv2.imread(fracture_image, cv2.IMREAD_GRAYSCALE)
+        specimen.put_fracture_image(img)
+    elif specimen is not None and fracture_image is not None:
+        if specimen.has_fracture_scans:
+            raise Exception("Specimen already has fracture scans! Overwrite not allowed! Delete the image at: " + specimen.fracture_morph_dir)
+
+        print(f"Specimen '{specimen_name}' has no fracture scans! Adding...")
+        img = cv2.imread(fracture_image, cv2.IMREAD_COLOR)
+        specimen.put_fracture_image(img)
 
     assert specimen.has_fracture_scans, "Specimen has no fracture scans"
 
@@ -537,6 +559,8 @@ def import_fracture(
 
     # set settings on specimen
     specimen.set_setting(Specimen.SET_EXCLUDE_ALL_SENSORS, exclude_all_sensors)
+    specimen.set_setting(Specimen.SET_REALSIZE, realsize)
+    specimen.set_setting(Specimen.SET_CBREAKPOSEXCL, exclude_impact_radius)
 
     print('[yellow]> Transforming fracture images <')
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)
@@ -547,7 +571,7 @@ def import_fracture(
         threshold(specimen.name)
 
     print('[yellow]> Marking impact point <')
-    mark_center(specimen.name)
+    mark_impact(specimen.name)
 
     print('[yellow]> Generating splinters <')
     from fracsuite.splinters import gen
@@ -581,7 +605,7 @@ def compare_nfifty_estimation(
     sigh = []
     for spec in tqdm(all_specimens, desc="Calculating nfifty...", leave=False):
         if spec.has_fracture_scans and spec.has_splinters:
-            nfifties[spec] = spec.calculate_nfifty(simple=True)
+            nfifties[spec] = spec.calculate_nfifty_count(simple=True)
             sigh.append(-spec.sig_h/2.0)
 
 

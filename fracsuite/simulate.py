@@ -105,16 +105,11 @@ def est_break(
 ):
     specimen = Specimen.get(specimen_name)
 
-    section('Estimating intensity...')
-    # find fracture intensity from first order statistics
-    intensity = specimen.calculate_break_lambda(force_recalc=True)
-
-    section('Estimating rhc...')
-    # find the hard core radius using second order statistics
-    rhc,acceptance = specimen.calculate_break_rhc(force_recalc=True)
+    section('Estimating parameters...')
+    intensity, rhc,acceptance = specimen.calculate_break_params(force_recalc=True)
     info(f'Fracture intensity: {intensity:.2f} 1/mm²')
     info(f'HC Radius: {rhc:.2f} mm')
-    info(f'Acceptance: {acceptance:.2f}')
+    info(f'Acceptance: {acceptance:.2e}')
 
     def Kpois(d):
         # see Baddeley et al. S.206 K_pois
@@ -126,7 +121,7 @@ def est_break(
     section('Plotting kfunc...')
     x,y = specimen.kfun()
     fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
-    ax.plot(x,y, label='$\hat{K}$')
+    ax.plot(x,y, label='$\hat{K}$') # , marker='x' # to display the points
     ax.plot(x,Kpois(np.asarray(x)), label='$\hat{K}_{t}$')
     ax.legend()
     ax.set_ylabel('$\hat{K}(d)$')
@@ -142,7 +137,7 @@ def est_break(
     fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
     ax.plot(x2,y2, label='$\hat{L}$')
     ax.axvline(rhc, linestyle='--', color='r', label=f'$r_{{hc}}={min_L:.1f}mm$')
-    ax.plot(x2,Lpois(np.asarray(x)), label='$\hat{K}_{t}$')
+    ax.plot(x2,Lpois(np.asarray(x)), label='$\hat{L}_{t}$')
     ax.legend()
     ax.set_ylabel('$\hat{L}(d)$')
     ax.set_xlabel('$d$ (mm)')
@@ -167,7 +162,7 @@ def est_break(
     size = specimen.get_real_size()
     area = size[0] * size[1]
     n_points = int(intensity * area)
-    acceptance = 4.5e-5
+    acceptance = acceptance
     points = csstraussproc2(size[0], size[1], rhc, n_points, acceptance, int(1e6))
     fig,axs = plt.subplots()
     axs.scatter(*zip(*points))
@@ -200,7 +195,6 @@ def est_break(
 
     section('Digitalize splinters...')
     splinters = Splinter.analyze_contour_image(voronoi_img, px_per_mm=1)
-
     return splinters
 
 

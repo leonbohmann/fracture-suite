@@ -119,8 +119,10 @@ def gen(
                 prep = defaultPrepConfig
 
             # generate splinters for the specimen
-            print(f'Using  px_per_mm = {px_per_mm:.2f}')
+            print("---        Summary         --")
+            print(f'       px_per_mm = {px_per_mm:.2f}')
             print(f'            prep = "{prep.name}"')
+            print(f'       real_size = {realsize}')
 
             print('Running analysis...')
             if not from_label:
@@ -333,7 +335,7 @@ def nielsen_n50(
     for i, specimen in enumerate(specimens):
         sig_s = np.abs(specimen.sig_h)
 
-        real_n50 = specimen.calculate_nfifty()
+        real_n50 = specimen.calculate_nfifty_count()
         nielsen_spec_n50 = n50(sig_s)
 
         x[i] = sig_s
@@ -379,7 +381,7 @@ def draw_contours(
     else:
         out_img = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
     for splinter in track(splinters, description="Drawing contours...", transient=True):
-        if color == "random":
+        if color is None:
             clr = rand_col()
         else:
             clr = norm_color(color, 255)
@@ -1676,9 +1678,9 @@ def nfifty(
     with get_progress(title='Working on specimens...') as progress:
         for i, specimen in enumerate(specimens):
             if not use_mean:
-                nfifty = specimen.calculate_nfifty(centers, (50,50), force_recalc=recalc)
+                nfifty = specimen.calculate_nfifty_count(centers, (50,50), force_recalc=recalc)
             else:
-                nfifty = specimen.calculate_NperWindow(force_recalc=recalc)
+                nfifty = specimen.calculate_intensity(force_recalc=recalc)
             results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_energy(), specimen.calculate_energy_density() , specimen.thickness, bid[specimen.boundary], nfifty)
 
             progress.advance()
