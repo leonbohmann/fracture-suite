@@ -1,9 +1,13 @@
 import json
 from multiprocessing import Pool
+import tempfile
 from typing import Any, Callable, TypeVar
+from matplotlib import pyplot as plt
 import numpy as np
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter import Splinter
+from fracsuite.core.splinter_props import SplinterProp
+from fracsuite.core.stochastics import first_minimum, lhatc_xy
 from fracsuite.core.vectors import angle_deg
 from fracsuite.state import State
 from tqdm import tqdm
@@ -31,6 +35,80 @@ def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
     return i_w, i_h
 
 
+def anyfunc(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
+    """Calculates a property for a list of splinters."""
+    if len(spl) == 0:
+        return (np.nan,np.nan)
+
+    values = np.asarray([s.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=pxpmm) for s in spl])
+
+    return (np.nanmean(values), np.nanstd(values))
+
+def intensity_kernel(spl: list[Splinter], *args,**kwargs):
+    """Calculate the mean intensity parameter lambda for a given set of splinters."""
+    # remark: Normally, the intensity is N/A, where A is the field of view.
+    #   len(spl) / kwargs["window_size"], 0
+    # THe problem is, that on specimen we filter out some splinters, which causes areas
+    # that are definetly not filled with splinters. For empty or almost empty areas, this approach
+    # is not valid. 
+
+    return len(spl) / kwargs["window_size"], 0
+
+def rhc_kernel(spl: list[Splinter], *args, **kwargs):
+    """Calculate the hard core radius for a given set of splinters."""
+    all_centroids = np.array([s.centroid_mm for s in spl])
+    # # calculate distance between all centroids
+    # distances = np.linalg.norm(all_centroids[:,None] - all_centroids[None,:], axis=-1)
+    # # find mean distance
+    # mean_distance, _ = calculate_dmode(distances, bins=100)
+    # return mean_distance, 0
+
+    total_area = np.sum([s.area for s in spl])
+    w = np.sqrt(total_area)
+    d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
+    x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
+    min_idx = first_minimum(y2)
+    r1 = x2[min_idx]
+
+    # this is debug output
+    if "debug" in kwargs and kwargs["debug"]:
+        fig,axs = plt.subplots(1,1)
+        axs.plot(x2,y2)
+        file = tempfile.mktemp(".png", "rhc")
+        fig.savefig(file)
+        plt.close(fig)
+    return r1, 0
+
+def acceptance_kernel(spl: list[Splinter], *args, **kwargs):
+    """Calculate the hard core radius for a given set of splinters."""
+    assert 'max_distance' in kwargs, "max_distance not passed to kernel function!"
+
+    all_centroids = np.array([s.centroid_mm for s in spl])
+    total_area = np.sum([s.area for s in spl])
+    w = np.sqrt(total_area)
+    d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
+    x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
+    min_idx = np.argmin(y2)
+    acceptance = x2[min_idx] / kwargs['max_distance']
+
+    # this is debug output
+    if "debug" in kwargs and kwargs["debug"]:
+        fig,axs = plt.subplots(1,1)
+        axs.plot(x2,y2)
+        file = tempfile.mktemp(".png", "acc")
+        fig.savefig(file)
+        plt.close(fig)
+
+    return acceptance, 0
+
+kernels = {
+    'Any': anyfunc,
+    SplinterProp.INTENSITY: intensity_kernel,
+    SplinterProp.RHC: rhc_kernel,
+    SplinterProp.ACCEPTANCE: acceptance_kernel
+}
+
+
 #TODO: For kernels, the passed arguments are still cumbersome and not straightforward.
 #      The kerneler should be able to handle the arguments itself and raise Exceptions, if any expected argument is missing.
 #   The kerneler could start with checks:
@@ -53,6 +131,7 @@ class WindowArguments:
     prop: str
     impact_position: tuple[float,float]
     pxpmm: float
+    window_size: float
     kwargs: dict
 
 @dataclass
@@ -74,7 +153,7 @@ class WindowResult:
 
 def process_window(args: WindowArguments):
     """Wrapper function for the window kerneler."""
-    mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, **args.kwargs) \
+    mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, window_size=args.window_size, **args.kwargs) \
         if len(args.objects_in_region) > 0 else (SKIP_VALUE, SKIP_VALUE)
     return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, mean_value, stddev)
 
@@ -191,12 +270,12 @@ class ObjectKerneler():
 
     def polar(
         self,
-        calculator: Callable[[list[Splinter]], float],
+        prop,
         r_range_mm,
         t_range_deg,
         ip_mm,
-        mode,
         pxpmm,
+        calculator: Callable[[list[Splinter]], float] = None,
         **kwargs
     ):
         """
@@ -223,6 +302,18 @@ class ObjectKerneler():
         Y = np.zeros(len(t_range_deg)-1, dtype=np.float64)
         Z = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
         Zstd = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
+
+        # the maximum possible distance between any two points
+        max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
+
+        # find appropriate kernel function
+        if calculator is None:
+            if prop in kernels:
+                calculator = kernels[prop]
+            else:
+                calculator = kernels['Any']
+
+
 
         spl_groups = []
         for i in range(len(r_range_mm)-1):
@@ -256,10 +347,25 @@ class ObjectKerneler():
                 t0,t1 = (t_range_deg[j],t_range_deg[j+1])
                 spl = spl_groups[i][j]
 
-                c = 2*np.pi*((r1-r0)/2 + r0)
-                max_d = c * (t1-t0) / 360
+                # area factor for circle segment
+                cf = (t1-t0) / 360
+                c = np.pi*(r1**2-r0**2)
+                window_size = c * cf
 
-                args.append(WindowArguments(i,j,r0,r1,t0,t1,max_d,spl,calculator, mode, ip_mm, pxpmm, kwargs))
+                args.append(
+                    WindowArguments(
+                        i,j,
+                        r0,r1,
+                        t0,t1,
+                        max_d,
+                        spl,
+                        calculator,
+                        prop,
+                        ip_mm,
+                        pxpmm,
+                        window_size,
+                        kwargs)
+                    )
 
         def put_result(result):
             i, j, r_c, t_c, mean_value, stddev = result
@@ -287,11 +393,11 @@ class ObjectKerneler():
     def window(
         self,
         prop,
-        calculator: Callable[[list[T]], float],
         kw: float,
         n_points: int | tuple[int,int],
         impact_position: tuple[float,float],
         pxpmm: float,
+        calculator: Callable[[list[T]], float] = None,
         **kwargs
     ):
         """
@@ -327,8 +433,16 @@ class ObjectKerneler():
 
         i_w, i_h = convert_npoints(n_points, self.region, kw)
 
-
+        # maximum possible distance between any two points
         max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
+
+        # find appropriate kernel function
+        if calculator is None:
+            if prop in kernels:
+                calculator = kernels[prop]
+            else:
+                calculator = kernels['Any']
+
 
         # create X Y and Z and Zstd arrays
         X = np.zeros(i_w, dtype=np.float64)
@@ -382,7 +496,9 @@ class ObjectKerneler():
 
                 objects_in_region = windows[w][h]
 
-                args.append(WindowArguments(w,h,x1,x2,y1,y2, max_d,objects_in_region,calculator,prop, impact_position, pxpmm, kwargs))
+                window_size = (x2-x1) * (y2-y1)
+
+                args.append(WindowArguments(w,h,x1,x2,y1,y2, max_d,objects_in_region,calculator,prop, impact_position, pxpmm, window_size, kwargs))
 
         # make a test run, it may raise an exception
         process_window(args[0])

@@ -33,6 +33,7 @@ from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
+from fracsuite.state import State
 
 
 general: GeneralSettings = GeneralSettings.get()
@@ -63,90 +64,6 @@ def default(x, _default):
 CALC_DMAX = None
 DMAX_K = 50
 DMAX_L = 50
-
-def estimate_dmax(splinters: list[Splinter]) -> float:
-    """Function to estimate the maximum """
-    return DMAX_K
-    # find maximum splinter size
-    sizes = [s.area for s in splinters]
-    max_size = np.max(sizes)
-
-    # assume, that the longest side of a splinter is 2mm
-    d_max = (max_size / 2) / 2
-    return d_max
-
-def any_calculator(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
-    """Calculates a property for a list of splinters."""
-    if len(spl) == 0:
-        return (np.nan,np.nan)
-
-    values = np.asarray([s.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=pxpmm) for s in spl])
-
-    # calculate the most probable value
-    # mpv,mpv_prob = calculate_dmode(values, bins=100)
-
-    return (np.nanmean(values), np.nanstd(values))
-
-def int_calculator(spl: list[Splinter], *args,**kwargs):
-    """Calculate the mean intensity parameter lambda for a given set of splinters."""
-    total_area = np.sum([s.area for s in spl])
-    return len(spl) / total_area, 0
-
-def rhc_calculator(spl: list[Splinter], *args, **kwargs):
-    """Calculate the hard core radius for a given set of splinters."""
-    all_centroids = np.array([s.centroid_mm for s in spl])
-    # # calculate distance between all centroids
-    # distances = np.linalg.norm(all_centroids[:,None] - all_centroids[None,:], axis=-1)
-    # # find mean distance
-    # mean_distance, _ = calculate_dmode(distances, bins=100)
-    # return mean_distance, 0
-
-    total_area = np.sum([s.area for s in spl])
-    w = np.sqrt(total_area)
-    d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
-    x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
-    min_idx = first_minimum(y2)
-    r1 = x2[min_idx]
-
-    # this is debug output
-    if "debug" in kwargs and kwargs["debug"]:
-        fig,axs = plt.subplots(1,1)
-        axs.plot(x2,y2)
-        file = tempfile.mktemp(".png", "rhc")
-        fig.savefig(file)
-        plt.close(fig)
-    return r1, 0
-
-def acc_calculator(spl: list[Splinter], *args, **kwargs):
-    """Calculate the hard core radius for a given set of splinters."""
-    assert 'max_distance' in kwargs, "max_distance not passed to kernel function!"
-
-    all_centroids = np.array([s.centroid_mm for s in spl])
-    total_area = np.sum([s.area for s in spl])
-    w = np.sqrt(total_area)
-    d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
-    x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
-    min_idx = np.argmin(y2)
-    acceptance = x2[min_idx] / kwargs['max_distance']
-
-    # this is debug output
-    if "debug" in kwargs and kwargs["debug"]:
-        fig,axs = plt.subplots(1,1)
-        axs.plot(x2,y2)
-        file = tempfile.mktemp(".png", "acc")
-        fig.savefig(file)
-        plt.close(fig)
-
-    return acceptance, 0
-
-calculators = {
-    'Any': any_calculator,
-    SplinterProp.INTENSITY: int_calculator,
-    SplinterProp.RHC: rhc_calculator,
-    SplinterProp.ACCEPTANCE: acc_calculator
-}
-
-
 
 class Specimen(Outputtable):
     """ Container class for a specimen. """
@@ -205,6 +122,14 @@ class Specimen(Outputtable):
 
         assert self.__splinters is not None, f"Splinters are empty. Specimen {self.name} not loaded?"
         return self.__splinters
+
+    @property
+    def allsplinters(self) -> list[Splinter]:
+        "All splinters on the glass ply."
+        if self.has_splinters and self.__allsplinters is None:
+            self.load_splinters()
+            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
+        return self.__allsplinters
 
     @property
     def scalp(self) -> ScalpSpecimen:
@@ -367,6 +292,7 @@ class Specimen(Outputtable):
         """
 
         self.__splinters: list[Splinter] = None
+        self.__allsplinters: list[Splinter] = None
         self.__scalp: ScalpSpecimen = None
         self.__sigma_h: ScalpStress = ScalpStress.default()
         self.__measured_thickness: float = np.nan
@@ -669,7 +595,6 @@ class Specimen(Outputtable):
             # run the kernel window, use int_calculator
             _,_,Z,_ = kernel.window(
                 SplinterProp.INTENSITY,
-                int_calculator,
                 D_mm,
                 n_points=25,
                 impact_position=self.get_impact_position(),
@@ -732,9 +657,10 @@ class Specimen(Outputtable):
         if force_recalc or r1 is None or acceptance is None:
             all_centroids = np.asarray([s.centroid_mm for s in self.splinters])
             pane_size = self.get_real_size()
-            d_max = estimate_dmax(self.splinters)
+            d_max = 50
             x2,y2 = lhatc_xy(all_centroids, pane_size[0], pane_size[1], d_max)
             min_idx = first_minimum(y2)
+            print(min_idx)
 
             if min_idx == -1:
                 r1 = np.nan
@@ -746,6 +672,14 @@ class Specimen(Outputtable):
 
                 self.set_data(Specimen.DAT_ACCEPTANCE_PROB, float(acceptance))
                 self.set_data(Specimen.DAT_HCRADIUS, float(r1))
+
+            # this is debug output
+            if State.debug:
+                fig,axs = plt.subplots(1,1)
+                axs.plot(x2,y2)
+                file = tempfile.mktemp(".png", "rhc")
+                fig.savefig(file)
+                plt.close(fig)
 
         return r1,acceptance
 
@@ -946,14 +880,8 @@ class Specimen(Outputtable):
             False
         )
 
-        if prop in calculators:
-            calcer = calculators[prop]
-        else:
-            calcer = calculators['Any']
-
         X,Y,Z,Zstd = kerneler.window(
             prop,
-            calcer,
             kw,
             n_points,
             impact_position,
@@ -979,7 +907,7 @@ class Specimen(Outputtable):
         # create kerneler
         kerneler = ObjectKerneler(
             size,
-            self.splinters,
+            self.allsplinters,
             None,
             False
         )
@@ -989,18 +917,11 @@ class Specimen(Outputtable):
         if r_range_mm is None:
             r_range_mm = self.layer_region.radii
 
-        if prop in calculators:
-            calcer = calculators[prop]
-        else:
-            calcer = calculators['Any']
-
-
         R,T,Z,Zstd = kerneler.polar(
-            calcer,
+            prop,
             r_range_mm,
             t_range_deg,
             impact_position,
-            prop,
             self.calculate_px_per_mm()
         )
         T = np.radians(T)
@@ -1046,7 +967,8 @@ class Specimen(Outputtable):
         realsz = self.get_real_size()
         # remove all splinters whose centroid is closer than 1 cm to the edge
         delta_edge = self.settings.get(Specimen.SET_EDGEEXCL, None) or 10
-        self.__splinters = [s for s in self.__splinters
+        self.__allsplinters = self.__splinters
+        self.__splinters = [s for s in self.__allsplinters
                             if  delta_edge < s.centroid_mm[0] < realsz[0] - delta_edge
                             and delta_edge < s.centroid_mm[1] < realsz[1] - delta_edge]
 
@@ -1066,6 +988,8 @@ class Specimen(Outputtable):
             # filter splinters
             self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(sensor_position)) > 10]
 
+        print(f"Loaded {len(self.__allsplinters)} splinters.")
+        print(f" > Filtered {len(self.__allsplinters) - len(self.__splinters)}")
 
     def transform_fracture_images(
         self,

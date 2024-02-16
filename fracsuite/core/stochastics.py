@@ -369,9 +369,15 @@ def quadrat_count(points, size, d, alpha=0.05):
     return X2, dof, c
 
 def first_minimum(data):
+    """
+    Find the first local minimum in a dataset.
+
+    Returns:
+        int: The index of the first local minimum.
+    """
     mins = argrelextrema(data, np.less, order=2)
     first_min = mins[0]
-    if len(first_min) > 1:
+    if len(first_min) >= 1:
         first_min = first_min[0]
     elif len(first_min) == 0:
         first_min = -1
