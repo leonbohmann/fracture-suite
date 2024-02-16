@@ -27,7 +27,7 @@ from fracsuite.core.image import to_rgb
 from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import calculate_dmode, calculate_kde
+from fracsuite.core.stochastics import calculate_dmode, calculate_kde, r_squared
 from fracsuite.general import GeneralSettings
 from fracsuite.state import StateOutput
 
@@ -564,14 +564,17 @@ class DataHistMode(str, Enum):
 class DataHistPlotMode(str, Enum):
     KDE = 'kde'
     "Kernel density estimation."
+    KDE2 = 'kde2'
+    "Kernel density estimation without fill"
     HIST = 'hist'
     "Histogram."
+    STEPS = 'steps'
+    "Histogram without fill"
 
 def datahist_plot(
     ncols:int = 1,
     nrows:int = 1,
     xlim: tuple[float,float] = None,
-    x_format: str = "{0:.0f}",
     x_label: str = 'Bruchstückflächeninhalt $A_S$ (mm²)',
     y_format: str = "{0:.2f}",
     y_label: str = None,
@@ -592,10 +595,17 @@ def datahist_plot(
         for ax in axs:
             ax.set_xlim((0, 2))
 
-    ticks = FuncFormatter(lambda x, pos: x_format.format(10**x))
+    def xfmt(x):
+        return f"{10**x:.0f}"
+        # return f"$\\scriptsize{{log}} ({10**x:.0f})$"
+
+
+    ticks = FuncFormatter(lambda x, pos: xfmt(x))
+    # mticksx = FuncFormatter(lambda x, pos: f"{10**x:.0f}")
     ticksy = FuncFormatter(lambda x, pos: y_format.format(x))
     for ax in axs:
         ax.xaxis.set_major_formatter(ticks)
+        # ax.xaxis.set_minor_formatter(mticksx)
         ax.yaxis.set_major_formatter(ticksy)
 
         ax.set_xlabel(x_label)
@@ -605,8 +615,10 @@ def datahist_plot(
             if data_mode == DataHistMode.PDF:
                 ax.set_ylabel('Wahrscheinlichkeitsdichte $p(A_S)$')
             elif data_mode == DataHistMode.CDF:
-                ax.set_ylabel('Kumulative Verteilungs Fkt. $C(A_S)$')
+                ax.set_ylabel('Kumulative Verteilungs Fkt. $P(A_S)$')
         ax.grid(True, which='major', axis='both')
+
+        ax.annotate("x-Werte nach $10^x$", xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
 
     return fig, axs
 
@@ -654,28 +666,28 @@ def datahist_to_ax(
 
     data = cvt(data)
 
-    # find amount of hist plots already in axs
-    n_plots = len(ax.patches) if plot_mode == DataHistPlotMode.HIST else len(ax.lines)
-
-
     if data_mode == DataHistMode.PDF:
         if binrange is None:
             binrange = np.linspace(data[0], data[-1], n_bins)
-        if plot_mode == DataHistPlotMode.HIST:
+        if plot_mode == DataHistPlotMode.HIST or plot_mode == DataHistPlotMode.STEPS:
+            fillcolor = norm_color(color)
+            edgecolor = 'gray' if plot_mode == DataHistPlotMode.HIST else 'none'
+
             # density: normalize the bins data count to the total amount of data
-            binned_data,edges,bin_container = ax.hist(data, bins=binrange,
+            binned_data,edges,bin_container = ax.hist2d(data, bins=binrange,
                     density=as_density,
-                    color=norm_color(color),
+                    histtype='step' if plot_mode == DataHistPlotMode.STEPS else 'bar',
+                    color=fillcolor,
                     label=label,
-                    edgecolor='gray',
-                    linewidth=0.5,
+                    linewidth=1 if plot_mode == DataHistPlotMode.STEPS else 0.5,
                     alpha=alpha)
-            color = bin_container[0].get_facecolor()
-        elif plot_mode == DataHistPlotMode.KDE:
+            color = edgecolor if plot_mode == DataHistPlotMode.STEPS else fillcolor
+        elif plot_mode == DataHistPlotMode.KDE or plot_mode == DataHistPlotMode.KDE2:
             x,y = calculate_kde(data)
             gauss_kde_plot = ax.plot(x,y, label=label, color=color, alpha=1.0, zorder=0)
             color = gauss_kde_plot[0].get_color()
-            ax.fill_between(x, y, 0.001, color=color, alpha=0.9, zorder=1)
+            if plot_mode != DataHistPlotMode.KDE2:
+                ax.fill_between(x, y, 0.001, color=color, alpha=0.9, zorder=1)
             ax.set_ylim((0, ax.get_ylim()[1]))
             binned_data = x
     elif data_mode == DataHistMode.CDF:
@@ -692,6 +704,7 @@ def datahist_to_ax(
         mean_format = f'{{0:{mean_format}}}'
 
         most_probable_area,_ = calculate_dmode(data)
+        print(most_probable_area)
         most_probable_area_value = 10**most_probable_area if as_log else most_probable_area
         most_probable_area_string = mean_format.format(most_probable_area_value)
         print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
@@ -987,3 +1000,53 @@ def shade(axs: Axes, X, y1, y2, color, alpha):
     polygon = np.column_stack([np.hstack([x, x[::-1]]), np.hstack([y1, y2[::-1]])])  # this is equivalent to fill as it makes a polygon
     col = PolyCollection([polygon], color=color, alpha=alpha)
     axs.add_collection(col, autolim=False)
+
+def legend_without_duplicate_labels(ax, compact = False):
+
+
+    handles, labels = ax.get_legend_handles_labels()
+    def check_label(label, i):
+        if not compact:
+            return label not in labels[:i]
+
+        else:
+            start = label.split(' ')[0] if ' ' in label else label
+            return label not in labels[:i] and not any([ll.startswith(start) for ll in labels[:i]])
+
+    unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if check_label(l,i)]
+
+    if compact:
+        # split all labels at either , or " "
+        unique = [(h,l.split(' ')[0] if ' ' in l else l) for h,l in unique]
+        unique = [(h,l.split(',')[0] if ',' in l else l) for h,l in unique]
+
+
+    ax.legend(*zip(*unique))
+
+
+def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit'):
+    from scipy.optimize import curve_fit
+
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    popt, pcov = curve_fit(func, x, y)
+    y_fit = func(x, *popt)
+
+    # use original values to calculate r²
+    rsqr = r_squared(y, y_fit)
+
+    # recalc for smooth plotting
+    x_fit = np.linspace(min(x), max(x), 100)
+    y_fit = func(x_fit, *popt)
+
+    short_label = '{}: R²={:.2f}, '.format(func.__name__, rsqr)
+    label = short_label
+    for i, value in enumerate(popt):
+        label += f'a{i+1}={value:.1f}, '
+    axs.plot(x_fit, y_fit, color=color, linestyle=ls, label=pltlabel, linewidth=lw)
+
+    axs.annotate(short_label[:-2], (x_fit[5], y_fit[5]), textcoords="offset points", xytext=(25,-5), ha='left', va='center', color=color)
+
+    print(label[:-2])
+    return y_fit, popt

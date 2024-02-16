@@ -1,17 +1,19 @@
 from collections import defaultdict
-from email.mime import image
 from glob import glob
-from itertools import groupby
 import os
+from matplotlib import pyplot as plt
 import numpy as np
-from sklearn import base
+
+from spazial import csstraussproc2
+
 import typer
 import cv2
 
 from fracsuite.callbacks import main_callback
+from fracsuite.core.dataplotter import FigureSize, get_fig_width
 from fracsuite.core.model_layers import get_layer_folder
 from fracsuite.core.splinter import Splinter
-from fracsuite.general import GeneralSettings
+from fracsuite.core.stochastics import khat, lhat, lhatc, pois, quadrat_count
 from fracsuite.state import State, StateOutput
 
 from rich import print
@@ -315,3 +317,122 @@ def layers_to_tex(base_path: str = ""):
     # with open(os.path.join(layer_folder, "layers.tex"), "w") as f:
 
     #     f.write(main_latex)
+
+
+@tools_app.command()
+def create_poisson():
+    sz = FigureSize.ROW3
+
+    w = 200
+    n  = 300
+
+    points = pois(w, w, n)
+
+    # plot points
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    axs.set_xlabel("x")
+    axs.set_ylabel("y")
+    axs.scatter(points[:,0], points[:,1], s=1)
+    State.output(StateOutput(fig, sz), "poisson", open=False)
+
+    # create K-Functions
+    def LPois(r):
+        # see Baddeley et al. S.206 K_pois
+        return r
+    def Kpois(r):
+        # see Baddeley et al. S.206 K_pois
+        return np.pi * r**2
+
+    d_max = np.sqrt(200**2 + 200**2)
+    lh = lhat(points, w*w, d_max)
+    x = lh[:,0]
+    y = lh[:,1]
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    axs.set_xlabel("d")
+    axs.set_ylabel("$\hat{L}(d)$")
+    axs.plot(x,y, label="Punkte")
+    axs.plot(x, LPois(x), label="Poisson")
+    axs.legend()
+    State.output(StateOutput(fig, sz), "poisson_lhat", open=False)
+
+
+@tools_app.command()
+def compare_processes():
+    sz = FigureSize.ROW3
+
+    # acceptance probabilities
+    acc = [0.0]
+    # hard core radii
+    rhc = np.array([0.00001, 10, 25, 50])
+    d_max = rhc * 3
+
+    d_max[0] = 10
+
+    n = 2000
+    w = 500
+
+    for id,d in enumerate(rhc):
+        for a in acc:
+            points = csstraussproc2(w,w, d, n, a, int(1e6))
+            points = np.array(points)
+
+            # check for homogenity
+            X2, dof, c = quadrat_count(points, (w, w), w/10)
+            print(f'Rhc: {d:>5.2f}, Acc: {a:>5.2f}, X2: {X2:>5.2f}, c: {c:>5.2f}, dof: {dof:>5.2f}, {("nicht homogen", "homogen")[X2 <= c]}')
+
+
+            # plot points
+            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+            axs.set_xlabel("x")
+            axs.set_ylabel("y")
+            axs.scatter(points[:,0], points[:,1], s=1)
+            name = f"rhc_{d:.0f}_acc_{a}"
+            State.output(StateOutput(fig, sz), name, open=False)
+
+            # create K-Functions
+            def Lpois(r):
+                # see Baddeley et al. S.206 K_pois
+                return r
+            def Kpois(r):
+                # see Baddeley et al. S.206 K_pois
+                return np.pi * r**2
+
+
+            # L-Function
+            lhat_v = lhat(points, w, w, d_max[id])
+            x = lhat_v[:,0]
+            y = lhat_v[:,1]
+            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+            axs.set_xlabel("d (mm)")
+            axs.set_ylabel("$\hat{L}(d)$")
+            axs.plot(x,y, label="Punkte")
+            axs.plot(x, Lpois(x), label="Poisson")
+            name = f"rhc_{d:.0f}_acc_{a}_lhat"
+            axs.legend()
+            State.output(StateOutput(fig, sz), name, open=False)
+
+            # centered l-function
+            lhatc_v = lhatc(points, w, w, d_max[id])
+            x = lhatc_v[:,0]
+            y = lhatc_v[:,1]
+            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+            axs.set_xlabel("d (mm)")
+            axs.set_ylabel("$\hat{L}(d) - d$")
+            axs.plot(x,y, label="Punkte")
+            axs.plot(x, Lpois(x)-x, label="Poisson")
+            name = f"rhc_{d:.0f}_acc_{a}_lhatc"
+            axs.legend()
+            State.output(StateOutput(fig, sz), name, open=False)
+
+            # K-Function
+            kh = khat(points, w, w, d_max[id])
+            x = kh[:,0]
+            y = kh[:,1]
+            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+            axs.set_xlabel("d (mm)")
+            axs.set_ylabel("$\hat{K}(d)$")
+            axs.plot(x,y, label="Punkte")
+            axs.plot(x, Kpois(x), label="Poisson")
+            name = f"rhc_{d:.0f}_acc_{a}_khat"
+            axs.legend()
+            State.output(StateOutput(fig, sz), name, open=False)

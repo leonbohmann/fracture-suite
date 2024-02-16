@@ -55,6 +55,7 @@ class WindowArguments:
     prop: str
     impact_position: tuple[float,float]
     pxpmm: float
+    kwargs: dict
 
 @dataclass
 class WindowResult:
@@ -282,6 +283,7 @@ class ObjectKerneler():
         n_points: int | tuple[int,int],
         impact_position: tuple[float,float],
         pxpmm: float,
+        **kwargs
     ):
         assert n_points > 0 or n_points == -1, \
             "n_points must be greater than 0 or -1."
@@ -359,7 +361,7 @@ class ObjectKerneler():
 
                 objects_in_region = windows[w][h]
 
-                args.append(WindowArguments(w,h,x1,x2,y1,y2,objects_in_region,calculator,prop, impact_position, pxpmm))
+                args.append(WindowArguments(w,h,x1,x2,y1,y2,objects_in_region,calculator,prop, impact_position, pxpmm, kwargs))
 
         # iterate to calculate the values
         with Pool() as pool:

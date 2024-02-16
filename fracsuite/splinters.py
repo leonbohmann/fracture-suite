@@ -1259,9 +1259,9 @@ def log_histograms(
         def legend_f(x):
             return ''
 
-    fig, axs = datahist_plot(xlim=xlim, figwidth=figwidth, data_mode=data_mode)
+    fig, axs = datahist_plot(figwidth=figwidth, data_mode=data_mode)
 
-    a = 0.7 if len(specimens) > 1 else 1
+    a = 2 / len(specimens) if len(specimens) > 1 else 1
 
     # br is created once, so that the bin-ranges match for all specimens
     br = None

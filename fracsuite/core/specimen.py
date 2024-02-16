@@ -26,16 +26,13 @@ from fracsuite.core.region import RectRegion
 from fracsuite.core.specimenregion import SpecimenRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import calculate_dmode
+from fracsuite.core.stochastics import calculate_dmode, first_minimum, khat, khat_xy, lhat, lhat_xy, lhatc, lhatc_xy
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file, find_files
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
 from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
 
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
-
-from spazial import khat_test, lhatc_test, lhat_test
-
 
 
 general: GeneralSettings = GeneralSettings.get()
@@ -106,8 +103,8 @@ def rhc_calculator(spl: list[Splinter], *args, **kwargs):
 
     total_area = np.sum([s.area for s in spl])
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
-    x2,y2 = lhatc_test(all_centroids, total_area, d_max)
-    min_idx = np.argmin(y2)
+    x2,y2 = lhatc_xy(all_centroids, total_area, d_max)
+    min_idx = first_minimum(y2)
     r1 = x2[min_idx]
 
     # acceptance = min_idx / len(y2)
@@ -123,7 +120,7 @@ def acc_calculator(spl: list[Splinter], *args, **kwargs):
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
-    x2,y2 = lhatc_test(all_centroids, total_area, d_max)
+    x2,y2 = lhatc_xy(all_centroids, total_area, d_max)
     min_idx = np.argmin(y2)
     acceptance = min_idx / len(y2)
 
@@ -686,8 +683,8 @@ class Specimen(Outputtable):
             all_centroids = np.array([s.centroid_mm for s in self.splinters])
             pane_size = self.get_real_size()
             d_max = estimate_dmax(self.splinters)
-            x2,y2 = lhatc_test(all_centroids, pane_size[0]*pane_size[1], d_max)
-            min_idx = np.argmin(y2)
+            x2,y2 = lhatc_xy(all_centroids, pane_size[0], pane_size[1], d_max)
+            min_idx = first_minimum(y2)
             r1 = x2[min_idx]
             acceptance = min_idx / len(y2)
 
@@ -720,7 +717,7 @@ class Specimen(Outputtable):
         max_d = DMAX_K
         all_centroids = np.array([s.centroid_mm for s in self.splinters])
         pane_size = self.get_real_size()
-        x2,y2 = khat_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        x2,y2 = khat_xy(all_centroids, pane_size[0], pane_size[1], max_d)
         return np.asarray(x2),np.asarray(y2)
 
     def lfun(self):
@@ -735,7 +732,7 @@ class Specimen(Outputtable):
         max_d = DMAX_L
         all_centroids = np.array([s.centroid_mm for s in self.splinters])
         pane_size = self.get_real_size()
-        x2,y2 = lhat_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        x2,y2 = lhat_xy(all_centroids, pane_size[0], pane_size[1], max_d)
         return x2,y2
 
     def lcfun(self):
@@ -750,7 +747,7 @@ class Specimen(Outputtable):
         max_d = DMAX_L
         all_centroids = np.array([s.centroid_mm for s in self.splinters])
         pane_size = self.get_real_size()
-        x2,y2 = lhatc_test(all_centroids, pane_size[0]*pane_size[1], max_d)
+        x2,y2 = lhatc_xy(all_centroids, pane_size[0], pane_size[1], max_d)
         return x2,y2
 
 
@@ -762,8 +759,10 @@ class Specimen(Outputtable):
 
         return in_region
 
-    def calculate_nfifty(self, centers = [], size = (50,50), force_recalc=False):
-        if centers == []:
+    def calculate_nfifty(self, centers = [], size = (50,50), force_recalc=False, simple = False):
+
+
+        if centers == [] or simple:
             centers = [(400,400)]
 
         nfifty = self.simdata.get(Specimen.DAT_NFIFTY, None)
@@ -886,7 +885,8 @@ class Specimen(Outputtable):
             kw,
             n_points,
             impact_position,
-            self.calculate_px_per_mm()
+            self.calculate_px_per_mm(),
+            len(self.splinters)
         )
 
         return X,Y,Z,Zstd
@@ -1127,7 +1127,7 @@ class Specimen(Outputtable):
                     value: Callable[[Specimen], _T1 | Specimen] = None,
                     max_n: int = 1000,
                     load: bool = False,
-                    sortby: Callable[[Specimen], Any] = None) -> list[_T1]:
+                    sortby: Callable[[Specimen], Any] = None) -> list[_T1] | list[Specimen]:
         """
         Loads specimens with a decider function.
         Iterates over all specimens in the base path.

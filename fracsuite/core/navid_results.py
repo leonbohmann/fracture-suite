@@ -186,7 +186,7 @@ for i in range(len(nfifty_u_4mm)):
     total_data[i4, 0] = 4
     total_data[i4, 1] = nfifty_u_4mm[i, 0]
     total_data[i4, 2] = nfifty_u_4mm[i, 1]
-    total_data[i4, 3] = nfifty_u_4mm[i, 1] / 0.0041
+    total_data[i4, 3] = nfifty_u_4mm[i, 1] / 0.004
 for i in range(len(nfifty_u_8mm)):
     i8 = i + len(nfifty_u_4mm)
 
@@ -207,18 +207,24 @@ for i in range(len(nfifty_u_12mm)):
 
     # Ud[:, i] = calc_Ud(sig_m[:, i] * 2)
     # U[:, i] = calc_U(sig_m[:, i] * 2, t[i])
+
 def navid_nfifty_ud() -> np.ndarray:
     """
-    Returns the nfifty table (n,2) for the given thickness.
-
-    Args:
-        thickness (float): The thickness. Has to be 4, 8 or 12.
+    Returns the nfifty table (n,3)
 
     Returns:
         np.ndarray: NDarray with (n50, Ud, t)
     """
-    #TODO: AUCH DIE DICKE MIT ÜBERGEBEN; DAMIT DIE DARGESTELLT WERDEN KANN
     return total_data[:, [1, 3, 0]]
+
+def navid_nfifty_sigm():
+    """
+    Return (n50, sigm) for all thicknesses.
+    """
+    n50_navid = navid_nfifty_ud()
+    n50s_navid = n50_navid[:,0].flatten()
+    sigm_navid = np.sqrt(n50_navid[:,1].flatten() * 5 / 4e6 * 70e3 / (1-0.25))
+    return np.column_stack((n50s_navid, sigm_navid))
 
 def navid_nfifty(thickness: int, as_ud: bool = False) -> np.ndarray:
     """

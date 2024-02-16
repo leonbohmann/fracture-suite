@@ -27,7 +27,7 @@ from fracsuite.core.vectors import angle_between
 
 from fracsuite.state import State
 
-from spazial import csstraussproc2, csstraussproc_rhciter, bohmann_process
+from spazial import csstraussproc2, bohmann_process
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -79,6 +79,10 @@ def nbreak(
     U0 = (1-nue)/5/E * sig_h**2 * thickness
     # remaining strain energy
     U1 = urr * U0
+
+    print(f'U0: {U0:.2f} J/m²')
+    print(f'U1: {U1:.2f} J/m²')
+    print(f'Urr: {urr:.2f}')
 
     area = specimen.get_real_size()
     A = area[0] * area[1]

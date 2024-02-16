@@ -6,10 +6,12 @@ from json import JSONEncoder
 import json
 
 import os
+from pickle import NONE
 import re
 from matplotlib import pyplot as plt
 from matplotlib.figure import figaspect
 
+from scipy.optimize import curve_fit
 import numpy as np
 from pygments import highlight
 from sklearn.metrics import mean_absolute_error
@@ -20,9 +22,12 @@ from rich.progress import track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.detection import get_crack_surface, get_crack_surface_r
 from fracsuite.core.imageprocessing import preprocess_image
-from fracsuite.core.plotting import FigureSize, get_fig_width
+from fracsuite.core.mechanics import Ud2sigm
+from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_ud
+from fracsuite.core.plotting import FigureSize, fit_curve, get_fig_width, legend_without_duplicate_labels
 
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
+from fracsuite.core.stochastics import quadrat_count, r_squared_f
 from fracsuite.core.stress import relative_remaining_stress
 from fracsuite.general import GeneralSettings
 from fracsuite.splinters import create_filter_function
@@ -31,6 +36,47 @@ from fracsuite.state import State, StateOutput
 app = typer.Typer(help=__doc__, callback=main_callback)
 
 general = GeneralSettings.get()
+
+
+b_markers = {
+    'A': 'o',
+    'B': 's',
+    'Z': 'D'
+}
+
+t_colors = {
+    4: 'green',
+    8: 'red',
+    12: 'blue'
+}
+
+scatter_args = {
+        's': 10,
+        'edgecolors': 'gray',
+        'linewidth': 0.5
+    }
+
+def linfit(x, a, b):
+    return a*x + b
+
+def squarefit(x, a, b, c):
+    return a*x**2 + b*x + c
+
+def expfit(x, a, b):
+    return a * np.exp(b * x)
+
+def logfit(x, a, b):
+    return a * np.log(x) + b
+
+def cubicfit(x, a, b, c, d):
+    return a*x**3 + b*x**2 + c*x + d
+
+def quarticfit(x, a, b, c, d, e):
+    return a*x**4 + b*x**3 + c*x**2 + d*x + e
+
+def quinticfit(x, a, b, c, d, e, f):
+    return a*x**5 + b*x**4 + c*x**3 + d*x**2 + e*x + f
+
 
 @app.command()
 def checksettings(name):
@@ -511,10 +557,213 @@ def import_fracture(
     from fracsuite.splinters import draw_contours
     draw_contours(specimen.name)
 
+@app.command()
+def compare_nfifty_estimation(
+    boundary: str = None,
+):
+    """
+    Compare the nfifty estimation of all specimens.
+
+    This function compares the nfifty estimation of all specimens and calculates the mean and standard deviation.
+    """
+    if boundary is None:
+        boundary = "*"
+
+    filterfunc = create_filter_function(f"*.*.{boundary}.*", needs_splinters=True)
+
+    all_specimens = Specimen.get_all_by(filterfunc, load=True)
+
+
+    if boundary == "*":
+        boundary = "all"
+
+    nfifties: dict[Specimen,float] = {}
+    sigh = []
+    for spec in tqdm(all_specimens, desc="Calculating nfifty...", leave=False):
+        if spec.has_fracture_scans and spec.has_splinters:
+            nfifties[spec] = spec.calculate_nfifty(simple=True)
+            sigh.append(-spec.sig_h/2.0)
+
+
+    x_total = []
+    y_total = []
+
+    def n50_analytic(sigm):
+        return (sigm/14.96)**4
+
+    sz = FigureSize.ROW2
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    n50_navid = navid_nfifty_ud()
+    # convert ud to sigm
+    n50_navid[:,1] = Ud2sigm(n50_navid[:,1])
+    n50s_navid = n50_navid[:,0].flatten()
+    sigm_navid = n50_navid[:,1].flatten()
+# 1e6/5 * (1-nue)/E * (sigma_s ** 2)
+    for i in range(len(n50s_navid)):
+        axs.scatter(sigm_navid[i], n50s_navid[i], marker='x', color='gray', label='Literatur', alpha=0.75, **scatter_args)
+        x_total.append(sigm_navid[i])
+        y_total.append(n50s_navid[i])
+
+    # plot data
+    for spec,n50 in tqdm(nfifties.items(), desc="Plotting data...", leave=False):
+        clr = t_colors[spec.thickness]
+        marker = b_markers[spec.boundary]
+        axs.scatter(-spec.sig_h/2, n50, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+
+        x_total.append(-spec.sig_h/2)
+        y_total.append(n50)
+
+    axs.set_xlabel('Mittelzugspannung $\sigma_m$ (MPa)')
+    axs.set_ylabel('$N_{50}$')
+
+    nfifties = np.array(list(nfifties.values()) + list(n50s_navid))
+    sigh = np.array(sigh)
+    sigh = np.concatenate((sigh, np.asarray(sigm_navid)))
+    sigh.sort()
+    x = sigh
+    y = n50_analytic(sigh)
+    axs.plot(x, y, 'r--')
+
+    fit_curve(axs, x_total, y_total, cubicfit, color='black', pltlabel='Fit')
+
+    legend_without_duplicate_labels(axs, compact=True)
+
+    State.output(StateOutput(fig,sz), "nfifty_estimation_comparison")
+
 
 
 @app.command()
-def test_crack_surface(
+def crack_surface_simple(
+    boundary: str = None,
+):
+    if boundary is None:
+        boundary = "*"
+    filter_func = create_filter_function(f"*.*.{boundary}.*", needs_scalp=True, needs_splinters=True)
+
+    specimens = Specimen.get_all_by(filter_func, load=True)
+
+    if boundary == "*":
+        boundary = "all"
+
+    # calculate total crack surfaces
+    crack_surfaces = {}
+    splinter_volumes = {}
+    splinter_areas = {}
+    splinter_circs = {}
+    for spec in tqdm(specimens):
+        t0 = spec.measured_thickness
+
+        vols = np.zeros(len(spec.splinters))
+        careas = np.zeros(len(spec.splinters))
+        areas = np.zeros(len(spec.splinters))
+        circs = np.zeros(len(spec.splinters))
+        for i,splinter in enumerate(tqdm(spec.splinters, leave=False)):
+            circ = splinter.circumfence
+            A = splinter.area
+
+            ms = A * t0
+            carea = circ * t0
+
+            vols[i] = ms
+            careas[i] = carea
+            areas[i] = A
+            circs[i] = circ
+
+        splinter_volumes[spec] = np.nanmean(vols)
+        crack_surfaces[spec] = np.sum(careas)
+        splinter_areas[spec] = np.nanmean(areas)
+        splinter_circs[spec] = np.nanmean(circs)
+
+
+    sz = FigureSize.ROW2
+
+
+    ##########################
+    # plot crack surface
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    for spec,crack_area in crack_surfaces.items():
+        clr = t_colors[spec.thickness]
+        marker = b_markers[spec.boundary]
+        axs.scatter(spec.U, crack_area, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+
+    axs.set_xlabel("Formänderungsenergie $U$ (J/m²)")
+    axs.set_ylabel("$U_\\text{S} \cdot t$ (mm²)")
+    legend_without_duplicate_labels(axs)
+
+    State.output(StateOutput(fig,sz), f"cracksurface_vs_energy_{boundary}")
+
+    n50_navid = navid_nfifty_ud()
+    # convert ud to sigm
+    n50_navid[:,1] = n50_navid[:,1] * n50_navid[:,2] * 1e-3
+    # calc volume in column 0
+    navid_volumes = (2500 / n50_navid[:,0]) * n50_navid[:,2] * 1e-3
+
+    ##########################
+    # plot volume
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    for spec,spl_volume in splinter_volumes.items():
+
+        clr = t_colors[spec.thickness]
+        marker = b_markers[spec.boundary]
+        axs.scatter(spec.U, spl_volume, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+
+    for t in ([4,8,12]):
+        tspecs = [spec for spec in specimens if spec.thickness == t]
+
+        if len(tspecs) == 0:
+            continue
+
+        clr = t_colors[t]
+        x = np.array([spec.U for spec in tspecs])
+        y = np.array([splinter_volumes[spec] for spec in tspecs])
+
+        y_fit, popt = fit_curve(axs, x, y, squarefit, color=clr)
+
+    axs.set_xlabel("Formänderungsenergie $U$ (J/m²)")
+    axs.set_ylabel("$V_\\text{S}$ (mm³)")
+    legend_without_duplicate_labels(axs, compact=True)
+    State.output(StateOutput(fig,sz), f"volume_vs_energy_{boundary}")
+
+
+    ##########################
+    # plot mean splinter area
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    for spec,spl_volume in splinter_areas.items():
+
+        clr = t_colors[spec.thickness]
+        marker = b_markers[spec.boundary]
+        axs.scatter(spec.sig_h, spl_volume, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+
+    axs.set_xlabel("Oberflächendruckspannung $-\sigma_\\text{S}$ (MPa)")
+    axs.set_ylabel("$A_\\text{S}$ (mm²)")
+    legend_without_duplicate_labels(axs, compact=True)
+
+    State.output(StateOutput(fig,sz), f"area_vs_sig_{boundary}")
+
+
+    ##########################
+    # plot circumfences
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    for spec,spl_volume in splinter_circs.items():
+
+        clr = t_colors[spec.thickness]
+        marker = b_markers[spec.boundary]
+        axs.scatter(spec.U, spl_volume, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+
+
+    axs.set_xlabel("Formänderungsenergie $U$ (J/m²)")
+    axs.set_ylabel("$U_\\text{S}$ (mm³)")
+    legend_without_duplicate_labels(axs, compact=True)
+
+    State.output(StateOutput(fig,sz), f"circumfence_vs_energy_{boundary}")
+
+@app.command()
+def crack_surface(
     rust: bool = False, ud: bool = False, aslog: bool = False, overwrite: bool = False,
     highlight_filter: str = None
 ):
@@ -595,10 +844,8 @@ def test_crack_surface(
         popt, pcov = curve_fit(func, vs, surfs)
 
         # calculate R²
-        residuals = surfs - func(vs, *popt)
-        ss_res = np.sum(residuals**2)
-        ss_tot = np.sum((surfs-np.mean(surfs))**2)
-        r_squared = 1 - (ss_res / ss_tot)
+        r2 = r_squared_f(vs,surfs,func,popt)
+
 
         # plot fitted curve
         x = np.min(vs) + (np.max(vs) - np.min(vs))*0.6
@@ -607,8 +854,8 @@ def test_crack_surface(
         axs.axline((x,popt[1]+popt[0]*x), slope=popt[0], color=t_color[t] if t is not None else 'k', linestyle='--', linewidth=0.5)
 
         # annotate R² to fitting line
-        axs.annotate(f"$R^2={r_squared:.2f}$ m={popt[0]:.2e}", (x,func(x, *popt)), ha="left", va="top")
-        print(f"> t={t}mm: m={popt[0]:.2e}mm²/J, b={popt[1]:2e}, R²={r_squared:.2f}")
+        axs.annotate(f"$R^2={r2:.2f}$ m={popt[0]:.2e}", (x,func(x, *popt)), ha="left", va="top")
+        print(f"> t={t}mm: m={popt[0]:.2e}mm²/J, b={popt[1]:2e}, R²={r2:.2f}")
         print(f'\t{1/popt[0]:.2e}J/mm²')
 
     ##########################
@@ -659,3 +906,31 @@ def energy_release_rate():
     axs.set_ylabel("Energie-Freisetzungsrate $\mathcal{G}$ (J/m²)")
 
     State.output(StateOutput(fig, FigureSize.ROW1), "energy_release_rate")
+
+
+@app.command()
+def check_homogeneity():
+    """Check the homogeneity of the specimens."""
+    all_specimens = Specimen.get_all(load=True)
+
+    for spec in all_specimens:
+        if not spec.has_splinters:
+            continue
+
+        sz = spec.get_real_size()
+        w = sz[0]
+        h = sz[1]
+
+        events = [x.centroid_mm for x in spec.splinters]
+
+        # only analyze centroids that are more than 5 cm away from the border
+        d = 50
+        events = [x for x in events if x[0] > d and x[0] < w-d and x[1] > d and x[1] < h-d]
+
+        events = np.array(events)
+
+        X2, dof, c = quadrat_count(events, (w,h), 100)
+        print(f"Specimen {spec.name}: X²={X2}, c={c}, dof={dof}")
+
+        if X2 >= c:
+            print(f"Specimen {spec.name} is inhomogeneous! X²={X2}, c={c}")

@@ -38,7 +38,7 @@ class StateOutput:
 
     img_ext: str
 
-    def __init__(self, data, figwidth, img_ext = None, img_rsz = 1.0, **additional_data):
+    def __init__(self, data, figwidth, img_ext = None, img_rsz = 1.0, fig_as_img_only=False, **additional_data):
         assert isinstance(data, Figure) or type(data).__module__ == np.__name__, f"Data must be a matplotlib figure or a numpy array. Is '{type(data)}'."
 
         self.Data = data
@@ -50,6 +50,7 @@ class StateOutput:
         self.is_figure = not self.is_image
 
         self.has_detailed_image = 'img_detailed' in additional_data
+        self.fig_as_img_only = fig_as_img_only
 
         self.img_ext = img_ext
         if self.is_image and img_rsz != 1.0:
@@ -71,9 +72,10 @@ class StateOutput:
                         data
                     )
                 elif self.is_figure:
-                    self.Data.savefig(
-                        outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
-                    )
+                    if not self.fig_as_img_only or State.figasimgonly:
+                        self.Data.savefig(
+                            outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
+                        )
                     self.Data.savefig(
                         outfile := f'{path}_{self.FigWidth}.png',
                     )
@@ -146,6 +148,7 @@ class State:
     "Redirect all output to the temp folder."
     output_name_mod: str = ""
     save_plots: bool = False
+    figasimgonly: bool = False
 
     __progress_started: bool = False
 

@@ -19,6 +19,7 @@ def main_callback(
         no_additional: Annotated[bool, typer.Option(help='Do not use an additional output path.')] = False,
         to_temp: Annotated[bool, typer.Option(help='Redirect all output to temp folder.')] = False,
         save_plots: Annotated[bool, typer.Option(help='Save plots to output folder.')] = False,
+        figasimgonly: Annotated[bool, typer.Option(help='Save plots as images only.')] = False,
         mod: Annotated[str, typer.Option(help='Modifies the output name.')] = '',
     ):
     """Splinter analyzation tools."""
@@ -49,6 +50,7 @@ def main_callback(
     State.to_temp = to_temp
     State.output_name_mod = mod
     State.save_plots = save_plots
+    State.figasimgonly = figasimgonly
     if mod != "":
         print(f"[cyan]Output name will be modified with: {mod}")
 

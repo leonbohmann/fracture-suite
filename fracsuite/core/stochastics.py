@@ -4,6 +4,22 @@ import numpy as np
 from scipy.stats import ks_2samp, ttest_ind, chisquare, gaussian_kde
 from scipy.spatial.distance import pdist, squareform
 
+
+from spazial import khat_test, lhat_test, lhatc_test, poisson
+from scipy.stats import chi2
+from scipy.signal import argrelextrema
+
+def r_squared_f(x, y_real, func, popt):
+    y_fit = func(x, *popt)
+    return r_squared(y_real, y_fit)
+
+def r_squared(y_real, y_fit):
+    residuals = y_real - y_fit
+    ss_res = np.nansum(residuals**2)
+    ss_tot = np.nansum((y_real - np.mean(y_real))**2)
+    r_squared = 1 - (ss_res / ss_tot)
+    return r_squared
+
 def to_cdf(data):
     """
     Converts a list of data to a CDF.
@@ -294,3 +310,95 @@ def moving_average(x, y, rng) -> tuple[np.ndarray, list[np.ndarray] | np.ndarray
                 DEV[ii][i] = np.nan
 
     return rng, *R, *DEV
+
+def quadrat_count(points, size, d, alpha=0.05):
+    """
+    Counts the number of points in a grid of quadrats.
+
+    Args:
+        points (list[tuple[float,float]]): List of points to count.
+        size(tuple[int,int] | tuple[int,int,int,int]): Size of the grid (w,h) or (x1,x2,y1,y2).
+        d (float): Size of the quadrats.
+
+    Returns:
+        tuple[float,float,float]: X2, degrees of freedom, critical value.
+    """
+    if len(size) == 2:
+        x1, y1 = 0, 0
+        x2, y2 = size
+    elif len(size) == 4:
+        x1, y1, x2, y2 = size
+    else:
+        raise Exception("Invalid size parameter. Must be a tuple of 2 (w,h) or 4 (x1,x2,y1,y2) elements.")
+
+
+    # create array for events
+    events = np.asarray(points)
+
+    # calculate quadrat counts
+    x = np.arange(x1, x2, d)
+    y = np.arange(y1, y2, d)
+    counts = np.zeros((len(y), len(x)))
+    for point in events:
+        x_index = int((point[0] - x1) // d)
+        y_index = int((point[1] - y1) // d)
+
+        counts[y_index, x_index] += 1
+
+    ## from Gelfand
+    # yhat = np.mean(counts)
+    # yhatv = np.var(counts)
+    # I = yhatv**2 / yhat
+
+
+    n = len(points)
+    area = (x2 - x1) * (y2 - y1)
+    expected = n * (d**2) / area
+    # X2 after pearson (papula)
+    X2 = np.sum((counts - expected) ** 2 / expected)
+    # dof
+    dof = (len(x) - 1) * (len(y) - 1)
+
+    ## Auswertung
+    alpha = 0.05
+    gamma = 1 - alpha
+
+    # get critical value
+    c = chi2.ppf(gamma, dof)
+
+    return X2, dof, c
+
+def first_minimum(data):
+    mins = argrelextrema(data, np.less, order=2)
+    first_min = mins[0][0]
+    return first_min
+
+def khat(points, width, height, d):
+    return np.array(khat_test(points, width, height, d))
+
+def lhat(points, width, height, d):
+    return np.array(lhat_test(points, width, height, d))
+
+def lhatc(points, width, height, d):
+    return np.array(lhatc_test(points, width, height, d))
+
+def khat_xy(points, width, height, d):
+    p = np.array(khat_test(points, width, height, d))
+    x = p[:,0]
+    y = p[:,1]
+    return x,y
+
+def lhat_xy(points, width, height, d):
+    p = np.array(lhat_test(points, width, height, d))
+    x = p[:,0]
+    y = p[:,1]
+    return x,y
+
+def lhatc_xy(points, width, height, d):
+    p = np.array(lhatc_test(points, width, height, d))
+    x = p[:,0]
+    y = p[:,1]
+    return x,y
+
+def pois(w,h,n):
+    return np.array(poisson(w,h,n))
