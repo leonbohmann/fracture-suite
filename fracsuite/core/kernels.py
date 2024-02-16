@@ -319,12 +319,16 @@ class ObjectKerneler():
         assert len(self.data_objects) > 0, \
             "There must be at least one object in the list."
 
-        print(f'[cyan]KERNELER[/cyan] [green]START[/green]')
-        print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
-        print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
-        print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
+        if State.debug:
+            print('[cyan]KERNELER[/cyan] [green]START[/green]')
+            print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
+            print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
+            print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
 
         i_w, i_h = convert_npoints(n_points, self.region, kw)
+
+
+        max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
 
         # create X Y and Z and Zstd arrays
         X = np.zeros(i_w, dtype=np.float64)
@@ -378,7 +382,6 @@ class ObjectKerneler():
 
                 objects_in_region = windows[w][h]
 
-                max_d = np.sqrt((x2-x1)**2 + (y2-y1)**2)
                 args.append(WindowArguments(w,h,x1,x2,y1,y2, max_d,objects_in_region,calculator,prop, impact_position, pxpmm, kwargs))
 
         # make a test run, it may raise an exception

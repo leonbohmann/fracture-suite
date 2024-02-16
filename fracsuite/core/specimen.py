@@ -123,11 +123,11 @@ def acc_calculator(spl: list[Splinter], *args, **kwargs):
 
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
+    w = np.sqrt(total_area)
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
-    x2,y2 = lhatc_xy(all_centroids, total_area, d_max)
+    x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
     min_idx = np.argmin(y2)
-
-    acceptance = min_idx / kwargs['max_distance']
+    acceptance = x2[min_idx] / kwargs['max_distance']
 
     # this is debug output
     if "debug" in kwargs and kwargs["debug"]:
@@ -957,8 +957,7 @@ class Specimen(Outputtable):
             kw,
             n_points,
             impact_position,
-            self.calculate_px_per_mm(),
-            total_len=len(self.splinters)
+            self.calculate_px_per_mm()
         )
 
         return X,Y,Z,Zstd
