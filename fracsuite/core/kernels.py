@@ -7,7 +7,7 @@ import numpy as np
 from fracsuite.core.region import RectRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import first_minimum, lhatc_xy
+from fracsuite.core.stochastics import rhc_minimum, lhatc_xy
 from fracsuite.core.vectors import angle_deg
 from fracsuite.state import State
 from tqdm import tqdm
@@ -50,7 +50,7 @@ def intensity_kernel(spl: list[Splinter], *args,**kwargs):
     #   len(spl) / kwargs["window_size"], 0
     # THe problem is, that on specimen we filter out some splinters, which causes areas
     # that are definetly not filled with splinters. For empty or almost empty areas, this approach
-    # is not valid. 
+    # is not valid.
 
     return len(spl) / kwargs["window_size"], 0
 
@@ -67,7 +67,7 @@ def rhc_kernel(spl: list[Splinter], *args, **kwargs):
     w = np.sqrt(total_area)
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
     x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
-    min_idx = first_minimum(y2)
+    min_idx = rhc_minimum(y2)
     r1 = x2[min_idx]
 
     # this is debug output

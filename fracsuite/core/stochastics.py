@@ -368,7 +368,7 @@ def quadrat_count(points, size, d, alpha=0.05):
 
     return X2, dof, c
 
-def first_minimum(data):
+def rhc_minimum(data):
     """
     Find the first local minimum in a dataset.
 
@@ -377,8 +377,10 @@ def first_minimum(data):
     """
     mins = argrelextrema(data, np.less, order=2)
     first_min = mins[0]
-    if len(first_min) >= 1:
+    if len(first_min) == 1:
         first_min = first_min[0]
+    elif len(first_min) >= 1:
+        first_min = first_min[-1]   # for some cases, gamma may create a second local minimum
     elif len(first_min) == 0:
         first_min = -1
 

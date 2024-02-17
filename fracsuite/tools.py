@@ -361,14 +361,15 @@ def compare_processes():
     sz = FigureSize.ROW3
 
     # acceptance probabilities
-    acc = [0.0]
+    acc = [2e-1,2e-2,2e-3,2e-4,2e-5]
     # hard core radii
-    rhc = np.array([0.00001, 10, 25, 50])
+    # rhc = np.array([0.00001, 10, 25, 50])
+    rhc = np.array([25])
     d_max = rhc * 3
 
-    d_max[0] = 10
+    #  d_max[0] = 10
 
-    n = 2000
+    n = 600
     w = 500
 
     for id,d in enumerate(rhc):
