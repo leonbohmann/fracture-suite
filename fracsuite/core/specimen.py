@@ -273,7 +273,7 @@ class Specimen(Outputtable):
     def print_loaded(self):
         name = f"'{self.name}'"
 
-        print(f"Loaded {name:>15} (Scalp: {checkmark(self.has_scalp)} , "
+        print(f"Loaded {name:>15} (Ani: {checkmark(self.anisotropy.available)} , Scalp: {checkmark(self.has_scalp)} , "
                 f"Splinters: {checkmark(self.has_splinters)} ) "
                     f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
 

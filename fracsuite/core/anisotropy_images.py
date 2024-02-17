@@ -38,6 +38,7 @@ class AnisotropyImages():
         self.green_path = None
         self.blue_path = None
         self.transmission_path = None
+
         # find files in path
         self.files = []
         for file in os.listdir(path):
@@ -50,3 +51,5 @@ class AnisotropyImages():
                     self.blue_path = os.path.join(path, file)
                 elif "Transmission" in file:
                     self.transmission_path = os.path.join(path, file)
+
+        self.available = len(self.files) == 3
