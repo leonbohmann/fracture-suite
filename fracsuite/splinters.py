@@ -243,7 +243,7 @@ def plot_adjacent(
     lens = [len(x.adjacent_splinter_ids) for x in splinters]
     fig, axs = datahist_plot(
         x_label='Kantenanzahl $N_\\text{e}$',
-        y_label='Wahrscheinlichkeitsdichte $p(N_\\text{e})$',
+        y_label='Wahrscheinlichkeitsdichte $f(N_\\text{e})$',
         figwidth=FigureSize.ROW1,
     )
 
@@ -647,7 +647,7 @@ def plt_prop_f2(
 
     output = plot_kernel_results(
         specimen.get_fracture_image(),
-        Splinter.get_mode_labels(prop),
+        Splinter.get_property_label(prop),
         True,
         False,
         KernelContourMode.FILLED,
@@ -682,7 +682,7 @@ def plt_prop_f(
 
     w_px = int(w_mm * specimen.calculate_px_per_mm())
 
-    clr_label = Splinter.get_mode_labels(prop)
+    clr_label = Splinter.get_property_label(prop)
     clr_label = clr_label[0].lower() + clr_label[1:]
     clr_label = "Normalized " + clr_label
     fig_output = plot_splinter_movavg(
@@ -758,7 +758,7 @@ def plt_prop(
 
     State.output(out_img, f'{prop}_filled_raw', spec=specimen, to_additional=True, figwidth=FigureSize.IMG)
 
-    clr_label = Splinter.get_mode_labels(prop)
+    clr_label = Splinter.get_property_label(prop)
     out_img = annotate_image(
         out_img,
         cbar_title=clr_label,
@@ -1480,7 +1480,7 @@ def kde_impact_layer(
 
         return r / len(splinters)
 
-    clr_label = Splinter.get_mode_labels(mode, row3=False)
+    clr_label = Splinter.get_property_label(mode, row3=False)
 
     w_mm = 50
     n_points = 25

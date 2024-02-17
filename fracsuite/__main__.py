@@ -93,6 +93,7 @@ params = {
     'savefig.bbox' : 'tight',
     'savefig.pad_inches' : 0.05,
     'figure.constrained_layout.use': True,
+    'patch.force_edgecolor': True,
 }
 plt.rcParams.update(params)
 

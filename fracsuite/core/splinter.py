@@ -828,7 +828,7 @@ class Splinter:
     }
 
     @classmethod
-    def get_mode_labels(cls, mode, row3 = False) -> str:
+    def get_property_label(cls, mode, row3 = False) -> str:
         if mode not in cls.splinter_prop_labels:
             raise Exception(f"Missing or invalid splinter-prop '{mode}'")
 

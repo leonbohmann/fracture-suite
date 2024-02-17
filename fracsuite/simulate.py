@@ -347,12 +347,12 @@ def lbreak(
     )
 
     layers = {
-        'orientation': (il_orientation, il_orientation_stddev, Splinter.get_mode_labels(SplinterProp.ORIENTATION), 'orientation'),
-        'l1': (il_l1, il_l1_stddev, Splinter.get_mode_labels(SplinterProp.L1), 'l1'),
-        'l2': (il_l2, il_l2_stddev, Splinter.get_mode_labels(SplinterProp.L2), 'l2'),
-        'l1l2': (il_l1l2, il_l1l2_stddev, Splinter.get_mode_labels(SplinterProp.ASP0), 'l1l2'),
-        'intensity': (intensity, intensity_std, Splinter.get_mode_labels(SplinterProp.INTENSITY), 'intensity'),
-        'rhc': (rhc, rhc_std, Splinter.get_mode_labels(SplinterProp.RHC), 'rhc'),
+        'orientation': (il_orientation, il_orientation_stddev, Splinter.get_property_label(SplinterProp.ORIENTATION), 'orientation'),
+        'l1': (il_l1, il_l1_stddev, Splinter.get_property_label(SplinterProp.L1), 'l1'),
+        'l2': (il_l2, il_l2_stddev, Splinter.get_property_label(SplinterProp.L2), 'l2'),
+        'l1l2': (il_l1l2, il_l1l2_stddev, Splinter.get_property_label(SplinterProp.ASP0), 'l1l2'),
+        'intensity': (intensity, intensity_std, Splinter.get_property_label(SplinterProp.INTENSITY), 'intensity'),
+        'rhc': (rhc, rhc_std, Splinter.get_property_label(SplinterProp.RHC), 'rhc'),
     }
 
     section("Plotting layers...")

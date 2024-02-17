@@ -613,9 +613,9 @@ def datahist_plot(
             ax.set_ylabel(y_label)
         else:
             if data_mode == DataHistMode.PDF:
-                ax.set_ylabel('Wahrscheinlichkeitsdichte $p(A_S)$')
+                ax.set_ylabel('Wahrscheinlichkeitsdichte $f(A_S)$')
             elif data_mode == DataHistMode.CDF:
-                ax.set_ylabel('Kumulative Verteilungs Fkt. $P(A_S)$')
+                ax.set_ylabel('Kumulative Verteilungs Fkt. $F(A_S)$')
         ax.grid(True, which='major', axis='both')
 
         ax.annotate("x-Werte nach $10^x$", xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
@@ -679,7 +679,7 @@ def datahist_to_ax(
                     histtype='step' if plot_mode == DataHistPlotMode.STEPS else 'bar',
                     color=fillcolor,
                     label=label,
-                    linewidth=1 if plot_mode == DataHistPlotMode.STEPS else 0.5,
+                    linewidth=1 if plot_mode == DataHistPlotMode.STEPS else 0.2,
                     alpha=alpha)
             color = edgecolor if plot_mode == DataHistPlotMode.STEPS else fillcolor
         elif plot_mode == DataHistPlotMode.KDE or plot_mode == DataHistPlotMode.KDE2:

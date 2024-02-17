@@ -303,7 +303,7 @@ def create(
     sz = FigureSize.ROW2
 
     xlabel = "Abstand zum Anschlagpunkt (mm)"
-    ylabel = Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3)
+    ylabel = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3)
 
 
     r_range, t_range = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
@@ -531,8 +531,8 @@ def compare_boundaries(
     sz = FigureSize.ROW1
 
     xlabel = "Abstand R zum Anschlagpunkt (mm)"
-    ylabel = Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3)
-    ylabel_short = Splinter.get_mode_labels(mode, row3=True)
+    ylabel = Splinter.get_property_label(mode, row3=sz == FigureSize.ROW3)
+    ylabel_short = Splinter.get_property_label(mode, row3=True)
 
 
     # find aspect over R on every specimen
@@ -751,7 +751,7 @@ def graph(
     axs2.plot(r_range, amounts, color='g', linestyle='--')
 
     axs.set_xlabel("Abstand vom Anschlagpunkt (mm)")
-    axs.set_ylabel(Splinter.get_mode_labels(mode, row3=sz == FigureSize.ROW3))
+    axs.set_ylabel(Splinter.get_property_label(mode, row3=sz == FigureSize.ROW3))
 
 
     State.output(StateOutput(fig,sz), f'graph-{specimen_name}_{mode}', to_additional=True)
@@ -868,7 +868,7 @@ def plot_polar(
 
     result_img = cv2.addWeighted(img, 0.5, img_overlay, 0.5, 0.5)
 
-    clr_label = Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3)
+    clr_label = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3)
 
     clr_format = ".0f" if np.nanmax(Z) > 10 else ".2f"
 
@@ -891,7 +891,7 @@ def plot_polar(
     y_values = Z.flatten()
     axs.plot(x_values, y_values)
     axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
-    axs.set_ylabel(Splinter.get_mode_labels(prop, row3=sz == FigureSize.ROW3))
+    axs.set_ylabel(Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3))
 
     State.output(StateOutput(fig,sz), f'polargraph-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
@@ -925,7 +925,7 @@ def plot(
         xlabel = 'Abstand $R$ (mm)'
         ylabel = '$U$ (J/m²)'
 
-    clabel = Splinter.get_mode_labels(mode)
+    clabel = Splinter.get_property_label(mode)
 
     fig = plt_layer(R,U,V,ignore_nan=ignore_nan_plot, xlabel=xlabel, ylabel=ylabel, clabel=clabel,
                     interpolate=True,figwidth=figwidth)
@@ -966,7 +966,7 @@ def test_interpolation(
 
 
     xlabel = 'Abstand $R$ zum Anschlagpunkt (mm)'
-    ylabel = Splinter.get_mode_labels(mode, row3=figwidth == FigureSize.ROW3)
+    ylabel = Splinter.get_property_label(mode, row3=figwidth == FigureSize.ROW3)
     axs.set_xlabel(xlabel)
     axs.set_ylabel(ylabel)
 

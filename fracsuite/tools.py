@@ -280,12 +280,12 @@ def layers_to_tex(base_path: str = ""):
             image_list = r"\hfill%".join([imgtolatex(thicknesses[x], os.path.basename(thicknesses[x]), x) for i,x in enumerate(thicknesses) if x != "12"])
             imLatex = imagelist_latex.replace("[IMAGELIST]", image_list) \
                 .replace("[FIGURENAME]", f"{prop}_{boundary}") \
-                .replace("[CAPTION]", f"{Splinter.get_mode_labels(prop).strip()} in Abhängigkeit des Abstands zum Anschlagpunkt bei verschiedenen Glasdicken; Farbig markiert ist die Formänderungsenergie U.")
+                .replace("[CAPTION]", f"{Splinter.get_property_label(prop).strip()} in Abhängigkeit des Abstands zum Anschlagpunkt bei verschiedenen Glasdicken; Farbig markiert ist die Formänderungsenergie U.")
 
             b_latex = boundary_latex.replace("[THICKNESSES]", imLatex).replace("[BOUNDARY]", boundary)
             b_latexs.append(b_latex)
 
-        prop_latex = property_latex.replace("[BOUNDARIES]", "\n".join(b_latexs)).replace("[PROPERTY]", Splinter.get_mode_labels(prop).strip())
+        prop_latex = property_latex.replace("[BOUNDARIES]", "\n".join(b_latexs)).replace("[PROPERTY]", Splinter.get_property_label(prop).strip())
         prop_latexs.append(prop_latex)
 
 
@@ -405,7 +405,7 @@ def compare_processes():
             fig,axs = plt.subplots(figsize=get_fig_width(sz))
             axs.set_xlabel("d (mm)")
             axs.set_ylabel("$\hat{L}(d)$")
-            axs.plot(x,y, label="Punkte")
+            axs.plot(x,y, label="Messung")
             axs.plot(x, Lpois(x), label="Poisson")
             name = f"rhc_{d:.0f}_acc_{a}_lhat"
             axs.legend()
@@ -418,7 +418,7 @@ def compare_processes():
             fig,axs = plt.subplots(figsize=get_fig_width(sz))
             axs.set_xlabel("d (mm)")
             axs.set_ylabel("$\hat{L}(d) - d$")
-            axs.plot(x,y, label="Punkte")
+            axs.plot(x,y, label="Messung")
             axs.plot(x, Lpois(x)-x, label="Poisson")
             name = f"rhc_{d:.0f}_acc_{a}_lhatc"
             axs.legend()
@@ -431,7 +431,7 @@ def compare_processes():
             fig,axs = plt.subplots(figsize=get_fig_width(sz))
             axs.set_xlabel("d (mm)")
             axs.set_ylabel("$\hat{K}(d)$")
-            axs.plot(x,y, label="Punkte")
+            axs.plot(x,y, label="Messung")
             axs.plot(x, Kpois(x), label="Poisson")
             name = f"rhc_{d:.0f}_acc_{a}_khat"
             axs.legend()
