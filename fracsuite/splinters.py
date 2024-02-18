@@ -637,9 +637,10 @@ def roundness(specimen_name: Annotated[str, typer.Argument(help='Name of specime
 def plt_prop_f2(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimens to load')],
     prop: Annotated[SplinterProp, typer.Argument(help='Property to plot.')],
+    n_points: Annotated[int, typer.Option(help='Amount of points to evaluate.')] = 25,
+    w_mm: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 50,
+    smooth: Annotated[bool, typer.Option(help='Smooth the plot.')] = True,
 ):
-    n_points = 25
-    w_mm = 50
 
     specimen = Specimen.get(specimen_name)
 
@@ -656,6 +657,7 @@ def plt_prop_f2(
         FigureSize.ROW2,
         crange=(np.nanmin(Z), np.nanmax(Z)),
         clr_format=".2f",
+        smooth=smooth
     )
     output.overlayImpact(specimen)
     State.output(output, f'{prop}_2d',spec=specimen, to_additional=True)

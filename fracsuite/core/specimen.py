@@ -875,7 +875,7 @@ class Specimen(Outputtable):
         # create kerneler
         kerneler = ObjectKerneler(
             self.get_real_size(),
-            self.splinters,
+            self.allsplinters,
             None,
             False
         )
@@ -988,8 +988,9 @@ class Specimen(Outputtable):
             # filter splinters
             self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(sensor_position)) > 10]
 
-        print(f"Loaded {len(self.__allsplinters)} splinters.")
-        print(f" > Filtered {len(self.__allsplinters) - len(self.__splinters)}")
+        if State.debug:
+            print(f"Loaded {len(self.__allsplinters)} splinters.")
+            print(f" > Filtered {len(self.__allsplinters) - len(self.__splinters)}")
 
     def transform_fracture_images(
         self,

@@ -348,6 +348,7 @@ def plot_kernel_results(
     fill_skipped_with_mean: bool = True,
     make_border_transparent: bool = False,
     overwrite_alpha: float = None,
+    smooth: bool = False
 ) -> StateOutput:
     """
     Plot the results of a kernel operation on an image.
@@ -376,7 +377,7 @@ def plot_kernel_results(
         print(f"crange: {crange}")
 
     def show_img():
-        axs.imshow(original_image, interpolation='bilinear')
+        axs.imshow(original_image, interpolation='bilinear' if smooth else 'nearest')
 
     def show_vertices():
         if plot_vertices:
@@ -397,7 +398,7 @@ def plot_kernel_results(
 
 
         # scale the results up to get a smooth image
-        results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR_EXACT)
+        results = cv2.resize(results, (original_image.shape[1], original_image.shape[0]), interpolation=cv2.INTER_LINEAR_EXACT if smooth else cv2.INTER_NEAREST)
 
         # results = results / np.max(results)
         # make the outer edge of 5% of the image transparent
@@ -408,7 +409,7 @@ def plot_kernel_results(
 
         axim = axs.imshow(results, cmap='turbo', vmin=crange[0], vmax=crange[1], alpha=mask) # alpha=mask,
     elif mode == KernelContourMode.IMAGE_ONLY:
-        axim = axs.imshow(original_image, interpolation='bilinear')
+        axim = axs.imshow(original_image, interpolation='bilinear' if smooth else 'nearest')
 
 
 

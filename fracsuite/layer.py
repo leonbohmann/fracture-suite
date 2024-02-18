@@ -773,11 +773,16 @@ def plot_regions(
     r_range, t_range = arrange_regions_px(pxpmm, d_r, d_t, break_pos, w_mm, h_mm)
     print(r_range)
     print(t_range)
-
+    if base_specimen_name is not None:
+            base_specimen = Specimen.get(base_specimen_name, load=True)
 
     img_w = int(w_mm * pxpmm)
     img_h = int(h_mm * pxpmm)
-    ip_x,ip_y = break_pos.position()
+    ip_x,ip_y = break_pos.default_position()
+
+    if base_specimen_name is not None:
+        ip_x,ip_y = base_specimen.get_impact_position()
+
     ip_x = int(ip_x * pxpmm)
     ip_y = int(ip_y * pxpmm)
 
@@ -808,7 +813,6 @@ def plot_regions(
     cv2.circle(img, (int(ip_x),int(ip_y)), stroke*2, red, -1)
 
     if base_specimen_name is not None:
-        base_specimen = Specimen.get(base_specimen_name, load=True)
         img_base = base_specimen.get_fracture_image()
         img_base = cv2.resize(img_base, (img_w,img_h))
 
