@@ -48,11 +48,11 @@ def intensity_kernel(spl: list[Splinter], *args,**kwargs):
     """Calculate the mean intensity parameter lambda for a given set of splinters."""
     # remark: Normally, the intensity is N/A, where A is the field of view.
     #   len(spl) / kwargs["window_size"], 0
-    # THe problem is, that on specimen we filter out some splinters, which causes areas
-    # that are definetly not filled with splinters. For empty or almost empty areas, this approach
-    # is not valid.
+    # in the context of fracture patterns, we need to use the mean
+    # area of splinters
 
-    return len(spl) / kwargs["window_size"], 0
+    area = np.sum([s.area for s in spl])
+    return len(spl) / area, 0
 
 def rhc_kernel(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
@@ -279,15 +279,24 @@ class ObjectKerneler():
         **kwargs
     ):
         """
-        Calculate the polar distribution of the data.
+        Run a kernel over a polar domain. Uses non-overlapping windows that are defined by `r_range_mm` and `t_range_deg`.
+        The impact position is the center of the domains, and the pixel per millimeter factor is used to convert the
+        window size to pixels.
+
+        The `prop`erty is used to get an according kernel function from the kernels dictionary. If the property is not
+        found, the 'Any' kernel function is used, which passes the prop to the splinter's `get_splinter_data` method.
+
+        Using `calculator` a custom kernel function can be passed. It's function header must include the following
+        arguments: `spl: list[Splinter], prop: SplinterProp, ip: tuple[float,float], pxpmm: float, **kwargs`. Alternatively
+        one can encapsulate the positional arguments in `*args`.
 
         Args:
-            calculator (Callable[[list[Splinter]], float]): The calculator function to use.
+            mode (SplinterProp): Property to calculate.
             r_range_mm (range): Created with arrange_regions.
             t_range_deg (range): Created with arrange_regions.
             ip_mm (tuple[float,float]): Impact position in mm.
-            mode (SplinterProp): Property to calculate.
             pxpmm (float): Pixel per millimeter factor.
+            calculator (Callable[[list[Splinter]], float]): The calculator function to use.
             kwargs: Additional arguments for the calculator.
 
         Returns:
@@ -306,6 +315,13 @@ class ObjectKerneler():
         # the maximum possible distance between any two points
         max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
 
+        if State.debug:
+            print('[cyan]POLAR[/cyan] [green]START[/green]')
+            print(f'[cyan]POLAR[/cyan] r_range:       {r_range_mm}')
+            print(f'[cyan]POLAR[/cyan] t_range:       {t_range_deg}')
+            print(f'[cyan]POLAR[/cyan] Region:       {self.region}')
+
+
         # find appropriate kernel function
         if calculator is None:
             if prop in kernels:
@@ -313,7 +329,8 @@ class ObjectKerneler():
             else:
                 calculator = kernels['Any']
 
-
+            if State.debug:
+                print(f'[cyan]POLAR[/cyan] Using default kernel function "{calculator.__name__}".')
 
         spl_groups = []
         for i in range(len(r_range_mm)-1):
@@ -336,7 +353,9 @@ class ObjectKerneler():
                     if not t0 <= a < t1:
                         continue
 
+                    # add the splinter to a group and break
                     spl_groups[i][j].append(s)
+                    break
 
         # create args for every (r,t) region
         args: list[WindowArguments] = []
@@ -348,9 +367,12 @@ class ObjectKerneler():
                 spl = spl_groups[i][j]
 
                 # area factor for circle segment
-                cf = (t1-t0) / 360
+                cf = np.abs(t1-t0) / 360
                 c = np.pi*(r1**2-r0**2)
                 window_size = c * cf
+
+                if State.debug:
+                    print(f'Processing window ({i},{j}): r0: {r0:.1f}, r1: {r1:.1f}, t0: {t0:.1f}, t1: {t1:.1f}, window_size: {window_size:.1f}')
 
                 args.append(
                     WindowArguments(
@@ -401,15 +423,25 @@ class ObjectKerneler():
         **kwargs
     ):
         """
-        Calculate the window distribution of the data.
+        Run a kernel over rectangular domain. Generates non-overlapping windows for `n_points == -1`. Otherwise divides the
+        region into `n_points` x `n_points` windows. +The impact position is the center of the domains, and the pixel per millimeter factor is used to convert the
+        window size to pixels.
+
+        The `prop`erty is used to get an according kernel function from the kernels dictionary. If the property is not
+        found, the 'Any' kernel function is used, which passes the prop to the splinter's `get_splinter_data` method.
+
+        Using `calculator` a custom kernel function can be passed. It's function header must include the following
+        arguments: `spl: list[Splinter], prop: SplinterProp, ip: tuple[float,float], pxpmm: float, **kwargs`. Alternatively
+        one can encapsulate the positional arguments in `*args`.
 
         Args:
-            prop (_type_): _description_
-            calculator (Callable[[list[T]], float]): _description_
-            kw (int): _description_
-            n_points (int | tuple[int,int]): _description_
-            impact_position (tuple[float,float]): _description_
-            pxpmm (float): _description_
+            prop (SplinterProp): Property to calculate.
+            kw (float): Width of the kernel window.
+            n_points (int | tuple[int,int]): Amount of points to calculate. If -1, the kerneler will produce non-overlapping windows.
+            impact_position (tuple[float,float]): Impact position in mm. Is needed for some splinter properties.
+            pxpmm (float): Scale factor.
+            calculator (Callable[[list[T]], float]): Custom kernel function.
+            **kwargs: Any arguments that are passed here are forwarded to the calculator function.
 
         Returns:
             X,Y,Z,Zstd
@@ -425,13 +457,15 @@ class ObjectKerneler():
         assert len(self.data_objects) > 0, \
             "There must be at least one object in the list."
 
-        if State.debug:
-            print('[cyan]KERNELER[/cyan] [green]START[/green]')
-            print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
-            print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
-            print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
 
         i_w, i_h = convert_npoints(n_points, self.region, kw)
+
+        if State.debug:
+            print('[cyan]WINDOW[/cyan] [green]START[/green]')
+            print(f'[cyan]WINDOW[/cyan] Kernel Width: {kw}')
+            print(f'[cyan]WINDOW[/cyan] Desired Points:       {n_points},{n_points} Points')
+            print(f'[cyan]WINDOW[/cyan] Actual Points:       {i_w},{i_h} Points')
+            print(f'[cyan]WINDOW[/cyan] Region:       {self.region}')
 
         # maximum possible distance between any two points
         max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
@@ -442,6 +476,9 @@ class ObjectKerneler():
                 calculator = kernels[prop]
             else:
                 calculator = kernels['Any']
+
+            if State.debug:
+                print(f'[cyan]WINDOW[/cyan] Using default kernel function "{calculator.__name__}".')
 
 
         # create X Y and Z and Zstd arrays
@@ -472,8 +509,8 @@ class ObjectKerneler():
             is_sorted = False
             for w in range(i_w):
                 for h in range(i_h):
-                    x1 = (w/n_points) * self.region[0] - kw // 2
-                    y1 = (h/n_points) * self.region[1] - kw // 2
+                    x1 = (w/i_w) * self.region[0]
+                    y1 = (h/i_h) * self.region[1]
                     x2 = x1 + kw
                     y2 = y1 + kw
 
@@ -489,15 +526,16 @@ class ObjectKerneler():
         args = []
         for w in range(i_w):
             for h in range(i_h):
-                x1 = (w/n_points) * self.region[0] - kw // 2
-                y1 = (h/n_points) * self.region[1] - kw // 2
+                x1 = float(w/i_w) * self.region[0]
+                y1 = float(h/i_h) * self.region[1]
                 x2 = x1 + kw
                 y2 = y1 + kw
 
+                if State.debug:
+                    print(f'Processing window ({w},{h}): x1: {x1:.1f}, x2: {x2:.1f}, y1: {y1:.1f}, y2: {y2:.1f}')
+
                 objects_in_region = windows[w][h]
-
-                window_size = (x2-x1) * (y2-y1)
-
+                window_size = kw**2
                 args.append(WindowArguments(w,h,x1,x2,y1,y2, max_d,objects_in_region,calculator,prop, impact_position, pxpmm, window_size, kwargs))
 
         # make a test run, it may raise an exception
@@ -509,7 +547,7 @@ class ObjectKerneler():
                 # print(result)
                 put_result(result)
 
-        X, Y = np.meshgrid(X, Y)
+        # X, Y = np.meshgrid(X, Y)
 
         return X,Y,Z,Zstd
 
