@@ -35,7 +35,7 @@ def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
     return i_w, i_h
 
 
-def anyfunc(spl: list[Splinter], prop: SplinterProp, ip, pxpmm):
+def splinterproperty_kernel(spl: list[Splinter], prop: SplinterProp, ip, pxpmm, **kwargs):
     """Calculates a property for a list of splinters."""
     if len(spl) == 0:
         return (np.nan,np.nan)
@@ -102,19 +102,15 @@ def acceptance_kernel(spl: list[Splinter], *args, **kwargs):
     return acceptance, 0
 
 kernels = {
-    'Any': anyfunc,
+    'Any': splinterproperty_kernel,
     SplinterProp.INTENSITY: intensity_kernel,
     SplinterProp.RHC: rhc_kernel,
     SplinterProp.ACCEPTANCE: acceptance_kernel
 }
 
-
-#TODO: For kernels, the passed arguments are still cumbersome and not straightforward.
-#      The kerneler should be able to handle the arguments itself and raise Exceptions, if any expected argument is missing.
-#   The kerneler could start with checks:
-#       assert "n_points" in kwargs, "n_points must be set."
-#       assert "kw" in kwargs, "kw must be set."
-#       ...
+@dataclass
+class KernelerData:
+    window_object_counts: np.ndarray
 
 
 @dataclass
@@ -153,6 +149,12 @@ class WindowResult:
 
 def process_window(args: WindowArguments):
     """Wrapper function for the window kerneler."""
+    if State.debug:
+        print(f"""Processing window ({args.i},{args.j}):
+    x1: {args.x1:.1f}, x2: {args.x2:.1f}
+    y1: {args.y1:.1f}, y2: {args.y2:.1f}
+    window_size: {args.window_size:.1f}
+    objects: {len(args.objects_in_region)}""")
     mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, window_size=args.window_size, **args.kwargs) \
         if len(args.objects_in_region) > 0 else (SKIP_VALUE, SKIP_VALUE)
     return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, mean_value, stddev)
@@ -276,6 +278,7 @@ class ObjectKerneler():
         ip_mm,
         pxpmm,
         calculator: Callable[[list[Splinter]], float] = None,
+        return_data = False,
         **kwargs
     ):
         """
@@ -297,20 +300,29 @@ class ObjectKerneler():
             ip_mm (tuple[float,float]): Impact position in mm.
             pxpmm (float): Pixel per millimeter factor.
             calculator (Callable[[list[Splinter]], float]): The calculator function to use.
+            return_data (bool): If True, the function will return additional data.
             kwargs: Additional arguments for the calculator.
 
         Returns:
-            R,T,Z,Zstd:
+            R,T,Z,Zstd [, data]:
                 Radii and thetas contain the centers of each region. They have to be used for interpolation.
                 Z contains the calculated values.
 
                 If R(1,n) and T(1,m) then Z(n,m) and Zstd(n,m) contain the calculated values and their standard deviations respectively.
+
+                If return_data is True, the function will return additional data.
         """
         # create 2d array to store the results
         X = np.zeros(len(r_range_mm)-1, dtype=np.float64)
         Y = np.zeros(len(t_range_deg)-1, dtype=np.float64)
         Z = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
         Zstd = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
+
+
+        window_object_counts = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.uint32)
+
+        rData = KernelerData(window_object_counts)
+
 
         # the maximum possible distance between any two points
         max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
@@ -374,6 +386,9 @@ class ObjectKerneler():
                 if State.debug:
                     print(f'Processing window ({i},{j}): r0: {r0:.1f}, r1: {r1:.1f}, t0: {t0:.1f}, t1: {t1:.1f}, window_size: {window_size:.1f}')
 
+                # save additional data
+                window_object_counts[i,j] = len(spl)
+
                 args.append(
                     WindowArguments(
                         i,j,
@@ -410,6 +425,9 @@ class ObjectKerneler():
                 result = process_window(arg)
                 put_result(result)
 
+        if return_data:
+            return X,Y,Z,Zstd, rData
+
         return X,Y,Z,Zstd
 
     def window(
@@ -420,6 +438,7 @@ class ObjectKerneler():
         impact_position: tuple[float,float],
         pxpmm: float,
         calculator: Callable[[list[T]], float] = None,
+        return_data = False,
         **kwargs
     ):
         """
@@ -486,8 +505,14 @@ class ObjectKerneler():
         Y = np.zeros(i_h, dtype=np.float64)
         Z = np.zeros((i_h, i_w), dtype=np.float64)
         Zstd = np.zeros((i_h, i_w), dtype=np.float64)
+        window_object_counts = np.zeros((i_h, i_w), dtype=np.uint32)
+
+
+        rData = KernelerData(window_object_counts)
+
 
         def put_result(result):
+            """Puts results from a kernel function to the arrays."""
             i,j = result[0], result[1]
             X[i] = result[2]
             Y[j] = result[3]
@@ -531,10 +556,11 @@ class ObjectKerneler():
                 x2 = x1 + kw
                 y2 = y1 + kw
 
-                if State.debug:
-                    print(f'Processing window ({w},{h}): x1: {x1:.1f}, x2: {x2:.1f}, y1: {y1:.1f}, y2: {y2:.1f}')
-
                 objects_in_region = windows[w][h]
+
+                # save additional data
+                window_object_counts[h,w] = len(objects_in_region)
+
                 window_size = kw**2
                 args.append(WindowArguments(w,h,x1,x2,y1,y2, max_d,objects_in_region,calculator,prop, impact_position, pxpmm, window_size, kwargs))
 
@@ -548,6 +574,9 @@ class ObjectKerneler():
                 put_result(result)
 
         # X, Y = np.meshgrid(X, Y)
+
+        if return_data:
+            return X,Y,Z,Zstd, rData
 
         return X,Y,Z,Zstd
 

@@ -18,7 +18,8 @@ from fracsuite.core.anisotropy_images import AnisotropyImages
 from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, simplify_contour
-from fracsuite.core.kernels import ObjectKerneler
+from fracsuite.core.kernels import KernelerData, ObjectKerneler
+from fracsuite.core.model_layers import DEFAULT_ANGLE_DELTA, DEFAULT_RADIUS_DELTA
 from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
@@ -37,6 +38,8 @@ from fracsuite.state import State
 
 
 general: GeneralSettings = GeneralSettings.get()
+
+
 
 sensor_positions = {
     "corner": {
@@ -413,7 +416,7 @@ class Specimen(Outputtable):
         if load:
             self.load(log_missing)
 
-        self.layer_region = SpecimenRegion(20, 360, self.get_impact_position(), self.get_real_size())
+        self.layer_region = SpecimenRegion(DEFAULT_RADIUS_DELTA, DEFAULT_ANGLE_DELTA, self.get_impact_position(), self.get_real_size())
 
     def set_setting(self, key, value):
         """Set an experimental setting of the specimen. Use Specimen.SET_* constants."""
@@ -894,8 +897,9 @@ class Specimen(Outputtable):
         self,
         prop: SplinterProp,
         r_range_mm = None,
-        t_range_deg = None
-    ) -> tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
+        t_range_deg = None,
+        return_data = False
+    ) -> tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray, KernelerData]:
         """
         Calculate a value in polar 2D.
 
@@ -917,14 +921,19 @@ class Specimen(Outputtable):
         if r_range_mm is None:
             r_range_mm = self.layer_region.radii
 
-        R,T,Z,Zstd = kerneler.polar(
+        R,T,Z,Zstd,rData = kerneler.polar(
             prop,
             r_range_mm,
             t_range_deg,
             impact_position,
-            self.calculate_px_per_mm()
+            self.calculate_px_per_mm(),
+            return_data = True
         )
         T = np.radians(T)
+
+        # data contains more information about the calculation
+        if return_data:
+            return R,T,Z,Zstd,rData
 
         return R,T,Z,Zstd
 

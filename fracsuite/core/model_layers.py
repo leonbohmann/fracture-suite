@@ -14,6 +14,10 @@ from fracsuite.core.specimenprops import SpecimenBreakPosition, SpecimenBoundary
 
 general = GeneralSettings.get()
 
+DEFAULT_RADIUS_DELTA = 25
+DEFAULT_ANGLE_DELTA = 360
+
+
 class ModelLayer(str, Enum):
     IMPACT = "impact-layer"
 
@@ -254,8 +258,8 @@ def get_l1(U: float, boundary: SpecimenBoundary, thickness: int, break_pos: Spec
 
 
 def arrange_regions(
-    d_r_mm: int = 25,
-    d_t_deg: int = 360,
+    d_r_mm: int = DEFAULT_RADIUS_DELTA,
+    d_t_deg: int = DEFAULT_ANGLE_DELTA,
     break_pos: SpecimenBreakPosition | tuple[float,float] = SpecimenBreakPosition.CORNER,
     w_mm: int = 500,
     h_mm: int = 500,

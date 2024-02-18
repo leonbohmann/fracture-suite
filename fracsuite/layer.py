@@ -1,6 +1,8 @@
 import re
+from textwrap import indent
 from typing import Annotated
 import cv2
+from matplotlib.axes import Axes
 
 import numpy as np
 from tqdm import tqdm
@@ -15,7 +17,7 @@ from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, interp_layer, load_layer, load_layer_file, plt_layer, save_layer
-from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, renew_ticks_cb
+from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, get_legend, renew_ticks_cb
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
@@ -829,6 +831,8 @@ def plot_polar(
     prop: SplinterProp,
     d_r: float = 25,
     d_t: float = 360,
+    plot_std: bool = False,
+    plot_counts: bool = False,
 ):
     """
     Create an overlay of a specific splinter property on a fracture image using radial bands and also plot the mean values
@@ -842,8 +846,7 @@ def plot_polar(
     # fetch radii and angles
 
     r_range,t_range = arrange_regions(d_r,d_t,specimen.get_impact_position(),realsize[0],realsize[1])
-    _,_,Z,_ = specimen.calculate_2d_polar(prop=prop, r_range_mm=r_range, t_range_deg=t_range)
-
+    _,_,Z,Zstd,kData = specimen.calculate_2d_polar(prop=prop, r_range_mm=r_range, t_range_deg=t_range, return_data=True)
 
     # plot the results in a colored plot
     sz = FigureSize.ROW1HL
@@ -883,20 +886,33 @@ def plot_polar(
         clr_format=clr_format,
         figwidth=sz
     )
-    print(Z)
-    print(np.nanmin(Z))
-    print(np.nanmax(Z))
+
+
+    print('Results: ', Z)
 
     State.output(output, f'polar-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
-
+    ylabel = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3)
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
     x_values = r_range[:-1]
     y_values = Z.flatten()
-    axs.plot(x_values, y_values)
-    axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
-    axs.set_ylabel(Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3))
+    axs.plot(x_values, y_values, label=ylabel)
 
+    Zstd = Zstd.flatten()
+    if np.any(Zstd != 0) and plot_std:
+        axs.fill_between(x_values, y_values - Zstd, y_values + Zstd, color='C0', alpha=0.2, edgecolor='none')
+
+    axs2: Axes = None
+    if plot_counts:
+        axs2 = axs.twinx()
+        axs2.plot(x_values, kData.window_object_counts.flatten(), linestyle='--', label='Anzahl Bruchstücke', color='C1')
+
+    axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
+    axs.set_ylabel(ylabel)
+    axs2.set_ylabel("Anzahl Bruchstücke")
+    axs2.grid(False)
+
+    axs.legend(*get_legend(axs, axs2))
     State.output(StateOutput(fig,sz), f'polargraph-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
 @layer_app.command()

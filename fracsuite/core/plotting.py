@@ -85,6 +85,16 @@ class AxLabels:
     SPLINTER_AREA_SHORT = "A_\\text{S} (mm²)"
     SPLINTER_AREA = "Bruchstückflächeninhalt $A_\\text{S}$ (mm²)"
 
+def get_legend(*axs: Axes):
+    handles = []
+    labels = []
+    for ax in axs:
+        h,l = ax.get_legend_handles_labels()
+        handles.extend(h)
+        labels.extend(l)
+
+    return handles, labels
+
 
 
 def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
