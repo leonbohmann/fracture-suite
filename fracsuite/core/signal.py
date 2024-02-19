@@ -1,4 +1,42 @@
+from scipy import signal
 from scipy.signal import butter, sosfiltfilt
+
+def smooth_hanning(x,window_len=11):
+    """smooth the data using a hanning window with requested size.
+
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+
+    input:
+        x: the input signal
+        window_len: the dimension of the smoothing window; should be an odd integer
+
+    output:
+        the smoothed signal
+
+    example:
+
+    t=linspace(-2,2,0.1)
+    x=sin(t)+randn(len(t))*0.1
+    y=smooth(x)
+
+    see also:
+
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+    scipy.signal.lfilter
+    """
+
+    assert x.ndim == 1, "smooth only accepts 1 dimension arrays."
+    assert x.size > window_len, "Input vector needs to be bigger than window size."
+
+    if window_len<3:
+        return x
+
+    win = signal.windows.hann(window_len)
+    filtered = signal.convolve(x, win, mode='same') / sum(win)
+    return filtered
 
 def remove_freq(t, data, f0, f1, fs):
     """

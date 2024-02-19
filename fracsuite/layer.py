@@ -291,7 +291,7 @@ def create(
 
         return base_filter(specimen)
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True,max_n=300)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter, load=True)
 
     # for spec in specimens:
     #     area = np.sum([s.area for s in spec.splinters])
@@ -906,11 +906,11 @@ def plot_polar(
     if plot_counts:
         axs2 = axs.twinx()
         axs2.plot(x_values, kData.window_object_counts.flatten(), linestyle='--', label='Anzahl Bruchstücke', color='C1')
+        axs2.set_ylabel("Anzahl Bruchstücke")
+        axs2.grid(False)
 
     axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
     axs.set_ylabel(ylabel)
-    axs2.set_ylabel("Anzahl Bruchstücke")
-    axs2.grid(False)
 
     axs.legend(*get_legend(axs, axs2))
     State.output(StateOutput(fig,sz), f'polargraph-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)

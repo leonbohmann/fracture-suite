@@ -89,6 +89,8 @@ def get_legend(*axs: Axes):
     handles = []
     labels = []
     for ax in axs:
+        if ax is None:
+            continue
         h,l = ax.get_legend_handles_labels()
         handles.extend(h)
         labels.extend(l)

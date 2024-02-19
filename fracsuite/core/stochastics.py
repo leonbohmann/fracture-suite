@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 from rich import print
 
 import numpy as np
@@ -8,6 +9,9 @@ from scipy.spatial.distance import pdist, squareform
 from spazial import khat_test, lhat_test, lhatc_test, poisson
 from scipy.stats import chi2
 from scipy.signal import argrelextrema
+
+from fracsuite.core.signal import smooth_hanning
+from fracsuite.state import State
 
 def r_squared_f(x, y_real, func, popt):
     y_fit = func(x, *popt)
@@ -368,21 +372,51 @@ def quadrat_count(points, size, d, alpha=0.05):
 
     return X2, dof, c
 
-def rhc_minimum(data):
+def rhc_minimum(data, x = None):
     """
-    Find the first local minimum in a dataset.
+    Find the smallest local minimum in a dataset.
+
+    Remarks:
+        The assumption is, that the centered L-Function is strictly decreasing until the
+        minium indicating rhc is reached. After that, if there are second local minima, the
+        first and smallest minimum is returned.
+
+        Data will be smoothed to get rid of local noise.
+
+    Arguments:
+        data (ndarray): The data to search for a minimum.
+        x (ndarray, optional): The x-axis values of the data. Defaults to None, only used when debugging with State.debug.
 
     Returns:
-        int: The index of the first local minimum.
+        int: The index of the first smallest local minimum. If no minimum is found, -1 is returned.
     """
-    mins = argrelextrema(data, np.less, order=2)
-    first_min = mins[0]
-    if len(first_min) == 1:
-        first_min = first_min[0]
-    elif len(first_min) >= 1:
-        first_min = first_min[-1]   # for some cases, gamma may create a second local minimum
-    elif len(first_min) == 0:
+    # smooth data to get rid of local noise
+    data_s = smooth_hanning(data, window_len=len(data) // 5)
+
+
+    # find local minima
+    mins = argrelextrema(data_s, np.less, order=2)
+    mins = mins[0]
+    if len(mins) == 1:
+        first_min = mins[0]
+    elif len(mins) >= 1:
+        first_min = mins[0]   # in some cases, gamma may create a second local minimum
+    # return -1 if nothing found
+    elif len(mins) == 0:
         first_min = -1
+
+    # generate debug output if enabled
+    if State.debug:
+        if x is None:
+            x = np.linspace(0, 100, len(data))
+        fig,axs = plt.subplots()
+        axs.plot(x, data, label="Original")
+        axs.plot(x, data_s, label="Smoothed")
+        axs.scatter(x[mins], data_s[mins], c='red', label="Minima")
+        axs.scatter(x[first_min], data_s[first_min], c='blue', marker='o', facecolors='none', label="Minima")
+        axs.legend()
+        plt.show()
+        plt.close(fig)
 
     return first_min
 

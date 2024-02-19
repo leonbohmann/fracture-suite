@@ -1,6 +1,8 @@
 import pickle
 import tempfile
 from typing import Any
+
+from matplotlib import pyplot as plt
 from fracsuite.core.ProgWrapper import ProgWrapper
 from fracsuite.core.outputtable import Outputtable
 from fracsuite.general import GeneralSettings
@@ -125,7 +127,9 @@ class StateOutput:
             # copy all data from the orientation image to the output image, skip alpha channel
             self.Data[mask] = orientation_image[mask][:, :-1]
 
-
+    def clear(self):
+        if self.is_figure:
+            plt.close(self.Data)
 
 class State:
     """Contains static variables that are set during execution of a command."""
@@ -147,8 +151,17 @@ class State:
     to_temp: bool = False
     "Redirect all output to the temp folder."
     output_name_mod: str = ""
+    "A modifier to append to all output file names."
     save_plots: bool = False
+    "When doing image processing this will save the plots instead of just showing them."
     figasimgonly: bool = False
+    "Save plots as images only."
+    maximum_specimen: int = 1000
+    "Globaly define the maximum amount of specimen that can be loaded."
+    no_open: bool = False
+    "Disables automatic opening from State.output."
+    no_out: bool = False
+    "Disables all output via State.output."
 
     __progress_started: bool = False
 
@@ -201,6 +214,9 @@ class State:
         figwidth=None,
         mods: list[str]=None, # modifiers
         resize_factor: float = 1,
+        close_fig: bool = True,
+        force_open: bool = False,
+        force_out: bool = False,
         **kwargs
     ):
         """
@@ -221,6 +237,11 @@ class State:
         Remarks:
             The current subcommand will be appended to the last path part.
         """
+        if State.no_out and not (force_out or force_open):
+            print("[yellow]Warning: Output is disabled. Use 'force_out=True' to override.[/yellow]")
+            return
+
+
         if 'override_name' in kwargs:
             print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
 
@@ -291,8 +312,11 @@ class State:
             if not no_print:
                 print(SAVE_FORMAT.format('ADDITIONAL', add_path))
 
+        if close_fig:
+            object.clear()
+
         # open file
-        if open:
+        if (open and not State.no_open) or force_open:
             subprocess.Popen(['start', '', '/b', out], shell=True)
 
     def get_input_dir():
@@ -370,6 +394,7 @@ class State:
         for k in kwargs:
             State.__checkpoint_data[k] = kwargs[k]
     def checkpoint_save():
+        """Saves data to a checkpoint file. Is called from __main__ at the end of the program."""
         tmpFile = os.path.join(tempfile.gettempdir(), State.current_subcommand + ".checkpoint")
         with open(tmpFile, 'wb') as f:
             pickle.dump(State.__checkpoint_data, f)

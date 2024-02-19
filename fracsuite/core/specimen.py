@@ -1075,7 +1075,7 @@ class Specimen(Outputtable):
         return spec
 
     @staticmethod
-    def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = True) \
+    def get_all(names: list[str] | str | Specimen | list[Specimen] | None = None, load = True, max_n = None) \
         -> List[Specimen]:
         """
         Get a list of specimens by name. Raises exception, if any is not found.
@@ -1108,6 +1108,9 @@ class Specimen(Outputtable):
                 lambda x: filter.search(x.name) is not None
             )
 
+        if max_n is None:
+            max_n = State.maximum_specimen
+
         # this is quicker than to call get_all_by because only the names are loaded
         for name in track(names, description="Loading specimens...", transient=True):
             if name.startswith("."):
@@ -1117,6 +1120,9 @@ class Specimen(Outputtable):
             dir = os.path.join(general.base_path, name)
             specimen = Specimen.get(dir, load=load)
             specimens.append(specimen)
+
+            if len(specimens) == max_n:
+                break
 
         if len(specimens) == 0:
             raise SpecimenException("No specimens found.")
@@ -1130,13 +1136,16 @@ class Specimen(Outputtable):
     @staticmethod
     def get_all_by( decider: Callable[[Specimen], bool],
                     value: Callable[[Specimen], _T1 | Specimen] = None,
-                    max_n: int = 1000,
+                    max_n: int = None,
                     load: bool = False,
                     sortby: Callable[[Specimen], Any] = None) -> list[_T1] | list[Specimen]:
         """
         Loads specimens with a decider function.
         Iterates over all specimens in the base path.
         """
+        if max_n is None:
+            max_n = State.maximum_specimen
+
         # show yellow hint when not loading
         if not load:
             print("[yellow]Not loading data of specimens.")

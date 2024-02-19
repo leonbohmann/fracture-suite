@@ -21,6 +21,9 @@ def main_callback(
         save_plots: Annotated[bool, typer.Option(help='Save plots to output folder.')] = False,
         figasimgonly: Annotated[bool, typer.Option(help='Save plots as images only.')] = False,
         mod: Annotated[str, typer.Option(help='Modifies the output name.')] = '',
+        max_spec: Annotated[int, typer.Option(help='Maximum number of specimens to process.')] = 1000,
+        no_open: Annotated[bool, typer.Option(help='Do not open any outputs.')] = False,
+        no_out: Annotated[bool, typer.Option(help='Do not generate any output.')] = False,
     ):
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
@@ -51,6 +54,9 @@ def main_callback(
     State.output_name_mod = mod
     State.save_plots = save_plots
     State.figasimgonly = figasimgonly
+    State.maximum_specimen = max_spec
+    State.no_open = no_open
+    State.no_out = no_out
     if mod != "":
         print(f"[cyan]Output name will be modified with: {mod}")
 

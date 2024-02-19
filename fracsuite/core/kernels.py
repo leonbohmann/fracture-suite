@@ -57,26 +57,20 @@ def intensity_kernel(spl: list[Splinter], *args,**kwargs):
 def rhc_kernel(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
     all_centroids = np.array([s.centroid_mm for s in spl])
-    # # calculate distance between all centroids
-    # distances = np.linalg.norm(all_centroids[:,None] - all_centroids[None,:], axis=-1)
-    # # find mean distance
-    # mean_distance, _ = calculate_dmode(distances, bins=100)
-    # return mean_distance, 0
-
     total_area = np.sum([s.area for s in spl])
     w = np.sqrt(total_area)
     d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
     x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
-    min_idx = rhc_minimum(y2)
+    min_idx = rhc_minimum(y2,x2)
     r1 = x2[min_idx]
 
-    # this is debug output
     if "debug" in kwargs and kwargs["debug"]:
         fig,axs = plt.subplots(1,1)
         axs.plot(x2,y2)
         file = tempfile.mktemp(".png", "rhc")
         fig.savefig(file)
         plt.close(fig)
+
     return r1, 0
 
 def acceptance_kernel(spl: list[Splinter], *args, **kwargs):
@@ -385,6 +379,7 @@ class ObjectKerneler():
 
                 if State.debug:
                     print(f'Processing window ({i},{j}): r0: {r0:.1f}, r1: {r1:.1f}, t0: {t0:.1f}, t1: {t1:.1f}, window_size: {window_size:.1f}')
+                    kwargs['debug'] = True
 
                 # save additional data
                 window_object_counts[i,j] = len(spl)
@@ -414,14 +409,14 @@ class ObjectKerneler():
         # this might raise an error
         process_window(args[0])
 
-        if len(args) > 120:
+        if len(args) > 20 and not State.debug:
             # use multiprocessing pool
             with Pool() as pool:
                 # create unordered imap and track progress
-                for result in tqdm(pool.imap_unordered(process_window, args), desc='Calculating polar...', total=len(args), leave=False):
+                for result in tqdm(pool.imap_unordered(process_window, args), desc='Asynchronous polar...', total=len(args), leave=False):
                     put_result(result)
         else:
-            for arg in tqdm(args, desc='Calculating polar...', total=len(args), leave=False):
+            for arg in tqdm(args, desc='Synchronous calculation...', total=len(args), leave=False):
                 result = process_window(arg)
                 put_result(result)
 
@@ -558,6 +553,10 @@ class ObjectKerneler():
 
                 objects_in_region = windows[w][h]
 
+                if State.debug:
+                    print(f'Processing window ({w},{h}): x1: {x1:.1f}, x2: {x2:.1f}, y1: {y1:.1f}, y2: {y2:.1f}, window_size: {kw**2:.1f}')
+                    kwargs['debug'] = True
+
                 # save additional data
                 window_object_counts[h,w] = len(objects_in_region)
 
@@ -567,13 +566,18 @@ class ObjectKerneler():
         # make a test run, it may raise an exception
         process_window(args[0])
 
-        # iterate to calculate the values
-        with Pool() as pool:
-            for result in tqdm(pool.imap_unordered(process_window, args), desc='Calculating windows...', total=len(args), leave=False):
-                # print(result)
-                put_result(result)
 
-        # X, Y = np.meshgrid(X, Y)
+
+        if len(args) > 120 and not State.debug:
+            # iterate to calculate the values
+            with Pool() as pool:
+                for result in tqdm(pool.imap_unordered(process_window, args), desc='Calculating windows...', total=len(args), leave=False):
+                    # print(result)
+                    put_result(result)
+        else:
+            for arg in tqdm(args, desc='Synchronous calculation...', total=len(args), leave=False):
+                result = process_window(arg)
+                put_result(result)
 
         if return_data:
             return X,Y,Z,Zstd, rData

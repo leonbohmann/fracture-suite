@@ -263,6 +263,8 @@ def arrange_regions(
     break_pos: SpecimenBreakPosition | tuple[float,float] = SpecimenBreakPosition.CORNER,
     w_mm: int = 500,
     h_mm: int = 500,
+    cx_mm: int = None,
+    cy_mm: int = None,
     **kwargs
 ):
     """
@@ -277,6 +279,9 @@ def arrange_regions(
     else:
         ip_x, ip_y = break_pos
 
+    if cx_mm is not None and cy_mm is not None:
+        ip_x, ip_y = cx_mm, cy_mm
+
     # maximum radius
     r_max = np.sqrt((w_mm-ip_x)**2 + (h_mm-ip_y)**2)
     r_min = 10 # 1cm around impact has no splinters
@@ -285,7 +290,7 @@ def arrange_regions(
     n_t = int(360 / d_t_deg)
 
     # radius range
-    r_range = np.arange(r_min, r_max, d_r_mm, dtype=np.float64)
+    r_range = np.arange(r_min, r_max, d_r_mm, dtype=np.float32)
     # for i in range(len(r_range)):
     #     xi = -((i / len(r_range))**1.2)+1
     #     r_range[i] = r_range[i] / xi

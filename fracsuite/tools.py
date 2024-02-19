@@ -5,15 +5,18 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 from spazial import csstraussproc2
+from tqdm import tqdm
 
 import typer
 import cv2
 
 from fracsuite.callbacks import main_callback
-from fracsuite.core.dataplotter import FigureSize, get_fig_width
-from fracsuite.core.model_layers import get_layer_folder
+from fracsuite.core.model_layers import arrange_regions, get_layer_folder
+from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
+from fracsuite.core.signal import smooth_hanning
+from fracsuite.core.specimenprops import SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import khat, lhat, lhatc, pois, quadrat_count
+from fracsuite.core.stochastics import khat, lhat, lhatc, pois, quadrat_count, rhc_minimum
 from fracsuite.state import State, StateOutput
 
 from rich import print
@@ -437,3 +440,234 @@ def compare_processes():
             name = f"rhc_{d:.0f}_acc_{a}_khat"
             axs.legend()
             State.output(StateOutput(fig, sz), name, open=False)
+
+
+@tools_app.command()
+def test_bohmann(
+    lam_max = 0.02,
+    rhc_max = 10,
+    c = 0,
+    w = 500,
+):
+    """TEsting function for the bohmann process."""
+
+    from spazial import bohmann_process
+
+    h = w
+
+    r_range, t_range = arrange_regions(30, 360, cx_mm=w/2, cy_mm=h/2, w_mm=w, h_mm=h)
+
+    lam = r_range.copy()
+    lam = np.column_stack((lam, lam))
+    for i in range(len(lam)):
+        lam[i,1] = lam_max * (1 - (i/len(lam)))
+
+    rhc = r_range.copy()
+    rhc = np.column_stack((rhc, rhc))
+    for i in range(len(rhc)):
+        rhc[i,1] = rhc_max* (1 - (i/len(rhc)))
+
+    results = np.asarray(bohmann_process(
+        w, h,  # width, height
+        r_range,
+        lam,
+        rhc,
+        (w/2,h/2),  # x,y
+        c,  # acceptance probability
+        int(1e6),  # max iterations
+        True # no warnings
+    ))
+
+    lam_max_real = len(results) / (w*h)
+
+    if not State.no_out:
+        sz = FigureSize.ROW1
+        figsz = get_fig_width(sz)
+        # plot points
+        fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+        axs.set_xlabel("x")
+        axs.set_ylabel("y")
+        axs.scatter(results[:,0], results[:,1], s=1)
+        axs.set_aspect('equal', 'box')
+        State.output(StateOutput(fig, FigureSize.ROW1), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_process", open=True)
+
+    # plot kfunction
+    d_max = 150
+    kh = khat(results, w, h, d_max)
+    x = kh[:,0]
+    y = kh[:,1]
+    if not State.no_out:
+        fig,axs = plt.subplots(figsize=figsz)
+        axs.set_xlabel("d (mm)")
+        axs.set_ylabel("$\hat{K}(d)$")
+        axs.plot(x,y, label="Messung")
+        axs.plot(x, np.pi * x**2, label="Poisson")
+        axs.legend()
+        State.output(StateOutput(fig, sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_khat")
+
+    # plot lfunction
+    lh = lhat(results, w, h, d_max)
+    x = lh[:,0]
+    y = lh[:,1]
+    if not State.no_out:
+        fig,axs = plt.subplots(figsize=figsz)
+        axs.set_xlabel("d (mm)")
+        axs.set_ylabel("$\hat{L}(d)$")
+        axs.plot(x,y, label="Messung")
+        axs.plot(x, x, label="Poisson")
+        axs.legend()
+        State.output(StateOutput(fig, sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_lhat")
+
+    # plot lfunction
+    lh = lhatc(results, w, h, d_max)
+    x = lh[:,0]
+    y = lh[:,1]
+    if not State.no_out:
+        fig,axs = plt.subplots(figsize=figsz)
+        axs.set_xlabel("d (mm)")
+        axs.set_ylabel("$\hat{L}(d) - d$")
+        axs.plot(x,y, label="Messung")
+        axs.plot(x, x-x, label="Poisson")
+        axs.axvline(x=1/lam_max, color='r', linestyle='--', label="1/$\lambda_\mathrm{max}$")
+        axs.axvline(x=1/lam_max_real, color='g', linestyle='--', label="1/$\lambda_\mathrm{max,real}$")
+        axs.legend()
+        State.output(StateOutput(fig, sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_lhatc")
+
+    # analyze lhatc function for maximum
+    from scipy.signal import argrelextrema
+    y = smooth_hanning(y, 20)
+    maxima = argrelextrema(y, np.greater, order=3)[0]
+    if len(maxima) == 0:
+        maxima = [np.argmax(y)]
+
+    maxi = x[maxima[0]]
+
+    # find real rhc
+    mini = rhc_minimum(y)
+    mini = mini if mini != -1 else 0
+    measures = {
+        "i1": lam_max,
+        "i2": lam_max_real,
+        "i3": rhc_max,
+        "i4": mini,
+        "maximum": maxi,
+        "measure1": 1/lam_max_real,
+        "measure2": 1/lam_max,
+    }
+
+    return measures
+
+@tools_app.command()
+def test_bohmann_params(load_data: bool = False):
+    """Testing function to find the influence of lambda and rhc on the maximum in the L-Function."""
+    from rich.progress import Progress
+    # disable subroutine output
+    State.no_out = True
+
+    if load_data:
+        results_lam = State.from_checkpoint("results_lam", None)
+        results_rhc = State.from_checkpoint("results_rhc", None)
+        lam_max_values = State.from_checkpoint("lam_max_values", None)
+        rhc_max_values = State.from_checkpoint("rhc_max_values", None)
+
+    else:
+        lam_max_values = np.linspace(0.01, 0.1, 10)  # Array of lam_max values to test
+        rhc_max_values = np.linspace(1, 10, 10)       # Array of rhc_max values to test
+        results_lam: dict[float, list[float]] = {}
+        for i in rhc_max_values:
+            results_lam[i] = []
+
+        results_rhc: dict[float, list[float]] = {}
+        for i in lam_max_values:
+            results_rhc[i] = []
+
+
+        with Progress() as progress:
+            lamtask = progress.add_task("[cyan]Lambda calculation", total=len(lam_max_values), transient=False)
+            for lam_max in lam_max_values:
+                rhctask = progress.add_task("[cyan]Rhc calculation", total=len(rhc_max_values), transient=False)
+                progress.update(lamtask, description=f'lambda={lam_max:.3f}')
+                for rhc_max in rhc_max_values:
+                    progress.update(rhctask, description=f'rhc={rhc_max:.3f}')
+
+                    measures = test_bohmann(lam_max=lam_max, rhc_max=rhc_max, c=0)
+                    results_lam[rhc_max].append(measures)
+
+
+                    progress.update(rhctask, advance=1)
+                progress.remove_task(rhctask)
+                progress.update(lamtask, advance=1)
+
+        # reorder results for plotting rhc
+        for i,la in enumerate(lam_max_values):
+            for j,rhc in enumerate(rhc_max_values):
+                results_rhc[la].append(results_lam[rhc][i])
+
+    State.checkpoint(results_lam=results_lam, results_rhc=results_rhc, lam_max_values=lam_max_values, rhc_max_values=rhc_max_values)  # Save results to disk
+
+        # Plotting examples (Customize these!)
+    fig, ax = plt.subplots()
+
+    for rhc in rhc_max_values:
+        lams = [x["i1"] for x in results_lam[rhc]]
+        maximums = [x["maximum"] for x in results_lam[rhc]]
+        ax.plot(lams, maximums, label=f"$r_\mathrm{{HC}}$= {rhc:.3f}")
+    ax.set_xlabel('$\lambda_\mathrm{real}$')
+    ax.set_ylabel('Observed maximum in L-Func')
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    State.output(StateOutput(fig, FigureSize.ROW1),
+                    "lam_vs_max",
+                    force_open=True, force_out=True)  # Adapt filename as needed
+    plt.close(fig)  # Close figure
+
+
+    # create plot of maximums depending on rhc
+    fig, ax = plt.subplots()
+    for lam in lam_max_values:
+        rhcs = [x["i3"] for x in results_rhc[lam]]
+        maximums = [x["maximum"] for x in results_rhc[lam]]
+        ax.plot(rhcs, maximums, label=f"$\lambda_\mathrm{{real}}$= {lam:.3f}")
+    ax.set_xlabel('$r_\mathrm{HC}$')
+    ax.set_ylabel('Observed maximum in L-Func')
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    State.output(StateOutput(fig, FigureSize.ROW1),
+                    "rhc_vs_max",
+                    force_open=True, force_out=True)
+
+
+    # transform results to X,Y,Z: X=lam, Y=rhc, Z=maximum
+    X,Y = np.meshgrid(lam_max_values, rhc_max_values)
+    Z = np.zeros((len(rhc_max_values),len(lam_max_values)))
+
+    for i,la in enumerate(lam_max_values):
+        for j,rhc in enumerate(rhc_max_values):
+            Z[j,i] = results_rhc[la][j]["maximum"] / rhc
+
+
+
+
+    fig, ax = plt.subplots()
+    ctrs = ax.contourf(X,Y,Z, cmap='turbo')
+    ax.set_xlabel('$\lambda_\mathrm{real}$')
+    ax.set_ylabel('$r_\mathrm{HC}$')
+    ax.set_title('Maximum in L-Function')
+    cbar = fig.colorbar(ctrs, ax=ax)
+    renew_ticks_cb(cbar)
+    cbar.set_label('$r(\Hat{L}_\mathrm{max})$ / $r_\mathrm{HC}$')
+    # mark the contours, where Z is 1 (rhc=lam_max)
+    ax.contour(X,Y,Z, levels=[1], colors='r')
+
+    State.output(StateOutput(fig, FigureSize.ROW1),
+                    "contour_max",
+                    force_open=True, force_out=True)
+    plt.close(fig)
+
+
+
+    import pickle
+
+    picklefile = State.get_output_file("results_rhc.pickle")
+    with open(picklefile, "wb") as f:
+        pickle.dump(results_lam, f)
+
+    return results_lam
