@@ -4,6 +4,7 @@ Organisation module. Contains the Specimen class and some helpful tools to expor
 from __future__ import annotations
 from json import JSONEncoder
 import json
+from logging import error, info, warning
 
 import os
 from pickle import NONE
@@ -11,6 +12,7 @@ import re
 import cv2
 from matplotlib import pyplot as plt
 from matplotlib.figure import figaspect
+import rich
 
 from scipy.optimize import curve_fit
 import numpy as np
@@ -195,6 +197,75 @@ def mark_impact(name):
     print(f"Marked position: {marked_pos}")
     if marked_pos is not None:
         specimen.set_setting(Specimen.SET_ACTUALBREAKPOS, tuple(marked_pos))
+
+@app.command()
+def mark_excluded_points(
+    name: str
+):
+    specimen = Specimen.get(name)
+
+    if not specimen.has_fracture_scans:
+        error("Specimen has no fracture scans!")
+        return
+
+    img = specimen.get_fracture_image()
+    img = preprocess_image(img, specimen.get_prepconf(warn=False))
+
+
+
+    try:
+        radius = float(typer.prompt("Choose a radius in mm to exclude around the points [100mm]: ", default="100"))
+    except Exception:
+        warning("Invalid input, using default radius of 100mm.")
+        radius = 100
+
+
+
+    specimen.set_setting(Specimen.SET_EXCLUDED_POSITIONS_RADIUS, radius)
+
+    excluded_points = []
+    no_more = False
+    px_p_mm = specimen.calculate_px_per_mm()
+    while not no_more:
+        fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+        axs.imshow(img, cmap='gray')
+        axs.set_title(f"Exclude point from {name}")
+        # when clicking, mark the position but dont save yet
+        def onclick(event):
+            global marked_pos
+
+            x = int(event.xdata)
+            y = int(event.ydata)
+
+            # display the marked point and remove the previous one
+            if hasattr(onclick, 'mark'):
+                onclick.mark.remove()
+
+            onclick.mark = axs.plot(x, y, 'ro', markersize=radius, alpha=0.3)[0]
+
+            # save the marked position
+            marked_pos = np.asarray([x,y]) / px_p_mm
+            fig.canvas.draw()
+
+        fig.canvas.mpl_connect('button_press_event', onclick)
+        # make cursor red
+        fig.canvas.mpl_connect('motion_notify_event', lambda event: plt.gcf().canvas.set_cursor(1))
+
+        plt.show(block=True)
+
+        global marked_pos
+        print(f"Excluded position: {marked_pos}")
+        if marked_pos is not None:
+            excluded_points.append(tuple(marked_pos))
+
+            if typer.prompt("Do you want to exclude more points?", default="Y").lower() != "y":
+                no_more = True
+        else:
+            no_more = True
+
+    if len(excluded_points) != 0:
+        specimen.set_setting(Specimen.SET_EXCLUDED_POSITIONS, tuple(excluded_points))
+
 
 
 @app.command()
@@ -511,16 +582,16 @@ def import_experimental_data(
 
                 specimen.set_setting(Specimen.SET_FALLHEIGHT, new_height)
 @app.command()
-def import_fracture(
-    specimen_name: str,
-    imgsize: tuple[int, int] = (4000, 4000),
-    realsize: tuple[float, float] = (500, 500),
-    imsize_factor: float = None,
-    no_rotate: bool = False,
-    no_tester: bool = False,
-    exclude_all_sensors: bool = False,
-    exclude_impact_radius: float = None,
-    fracture_image: str = None
+def import_files(
+    specimen_name: str = typer.Argument(help="Name of the specimen."),
+    imgsize: tuple[int, int] = typer.Option((4000, 4000), help="Size of the image."),
+    realsize: tuple[float, float] = typer.Option((-1, -1), help="Real size of the image. If any value is -1, the real size is not set."),
+    imsize_factor: float = typer.Option(None, help="Image size factor."),
+    no_rotate: bool = typer.Option(False, help="Option to disable rotation."),
+    no_tester: bool = typer.Option(False, help="Option to disable tester."),
+    exclude_all_sensors: bool = typer.Option(False, help="Option to exclude all sensors."),
+    exclude_impact_radius: float = typer.Option(None, help="Radius to exclude impact."),
+    fracture_image: str = typer.Option(None, help="Path to the fracture image.")
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -528,6 +599,12 @@ def import_fracture(
     This function is safe to call because already transformed images are not overwritten and if
     there are already splinters, an overwrite has to be confirmed.
     """
+
+    assert not (imsize_factor is not None and imgsize[0] != 4000 and imgsize[1] != 4000), "Cannot set both imsize factor and imgsize!"
+    # check that when passing an imsize factor the realsize has to be set
+    assert not (imsize_factor is not None and (realsize[0] == -1 or realsize[1] == -1)), "Real size has to be set when setting imsize factor!"
+
+
     specimen = Specimen.get(specimen_name, load=True, panic=False)
 
     if specimen is None:
@@ -559,8 +636,10 @@ def import_fracture(
 
     # set settings on specimen
     specimen.set_setting(Specimen.SET_EXCLUDE_ALL_SENSORS, exclude_all_sensors)
-    specimen.set_setting(Specimen.SET_REALSIZE, realsize)
-    specimen.set_setting(Specimen.SET_CBREAKPOSEXCL, exclude_impact_radius)
+    if exclude_impact_radius is not None:
+        specimen.set_setting(Specimen.SET_CBREAKPOSEXCL, exclude_impact_radius)
+    if realsize[0] != -1 and realsize[1] != -1:
+        specimen.set_setting(Specimen.SET_REALSIZE, realsize)
 
     print('[yellow]> Transforming fracture images <')
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)
@@ -573,9 +652,12 @@ def import_fracture(
     print('[yellow]> Marking impact point <')
     mark_impact(specimen.name)
 
+    print('[yellow]> Mark excluded points <')
+    mark_excluded_points(specimen.name)
+
     print('[yellow]> Generating splinters <')
     from fracsuite.splinters import gen
-    gen(specimen.name, realsize=realsize)
+    gen(specimen.name)
 
     print('[yellow]> Drawing contours <')
     from fracsuite.splinters import draw_contours

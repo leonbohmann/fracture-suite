@@ -20,6 +20,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from mpl_toolkits.axes_grid1 import Divider, Size
 from fracsuite.core.arrays import sort_two_arrays
 
 from fracsuite.core.coloring import get_color, norm_color, rand_col
@@ -49,6 +50,8 @@ class FigureSize(str, Enum):
     "The width of a figure in a row with two figures."
     ROW3 = 'row3'
     "The width of a figure in a row with three figures."
+    ROW3W = 'row3w'
+    "The width of a figure in a row with three figures but wider."
     ROW1H = 'row1h'
     "The width of a figure in one row in landscape."
     ROW1HL = 'row1h_l'
@@ -163,6 +166,11 @@ def to_img(fig):
     fig.savefig(temp_file, dpi=300, bbox_inches=0, pad_inches=0)
     plt.close(fig)
     return to_rgb(cv2.imread(temp_file))
+
+
+def get_log_range(data, bins=30):
+    data = np.log10(data)
+    return np.linspace(np.min(data), np.max(data), bins)
 
 
 
@@ -340,7 +348,8 @@ def plot_splinter_movavg(
         crange=crange,
         plot_kernel=plot_kernel,
         fill_skipped_with_mean=fill_skipped_with_mean,
-        make_border_transparent=transparent_border
+        make_border_transparent=transparent_border,
+        smooth=True
     )
 
 def plot_kernel_results(
@@ -474,10 +483,38 @@ def renew_ticks_cb(cbar):
     labels[1].set_verticalalignment('center')
     labels[-1].set_verticalalignment('top')
 
-def renew_ticks_ax(ax):
-    labels = ax.get_yticklabels()
+def renew_ticks_ax(ax: Axes, yticks = None, xticks = None, padding = 0):
+    if yticks is None:
+        yticks = ax.get_yticks()
+        yticks = [yticks[0], yticks[-1]]
+    ax.set_yticks(yticks)
+    ax.set_ylim(yticks[0] - padding, yticks[-1] + padding)
 
-    labels[-1].set_verticalalignment('top')
+    if xticks is None:
+        xticks = ax.get_xticks()
+        xticks = [xticks[0], xticks[-1]]
+    ax.set_xticks(xticks)
+    ax.set_xlim(xticks[0] - padding, xticks[-1] + padding)
+
+def voronoi_to_image(img, voronoi, color=255, thickness=1):
+    for i, r in enumerate(voronoi.regions):
+        if -1 not in r and len(r) > 0:
+            polygon = [voronoi.vertices[i] for i in r]
+            polygon = np.array(polygon, dtype=int)
+            cv2.polylines(img, [polygon], isClosed=True, color=color, thickness=thickness)
+
+def fixed_axes(size):
+    fig = plt.figure(figsize=size)
+    w,h = size
+    u = [Size.Fixed(w * 0.05), Size.Fixed(w * 0.95)]
+    v = [Size.Fixed(h * 0.05), Size.Fixed(h * 0.95)]
+
+    divider = Divider(fig, (0, 0, 1, 1), u, v, aspect=False)
+
+    ax = fig.add_axes(divider.get_position(),
+                axes_locator=divider.new_locator(nx=1, ny=1))
+
+    return fig, ax
 
 # T2 = TypeVar('T2')
 # def plot_values(values: list[T2], values_func: Callable[[T2, Axes], Any]) -> tuple[Figure, Axes]:
@@ -604,9 +641,6 @@ def datahist_plot(
     if xlim is not None:
         for ax in axs:
             ax.set_xlim(xlim)
-    else:
-        for ax in axs:
-            ax.set_xlim((0, 2))
 
     def xfmt(x):
         return f"{10**x:.0f}"
@@ -1063,3 +1097,10 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit'):
 
     print(label[:-2])
     return y_fit, popt
+
+
+def annotate_corner(
+    ax,
+    annotation
+):
+    ax.annotate(annotation, xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)

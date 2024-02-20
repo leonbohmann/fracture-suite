@@ -71,7 +71,7 @@ IMNAME = "fracture_image"
 @app.command()
 def gen(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
-    realsize: Annotated[tuple[float, float], typer.Option(help='Real size of specimen in mm.')] = (-1, -1),
+    realsize: Annotated[tuple[float, float], typer.Option(help='Real size of specimen in mm. -1 is used to indicate auto, then the specimen realsize is used.')] = (-1, -1),
     quiet: Annotated[bool, typer.Option(help='Do not ask for confirmation.')] = False,
     all: Annotated[bool, typer.Option(help='Generate splinters for all specimens.')] = False,
     all_exclude: Annotated[str, typer.Option(help='Exclude specimens from all.')] = None,
@@ -369,8 +369,8 @@ def draw_contours(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
     fill: Annotated[bool, typer.Option(help='Fill contours.')] = False,
     ls: Annotated[int, typer.Option(help='Line size.')] = 2,
-    color: Annotated[str, typer.Option(help='Color of the contours.')] = None,
-    label: Annotated[bool, typer.Option(help='Label the splinters.')] = False,
+    color: Annotated[str, typer.Option(help='Color of the contours. None means random color for each splinter.')] = None,
+    label: Annotated[bool, typer.Option(help='Use a black background instead of the specimens fracture image.')] = False,
 ):
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."

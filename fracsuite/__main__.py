@@ -1,3 +1,4 @@
+from logging import basicConfig
 import os
 import subprocess
 import sys
@@ -13,7 +14,6 @@ from rich.theme import Theme
 import fracsuite.core.splinter as splt
 from fracsuite.acc import app as acc_app
 from fracsuite.config import app as config_app
-from fracsuite.core.coloring import norm_color
 from fracsuite.core.progress import get_progress
 from fracsuite.general import GeneralSettings
 from fracsuite.layer import layer_app
@@ -29,8 +29,9 @@ from fracsuite.tester import tester_app
 from fracsuite.highspeedimg import app as highspeed_app
 from fracsuite.anisotropy import ani_app
 from fracsuite.tools import tools_app
+from spazial import initialize as spazial_initialize
 
-import scienceplots
+import scienceplots  # noqa: F401
 
 custom_theme = Theme({
     "info": "dim cyan",
@@ -270,6 +271,13 @@ def replot(
 @app.command()
 def test(input: list[str]):
     print(input)
+
+
+# initialization stuff
+
+spazial_initialize()
+
+basicConfig(level="INFO")
 
 try:
     app()

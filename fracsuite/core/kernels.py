@@ -52,6 +52,7 @@ def intensity_kernel(spl: list[Splinter], *args,**kwargs):
     # area of splinters
 
     area = np.sum([s.area for s in spl])
+    # area = kwargs["window_size"]
     return len(spl) / area, 0
 
 def rhc_kernel(spl: list[Splinter], *args, **kwargs):

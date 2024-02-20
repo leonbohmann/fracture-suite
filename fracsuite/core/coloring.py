@@ -31,10 +31,14 @@ def get_color(value, min_value = 0, max_value = 1, colormap_name='turbo'):
 
     return tuple(int(255 * channel) for channel in rgb_color)
 
-def norm_color(color, f: float = 1.0):
+def norm_color(color: str | tuple[float,float,float] | tuple[int,int,int], base: float = 1.0):
     if color is None:
         return color
 
     if isinstance(color, str) and color.startswith('#'):
-        return tuple(int(int(color.lstrip('#')[i:i+2], 16) / 255.0 * f) for i in (0, 2, 4))
+        return tuple(int(int(color.lstrip('#')[i:i+2], 16) / 255.0 * base) for i in (0, 2, 4))
+
+    if isinstance(color, str) and ',' in color:
+        return tuple(int(float(x) * base) for x in color.split(','))
+
     return color if isinstance(color, str) else tuple(x/255 for x in color)

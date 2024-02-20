@@ -74,7 +74,7 @@ class StateOutput:
                         data
                     )
                 elif self.is_figure:
-                    if not self.fig_as_img_only or State.figasimgonly:
+                    if not self.fig_as_img_only and not State.figasimgonly:
                         self.Data.savefig(
                             outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
                         )
@@ -166,6 +166,8 @@ class State:
     __progress_started: bool = False
 
     __checkpoint_data: dict = None
+
+    __suboutputfolder: str = None
 
     def has_progress():
         return State.__progress_started
@@ -319,6 +321,12 @@ class State:
         if (open and not State.no_open) or force_open:
             subprocess.Popen(['start', '', '/b', out], shell=True)
 
+    def pointoutput(subfolder):
+        """Sets the subfolder for output files."""
+        if State.__suboutputfolder is not None:
+            print(f"[yellow]Warning: Subfolder '{State.__suboutputfolder}' is already set. Overwriting with '{subfolder}'[/yellow]")
+        State.__suboutputfolder = subfolder
+
     def get_input_dir():
         """Gets the input directory, which is subfolder tree resembling the command structure."""
         # sub_outpath might be set to custom output path, join will take the last valid path start
@@ -361,7 +369,10 @@ class State:
         Returns:
             str: path
         """
-        p = os.path.join(State.get_output_dir(), *names)
+        if State.__suboutputfolder is not None:
+            p = os.path.join(State.get_output_dir(), State.__suboutputfolder, *names)
+        else:
+            p = os.path.join(State.get_output_dir(), *names)
 
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))

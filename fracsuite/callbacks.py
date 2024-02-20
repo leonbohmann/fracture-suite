@@ -21,6 +21,7 @@ def main_callback(
         save_plots: Annotated[bool, typer.Option(help='Save plots to output folder.')] = False,
         figasimgonly: Annotated[bool, typer.Option(help='Save plots as images only.')] = False,
         mod: Annotated[str, typer.Option(help='Modifies the output name.')] = '',
+        subfolder: Annotated[str, typer.Option(help='Puts all output in a subfolder.')] = None,
         max_spec: Annotated[int, typer.Option(help='Maximum number of specimens to process.')] = 1000,
         no_open: Annotated[bool, typer.Option(help='Do not open any outputs.')] = False,
         no_out: Annotated[bool, typer.Option(help='Do not generate any output.')] = False,
@@ -57,6 +58,9 @@ def main_callback(
     State.maximum_specimen = max_spec
     State.no_open = no_open
     State.no_out = no_out
+
+    State.pointoutput(subfolder)
+
     if mod != "":
         print(f"[cyan]Output name will be modified with: {mod}")
 

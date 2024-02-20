@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from logging import warning
 import os
 import pickle
 import re
@@ -21,6 +22,7 @@ from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, simpli
 from fracsuite.core.kernels import KernelerData, ObjectKerneler
 from fracsuite.core.model_layers import DEFAULT_ANGLE_DELTA, DEFAULT_RADIUS_DELTA
 from fracsuite.core.outputtable import Outputtable
+from fracsuite.core.plotting import get_log_range
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_spinner
 from fracsuite.core.region import RectRegion
@@ -104,6 +106,10 @@ class Specimen(Outputtable):
     "Excluded sensor positions. This setting is a list of integers giving the sensor number."
     SET_EXCLUDE_ALL_SENSORS: str = "exclude_all_sensors"
     "Excludes all sensors from the calculation."
+    SET_EXCLUDED_POSITIONS: str = "excluded_positions"
+    "Excluded positions. This setting is a list of tuples (x,y) giving the position in mm."
+    SET_EXCLUDED_POSITIONS_RADIUS: float = "excluded_positions_radius"
+    "Radius in mm to exclude from the excluded positions."
 
     SPLINTER_FILE_NAME = "splinters_v2.pkl"
 
@@ -258,6 +264,36 @@ class Specimen(Outputtable):
     def has_fracture_scans(self):
         return self.__has_fracture_scans
 
+
+    def pdf(self, binrange = None, return_binrange = False):
+        # calculate the probability density function of this specimens splinters
+        if binrange is None:
+            binrange = get_log_range([s.area for s in self.splinters], 30)
+            return_binrange = True
+        areas = [s.area for s in self.splinters]
+
+        bins, _ = np.histogram(areas, bins=binrange, density=True)
+
+        if return_binrange:
+            return bins, binrange
+
+        return bins
+
+    def cdf(self, binrange = None, return_binrange = False):
+        # calculate the cumulative density function of this specimens splinters
+        # calculate the probability density function of this specimens splinters
+        if binrange is None:
+            binrange = get_log_range([s.area for s in self.splinters], 30)
+            return_binrange = True
+        areas = [s.area for s in self.splinters]
+
+        bins = np.histogram(areas, bins=binrange, density=True)
+
+        if return_binrange:
+            return bins, binrange
+
+        return bins
+
     def load(self, log_missing_data: bool = False):
         """Load the specimen lazily."""
 
@@ -336,6 +372,8 @@ class Specimen(Outputtable):
             Specimen.SET_FALLREPEAT: 1,
             Specimen.SET_EXCLUDED_SENSOR_POSITIONS: [],
             Specimen.SET_EXCLUDE_ALL_SENSORS: False,
+            Specimen.SET_EXCLUDED_POSITIONS: [],
+            Specimen.SET_EXCLUDED_POSITIONS_RADIUS: 100,
         }
 
         # load settings from config and overwrite defaults
@@ -452,6 +490,7 @@ class Specimen(Outputtable):
             with open(self.__cfg_path, "w") as f:
                 json.dump(self.settings, f, indent=4)
         except Exception as e:
+            warning(f"Could not save settings for {self.name}.")
             with open(self.__cfg_path, "w") as f:
                 f.writelines(backup)
 
@@ -520,10 +559,12 @@ class Specimen(Outputtable):
         Origin is top left corner!
         """
         factor = self.calculate_px_per_mm() if in_px else 1.0
-        arr = self.break_pos.default_position() * factor
 
         if (arr1 := self.settings.get(Specimen.SET_ACTUALBREAKPOS, None)) is not None:
             arr = np.asarray(arr1) * factor
+        else:
+            arr = self.break_pos.default_position() * factor
+
 
         if as_tuple:
             return tuple(arr.astype(int))
@@ -975,14 +1016,22 @@ class Specimen(Outputtable):
 
         realsz = self.get_real_size()
         # remove all splinters whose centroid is closer than 1 cm to the edge
-        delta_edge = self.settings.get(Specimen.SET_EDGEEXCL, None) or 10
+        delta_edge = self.settings.get(Specimen.SET_EDGEEXCL, 10)
+        if delta_edge is None:
+            warning(f"Could not find delta_edge for {self.name}. Using default value of 10mm.")
+            delta_edge = 10
+
         self.__allsplinters = self.__splinters
         self.__splinters = [s for s in self.__allsplinters
                             if  delta_edge < s.centroid_mm[0] < realsz[0] - delta_edge
                             and delta_edge < s.centroid_mm[1] < realsz[1] - delta_edge]
 
         # or within a 2cm radius to the impact point
-        delta_impact = self.settings.get(Specimen.SET_CBREAKPOSEXCL, None) or 20
+        delta_impact = self.settings.get(Specimen.SET_CBREAKPOSEXCL, 20)
+        if delta_impact is None:
+            warning(f"Could not find delta_impact for {self.name}. Using default value of 20mm.")
+            delta_impact = 20
+
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
         # remove all splinters within 1cm of sensor positions
@@ -997,6 +1046,13 @@ class Specimen(Outputtable):
             # filter splinters
             self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(sensor_position)) > 10]
 
+
+        radius = self.settings.get(Specimen.SET_EXCLUDED_POSITIONS_RADIUS, [])
+        for pos in self.settings.get(Specimen.SET_EXCLUDED_POSITIONS, []):
+            # filter splinters
+            self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(pos)) > radius]
+
+
         if State.debug:
             print(f"Loaded {len(self.__allsplinters)} splinters.")
             print(f" > Filtered {len(self.__allsplinters) - len(self.__splinters)}")
@@ -1010,7 +1066,8 @@ class Specimen(Outputtable):
         size_px: tuple[int, int] = (4000, 4000)
     ):
         """
-        Transforms the fracture morphology images.
+        Transforms the fracture morphology images. This will check, if the images are
+        transformed and skips them if so.
 
         Args:
             resize_only (bool, optional): Only resize the images. Defaults to False.

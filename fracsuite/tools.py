@@ -12,7 +12,7 @@ import cv2
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.model_layers import arrange_regions, get_layer_folder
-from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
+from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_ax, renew_ticks_cb, voronoi_to_image
 from fracsuite.core.signal import smooth_hanning
 from fracsuite.core.specimenprops import SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
@@ -360,20 +360,34 @@ def create_poisson():
 
 
 @tools_app.command()
-def compare_processes():
+def gibbs_strauss(
+    acc: str = "2e-3",
+    rhc: str = "0.0000001, 10, 25, 50",
+    intensity: float = 0.002,
+    name: str = None,
+):
+    State.pointoutput(name)
+
     sz = FigureSize.ROW3
 
     # acceptance probabilities
-    acc = [2e-1,2e-2,2e-3,2e-4,2e-5]
+    acc = np.array([float(x) for x in acc.split(",")])
     # hard core radii
     # rhc = np.array([0.00001, 10, 25, 50])
-    rhc = np.array([25])
+    rhc = np.array([float(x) for x in rhc.split(",")])
+
+
     d_max = rhc * 3
+    if rhc[0] == 0:
+        rhc[0] = 0.000000001
+        d_max[0] = 10
 
-    #  d_max[0] = 10
+    print('acc:', acc)
+    print('rhc:', rhc)
 
-    n = 600
+
     w = 500
+    n = int(intensity * w**2)
 
     for id,d in enumerate(rhc):
         for a in acc:
@@ -390,13 +404,26 @@ def compare_processes():
             axs.set_xlabel("x")
             axs.set_ylabel("y")
             axs.scatter(points[:,0], points[:,1], s=1)
+            axs.set_aspect('equal', 'box')
             name = f"rhc_{d:.0f}_acc_{a}"
+            renew_ticks_ax(axs, (0, w), (0, w), 0)
+            axs.grid(False)
+            axs.tick_params(axis='both', which='both', length=0)
             State.output(StateOutput(fig, sz), name, open=False)
 
+            # create voronoi plot with the points
+            from scipy.spatial import Voronoi
+            vor = Voronoi(points)
+            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+            img = np.zeros((w,w))
+            voronoi_to_image(img, vor)
+            axs.imshow(img, cmap='gray')
+            axs.set_aspect('equal', 'box')
+            State.output(StateOutput(fig, sz), f"{name}_voronoi", open=False)
+
+
+
             # create K-Functions
-            def Lpois(r):
-                # see Baddeley et al. S.206 K_pois
-                return r
             def Kpois(r):
                 # see Baddeley et al. S.206 K_pois
                 return np.pi * r**2
@@ -410,10 +437,9 @@ def compare_processes():
             axs.set_xlabel("d (mm)")
             axs.set_ylabel("$\hat{L}(d)$")
             axs.plot(x,y, label="Messung")
-            axs.plot(x, Lpois(x), label="Poisson")
-            name = f"rhc_{d:.0f}_acc_{a}_lhat"
+            axs.plot(x, x, label="Poisson")
             axs.legend()
-            State.output(StateOutput(fig, sz), name, open=False)
+            State.output(StateOutput(fig, sz), f"{name}_lhat", open=False)
 
             # centered l-function
             lhatc_v = lhatc(points, w, w, d_max[id])
@@ -423,10 +449,9 @@ def compare_processes():
             axs.set_xlabel("d (mm)")
             axs.set_ylabel("$\hat{L}(d) - d$")
             axs.plot(x,y, label="Messung")
-            axs.plot(x, Lpois(x)-x, label="Poisson")
-            name = f"rhc_{d:.0f}_acc_{a}_lhatc"
+            axs.plot(x, x-x, label="Poisson")
             axs.legend()
-            State.output(StateOutput(fig, sz), name, open=False)
+            State.output(StateOutput(fig, sz),  f"{name}_lhatc", open=False)
 
             # K-Function
             kh = khat(points, w, w, d_max[id])
@@ -437,17 +462,16 @@ def compare_processes():
             axs.set_ylabel("$\hat{K}(d)$")
             axs.plot(x,y, label="Messung")
             axs.plot(x, Kpois(x), label="Poisson")
-            name = f"rhc_{d:.0f}_acc_{a}_khat"
             axs.legend()
-            State.output(StateOutput(fig, sz), name, open=False)
+            State.output(StateOutput(fig, sz), f"{name}_khat", open=False)
 
 
 @tools_app.command()
 def test_bohmann(
-    lam_max = 0.02,
-    rhc_max = 10,
-    c = 0,
-    w = 500,
+    lam_max: float = 0.02,
+    rhc_max: float = 10,
+    c: float = 0,
+    w: float = 500,
 ):
     """TEsting function for the bohmann process."""
 
@@ -490,6 +514,18 @@ def test_bohmann(
         axs.scatter(results[:,0], results[:,1], s=1)
         axs.set_aspect('equal', 'box')
         State.output(StateOutput(fig, FigureSize.ROW1), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_process", open=True)
+
+    if not State.no_out:
+        # create voronoi plot with the points
+        from scipy.spatial import Voronoi
+        vor = Voronoi(results)
+        fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        img = np.zeros((int(w),int(w)))
+        voronoi_to_image(img, vor)
+        axs.imshow(img, cmap='gray')
+        axs.set_aspect('equal', 'box')
+        State.output(StateOutput(fig, sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_voronoi", open=True)
+
 
     # plot kfunction
     d_max = 150
