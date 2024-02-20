@@ -110,7 +110,7 @@ if args.all:
                     config.impact_position = (50,50)
 
                 if args.clear_splinters:
-                    shutil.rmtree(spec.splinters_path, ignore_errors=True)
+                    shutil.rmtree(spec.splinters_folder, ignore_errors=True)
 
                 if not spec.has_fracture_scans:
                     progress.remove_task(file_task)

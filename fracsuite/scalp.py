@@ -26,6 +26,7 @@ and the mean value of all measurements.
 """
 
 import glob
+from logging import debug, info
 import os
 import shutil
 from typing import TypeVar
@@ -33,13 +34,14 @@ import numpy as np
 import typer
 from rich import print
 from rich.progress import track
+from fracsuite.callbacks import main_callback
 from fracsuite.general import GeneralSettings
 
 from fracsuite.core.specimen import Specimen
 from fracsuite.scalper.scalp_stress import calculate_simple
 from fracsuite.scalper.scalpSpecimen import ScalpProject, ScalpSpecimen
 
-scalp_app = typer.Typer(help=__doc__)
+scalp_app = typer.Typer(help=__doc__, callback=main_callback)
 general = GeneralSettings.get()
 
 @scalp_app.command()
@@ -149,7 +151,7 @@ def get_specimens_from_projects(projects: list[ScalpProject]) -> list[ScalpSpeci
 def transform(
     folder: str = typer.Argument(None, help="Folder to transform."),
     display_mohr: bool = typer.Option(False, "--mohr", help="Display mohr's circle."),
-    output: str = typer.Option(None, help="Output folder."),
+    load_to_db: bool = typer.Option(False, "--to-db", help="Load to database."),
 ):
     SWITCH_DISPLAY_MOHR_CIRCLE = display_mohr
 
@@ -201,3 +203,25 @@ def transform(
     # write specimen
     for specimen in specimens:
         specimen.write_measurements(output_directory, "txt")
+
+
+    if not load_to_db:
+        return
+
+
+    # copy all folder in the output_directory to the correct folders in the database
+    for specimen in specimens:
+        spec = Specimen.get(specimen.name, printout=False, load=False)
+        debug(f'Loaded {specimen.name}')
+
+        # copy all folder contents to spec
+        scalp_folder = spec.scalp_folder
+        debug(f'Scalp-Folder: {scalp_folder}')
+
+        shutil.copytree(
+            os.path.join(output_directory, specimen.name, 'scalp'),
+            os.path.abspath(scalp_folder),
+            dirs_exist_ok=True
+        )
+
+        info(f'Copy {specimen.name} to database.')

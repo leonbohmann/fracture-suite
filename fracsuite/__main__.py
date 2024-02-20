@@ -1,4 +1,4 @@
-from logging import basicConfig
+import logging
 import os
 import subprocess
 import sys
@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 from rich import print
 from rich.progress import Progress, TextColumn
 from rich.theme import Theme
+from rich.logging import RichHandler
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
@@ -30,6 +31,7 @@ from fracsuite.highspeedimg import app as highspeed_app
 from fracsuite.anisotropy import ani_app
 from fracsuite.tools import tools_app
 from spazial import initialize as spazial_initialize
+from rich.console import Console
 
 import scienceplots  # noqa: F401
 
@@ -101,7 +103,7 @@ plt.rcParams.update(params)
 # import to redirect pickle import
 sys.modules['fracsuite.splinters.splinter'] = splt
 
-def main_callback(ctx: typer.Context, debug: bool = None):
+def root_main_callback(ctx: typer.Context, debug: bool = None):
     """Fracsuite tools"""
     # print(Panel.fit(f"# Running [bold]{ctx.invoked_subcommand}[/bold]", title="Fracsuite tools", border_style="green"))
     # print(ctx.protected_args)
@@ -122,7 +124,7 @@ def end_callback(*args, **kwargs):
     d = time.time() - State.start_time
     print(f"Finished in {d:.2f}s.")
 
-app = typer.Typer(pretty_exceptions_short=True, pretty_exceptions_show_locals=False, result_callback=end_callback, callback=main_callback)
+app = typer.Typer(pretty_exceptions_short=True, pretty_exceptions_show_locals=False, result_callback=end_callback, callback=root_main_callback)
 app.add_typer(splinter_app, name="splinters")
 app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")
@@ -138,34 +140,6 @@ app.add_typer(highspeed_app, name="highspeed")
 app.add_typer(ani_app, name="anisotropy")
 app.add_typer(tools_app, name="tools")
 
-class PrintWrapper():
-
-    def __init__(self, func, index):
-        """Setup the object with a logger and a loglevel
-        and start the thread
-        """
-        self.func = func
-        self.index = index
-        self.fdRead, self.fdWrite = os.pipe()
-        self.pipeReader = os.fdopen(self.fdRead)
-
-    def fileno(self):
-        """Return the write file descriptor of the pipe
-        """
-        return self.fdWrite
-
-    def run(self):
-        """Run the thread, logging everything.
-        """
-        for line in iter(self.pipeReader.readline, ''):
-            print(f'[green]{self.index}[/green]> {line}')
-
-        self.pipeReader.close()
-
-    def close(self):
-        """Close the write end of the pipe.
-        """
-        os.close(self.fdWrite)
 
 # @app.command()
 # def marina_organize(path: str):
@@ -274,10 +248,19 @@ def test(input: list[str]):
 
 
 # initialization stuff
+spazial_initialize() # spazial rust module
+# Erstellt eine Rich Console
+console = Console()
 
-spazial_initialize()
+# Konfiguriert das Logging, um RichHandler zu verwenden
+logging.basicConfig(
+    level="INFO",
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(console=console, rich_tracebacks=True, show_time=False)]
+)
 
-basicConfig(level="INFO")
+logger = logging.getLogger("rich")
 
 try:
     app()

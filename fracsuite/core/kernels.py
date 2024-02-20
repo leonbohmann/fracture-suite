@@ -410,7 +410,7 @@ class ObjectKerneler():
         # this might raise an error
         process_window(args[0])
 
-        if len(args) > 20 and not State.debug:
+        if len(args) > 40 and not State.debug:
             # use multiprocessing pool
             with Pool() as pool:
                 # create unordered imap and track progress
@@ -569,7 +569,7 @@ class ObjectKerneler():
 
 
 
-        if len(args) > 120 and not State.debug:
+        if len(args) > 50 and not State.debug:
             # iterate to calculate the values
             with Pool() as pool:
                 for result in tqdm(pool.imap_unordered(process_window, args), desc='Calculating windows...', total=len(args), leave=False):

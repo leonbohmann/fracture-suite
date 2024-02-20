@@ -3,6 +3,7 @@ Splinter analyzation tools.
 """
 
 from enum import Enum
+from logging import debug
 import multiprocessing.shared_memory as sm
 import os
 import pickle
@@ -380,13 +381,17 @@ def draw_contours(
         out_img = specimen.get_fracture_image()
     else:
         out_img = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
-    for splinter in track(splinters, description="Drawing contours...", transient=True):
-        if color is None:
-            clr = rand_col()
-        else:
-            clr = norm_color(color, 255)
 
-        cv2.drawContours(out_img, [splinter.contour], 0, clr, ls if not fill else -1)
+    with get_progress(total=len(splinters), title='Drawing contours') as progress:
+        for splinter in splinters:
+            if color is None:
+                clr = rand_col()
+            else:
+                clr = norm_color(color, 255)
+
+            cv2.drawContours(out_img, [splinter.contour], 0, clr, ls if not fill else -1)
+
+            progress.advance()
 
     State.output(out_img, 'contours', spec=specimen, to_additional=True)
 
@@ -1095,7 +1100,8 @@ def create_filter_function(name_filter,
                            energy=None,
                            exclude: str = None,
                            needs_scalp=True,
-                           needs_splinters=True
+                           needs_splinters=True,
+                           needs_fracture_scans=True
                            ) -> Callable[[Specimen], bool]:
     """Creates a filter function for specimens.
 
@@ -1212,15 +1218,18 @@ def create_filter_function(name_filter,
         elif not name_filter_function(specimen, name_filter):
             return False
         elif needs_scalp and not specimen.has_scalp:
-            print(f"Specimen '{specimen.name}' has no scalp data. Skipping.")
+            debug(f"Specimen '{specimen.name}' has no scalp data. Skipping.")
             return False
         elif needs_splinters and not specimen.has_splinters:
-            print(f"Specimen '{specimen.name}' has no splinter data. Skipping.")
+            debug(f"Specimen '{specimen.name}' has no splinter data. Skipping.")
             return False
         elif sigmas is not None:
             return sigmas[0] <= abs(specimen.scalp.sig_h) <= sigmas[1]
         elif energy is not None:
             return abs(specimen.U-energy) < 0.05 * energy
+        elif needs_fracture_scans and not specimen.has_fracture_scans:
+            debug(f"Specimen '{specimen.name}' has no fracture scans. Skipping.")
+            return False
         return True
 
     return filter_specimens

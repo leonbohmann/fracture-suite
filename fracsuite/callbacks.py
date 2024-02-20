@@ -1,3 +1,5 @@
+from logging import info
+import logging
 import os
 import re
 from typing import Annotated, Any, Callable
@@ -29,6 +31,9 @@ def main_callback(
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
 
+    if debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+
     if set_additional_path is not None:
         general.output_paths[cmd] = set_additional_path
         general.save()
@@ -46,7 +51,7 @@ def main_callback(
 
     State.clear_output = clear_output
     if clear_output:
-        print("[cyan]Similar files will be deleted when finalizing.")
+        info("[cyan]Similar files will be deleted when finalizing.")
 
     os.makedirs(os.path.join(general.out_path, State.sub_outpath), exist_ok=True)
 
@@ -62,10 +67,10 @@ def main_callback(
     State.pointoutput(subfolder)
 
     if mod != "":
-        print(f"[cyan]Output name will be modified with: {mod}")
+        info(f"[cyan]Output name will be modified with: {mod}")
 
     if to_temp:
-        print("[cyan]Output will be written to temp folder.")
+        info("[cyan]Output will be written to temp folder.")
 
 #TODO: In the future this can be used to make the commands more modular
 def specimen_callback(name_or_names_with_sigma: list[str]):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from logging import warning
+from logging import debug, warning
 import os
 import pickle
 import re
@@ -70,6 +70,7 @@ CALC_DMAX = None
 DMAX_K = 50
 DMAX_L = 50
 
+
 class Specimen(Outputtable):
     """ Container class for a specimen. """
 
@@ -112,6 +113,7 @@ class Specimen(Outputtable):
     "Radius in mm to exclude from the excluded positions."
 
     SPLINTER_FILE_NAME = "splinters_v2.pkl"
+    SCALP_DATA_FILENAME = "scalp_data.pkl"
 
     @staticmethod
     def setting_keys():
@@ -316,10 +318,14 @@ class Specimen(Outputtable):
                 f"Splinters: {checkmark(self.has_splinters)} ) "
                     f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
 
+    def put_scalp_data(self, scalp: ScalpSpecimen):
+        """Puts the scalp data into the specimen folder."""
+        with open(os.path.join(self.path, "scalp", Specimen.SCALP_DATA_FILENAME), "wb") as f:
+            pickle.dump(scalp, f)
 
     def put_fracture_image(self, img: np.ndarray):
         """Puts the fracture image into the specimen folder."""
-        cv2.imwrite(os.path.join(self.fracture_morph_dir, "Transmission.bmp"), img)
+        cv2.imwrite(os.path.join(self.fracture_morph_folder, "Transmission.bmp"), img)
         self.__has_fracture_scans = True
 
 
@@ -365,8 +371,8 @@ class Specimen(Outputtable):
             Specimen.SET_BREAKMODE: "punch",
             Specimen.SET_BREAKPOS: "corner",
             Specimen.SET_ACTUALBREAKPOS: None,
-            Specimen.SET_CBREAKPOSEXCL: None,
-            Specimen.SET_EDGEEXCL: None,
+            Specimen.SET_CBREAKPOSEXCL: 20,
+            Specimen.SET_EDGEEXCL: 10,
             Specimen.SET_FALLHEIGHT: 0.07,
             Specimen.SET_REALSIZE: (500,500),
             Specimen.SET_FALLREPEAT: 1,
@@ -415,21 +421,21 @@ class Specimen(Outputtable):
 
         # load acceleration
         acc_path = os.path.join(self.path, "fracture", "acceleration")
-        self.acc_file = find_file(acc_path, "*.bin")
+        self.acc_file = find_file(acc_path, f"{self.name}.bin")
 
         # scalp requisites
-        scalp_path = os.path.join(self.path, "scalp")
-        self.__scalp_file = find_file(scalp_path, "scalp_data.pkl")
+        self.scalp_folder = os.path.join(self.path, "scalp")
+        self.__scalp_file = find_file(self.scalp_folder, Specimen.SCALP_DATA_FILENAME)
         self.has_scalp = self.__scalp_file is not None
 
         # splinters requisites
-        self.fracture_morph_dir = os.path.join(self.path, "fracture", "morphology")
-        self.__has_fracture_scans = os.path.exists(self.fracture_morph_dir) \
-            and find_file(self.fracture_morph_dir, "*.bmp") is not None
-        self.splinters_path = os.path.join(self.path, "fracture", "splinter")
+        self.fracture_morph_folder = os.path.join(self.path, "fracture", "morphology")
+        self.__has_fracture_scans = os.path.exists(self.fracture_morph_folder) \
+            and find_file(self.fracture_morph_folder, "*.bmp") is not None
+        self.splinters_folder = os.path.join(self.path, "fracture", "splinter")
         "Path to the splinter output folder."
-        self.__splinters_file_legacy = find_file(self.splinters_path, "splinters_v1.pkl")
-        self.splinters_file = find_file(self.splinters_path, Specimen.SPLINTER_FILE_NAME)
+        self.__splinters_file_legacy = find_file(self.splinters_folder, "splinters_v1.pkl")
+        self.splinters_file = find_file(self.splinters_folder, Specimen.SPLINTER_FILE_NAME)
         "File that contains splinter information."
         self.has_splinters = self.splinters_file is not None
         "States wether there is a file with splinter information or not."
@@ -437,9 +443,9 @@ class Specimen(Outputtable):
         "States wether adjacency information are present or not."
 
 
-        self.anisotropy_dir = os.path.join(self.path, "anisotropy")
+        self.anisotropy_folder = os.path.join(self.path, "anisotropy")
         "Path to anisotropy scans."
-        self.anisotropy = AnisotropyImages(self.anisotropy_dir)
+        self.anisotropy = AnisotropyImages(self.anisotropy_folder)
 
         self.simdata_path = self.get_splinter_outfile("simdata.json")
         "Path to the simulation data file."
@@ -460,6 +466,16 @@ class Specimen(Outputtable):
         """Set an experimental setting of the specimen. Use Specimen.SET_* constants."""
         self.settings[key] = value
         self.__save_settings()
+
+    def get_setting(self, key, default):
+        """Get an experimental setting of the specimen. Use Specimen.SET_* constants."""
+        ret = self.settings.get(key, default)
+        if ret is None:
+            debug(f"Could not find {key} for {self.name}. Using default value: {default}.")
+            ret = default
+
+        return ret
+
 
     def set_data(self, key: str, value):
         """Set evaluated data of the specimen. Use Specimen.DAT_* constants."""
@@ -504,18 +520,18 @@ class Specimen(Outputtable):
         return paths
 
     def get_filled_image(self):
-        filled_file = find_file(self.splinters_path, "img_filled.png")
+        filled_file = find_file(self.splinters_folder, "img_filled.png")
         if filled_file is not None:
             return cv2.imread(filled_file)
 
     def get_label_image(self, as_rgb=True):
-        label_file = find_file(self.fracture_morph_dir, "label*")
+        label_file = find_file(self.fracture_morph_folder, "label*")
         if label_file is not None:
             return cv2.imread(label_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
     def get_fracture_image(self, as_rgb = True):
         """Gets the fracture image. Default is RGB."""
-        transmission_file = find_file(self.fracture_morph_dir, "*transmission*")
+        transmission_file = find_file(self.fracture_morph_folder, "*transmission*")
         if transmission_file is not None:
             return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
@@ -539,7 +555,7 @@ class Specimen(Outputtable):
         return os.path.join(self.path, 'fracture', 'acceleration', name)
 
     def get_splinter_outfile(self, name: str, create = True) -> str:
-        path = os.path.join(self.splinters_path, name)
+        path = os.path.join(self.splinters_folder, name)
 
         if create:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -576,7 +592,7 @@ class Specimen(Outputtable):
         Returns a prepconfig object or none, if not found.
         Can be created using 'fracsuite tester threshhold 8.100.Z.01'.
         """
-        prep_file = find_file(self.splinters_path, "prep.json")
+        prep_file = find_file(self.splinters_folder, "prep.json")
         if prep_file is not None:
             with open(prep_file, "r") as f:
                 js = json.load(f)
@@ -1016,22 +1032,14 @@ class Specimen(Outputtable):
 
         realsz = self.get_real_size()
         # remove all splinters whose centroid is closer than 1 cm to the edge
-        delta_edge = self.settings.get(Specimen.SET_EDGEEXCL, 10)
-        if delta_edge is None:
-            warning(f"Could not find delta_edge for {self.name}. Using default value of 10mm.")
-            delta_edge = 10
-
+        delta_edge = self.get_setting(Specimen.SET_EDGEEXCL, 10)
         self.__allsplinters = self.__splinters
         self.__splinters = [s for s in self.__allsplinters
                             if  delta_edge < s.centroid_mm[0] < realsz[0] - delta_edge
                             and delta_edge < s.centroid_mm[1] < realsz[1] - delta_edge]
 
         # or within a 2cm radius to the impact point
-        delta_impact = self.settings.get(Specimen.SET_CBREAKPOSEXCL, 20)
-        if delta_impact is None:
-            warning(f"Could not find delta_impact for {self.name}. Using default value of 20mm.")
-            delta_impact = 20
-
+        delta_impact = self.get_setting(Specimen.SET_CBREAKPOSEXCL, 20)
         self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
         # remove all splinters within 1cm of sensor positions
@@ -1076,7 +1084,7 @@ class Specimen(Outputtable):
             crop (bool, optional): Crop the images. Defaults to True.
             size (tuple[int, int], optional): Size of the images. Defaults to (500, 500).
         """
-        path = self.fracture_morph_dir
+        path = self.fracture_morph_folder
         if not os.path.exists(path):
             raise Exception("Fracture morphology folder not found.")
 

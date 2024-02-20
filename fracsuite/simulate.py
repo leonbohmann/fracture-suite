@@ -1,3 +1,4 @@
+from logging import info
 import random
 from typing import Annotated
 import cv2
@@ -37,9 +38,6 @@ sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
 def section(title: str):
     print(f'[yellow]{title}')
-
-def info(*message):
-    print(f' [blue]{message[0]}[/blue]', *message[1:])
 
 rng = np.random.default_rng()
 def stdrand(mean, stddev):
@@ -412,7 +410,7 @@ def lbreak(
 
     section("Plotting layers...")
     for layer in layers:
-        info(layer)
+        info('Plotting ', layer)
         il, il_stddev, mode_labels, name = layers[layer]
         r_range = np.linspace(0, np.sqrt(450**2+450**2), 100)
         fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW3))
@@ -560,10 +558,11 @@ def lbreak(
 
     State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2, open=State.debug)
     cv2.imwrite(sim.get_file('filled.png'), out_img)
+    cv2.imwrite(sim.get_file('contours.png'), 255-black_white_img)
 
     section('Saving...')
     sim.put_splinters(splinters)
-    print(f'[green] Simulation created: {sim.name}_{sim.nbr}[/green]')
+    info(f'Simulation created: {sim.name}_{sim.nbr}')
     return sim
 
 def cropimg(region, size_f, markers):

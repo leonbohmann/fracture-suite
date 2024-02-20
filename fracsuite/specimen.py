@@ -4,7 +4,7 @@ Organisation module. Contains the Specimen class and some helpful tools to expor
 from __future__ import annotations
 from json import JSONEncoder
 import json
-from logging import error, info, warning
+from logging import debug, error, info, warning
 
 import os
 from pickle import NONE
@@ -13,6 +13,7 @@ import cv2
 from matplotlib import pyplot as plt
 from matplotlib.figure import figaspect
 import rich
+from rich.prompt import Prompt
 
 from scipy.optimize import curve_fit
 import numpy as np
@@ -219,7 +220,9 @@ def mark_excluded_points(
         warning("Invalid input, using default radius of 100mm.")
         radius = 100
 
-
+    # default
+    global marked_pos_exclpoint
+    marked_pos_exclpoint = None
 
     specimen.set_setting(Specimen.SET_EXCLUDED_POSITIONS_RADIUS, radius)
 
@@ -232,7 +235,7 @@ def mark_excluded_points(
         axs.set_title(f"Exclude point from {name}")
         # when clicking, mark the position but dont save yet
         def onclick(event):
-            global marked_pos
+            global marked_pos_exclpoint
 
             x = int(event.xdata)
             y = int(event.ydata)
@@ -244,7 +247,7 @@ def mark_excluded_points(
             onclick.mark = axs.plot(x, y, 'ro', markersize=radius, alpha=0.3)[0]
 
             # save the marked position
-            marked_pos = np.asarray([x,y]) / px_p_mm
+            marked_pos_exclpoint = np.asarray([x,y]) / px_p_mm
             fig.canvas.draw()
 
         fig.canvas.mpl_connect('button_press_event', onclick)
@@ -253,10 +256,9 @@ def mark_excluded_points(
 
         plt.show(block=True)
 
-        global marked_pos
-        print(f"Excluded position: {marked_pos}")
-        if marked_pos is not None:
-            excluded_points.append(tuple(marked_pos))
+        print(f"Excluded position: {marked_pos_exclpoint}")
+        if marked_pos_exclpoint is not None:
+            excluded_points.append(tuple(marked_pos_exclpoint))
 
             if typer.prompt("Do you want to exclude more points?", default="Y").lower() != "y":
                 no_more = True
@@ -581,7 +583,8 @@ def import_experimental_data(
                 print(f"Fall height of {name} changed from {old_heiht} to {new_height}!")
 
                 specimen.set_setting(Specimen.SET_FALLHEIGHT, new_height)
-@app.command()
+
+@app.command('import')
 def import_files(
     specimen_name: str = typer.Argument(help="Name of the specimen."),
     imgsize: tuple[int, int] = typer.Option((4000, 4000), help="Size of the image."),
@@ -591,6 +594,7 @@ def import_files(
     no_tester: bool = typer.Option(False, help="Option to disable tester."),
     exclude_all_sensors: bool = typer.Option(False, help="Option to exclude all sensors."),
     exclude_impact_radius: float = typer.Option(None, help="Radius to exclude impact."),
+    exclude_points: bool = typer.Option(False, help="Shows helper windows to exclude points in the morphology."),
     fracture_image: str = typer.Option(None, help="Path to the fracture image.")
 ):
     """
@@ -598,17 +602,40 @@ def import_files(
 
     This function is safe to call because already transformed images are not overwritten and if
     there are already splinters, an overwrite has to be confirmed.
+
+    #### Specimen creation
+    You can either create a new specimen using `fracsuite specimen create` and manually copy the images into
+    the new folder, or you can use this command with the `--fracture-image` option to directly import the fracture image.
+
+    #### Resulting image size
+    There are two ways in which the resulting image size (px) can be set:
+        - Use the `--imgsize` option to set the image size directly.
+        - Use the `--imsize-factor` option to scale the image size from the real size. In that case, the real size has to be set.
     """
 
     assert not (imsize_factor is not None and imgsize[0] != 4000 and imgsize[1] != 4000), "Cannot set both imsize factor and imgsize!"
     # check that when passing an imsize factor the realsize has to be set
     assert not (imsize_factor is not None and (realsize[0] == -1 or realsize[1] == -1)), "Real size has to be set when setting imsize factor!"
 
+    if "*" in specimen_name:
+        info(f"Importing all specimens with filter '{specimen_name}'")
+        # assume that the name contains a filter
+        filterfunc = create_filter_function(specimen_name, needs_scalp=False, needs_splinters=False)
+        specimens = Specimen.get_all_by(filterfunc, load=True)
+        for spec in specimens:
+            if not spec.has_fracture_scans:
+                debug(f"Specimen '{spec.name}' has no fracture scans! Skipping...")
+                continue
+
+            import_files(spec.name, imgsize, realsize, imsize_factor, no_rotate, no_tester, exclude_all_sensors, exclude_impact_radius, fracture_image)
+
+        return
+
 
     specimen = Specimen.get(specimen_name, load=True, panic=False)
 
     if specimen is None:
-        print(f"Specimen '{specimen_name}' not found! Creating...")
+        info(f"Specimen '{specimen_name}' not found! Creating...")
         create(specimen_name)
 
         assert fracture_image is not None, "Fracture image is required for new specimen!"
@@ -619,9 +646,9 @@ def import_files(
         specimen.put_fracture_image(img)
     elif specimen is not None and fracture_image is not None:
         if specimen.has_fracture_scans:
-            raise Exception("Specimen already has fracture scans! Overwrite not allowed! Delete the image at: " + specimen.fracture_morph_dir)
+            raise Exception("Specimen already has fracture scans! Overwrite not allowed! Delete the image at: " + specimen.fracture_morph_folder)
 
-        print(f"Specimen '{specimen_name}' has no fracture scans! Adding...")
+        info(f"Specimen '{specimen_name}' has no fracture scans! Adding...")
         img = cv2.imread(fracture_image, cv2.IMREAD_COLOR)
         specimen.put_fracture_image(img)
 
@@ -652,8 +679,11 @@ def import_files(
     print('[yellow]> Marking impact point <')
     mark_impact(specimen.name)
 
-    print('[yellow]> Mark excluded points <')
-    mark_excluded_points(specimen.name)
+    if exclude_points:
+        print('[yellow]> Mark excluded points <')
+        mark_excluded_points(specimen.name)
+    else:
+        info("Skipped excluding points. Enable with --exclude-points")
 
     print('[yellow]> Generating splinters <')
     from fracsuite.splinters import gen
