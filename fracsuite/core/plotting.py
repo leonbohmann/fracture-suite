@@ -27,6 +27,7 @@ from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
+from fracsuite.core.logging import info
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import calculate_dmode, calculate_kde, r_squared
 from fracsuite.general import GeneralSettings
@@ -395,7 +396,7 @@ def plot_kernel_results(
 
     if crange is None:
         crange = (np.nanmin(results), np.nanmax(results))
-        print(f"crange: {crange}")
+        info(f"Using crange: {crange}")
 
     def show_img():
         axs.imshow(original_image, interpolation='bilinear' if smooth else 'nearest')

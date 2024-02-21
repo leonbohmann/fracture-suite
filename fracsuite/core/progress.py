@@ -15,6 +15,8 @@ def default_progress(start = False):
     prog.start()
     return prog
 
+def on_progress_exit():
+    State.progress = None
 
 def get_progress(expand = True, bw = 80, title="Progress...", total=None):
     if State.progress is None:
@@ -26,6 +28,7 @@ def get_progress(expand = True, bw = 80, title="Progress...", total=None):
                     TimeElapsedColumn(),
                 transient=True, refresh_per_second=3, expand=expand)
         State.progress = ProgWrapper(prog, title=title, total=total)
+        State.progress.set_exit_handler(on_progress_exit)
 
 
     State.progress.nset_description(title)

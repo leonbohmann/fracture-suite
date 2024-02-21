@@ -23,6 +23,7 @@ class ProgWrapper():
         self.nset_description(title)
         self.nset_total(total)
 
+        self.exithandler = None
 
     def nset_description(self, description: str):
         self.ndescr = description
@@ -69,8 +70,16 @@ class ProgWrapper():
         return self
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.enter_level == 0:
+            self.entered = False
+
+            if self.exithandler is not None:
+                self.exithandler()
+
             return self.progress.__exit__(exc_type, exc_val, exc_tb)
         else:
             self.remove_task(self.tasks[self.enter_level])
             self.enter_level -= 1
             return False
+
+    def set_exit_handler(self, handler):
+        self.exithandler = handler

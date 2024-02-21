@@ -152,7 +152,6 @@ class WindowResult:
 
 def process_window(args: WindowArguments):
     """Wrapper function for the window kerneler."""
-    print(f"Processing window ({args.i:>5},{args.j:>5}) > x1: {args.x1:.1f}, x2: {args.x2:.1f} y1: {args.y1:.1f}, y2: {args.y2:.1f}, sz: {args.window_size:.1f}, len: {len(args.objects_in_region)}")
     mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, window_size=args.window_size, **args.kwargs) \
         if len(args.objects_in_region) > 0 else (SKIP_VALUE, SKIP_VALUE)
     return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, mean_value, stddev)
@@ -359,38 +358,38 @@ class ObjectKerneler():
 
         # create args for every (r,t) region
         args: list[WindowArguments] = []
-        for i in range(len(x_range)-1):
-            for j in range(len(y_range)-1):
-                # last r includes all remaining radii
-                x0, x1, y0, y1 = window_location_function(x_range[i], x_range[i+1], y_range[j], y_range[j+1])
-                window_size = window_size_function(x0,x1,y0,y1)
+        with get_progress(title="Sorting splinters...", total=(len(x_range)-1)*(len(y_range)-1)) as progress:
+            for i in range(len(x_range)-1):
+                for j in range(len(y_range)-1):
+                    # last r includes all remaining radii
+                    x0, x1, y0, y1 = window_location_function(x_range[i], x_range[i+1], y_range[j], y_range[j+1])
+                    window_size = window_size_function(x0,x1,y0,y1)
 
-                # get the objects in the region
-                spl = spl_groups[i][j]
+                    # get the objects in the region
+                    spl = spl_groups[i][j]
 
-                # debug(f'Processing window ({i},{j}): r0: {x0:.1f}, r1: {x1:.1f}, t0: {y0:.1f}, t1: {y1:.1f}, window_size: {window_size:.1f}')
-                if State.debug:
-                    kwargs['debug'] = True
+                    debug(f'Defining window ({i},{j}): r0: {x0:.1f}, r1: {x1:.1f}, t0: {y0:.1f}, t1: {y1:.1f}, sz: {window_size:.1f}, len: {len(spl)}.')
+                    if State.debug:
+                        kwargs['debug'] = True
 
-                # save additional data
-                window_object_counts[i,j] = len(spl)
+                    # save additional data
+                    window_object_counts[i,j] = len(spl)
 
-                args.append(
-                    WindowArguments(
-                        i,j,
-                        x0,x1,
-                        y0,y1,
-                        max_d,
-                        spl,
-                        calculator,
-                        prop,
-                        ip_mm,
-                        pxpmm,
-                        window_size,
-                        kwargs)
-                    )
-
-                progress.advance()
+                    args.append(
+                        WindowArguments(
+                            i,j,
+                            x0,x1,
+                            y0,y1,
+                            max_d,
+                            spl,
+                            calculator,
+                            prop,
+                            ip_mm,
+                            pxpmm,
+                            window_size,
+                            kwargs)
+                        )
+                    progress.advance()
 
         def put_result(result):
             i, j, r_c, t_c, mean_value, stddev = result
@@ -474,7 +473,7 @@ class ObjectKerneler():
             **kwargs
         )
 
-    def window_new(
+    def window(
         self,
         prop,
         kw: float,
@@ -485,8 +484,6 @@ class ObjectKerneler():
         return_data = False,
         **kwargs
     ):
-        warning("Kerneler.Window_new: This function is not working yet.")
-
         def center_function(s):
             return s.centroid_mm
 
@@ -517,170 +514,6 @@ class ObjectKerneler():
             return_data,
             **kwargs
         )
-
-
-    def window(
-        self,
-        prop,
-        kw: float,
-        n_points: int | tuple[int,int],
-        impact_position: tuple[float,float],
-        pxpmm: float,
-        calculator: Callable[[list[T]], float] = None,
-        return_data = False,
-        **kwargs
-    ):
-        """
-        Run a kernel over rectangular domain. Generates non-overlapping windows for `n_points == -1`. Otherwise divides the
-        region into `n_points` x `n_points` windows. +The impact position is the center of the domains, and the pixel per millimeter factor is used to convert the
-        window size to pixels.
-
-        The `prop`erty is used to get an according kernel function from the kernels dictionary. If the property is not
-        found, the 'Any' kernel function is used, which passes the prop to the splinter's `get_splinter_data` method.
-
-        Using `calculator` a custom kernel function can be passed. It's function header must include the following
-        arguments: `spl: list[Splinter], prop: SplinterProp, ip: tuple[float,float], pxpmm: float, **kwargs`. Alternatively
-        one can encapsulate the positional arguments in `*args`.
-
-        Args:
-            prop (SplinterProp): Property to calculate.
-            kw (float): Width of the kernel window.
-            n_points (int | tuple[int,int]): Amount of points to calculate. If -1, the kerneler will produce non-overlapping windows.
-            impact_position (tuple[float,float]): Impact position in mm. Is needed for some splinter properties.
-            pxpmm (float): Scale factor.
-            calculator (Callable[[list[T]], float]): Custom kernel function.
-            **kwargs: Any arguments that are passed here are forwarded to the calculator function.
-
-        Returns:
-            X,Y,Z,Zstd
-        """
-        assert n_points > 0 or n_points == -1, \
-            "n_points must be greater than 0 or -1."
-        assert kw < self.region[0], \
-            "Kernel width must be smaller than the region width."
-        assert kw < self.region[1], \
-            "Kernel width must be smaller than the region height."
-        assert kw > 10, \
-            "Kernel width must be greater than 10."
-        assert len(self.data_objects) > 0, \
-            "There must be at least one object in the list."
-
-
-        i_w, i_h = convert_npoints(n_points, self.region, kw)
-
-        if State.debug:
-            print('[cyan]WINDOW[/cyan] [green]START[/green]')
-            print(f'[cyan]WINDOW[/cyan] Kernel Width: {kw}')
-            print(f'[cyan]WINDOW[/cyan] Desired Points:       {n_points},{n_points} Points')
-            print(f'[cyan]WINDOW[/cyan] Actual Points:       {i_w},{i_h} Points')
-            print(f'[cyan]WINDOW[/cyan] Region:       {self.region}')
-
-        # maximum possible distance between any two points
-        max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
-
-        # find appropriate kernel function
-        if calculator is None:
-            if prop in kernels:
-                calculator = kernels[prop]
-            else:
-                calculator = kernels['Any']
-
-            if State.debug:
-                print(f'[cyan]WINDOW[/cyan] Using default kernel function "{calculator.__name__}".')
-
-
-        # create X Y and Z and Zstd arrays
-        X = np.zeros(i_w, dtype=np.float64)
-        Y = np.zeros(i_h, dtype=np.float64)
-        Z = np.zeros((i_h, i_w), dtype=np.float64)
-        Zstd = np.zeros((i_h, i_w), dtype=np.float64)
-        window_object_counts = np.zeros((i_h, i_w), dtype=np.uint32)
-
-        # some additional data for the kerneler output
-        rData = KernelerData(window_object_counts)
-
-
-        def put_result(result):
-            """Puts results from a kernel function to the arrays."""
-            i,j = result[0], result[1]
-            X[i] = result[2]
-            Y[j] = result[3]
-            Z[i, j] = result[4]
-            Zstd[i, j] = result[5]
-
-
-        # create groups of objects that lie in each window
-        windows = []
-        for w in range(i_w):
-            new_l = []
-            windows.append(new_l)
-            for h in range(i_h):
-                new_l.append([])
-
-        # sort objects into windows
-        for obj in tqdm(self.data_objects, desc='Sorting objects...', leave=False):
-            c = obj.centroid_mm
-            is_sorted = False
-            for w in range(i_w):
-                for h in range(i_h):
-                    x1 = (w/i_w) * self.region[0]
-                    y1 = (h/i_h) * self.region[1]
-                    x2 = x1 + kw
-                    y2 = y1 + kw
-
-                    if x1 < c[0] < x2 and y1 < c[1] < y2:
-                        windows[w][h].append(obj)
-                        is_sorted = True
-                        break
-
-                if is_sorted:
-                    break
-
-        # create args for every (x,y) region
-        args = []
-        for w in range(i_w):
-            for h in range(i_h):
-                x1 = float(w/i_w) * self.region[0]
-                y1 = float(h/i_h) * self.region[1]
-                x2 = x1 + kw
-                y2 = y1 + kw
-
-                objects_in_region = windows[w][h]
-
-                if State.debug:
-                    print(f'Processing window ({w},{h}): x1: {x1:.1f}, x2: {x2:.1f}, y1: {y1:.1f}, y2: {y2:.1f}, window_size: {kw**2:.1f}')
-                    kwargs['debug'] = True
-
-                # save additional data
-                window_object_counts[h,w] = len(objects_in_region)
-
-                window_size = kw**2
-                args.append(WindowArguments(w,h,x1,x2,y1,y2, max_d,objects_in_region,calculator,prop, impact_position, pxpmm, window_size, kwargs))
-
-        # make a test run, it may raise an exception
-        process_window(args[0])
-
-        debug(f'Using {len(args)} windows. Kernel function: {calculator.__name__}.')
-        with get_progress(title=f'Running {prop} calculation...') as progress:
-            if len(args) > 50 and not State.debug:
-                debug('len(args) > 50, using multiprocessing pool.')
-                # iterate to calculate the values
-                with Pool() as pool:
-                    for result in pool.imap_unordered(process_window, args):
-                        # print(result)
-                        put_result(result)
-                        progress.advance()
-            else:
-                debug('len(args) < 50, using synchronous calculation.')
-                for arg in args:
-                    result = process_window(arg)
-                    put_result(result)
-                    progress.advance()
-
-        if return_data:
-            return X,Y,Z,Zstd, rData
-
-        return X,Y,Z,Zstd
 
     @deprecated(reason="Use the window/polar method instead.")
     def run(

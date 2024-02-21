@@ -4,6 +4,8 @@ Organisation module. Contains the Specimen class and some helpful tools to expor
 from __future__ import annotations
 from json import JSONEncoder
 import json
+
+from regex import F
 from fracsuite.core.logging import debug, error, info, warning
 
 import os
@@ -28,9 +30,11 @@ from fracsuite.core.detection import get_crack_surface, get_crack_surface_r
 from fracsuite.core.imageprocessing import preprocess_image
 from fracsuite.core.mechanics import Ud2sigm
 from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_ud
-from fracsuite.core.plotting import FigureSize, fit_curve, get_fig_width, legend_without_duplicate_labels
+from fracsuite.core.plotting import FigureSize, KernelContourMode, fit_curve, get_fig_width, legend_without_duplicate_labels, plot_kernel_results
 
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
+from fracsuite.core.splinter import Splinter
+from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import quadrat_count, r_squared_f
 from fracsuite.core.stress import relative_remaining_stress
 from fracsuite.general import GeneralSettings
@@ -1070,3 +1074,34 @@ def check_homogeneity():
 
         if X2 >= c:
             print(f"Specimen {spec.name} is inhomogeneous! X²={X2}, c={c}")
+
+
+@app.command('property')
+def plot_property(
+    specimen_name: str = typer.Argument(help='Name of specimens to load'),
+    prop: SplinterProp = typer.Argument(help='Property to plot.'),
+    n_points: int = typer.Option(25, help='Amount of points to evaluate.'),
+    w_mm: int = typer.Option(50, help='Size of the region to calculate the roughness on.'),
+    smooth: bool = typer.Option(True, help='Smooth the plot.'),
+):
+    """Plot the property of the specimen using a KDE plot."""
+    specimen = Specimen.get(specimen_name)
+    f = specimen.calculate_px_per_mm()
+    X,Y,Z,Zstd = specimen.calculate_2d(prop, w_mm, n_points)
+    X = X * f
+    Y = Y * f
+    output = plot_kernel_results(
+        specimen.get_fracture_image(),
+        Splinter.get_property_label(prop),
+        True,
+        False,
+        KernelContourMode.CONTOURS,
+        X, Y, Z,
+        0,
+        FigureSize.ROW2,
+        clr_format=".2f",
+        smooth=smooth,
+        fill_skipped_with_mean=False,
+    )
+    output.overlayImpact(specimen)
+    State.output(output, f'{prop}_2d',spec=specimen, to_additional=True)

@@ -940,7 +940,7 @@ class Specimen(Outputtable):
             False
         )
 
-        X,Y,Z,Zstd = kerneler.window_new(
+        X,Y,Z,Zstd = kerneler.window(
             prop,
             kw,
             n_points,
