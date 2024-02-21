@@ -662,7 +662,8 @@ def plt_prop_f2(
         FigureSize.ROW2,
         crange=(np.nanmin(Z), np.nanmax(Z)),
         clr_format=".2f",
-        smooth=smooth
+        smooth=smooth,
+        fill_skipped_with_mean=False,
     )
     output.overlayImpact(specimen)
     State.output(output, f'{prop}_2d',spec=specimen, to_additional=True)

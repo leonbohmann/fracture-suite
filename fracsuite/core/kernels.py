@@ -1,5 +1,5 @@
 import json
-from fracsuite.core.logging import debug
+from fracsuite.core.logging import debug, start, warning
 from multiprocessing import Pool
 import tempfile
 from typing import Any, Callable, TypeVar
@@ -46,6 +46,10 @@ def splinterproperty_kernel(spl: list[Splinter], prop: SplinterProp, ip, pxpmm, 
     values = np.asarray([s.get_splinter_data(prop=prop, ip_mm=ip,px_p_mm=pxpmm) for s in spl])
 
     return (np.nanmean(values), np.nanstd(values))
+
+def n_kernel(spl: list[Splinter], *args,**kwargs):
+    """Count splinters."""
+    return len(spl), 0
 
 def intensity_kernel(spl: list[Splinter], *args,**kwargs):
     """Calculate the mean intensity parameter lambda for a given set of splinters."""
@@ -103,7 +107,8 @@ kernels = {
     'Any': splinterproperty_kernel,
     SplinterProp.INTENSITY: intensity_kernel,
     SplinterProp.RHC: rhc_kernel,
-    SplinterProp.ACCEPTANCE: acceptance_kernel
+    SplinterProp.ACCEPTANCE: acceptance_kernel,
+    SplinterProp.NFIFTY: n_kernel
 }
 
 @dataclass
@@ -147,12 +152,7 @@ class WindowResult:
 
 def process_window(args: WindowArguments):
     """Wrapper function for the window kerneler."""
-    if State.debug:
-        print(f"""Processing window ({args.i},{args.j}):
-    x1: {args.x1:.1f}, x2: {args.x2:.1f}
-    y1: {args.y1:.1f}, y2: {args.y2:.1f}
-    window_size: {args.window_size:.1f}
-    objects: {len(args.objects_in_region)}""")
+    print(f"Processing window ({args.i:>5},{args.j:>5}) > x1: {args.x1:.1f}, x2: {args.x2:.1f} y1: {args.y1:.1f}, y2: {args.y2:.1f}, sz: {args.window_size:.1f}, len: {len(args.objects_in_region)}")
     mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, window_size=args.window_size, **args.kwargs) \
         if len(args.objects_in_region) > 0 else (SKIP_VALUE, SKIP_VALUE)
     return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, mean_value, stddev)
@@ -274,10 +274,12 @@ class ObjectKerneler():
         y_range,
         center_function,
         window_size_function,
+        window_location_function,
         ip_mm,
         pxpmm,
         calculator: Callable[[list[Splinter]], float] = None,
         return_data = False,
+        meshgrid_xy = False,
         **kwargs
     ):
         """
@@ -329,16 +331,13 @@ class ObjectKerneler():
             else:
                 calculator = kernels['Any']
 
-            if State.debug:
-                print(f'[cyan]POLAR[/cyan] Using default kernel function "{calculator.__name__}".')
-
         # create empty groups
-        spl_groups = []
+        spl_groups = list()
         for i in range(len(x_range)-1):
-            new_l = []
+            new_l = list()
             spl_groups.append(new_l)
             for j in range(len(y_range)-1):
-                new_l.append([])
+                new_l.append(list())
 
 
         with get_progress(title="Sorting splinters...", total=len(self.data_objects)) as progress:
@@ -347,30 +346,29 @@ class ObjectKerneler():
                 x,y = center_function(s)
                 for i in range(len(x_range)-1):
                     for j in range(len(y_range)-1):
-                        x0,x1 = (x_range[i],x_range[i+1])
-                        y0,y1 = (y_range[j],y_range[j+1])
-                        if not x0 <= x < x1:
+                        x0, x1, y0, y1 = window_location_function(x_range[i],x_range[i+1], y_range[j],y_range[j+1])
+
+                        if not (x0 <= x < x1):
                             continue
-                        if not y0 <= y < y1:
+                        if not (y0 <= y < y1):
                             continue
 
-                        # add the splinter to a group and break
+                        # add the splinter to each group it fits in
                         spl_groups[i][j].append(s)
                         progress.advance()
-                        break
 
         # create args for every (r,t) region
         args: list[WindowArguments] = []
         for i in range(len(x_range)-1):
             for j in range(len(y_range)-1):
                 # last r includes all remaining radii
-                x0,x1 = (x_range[i],x_range[i+1])
-                y0,y1 = (y_range[j],y_range[j+1])
-                spl = spl_groups[i][j]
-
+                x0, x1, y0, y1 = window_location_function(x_range[i], x_range[i+1], y_range[j], y_range[j+1])
                 window_size = window_size_function(x0,x1,y0,y1)
 
-                debug(f'Processing window ({i},{j}): r0: {x0:.1f}, r1: {x1:.1f}, t0: {y0:.1f}, t1: {y1:.1f}, window_size: {window_size:.1f}')
+                # get the objects in the region
+                spl = spl_groups[i][j]
+
+                # debug(f'Processing window ({i},{j}): r0: {x0:.1f}, r1: {x1:.1f}, t0: {y0:.1f}, t1: {y1:.1f}, window_size: {window_size:.1f}')
                 if State.debug:
                     kwargs['debug'] = True
 
@@ -392,6 +390,8 @@ class ObjectKerneler():
                         kwargs)
                     )
 
+                progress.advance()
+
         def put_result(result):
             i, j, r_c, t_c, mean_value, stddev = result
             Z[i,j] = mean_value
@@ -400,7 +400,9 @@ class ObjectKerneler():
             Y[j] = t_c
 
         # this might raise an error
-        process_window(args[0])
+        result = process_window(args[0])
+        debug(f'Testing output: {result}')
+
         debug(f'Using {len(args)} windows. Kernel function: {calculator.__name__}.')
         with get_progress(title=f'Running {prop} calculation...', total=len(args)) as progress:
             if len(args) > 50 and not State.debug:
@@ -413,15 +415,21 @@ class ObjectKerneler():
 
                         progress.advance()
             else:
-                debug('len(args) < 50, using synchronous calculation.')
+                debug('len(args) < 50 or debug mode, using synchronous calculation.')
                 for arg in args:
                     result = process_window(arg)
                     put_result(result)
 
                     progress.advance()
 
+        if meshgrid_xy:
+            debug('Returning meshgrid X,Y.')
+            X,Y = np.meshgrid(X,Y)
+
+
         if return_data:
             return X,Y,Z,Zstd, rData
+
 
         return X,Y,Z,Zstd
 
@@ -449,12 +457,16 @@ class ObjectKerneler():
             c = np.pi*(x1**2-x0**2)
             return c * cf
 
+        def window_location_function(x0,x1,y0,y1):
+            return x0,x1,y0,y1
+
         return self.__internalrun(
             prop,
             r_range_mm,
             t_range_deg,
             center_function,
             window_size_function,
+            window_location_function,
             ip_mm,
             pxpmm,
             calculator,
@@ -462,7 +474,7 @@ class ObjectKerneler():
             **kwargs
         )
 
-    def window(
+    def window_new(
         self,
         prop,
         kw: float,
@@ -473,21 +485,32 @@ class ObjectKerneler():
         return_data = False,
         **kwargs
     ):
+        warning("Kerneler.Window_new: This function is not working yet.")
+
         def center_function(s):
             return s.centroid_mm
 
         def window_size_function(x0,x1,y0,y1):
-            return (x1-x0)*(y1-y0)
+            return kw**2
+
+        def window_location_function(x0,x1,y0,y1):
+            return x0-kw//2,x0+kw//2,y0-kw//2,y0+kw//2
 
         i_w, i_h = convert_npoints(n_points, self.region, kw)
 
+        debug(f'kw: {kw}, n_points: {n_points}, i_w: {i_w}, i_h: {i_h}')
+        x_centers = np.linspace(kw, self.region[0]-kw, i_w, endpoint=True)
+        y_centers = np.linspace(kw, self.region[1]-kw, i_h, endpoint=True)
+        debug(f'x_centers: {x_centers}')
+        debug(f'y_centers: {y_centers}')
 
         return self.__internalrun(
             prop,
-            np.linspace(0,self.region[0],i_w+1),
-            np.linspace(0,self.region[1],i_h+1),
+            x_centers,
+            y_centers,
             center_function,
             window_size_function,
+            window_location_function,
             impact_position,
             pxpmm,
             calculator,
@@ -496,7 +519,7 @@ class ObjectKerneler():
         )
 
 
-    def window_old(
+    def window(
         self,
         prop,
         kw: float,

@@ -825,6 +825,7 @@ class Splinter:
         SplinterProp.INTENSITY: ("", "Bruchintensität (1/mm²)"),
         SplinterProp.RHC: ("", "RHC (mm)"),
         SplinterProp.ACCEPTANCE: ("", "Acceptance"),
+        SplinterProp.NFIFTY: ("", "$N_\mathrm{50}$"),
     }
 
     @classmethod

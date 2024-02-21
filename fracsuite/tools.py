@@ -472,6 +472,8 @@ def test_bohmann(
     rhc_max: float = 10,
     c: float = 0,
     w: float = 500,
+    sz: FigureSize = FigureSize.ROW3,
+    point_sz: FigureSize = FigureSize.ROW2,
 ):
     """TEsting function for the bohmann process."""
 
@@ -505,30 +507,27 @@ def test_bohmann(
     lam_max_real = len(results) / (w*h)
 
     if not State.no_out:
-        sz = FigureSize.ROW1
         figsz = get_fig_width(sz)
         # plot points
-        fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-        axs.set_xlabel("x")
-        axs.set_ylabel("y")
+        fig,axs = plt.subplots(figsize=get_fig_width(point_sz))
         axs.scatter(results[:,0], results[:,1], s=1)
         axs.set_aspect('equal', 'box')
-        State.output(StateOutput(fig, FigureSize.ROW1), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_process", open=True)
+        State.output(StateOutput(fig, point_sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_process", open=True)
 
     if not State.no_out:
         # create voronoi plot with the points
         from scipy.spatial import Voronoi
         vor = Voronoi(results)
-        fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        fig,axs = plt.subplots(figsize=get_fig_width(point_sz))
         img = np.zeros((int(w),int(w)))
         voronoi_to_image(img, vor)
         axs.imshow(img, cmap='gray')
         axs.set_aspect('equal', 'box')
-        State.output(StateOutput(fig, sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_voronoi", open=True)
+        State.output(StateOutput(fig, point_sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_voronoi", open=True)
 
 
     # plot kfunction
-    d_max = 150
+    d_max = 50
     kh = khat(results, w, h, d_max)
     x = kh[:,0]
     y = kh[:,1]
@@ -564,8 +563,8 @@ def test_bohmann(
         axs.set_ylabel("$\hat{L}(d) - d$")
         axs.plot(x,y, label="Messung")
         axs.plot(x, x-x, label="Poisson")
-        axs.axvline(x=1/lam_max, color='r', linestyle='--', label="1/$\lambda_\mathrm{max}$")
-        axs.axvline(x=1/lam_max_real, color='g', linestyle='--', label="1/$\lambda_\mathrm{max,real}$")
+        # axs.axvline(x=1/lam_max, color='r', linestyle='--', label="1/$\lambda_\mathrm{max}$")
+        # axs.axvline(x=1/lam_max_real, color='g', linestyle='--', label="1/$\lambda_\mathrm{max,real}$")
         axs.legend()
         State.output(StateOutput(fig, sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_lhatc")
 

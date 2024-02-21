@@ -5,6 +5,14 @@ from rich.logging import RichHandler
 logger: logging.Logger = None
 
 def start(name, debug = False):
+    global logger
+    if logger is not None:
+        logger.info("Logger already started, skipping.")
+        logger.setLevel(logging.INFO if not debug else logging.DEBUG)
+
+        return
+
+
     # Erstellt eine Rich Console
     console = Console()
 
@@ -16,25 +24,42 @@ def start(name, debug = False):
         handlers=[RichHandler(console=console, rich_tracebacks=True, show_time=False)]
     )
 
-    global logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO if not debug else logging.DEBUG)
 
 
 def info(*msg):
+    if logger is None:
+        print(*msg)
+        return
     logger.info(*msg)
 
 def debug(*msg):
+    if logger is None:
+        print(*msg)
+        return
     logger.debug(*msg)
 
 def warning(*msg):
+    if logger is None:
+        print(*msg)
+        return
     logger.warning(*msg)
 
 def error(*msg):
+    if logger is None:
+        print(*msg)
+        return
     logger.error(*msg)
 
 def critical(*msg):
+    if logger is None:
+        print(*msg)
+        return
     logger.critical(*msg)
 
 def exception(*msg):
+    if logger is None:
+        print(*msg)
+        return
     logger.exception(*msg)

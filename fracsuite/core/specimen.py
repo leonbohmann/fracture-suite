@@ -935,12 +935,12 @@ class Specimen(Outputtable):
         # create kerneler
         kerneler = ObjectKerneler(
             self.get_real_size(),
-            self.allsplinters,
+            self.splinters,
             None,
             False
         )
 
-        X,Y,Z,Zstd = kerneler.window(
+        X,Y,Z,Zstd = kerneler.window_new(
             prop,
             kw,
             n_points,
