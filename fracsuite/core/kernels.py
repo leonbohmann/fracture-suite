@@ -47,9 +47,11 @@ def splinterproperty_kernel(spl: list[Splinter], prop: SplinterProp, ip, pxpmm, 
 
     return (np.nanmean(values), np.nanstd(values))
 
-def n_kernel(spl: list[Splinter], *args,**kwargs):
-    """Count splinters."""
-    return len(spl), 0
+def nfifty_kernel(spl: list[Splinter], *args,**kwargs):
+    """Count splinters and relate them to an area of 50x50."""
+    area = kwargs["window_size"]
+    f = 2500/area
+    return int(len(spl)*f), 0
 
 def intensity_kernel(spl: list[Splinter], *args,**kwargs):
     """Calculate the mean intensity parameter lambda for a given set of splinters."""
@@ -108,7 +110,7 @@ kernels = {
     SplinterProp.INTENSITY: intensity_kernel,
     SplinterProp.RHC: rhc_kernel,
     SplinterProp.ACCEPTANCE: acceptance_kernel,
-    SplinterProp.NFIFTY: n_kernel
+    SplinterProp.NFIFTY: nfifty_kernel
 }
 
 @dataclass

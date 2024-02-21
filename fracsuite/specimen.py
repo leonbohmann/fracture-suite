@@ -1083,19 +1083,25 @@ def plot_property(
     n_points: int = typer.Option(25, help='Amount of points to evaluate.'),
     w_mm: int = typer.Option(50, help='Size of the region to calculate the roughness on.'),
     smooth: bool = typer.Option(True, help='Smooth the plot.'),
+    quadrat_count: bool = typer.Option(False, help='If used, modifies w_mm so that n_points are calculated in each dimension.'),
 ):
     """Plot the property of the specimen using a KDE plot."""
     specimen = Specimen.get(specimen_name)
     f = specimen.calculate_px_per_mm()
+    sz = specimen.get_real_size()
+
+    # if quadrat count is considered, modify w_mm so that quadrats are fitting
+    if quadrat_count:
+        w_mm = int(sz[0] / n_points)
+
     X,Y,Z,Zstd = specimen.calculate_2d(prop, w_mm, n_points)
-    X = X * f
-    Y = Y * f
+
     output = plot_kernel_results(
         specimen.get_fracture_image(),
         Splinter.get_property_label(prop),
         True,
         False,
-        KernelContourMode.CONTOURS,
+        KernelContourMode.FILLED,
         X, Y, Z,
         0,
         FigureSize.ROW2,

@@ -927,6 +927,8 @@ class Specimen(Outputtable):
         """
         Calculate a value in 2D.
 
+        Uses a constant density estimator with a kernel width of kw in a `n_points x n_points` grid.
+
         Returns:
             tuple[X(n), Y(m), Values(n,m), Stddev(n,m)]
         """
@@ -935,7 +937,7 @@ class Specimen(Outputtable):
         # create kerneler
         kerneler = ObjectKerneler(
             self.get_real_size(),
-            self.splinters,
+            self.splinters, # use filtered splinters here!
             None,
             False
         )
