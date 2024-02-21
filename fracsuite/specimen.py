@@ -1087,7 +1087,6 @@ def plot_property(
 ):
     """Plot the property of the specimen using a KDE plot."""
     specimen = Specimen.get(specimen_name)
-    f = specimen.calculate_px_per_mm()
     sz = specimen.get_real_size()
 
     # if quadrat count is considered, modify w_mm so that quadrats are fitting
@@ -1110,4 +1109,5 @@ def plot_property(
         fill_skipped_with_mean=False,
     )
     output.overlayImpact(specimen)
-    State.output(output, f'{prop}_2d',spec=specimen, to_additional=True)
+    outputname = f'{prop}_2d' + ('_nosmooth' if not smooth else '') + ('_quadrat' if quadrat_count else '')
+    State.output(output, outputname, spec=specimen, to_additional=True)
