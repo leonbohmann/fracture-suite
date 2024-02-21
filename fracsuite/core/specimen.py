@@ -978,7 +978,7 @@ class Specimen(Outputtable):
         if r_range_mm is None:
             r_range_mm = self.layer_region.radii
 
-        R,T,Z,Zstd,rData = kerneler.polar(
+        R,T,Z,Zstd,rData = kerneler.polar2(
             prop,
             r_range_mm,
             t_range_deg,

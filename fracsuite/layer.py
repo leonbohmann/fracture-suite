@@ -18,6 +18,7 @@ from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, interp_layer, load_layer, load_layer_file, plt_layer, save_layer
 from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, get_legend, renew_ticks_cb
+from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
@@ -208,6 +209,7 @@ bid = {
 #         axs.set_ylabel("Angle to Impact [°]")
 #         axs.autoscale()
 #         State.output(StateOutput(fig, sz), f"{mode}-2d_{spec.name}", to_additional=True)
+
 
 @layer_app.command()
 def create(
@@ -483,7 +485,7 @@ def create(
 @layer_app.command()
 def compare_boundaries(
     mode: Annotated[SplinterProp, typer.Argument(help='Mode for the aspect ratio.')],
-    ud: Annotated[float, typer.Argument(help='Energy level.')],
+    u: Annotated[str, typer.Argument(help='Energy level.')],
     break_pos: Annotated[SpecimenBreakPosition, typer.Option(help='Break position.')] = SpecimenBreakPosition.CORNER,
     break_mode: Annotated[SpecimenBreakMode, typer.Option(help='Break mode.')] = SpecimenBreakMode.PUNCH,
     ignore_nan_u: Annotated[bool, typer.Option(help='Filter Ud values that are NaN from plot.')] = False,
@@ -502,9 +504,15 @@ def compare_boundaries(
     # inverse bid
     bid_r = {v: k for k, v in bid.items()}
 
+    if ',' in u:
+        s,t = [float(x) for x in u.split(',')]
+        u = U(s,t)
+    else:
+        u = float(u)
 
-    min_energy = ud * (1-energy_range)
-    max_energy = ud * (1+energy_range)
+
+    min_energy = u * (1-energy_range)
+    max_energy = u * (1+energy_range)
 
     def add_filter(specimen: Specimen):
         if break_pos is not None and specimen.break_pos != break_pos:
@@ -538,56 +546,38 @@ def compare_boundaries(
 
 
     # find aspect over R on every specimen
-    n_r = 30
-    r_min = 0
-    r_max = np.sqrt(450**2 + 450**2)
-    r_range = np.linspace(r_min, r_max, n_r, endpoint=False)
 
-
+    r_range, t_range = arrange_regions(break_pos=break_pos,w_mm=500,h_mm=500)
 
     ########################
     # Calculate value for every specimen and save results to arrays
     ########################
-    results = np.ones((len(specimens), len(r_range)+3)) * np.nan
-    stddevs = np.ones((len(specimens), len(r_range)+3)) * np.nan
+    results = np.ones((len(specimens), len(r_range)+2)) * np.nan
+    stddevs = np.ones((len(specimens), len(r_range)+2)) * np.nan
 
-    for si, specimen in track(list(enumerate(specimens))):
-        print('Specimen: ', specimen.name)
+    with get_progress(title='Calculating', total=len(specimens)) as progress:
+        for si, specimen in enumerate(specimens):
+            print('Specimen: ', specimen.name)
 
-        # now, find aspect ratio of all splinters
-        aspects = np.zeros((len(specimen.splinters), 2)) # 0: radius, 1: aspect ratio
-        ip = specimen.get_impact_position()
-        px_p_mm = specimen.calculate_px_per_mm()
-        for i, s in enumerate(specimen.splinters):
-            # calculate distance to impact point
-            r = np.linalg.norm(np.asarray(s.centroid_mm) - ip)
+            X,Y,Z,Zstd = specimen.calculate_2d_polar(mode, r_range_mm=r_range, t_range_deg=t_range)
 
-            # get data from splinter
-            a = s.get_splinter_data(prop=mode, px_p_mm=px_p_mm, ip_mm=ip)
+            results[si,0] = specimen.U
+            results[si,1] = bid[specimen.boundary]
+            results[si,2] = si
+            results[si,3:] = Z.flatten()
 
-            aspects[i,:] = (r, a) # (r, a)
+            stddevs[si,0] = results[si,0]
+            stddevs[si,1] = results[si,1]
+            stddevs[si,2] = results[si,2]
+            stddevs[si,3:] = Zstd.flatten()
 
-        # sort after the radius
-        aspects = aspects[aspects[:,0].argsort()]
+            progress.advance()
 
-        # take moving average
-        r1,l1,stddev1 = moving_average(aspects[:,0], aspects[:,1], r_range)
-
-        results[si,0] = specimen.U
-        results[si,1] = bid[specimen.boundary]
-        results[si,2] = si
-        results[si,3:] = l1
-
-        stddevs[si,0] = results[si,0]
-        stddevs[si,1] = results[si,1]
-        stddevs[si,2] = results[si,2]
-        stddevs[si,3:] = stddev1
-
-        # except:
-        #     results[si+1,0] = specimen.U
-        #     results[si+1,1] = bid[specimen.boundary]
-        #     results[si+1,2] = si
-        #     results[si+1,3:] = aspects[:,1]
+            # except:
+            #     results[si+1,0] = specimen.U
+            #     results[si+1,1] = bid[specimen.boundary]
+            #     results[si+1,2] = si
+            #     results[si+1,3:] = aspects[:,1]
 
 
     # sort results after U_d
@@ -621,7 +611,8 @@ def compare_boundaries(
         stddev_b = results_per_boundary_unclustered[b][1][b_mask]
 
         # plot the current boundary
-        x = r_range
+        x = r_range + (r_range[1]-r_range[0])/2
+        x = x[:-1]
         y = results_b[:,0].ravel()
         z = results_b[:,3:]
 

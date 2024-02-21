@@ -27,6 +27,10 @@ def get_progress(expand = True, bw = 80, title="Progress...", total=None):
                 transient=True, refresh_per_second=3, expand=expand)
         State.progress = ProgWrapper(prog, title=title, total=total)
 
+
+    State.progress.nset_description(title)
+    State.progress.nset_total(total)
+
     return State.progress
 
 
@@ -39,3 +43,19 @@ def get_spinner(description: str = "Loading specimens...", with_bar: bool = Fals
                 TimeElapsedColumn(),
             transient=True)
     return ProgWrapper(prog, description)
+
+
+
+
+class prog:
+    def __init__(self, data):
+        self.baseiterator = data
+
+    def __iter__(self):
+        return self
+
+    def __next__(self): # Python 2: def next(self)
+        self.current += 1
+        if self.current < self.high:
+            return self.current
+        raise StopIteration
