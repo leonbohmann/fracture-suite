@@ -1,10 +1,11 @@
-from logging import info
+from fracsuite.core.logging import info
 import logging
 import os
 import re
 from typing import Annotated, Any, Callable
 import typer
 from rich import print
+from fracsuite.core.logging import start
 from fracsuite.state import State
 
 from fracsuite.general import GeneralSettings
@@ -31,8 +32,7 @@ def main_callback(
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
 
-    if debug:
-        logging.getLogger().setLevel(logging.DEBUG)
+    start("fracsuite", debug)
 
     if set_additional_path is not None:
         general.output_paths[cmd] = set_additional_path

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from logging import debug, warning
+from fracsuite.core.logging import debug, warning
 import os
 import pickle
 import re
@@ -978,7 +978,7 @@ class Specimen(Outputtable):
         if r_range_mm is None:
             r_range_mm = self.layer_region.radii
 
-        R,T,Z,Zstd,rData = kerneler.polar2(
+        R,T,Z,Zstd,rData = kerneler.polar(
             prop,
             r_range_mm,
             t_range_deg,

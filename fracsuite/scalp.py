@@ -26,7 +26,7 @@ and the mean value of all measurements.
 """
 
 import glob
-from logging import debug, info
+from fracsuite.core.logging import debug, info
 import os
 import shutil
 from typing import TypeVar

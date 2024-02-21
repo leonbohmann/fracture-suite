@@ -3,7 +3,7 @@ Splinter analyzation tools.
 """
 
 from enum import Enum
-from logging import debug
+from fracsuite.core.logging import debug
 import multiprocessing.shared_memory as sm
 import os
 import pickle

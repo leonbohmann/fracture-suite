@@ -1,5 +1,5 @@
 import json
-from logging import debug
+from fracsuite.core.logging import debug
 from multiprocessing import Pool
 import tempfile
 from typing import Any, Callable, TypeVar
@@ -426,7 +426,7 @@ class ObjectKerneler():
         return X,Y,Z,Zstd
 
 
-    def polar2(
+    def polar(
         self,
         prop,
         r_range_mm,
@@ -462,174 +462,41 @@ class ObjectKerneler():
             **kwargs
         )
 
-    def polar(
+    def window(
         self,
         prop,
-        r_range_mm,
-        t_range_deg,
-        ip_mm,
-        pxpmm,
-        calculator: Callable[[list[Splinter]], float] = None,
+        kw: float,
+        n_points: int | tuple[int,int],
+        impact_position: tuple[float,float],
+        pxpmm: float,
+        calculator: Callable[[list[T]], float] = None,
         return_data = False,
         **kwargs
     ):
-        """
-        Run a kernel over a polar domain. Uses non-overlapping windows that are defined by `r_range_mm` and `t_range_deg`.
-        The impact position is the center of the domains, and the pixel per millimeter factor is used to convert the
-        window size to pixels.
+        def center_function(s):
+            return s.centroid_mm
 
-        The `prop`erty is used to get an according kernel function from the kernels dictionary. If the property is not
-        found, the 'Any' kernel function is used, which passes the prop to the splinter's `get_splinter_data` method.
+        def window_size_function(x0,x1,y0,y1):
+            return (x1-x0)*(y1-y0)
 
-        Using `calculator` a custom kernel function can be passed. It's function header must include the following
-        arguments: `spl: list[Splinter], prop: SplinterProp, ip: tuple[float,float], pxpmm: float, **kwargs`. Alternatively
-        one can encapsulate the positional arguments in `*args`.
-
-        Args:
-            mode (SplinterProp): Property to calculate.
-            r_range_mm (range): Created with arrange_regions.
-            t_range_deg (range): Created with arrange_regions.
-            ip_mm (tuple[float,float]): Impact position in mm.
-            pxpmm (float): Pixel per millimeter factor.
-            calculator (Callable[[list[Splinter]], float]): The calculator function to use.
-            return_data (bool): If True, the function will return additional data.
-            kwargs: Additional arguments for the calculator.
-
-        Returns:
-            R,T,Z,Zstd [, data]:
-                Radii and thetas contain the centers of each region. They have to be used for interpolation.
-                Z contains the calculated values.
-
-                If R(1,n) and T(1,m) then Z(n,m) and Zstd(n,m) contain the calculated values and their standard deviations respectively.
-
-                If return_data is True, the function will return additional data.
-        """
-        # create 2d array to store the results
-        X = np.zeros(len(r_range_mm)-1, dtype=np.float64)
-        Y = np.zeros(len(t_range_deg)-1, dtype=np.float64)
-        Z = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
-        Zstd = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.float64)
+        i_w, i_h = convert_npoints(n_points, self.region, kw)
 
 
-        window_object_counts = np.zeros((len(r_range_mm)-1, len(t_range_deg)-1), dtype=np.uint32)
-
-        rData = KernelerData(window_object_counts)
-
-
-        # the maximum possible distance between any two points
-        max_d = np.sqrt(self.region[0]**2 + self.region[1]**2)
-
-        if State.debug:
-            print('[cyan]POLAR[/cyan] [green]START[/green]')
-            print(f'[cyan]POLAR[/cyan] r_range:       {r_range_mm}')
-            print(f'[cyan]POLAR[/cyan] t_range:       {t_range_deg}')
-            print(f'[cyan]POLAR[/cyan] Region:       {self.region}')
-
-
-        # find appropriate kernel function
-        if calculator is None:
-            if prop in kernels:
-                calculator = kernels[prop]
-            else:
-                calculator = kernels['Any']
-
-            if State.debug:
-                print(f'[cyan]POLAR[/cyan] Using default kernel function "{calculator.__name__}".')
-
-        spl_groups = []
-        for i in range(len(r_range_mm)-1):
-            new_l = []
-            spl_groups.append(new_l)
-            for j in range(len(t_range_deg)-1):
-                new_l.append([])
+        return self.__internalrun(
+            prop,
+            np.linspace(0,self.region[0],i_w+1),
+            np.linspace(0,self.region[1],i_h+1),
+            center_function,
+            window_size_function,
+            impact_position,
+            pxpmm,
+            calculator,
+            return_data,
+            **kwargs
+        )
 
 
-        # put all splinters in the correct group
-        for s in tqdm(self.data_objects, desc='Sorting splinters...', leave=False):
-            dr = s.centroid_mm - ip_mm
-            r = np.linalg.norm(dr)
-            a = angle_deg(dr)
-            for i in range(len(r_range_mm)-1):
-                for j in range(len(t_range_deg)-1):
-                    r0,r1 = (r_range_mm[i],r_range_mm[i+1])
-                    t0,t1 = (t_range_deg[j],t_range_deg[j+1])
-                    if not r0 <= r < r1:
-                        continue
-                    if not t0 <= a < t1:
-                        continue
-
-                    # add the splinter to a group and break
-                    spl_groups[i][j].append(s)
-                    break
-
-        # create args for every (r,t) region
-        args: list[WindowArguments] = []
-        for i in range(len(r_range_mm)-1):
-            for j in range(len(t_range_deg)-1):
-                # last r includes all remaining radii
-                r0,r1 = (r_range_mm[i],r_range_mm[i+1])
-                t0,t1 = (t_range_deg[j],t_range_deg[j+1])
-                spl = spl_groups[i][j]
-
-                # area factor for circle segment
-                cf = np.abs(t1-t0) / 360
-                c = np.pi*(r1**2-r0**2)
-                window_size = c * cf
-
-                if State.debug:
-                    print(f'Processing window ({i},{j}): r0: {r0:.1f}, r1: {r1:.1f}, t0: {t0:.1f}, t1: {t1:.1f}, window_size: {window_size:.1f}')
-                    kwargs['debug'] = True
-
-                # save additional data
-                window_object_counts[i,j] = len(spl)
-
-                args.append(
-                    WindowArguments(
-                        i,j,
-                        r0,r1,
-                        t0,t1,
-                        max_d,
-                        spl,
-                        calculator,
-                        prop,
-                        ip_mm,
-                        pxpmm,
-                        window_size,
-                        kwargs)
-                    )
-
-        def put_result(result):
-            i, j, r_c, t_c, mean_value, stddev = result
-            Z[i,j] = mean_value
-            Zstd[i,j] = stddev
-            X[i] = r_c
-            Y[j] = t_c
-
-        # this might raise an error
-        process_window(args[0])
-        debug(f'Using {len(args)} windows. Kernel function: {calculator.__name__}.')
-        with get_progress(title=f'Running {prop} calculation...') as progress:
-            if len(args) > 50 and not State.debug:
-                debug('len(args) > 50, using multiprocessing pool.')
-                # iterate to calculate the values
-                with Pool() as pool:
-                    for result in pool.imap_unordered(process_window, args):
-                        # print(result)
-                        put_result(result)
-                        progress.advance()
-            else:
-                debug('len(args) < 50, using synchronous calculation.')
-                for arg in args:
-                    result = process_window(arg)
-                    put_result(result)
-                    progress.advance()
-
-        if return_data:
-            return X,Y,Z,Zstd, rData
-
-        return X,Y,Z,Zstd
-
-    def window(
+    def window_old(
         self,
         prop,
         kw: float,

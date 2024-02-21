@@ -1,4 +1,4 @@
-from logging import info
+from fracsuite.core.logging import info
 import random
 from typing import Annotated
 import cv2

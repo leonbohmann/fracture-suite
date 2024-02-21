@@ -4,7 +4,7 @@ Organisation module. Contains the Specimen class and some helpful tools to expor
 from __future__ import annotations
 from json import JSONEncoder
 import json
-from logging import debug, error, info, warning
+from fracsuite.core.logging import debug, error, info, warning
 
 import os
 from pickle import NONE

@@ -10,6 +10,7 @@ from rich import print
 from rich.progress import Progress, TextColumn
 from rich.theme import Theme
 from rich.logging import RichHandler
+from fracsuite.core.logging import start
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
@@ -249,18 +250,6 @@ def test(input: list[str]):
 
 # initialization stuff
 spazial_initialize() # spazial rust module
-# Erstellt eine Rich Console
-console = Console()
-
-# Konfiguriert das Logging, um RichHandler zu verwenden
-logging.basicConfig(
-    level="INFO",
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[RichHandler(console=console, rich_tracebacks=True, show_time=False)]
-)
-
-logger = logging.getLogger("rich")
 
 try:
     app()
