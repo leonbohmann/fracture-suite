@@ -28,6 +28,12 @@ def convert_npoints(n_points, region, kw_px) -> tuple[int,int]:
         # Get the ranges for x and y
         i_w = n_points[0]
         i_h = n_points[1]
+
+        if i_w == -1:
+            i_w = int(np.ceil(region[0]/kw_px))
+        if i_h == -1:
+            i_h = int(np.ceil(region[1]/kw_px))
+
     elif n_points == -1:
         i_w = int(np.ceil(region[0]/kw_px))
         i_h = int(np.ceil(region[1]/kw_px))
@@ -49,9 +55,13 @@ def splinterproperty_kernel(spl: list[Splinter], prop: SplinterProp, ip, pxpmm, 
 
 def nfifty_kernel(spl: list[Splinter], *args,**kwargs):
     """Count splinters and relate them to an area of 50x50."""
-    area = kwargs["window_size"]
-    f = 2500/area
+    # factor to convert the area to 50x50
+    f = 2500/kwargs["window_size"]
     return int(len(spl)*f), 0
+
+def count_kernel(spl: list[Splinter], *args, **kwargs):
+    """Count splinters and relate them to an area of 50x50."""
+    return int(len(spl)), 0
 
 def intensity_kernel(spl: list[Splinter], *args,**kwargs):
     """Calculate the mean intensity parameter lambda for a given set of splinters."""
@@ -110,7 +120,9 @@ kernels = {
     SplinterProp.INTENSITY: intensity_kernel,
     SplinterProp.RHC: rhc_kernel,
     SplinterProp.ACCEPTANCE: acceptance_kernel,
-    SplinterProp.NFIFTY: nfifty_kernel
+    SplinterProp.NFIFTY: nfifty_kernel,
+    SplinterProp.COUNT: count_kernel,
+
 }
 
 @dataclass
@@ -253,20 +265,21 @@ class ImageKerneler():
 T = TypeVar("T")
 class ObjectKerneler():
     """Can kernel any data in a region."""
-    __modes = ["area", "diag"]
     general: GeneralSettings = GeneralSettings.get()
 
     def __init__(
         self,
         region: tuple[int, int],
         data_objects: list[T],
-        collector: Callable[[T, RectRegion], bool],
-        skip_edge: bool = False,
+        *args,
+        **kwargs
     ):
         self.region = region
         self.data_objects = data_objects
-        self.collector = collector
-        self.skip_edge = skip_edge
+
+        if len(args) > 0 or len(kwargs) > 0:
+            debug('ObjectKerneler: Additional arguments passed. Consider removing them.')
+
 
     def __internalrun(
         self,
@@ -316,10 +329,10 @@ class ObjectKerneler():
         """
         X = np.zeros(len(x_range)-1, dtype=np.float64)
         Y = np.zeros(len(y_range)-1, dtype=np.float64)
-        Z = np.zeros((len(x_range)-1, len(y_range)-1), dtype=np.float64)
-        Zstd = np.zeros((len(x_range)-1, len(y_range)-1), dtype=np.float64)
+        Z = np.zeros((len(y_range)-1, len(x_range)-1), dtype=np.float64)
+        Zstd = np.zeros((len(y_range)-1, len(x_range)-1), dtype=np.float64)
 
-        window_object_counts = np.zeros((len(x_range)-1, len(y_range)-1), dtype=np.uint32)
+        window_object_counts = np.zeros((len(y_range)-1, len(x_range)-1), dtype=np.uint32)
         rData = KernelerData(window_object_counts)
 
         # the maximum possible distance between any two points
@@ -334,10 +347,10 @@ class ObjectKerneler():
 
         # create empty groups
         spl_groups = list()
-        for i in range(len(x_range)-1):
+        for i in range(len(y_range)-1):
             new_l = list()
             spl_groups.append(new_l)
-            for j in range(len(y_range)-1):
+            for j in range(len(x_range)-1):
                 new_l.append(list())
 
 
@@ -355,7 +368,7 @@ class ObjectKerneler():
                             continue
 
                         # add the splinter to each group it fits in
-                        spl_groups[i][j].append(s)
+                        spl_groups[j][i].append(s)
                         progress.advance()
 
         # create args for every (r,t) region
@@ -368,14 +381,14 @@ class ObjectKerneler():
                     window_size = window_size_function(x0,x1,y0,y1)
 
                     # get the objects in the region
-                    spl = spl_groups[i][j]
+                    spl = spl_groups[j][i]
 
-                    debug(f'Defining window ({i},{j}): r0: {x0:.1f}, r1: {x1:.1f}, t0: {y0:.1f}, t1: {y1:.1f}, sz: {window_size:.1f}, len: {len(spl)}.')
+                    debug(f'Defining window ({i},{j}): x: [{x0:.1f}, {x1:.1f}], y: [{y0:.1f}, {y1:.1f}], sz: {window_size:.1f}, len: {len(spl)}.')
                     if State.debug:
                         kwargs['debug'] = True
 
                     # save additional data
-                    window_object_counts[i,j] = len(spl)
+                    window_object_counts[j,i] = len(spl)
 
                     args.append(
                         WindowArguments(
@@ -395,8 +408,8 @@ class ObjectKerneler():
 
         def put_result(result):
             i, j, r_c, t_c, mean_value, stddev = result
-            Z[i,j] = mean_value
-            Zstd[i,j] = stddev
+            Z[j,i] = mean_value
+            Zstd[j,i] = stddev
             X[i] = r_c
             Y[j] = t_c
 
@@ -429,6 +442,7 @@ class ObjectKerneler():
 
 
         if return_data:
+            debug('Returning rData...')
             return X,Y,Z,Zstd, rData
 
 
@@ -486,6 +500,8 @@ class ObjectKerneler():
         return_data = False,
         **kwargs
     ):
+
+
         def center_function(s):
             return s.centroid_mm
 
@@ -497,6 +513,7 @@ class ObjectKerneler():
 
         i_w, i_h = convert_npoints(n_points, self.region, kw)
 
+        debug(f'region: {self.region}')
         debug(f'kw: {kw}, n_points: {n_points}, i_w: {i_w}, i_h: {i_h}')
         x_centers = np.linspace(kw, self.region[0]-kw, i_w, endpoint=True)
         y_centers = np.linspace(kw, self.region[1]-kw, i_h, endpoint=True)
@@ -527,194 +544,4 @@ class ObjectKerneler():
         exclude_points: list[tuple[int,int]] = None,
         fill_skipped_with_mean: bool = True,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | np.ndarray:
-        """
-        Run the kerneler.
-
-        If n_points is -1, then the kerneler will use the kernel width to determine
-        the number of points to use.
-
-        For mode=='diag', the kerneler will only use the diagonal of the region and
-        return a 1D array with results.
-
-
-
-        Args:
-            calculator (Callable[[list[T]], float]): The calculator function to use.
-            kw_px (int): The kernel width in pixels. Defaults to 10.
-            n_points (int, optional): The number of points to use. Defaults to -1.
-            mode (str, optional): The mode to use. Defaults to "area".
-            exclude_points (list[tuple[int,int]], optional): A list of points to exclude. Defaults to None.
-
-        Returns:
-            tuple[np.ndarray, np.ndarray, np.ndarray] | np.ndarray: The result of the kerneler.
-        """
-
-        assert mode in ObjectKerneler.__modes, \
-            f"Mode must be one of '{ObjectKerneler.__modes}'."
-
-        if mode == "area":
-            return self.__run_area(calculator, n_points, kw_px, exclude_points=exclude_points, fill_skipped_with_mean=fill_skipped_with_mean)
-        elif mode == "diag":
-            return self.__run_diag(calculator, n_points, kw_px, exclude_points=exclude_points, fill_skipped_with_mean=fill_skipped_with_mean)
-
-    def __run_diag(
-        self,
-        calculator: Callable[[list[T]], float],
-        n_points: int | tuple[int,int],
-        kw_px: int,
-        exclude_points: list[tuple[int,int]] = None,
-        fill_skipped_with_mean: bool = True
-    ) -> np.ndarray:
-        assert kw_px < self.region[0], \
-            "Kernel width must be smaller than the region width."
-        assert kw_px < self.region[1], \
-            "Kernel width must be smaller than the region height."
-        assert kw_px > 10, \
-            "Kernel width must be greater than 10."
-        assert len(self.data_objects) > 0, \
-            "There must be at least one object in the list."
-        assert n_points > 0 or n_points == -1, \
-            "n_points must be greater than 0."
-
-        i_w, i_h = convert_npoints(n_points, self.region, kw_px)
-
-        px_w, px_h = self.region
-
-        Z = []
-        for w in range(i_w):
-            for h in range(i_h):
-                # get diagonal only
-                if w != h:
-                    continue
-
-                x1 = (w/n_points) * px_w - kw_px // 2
-                y1 = (h/n_points) * px_h - kw_px // 2
-                x2 = x1 + kw_px
-                y2 = y1 + kw_px
-
-                objects_in_region = \
-                    [obj for obj in self.data_objects \
-                        if self.collector(obj, (x1, y1, x2, y2))]
-
-                result = calculator(objects_in_region)
-
-                Z.append(result)
-
-        return np.array(Z)
-
-    def __run_area(
-        self,
-        calculator: Callable[[list[T]], float],
-        n_points: int | tuple[int,int],
-        kw: int,
-        exclude_points: list[tuple[int,int]] = None,
-        fill_skipped_with_mean: bool = True
-    ):
-        assert n_points > 0 or n_points == -1, \
-            "n_points must be greater than 0 or -1."
-        assert kw < self.region[0], \
-            "Kernel width must be smaller than the region width."
-        assert kw < self.region[1], \
-            "Kernel width must be smaller than the region height."
-        assert kw > 10, \
-            "Kernel width must be greater than 10."
-        assert len(self.data_objects) > 0, \
-            "There must be at least one object in the list."
-
-        print(f'[cyan]KERNELER[/cyan] [green]START[/green]')
-        print(f'[cyan]KERNELER[/cyan] Kernel Width: {kw}')
-        print(f'[cyan]KERNELER[/cyan] Points:       {n_points},{n_points} Points')
-        print(f'[cyan]KERNELER[/cyan] Excluded Ps:  {exclude_points}')
-        print(f'[cyan]KERNELER[/cyan] Region:       {self.region}')
-
-        # Get the ranges for x and y
-        minx = kw // 2
-        maxx = self.region[0] - kw // 2
-        miny = kw // 2
-        maxy = self.region[1] - kw // 2
-
-        i_w, i_h = convert_npoints(n_points, self.region, kw)
-
-        # xd = np.linspace(minx, maxx, int(np.round(maxx/self.kernel_width)))
-        # yd = np.linspace(miny, maxy, int(np.round(maxy/self.kernel_width)))
-        xd = np.linspace(minx, maxx, i_w, endpoint=True)
-        yd = np.linspace(miny, maxy, i_h, endpoint=True)
-        X, Y = np.meshgrid(xd, yd)
-
-
-        Z = np.zeros_like(X, dtype=np.float64)
-        if State.debug:
-            print(f'[cyan]KERNELER[/cyan] "{len(xd)}x{len(xd)}" Points to process.')
-
-        skip_i = 1 if self.skip_edge else 0
-
-        d = range(len(xd))
-        if State.has_progress():
-            task = State.progress.add_task("Running kernel over region...", total=len(xd))
-            def advance():
-                State.progress.progress.advance(task)
-            def stop():
-                State.progress.remove_task(task)
-        else:
-            def advance():
-                pass
-            def stop():
-                pass
-            d = tqdm(range(len(xd)), leave=False, desc="Running kernel over region...")
-
-        for i in d:
-            advance()
-            for j in range(len(yd)):
-                if (j < skip_i or j >= len(yd) - skip_i) or (i < skip_i or i >= len(xd) - skip_i):
-                    Z[j,i] = SKIP_VALUE
-                    continue
-
-                x1,x2=(xd[i]-kw//2,xd[i]+kw//2)
-                y1,y2=(yd[j]-kw//2,yd[j]+kw//2)
-
-                # Create a region (x1, y1, x2, y2)
-                region = RectRegion(x1, y1, x2, y2)
-                if State.debug:
-                    print(f'[cyan]KERNELER[/cyan] Processing region ({region.wh_center()})...')
-
-                is_excluded = False
-                if exclude_points is not None:
-                    for p in exclude_points:
-                        if region.is_point_in(p):
-                            Z[j, i] = SKIP_VALUE
-                            is_excluded = True
-                            if State.debug:
-                                print(f'[cyan]KERNELER[/cyan] Region {region.wh_center()} is excluded.')
-                            break
-
-                if is_excluded:
-                    continue
-
-
-                # Collect objects in the current region
-                objects_in_region = [obj for obj in self.data_objects \
-                    if self.collector(obj, region)]
-                # input('Continue?')
-
-                if State.debug:
-                    print(f'[cyan]KERNELER[/cyan] Found {len(objects_in_region)} objects in region.')
-                # Apply z_action to collected splinters
-                Z[j, i] = calculator(objects_in_region) \
-                    if len(objects_in_region) > 0 else 0
-
-                if State.debug:
-                    print(f'[cyan]KERNELER[/cyan] Result: {Z[j,i]}')
-        stop()
-        # input("continue?")
-        # this is for testing
-        # Z[0,0] = 1000
-        # Z[-1,-1] = 1000
-        invalid = np.bitwise_or(np.isnan(Z), Z == SKIP_VALUE)
-        mean = np.mean(Z[~invalid])
-        if fill_skipped_with_mean:
-            Z[invalid] = mean
-        else:
-            Z[invalid] = 0
-        print('[cyan]KERNELER[/cyan] [green]END[/green]')
-
-        return X,Y,Z
+        return None

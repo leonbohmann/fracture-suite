@@ -49,3 +49,10 @@ def floor_to_10(x: float) -> float:
         float: The rounded number.
     """
     return np.floor(x / 10) * 10
+
+
+def is_number(s):
+    try:
+        return float(s)
+    except ValueError:
+        return None

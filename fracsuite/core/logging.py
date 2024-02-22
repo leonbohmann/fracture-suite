@@ -38,7 +38,7 @@ def debug(*msg):
     if logger is None:
         print(*msg)
         return
-    logger.debug(*msg)
+    logger.debug(*msg, stacklevel=2)
 
 def warning(*msg):
     if logger is None:

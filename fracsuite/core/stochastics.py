@@ -11,6 +11,7 @@ from scipy.stats import chi2
 from scipy.signal import argrelextrema
 
 from fracsuite.core.signal import smooth_hanning
+from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.state import State
 
 def r_squared_f(x, y_real, func, popt):

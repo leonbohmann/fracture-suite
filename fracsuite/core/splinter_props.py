@@ -20,3 +20,4 @@ class SplinterProp(str,Enum):
     RHC = 'rhc'
     ACCEPTANCE = 'acceptance'
     NFIFTY = 'nfifty'
+    COUNT = 'count'

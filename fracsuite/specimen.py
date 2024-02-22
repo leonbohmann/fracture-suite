@@ -6,6 +6,7 @@ from json import JSONEncoder
 import json
 
 from regex import F
+from fracsuite.core.calculate import is_number
 from fracsuite.core.logging import debug, error, info, warning
 
 import os
@@ -1080,20 +1081,22 @@ def check_homogeneity():
 def plot_property(
     specimen_name: str = typer.Argument(help='Name of specimens to load'),
     prop: SplinterProp = typer.Argument(help='Property to plot.'),
-    n_points: int = typer.Option(25, help='Amount of points to evaluate.'),
+    n_points: str = typer.Option("25", help='Amount of points to evaluate.'),
     w_mm: int = typer.Option(50, help='Size of the region to calculate the roughness on.'),
     smooth: bool = typer.Option(True, help='Smooth the plot.'),
     quadrat_count: bool = typer.Option(False, help='If used, modifies w_mm so that n_points are calculated in each dimension.'),
 ):
-    """Plot the property of the specimen using a KDE plot."""
+    """
+    Plot the property of the specimen using a KDE plot.
+    """
     specimen = Specimen.get(specimen_name)
-    sz = specimen.get_real_size()
 
-    # if quadrat count is considered, modify w_mm so that quadrats are fitting
-    if quadrat_count:
-        w_mm = int(sz[0] / n_points)
+    if is_number(n_points):
+        n_points = int(n_points)
+    elif "," in n_points:
+        n_points = tuple(map(int, n_points.split(",")))
 
-    X,Y,Z,Zstd = specimen.calculate_2d(prop, w_mm, n_points)
+    X,Y,Z,Zstd = specimen.calculate_2d(prop, w_mm, n_points, quadrat_count=quadrat_count)
 
     output = plot_kernel_results(
         specimen.get_fracture_image(),

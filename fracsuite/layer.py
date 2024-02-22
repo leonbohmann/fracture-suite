@@ -884,7 +884,7 @@ def plot_polar(
             r0,r1,t0,t1 = int(r0*pxpmm),int(r1*pxpmm),int(t0),int(t1)
 
             # find value for this region
-            z = Z[r,t]
+            z = Z[t,r]
 
             if np.isnan(z):
                 continue

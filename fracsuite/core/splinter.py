@@ -806,7 +806,7 @@ class Splinter:
             dp,_,_ = self.get_ellipse_axes()
             a = angle_deg(dp)
         else:
-            raise Exception(f"'{prop}' not implemented for individual splinters.")
+            raise Exception(f"'{prop}' not implemented for individual splinters. Maybe missing a kernel function?")
         # elif prop == SplinterProp.ANGLE:
         #     _, _, angle = cv2.minAreaRect(self.contour)
         #     a = angle
@@ -831,6 +831,7 @@ class Splinter:
         SplinterProp.RHC: ("", "RHC (mm)"),
         SplinterProp.ACCEPTANCE: ("", "Acceptance"),
         SplinterProp.NFIFTY: ("", "$N_\mathrm{50}$"),
+        SplinterProp.COUNT: ("", "$N$"),
     }
 
     @classmethod

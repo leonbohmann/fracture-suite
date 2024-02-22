@@ -922,21 +922,33 @@ class Specimen(Outputtable):
         self,
         prop: SplinterProp,
         kw: int = 50,
-        n_points: int = 25
+        n_points: int = 25,
+        quadrat_count: bool = False
     ):
         """
         Calculate a value in 2D.
 
         Uses a constant density estimator with a kernel width of kw in a `n_points x n_points` grid.
 
+        Arguments:
+            prop (SplinterProp): Property to calculate.
+            kw (int, optional): Kernel width. Defaults to 50.
+            n_points (int, optional): Number of points in the grid. Defaults to 25.
+            quadrat_count (bool, optional): Use quadrat counting. Defaults to False. When using this
+                the `n_points` parameter is used as the number of quadrats.
+
         Returns:
             tuple[X(n), Y(m), Values(n,m), Stddev(n,m)]
         """
         impact_position = self.get_impact_position()
+        sz = self.get_real_size()
+
+        if quadrat_count:
+            kw = sz[0] / n_points
 
         # create kerneler
         kerneler = ObjectKerneler(
-            self.get_real_size(),
+            sz,
             self.splinters, # use filtered splinters here!
             None,
             False
