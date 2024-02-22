@@ -1,3 +1,4 @@
+from inspect import Arguments
 import re
 from textwrap import indent
 from typing import Annotated
@@ -15,10 +16,11 @@ from rich import print
 
 from fracsuite.callbacks import main_callback
 from fracsuite.core.coloring import get_color, norm_color
+from fracsuite.core.logging import debug, info
 from fracsuite.core.mechanics import U
-from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, interp_layer, load_layer, load_layer_file, plt_layer, save_layer
+from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, has_layer, interp_layer, load_layer, load_layer_file, plt_layer, save_layer
 from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, get_legend, renew_ticks_cb
-from fracsuite.core.progress import get_progress
+from fracsuite.core.progress import get_progress, tracker
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
@@ -222,17 +224,22 @@ def create(
     exclude_name_filter: Annotated[str, typer.Option(help='Exclude specimens matching this filter.')] = None,
     normalize: Annotated[bool, typer.Option(help='Normalize specimen value ranges.')] = False,
     name_filter: Annotated[str, typer.Option(help='Filter specimen names.')] = "*",
+    sz: FigureSize = typer.Option(FigureSize.ROW3, help='Figure size.'),
+    no_save: Annotated[bool, typer.Option(help='Do not save the created layers.')] = False,
+    with_std: Annotated[bool, typer.Option(help='Save standard deviation layers.')] = False,
 ):
     if "," in prop or prop == "all":
+        info("Detected pattern in property...")
         if prop == "all":
             prop = "intensity,rhc,acceptance,orientation,l1,l2,asp,asp0"
+            info(f"All properties will be calculated: {prop}")
             pass
 
         props = prop.split(',')
         for p in tqdm(props, desc='Properties'):
             p = SplinterProp(p)
-            print(f"[cyan]Creating layer for {p}.")
-            create(p, break_pos, break_mode, ignore_nan_u, thickness, exclude_names, exclude_name_filter, normalize, name_filter)
+            info(f"Creating layer for: {prop}")
+            create(p, break_pos, break_mode, ignore_nan_u, thickness, exclude_names, exclude_name_filter, normalize, name_filter, sz, no_save, with_std)
         return
 
     prop = SplinterProp(prop)
@@ -304,16 +311,14 @@ def create(
     else:
         thickness = f'{thickness:.0f}'
 
-    sz = FigureSize.ROW2
-
-    xlabel = "Abstand zum Anschlagpunkt (mm)"
-    ylabel = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3)
+    xlabel = "Abstand zum Anschlagpunkt (mm)" if sz != FigureSize.ROW3 else "R (mm)"
+    ylabel = Splinter.get_property_label(prop, row3=sz==FigureSize.ROW3)
 
 
     r_range, t_range = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
 
-    print(f"[cyan]POLAR[/cyan] Using radius range {r_range}.")
-    print(f"[cyan]POLAR[/cyan] Using theta range {t_range}.")
+    debug(f"Using radius range {r_range}.")
+    debug(f"Using theta range {t_range}.")
 
     ########################
     # Calculate value for every specimen and save results to arrays
@@ -323,7 +328,7 @@ def create(
 
 
     # iterate specimens and calculate polar values
-    for si, specimen in tqdm(enumerate(specimens), total=len(specimens), desc='Specimens'):
+    for si, specimen in tracker(enumerate(specimens), 'Calculating specimens', total=len(specimens)):
         specimen: Specimen
 
         _,_,Z,Zstd = specimen.calculate_2d_polar(
@@ -344,58 +349,60 @@ def create(
         stddevs[si,3] = results[si,3]
         stddevs[si,4:] = Zstd.flatten()
 
+
     # sort results after first column
     results = results[results[:,0].argsort()]
     stddevs = stddevs[stddevs[:,0].argsort()]
 
-    ########################
-    # Save results as layer
-    ########################
-    for b in bid:
-        # mask all results for the current boundary
-        b_mask = results[:,2] == bid[b]
+    if not no_save:
+        ########################
+        # Save results as layer
+        ########################
+        for b in bid:
+            # mask all results for the current boundary
+            b_mask = results[:,2] == bid[b]
 
-        # mask thicknesses
-        for t in [4,8,12]:
-            t_mask = results[:,1] == t
+            # mask thicknesses
+            for t in [4,8,12]:
+                t_mask = results[:,1] == t
 
-            # mask both
-            bt_mask = b_mask & t_mask
+                # mask both
+                bt_mask = b_mask & t_mask
 
-            # skip empty boundaries
-            if np.sum(bt_mask) == 0:
-                continue
+                # skip empty boundaries
+                if np.sum(bt_mask) == 0:
+                    continue
 
-            # boundary results
-            b_results = results[bt_mask,:]
-            b_stddevs = stddevs[bt_mask,4:]
+                # boundary results
+                b_results = results[bt_mask,:]
+                b_stddevs = stddevs[bt_mask,4:]
 
-            b_energies = b_results[:,0]
-            b_values = b_results[:,4:]
-            b_r_range = r_range[:-1] # -1 because the last range is not closed (last r_range is calculated as lower bound)
+                b_energies = b_results[:,0]
+                b_values = b_results[:,4:]
+                b_r_range = r_range[:-1] # -1 because the last range is not closed (last r_range is calculated as lower bound)
 
-            # save layer
-            save_layer(
-                prop,
-                b,
-                t,
-                break_pos,
-                False,
-                b_r_range,      # 1d radius array
-                b_energies,     # 1d energy array
-                b_values        # 2d array
-            )
-            # save stddev
-            save_layer(
-                prop,
-                b,
-                t,
-                break_pos,
-                True,
-                b_r_range,
-                b_energies,
-                b_stddevs
-            )
+                # save layer
+                save_layer(
+                    prop,
+                    b,
+                    t,
+                    break_pos,
+                    False,
+                    b_r_range,      # 1d radius array
+                    b_energies,     # 1d energy array
+                    b_values        # 2d array
+                )
+                # save stddev
+                save_layer(
+                    prop,
+                    b,
+                    t,
+                    break_pos,
+                    True,
+                    b_r_range,
+                    b_energies,
+                    b_stddevs
+                )
 
     # define an energy range to plot mean values in
     n_ud = 7 # J/m²
@@ -449,8 +456,9 @@ def create(
                 axs.plot(x, bt_energies, color=c, linewidth=1, markersize=1.5) #
 
                 # fill stddev
-                # axs.fill_between(x, b_results[i,3:] - b_stddevs[i,3:], b_results[i,3:] + b_stddevs[i,3:],
-                #                  color=c, alpha=0.1)
+                if with_std:
+                    axs.fill_between(x, b_results[i,4:] - b_stddevs[i,4:], b_results[i,4:] + b_stddevs[i,4:],
+                                 color=c, alpha=0.1)
 
             # plot mean values as thick lines
             for i in range(len(ud_range)-1):
@@ -477,7 +485,8 @@ def create(
             axs.set_ylabel(ylabel)
             cmap = pltc.ListedColormap(colors)
             norm = pltc.Normalize(min_u, max_u)
-            cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label="Formänderungsenergie $U$ (J/m²)")
+            clabel = "Formänderungsenergie $U$ (J/m²)" if sz != FigureSize.ROW3 else "U (J/m²)"
+            cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label=clabel)
             # renew_ticks_cb(cbar)
             # renew_ticks_ax(axs)
             State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{prop}_{break_pos}", to_additional=True)
