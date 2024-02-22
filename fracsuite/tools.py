@@ -11,6 +11,7 @@ import typer
 import cv2
 
 from fracsuite.callbacks import main_callback
+from fracsuite.core.coloring import rand_col
 from fracsuite.core.model_layers import arrange_regions, get_layer_folder
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_ax, renew_ticks_cb, voronoi_to_image
 from fracsuite.core.signal import smooth_hanning
@@ -466,6 +467,37 @@ def gibbs_strauss(
             State.output(StateOutput(fig, sz), f"{name}_khat", open=False)
 
 
+def watershed_points(
+    points,
+    size
+):
+    # scaling factor (realsize > pixel size)
+    size_f = 20
+
+    # create output image store with marked points
+    markers = np.zeros((int(size[1]*size_f),int(size[0]*size_f)), dtype=np.uint8)
+    for point in points:
+        markers[int(point[1]*size_f), int(point[0]*size_f)] = 255
+
+
+    # perform watershedding on individual points
+    markers = cv2.connectedComponents(np.uint8(markers))[1]
+    shape = (int(size[1]*size_f),int(size[0]*size_f),3)
+    blank_image = np.zeros(shape, dtype=np.uint8)
+    markers = cv2.watershed(blank_image, markers)
+
+    m_img = np.zeros(shape, dtype=np.uint8)
+    m_img[markers == -1] = 255
+    splinters = Splinter.analyze_contour_image(m_img, size_f, prep = None, areabounds = (0,1e6))
+
+    # create contour image
+    img = np.zeros(shape, dtype=np.uint8)
+    for s in splinters:
+        clr = rand_col()
+        cv2.drawContours(img, [s.contour], 0, clr, -1)
+
+    return img
+
 @tools_app.command()
 def test_bohmann(
     lam_max: float = 0.02,
@@ -505,9 +537,9 @@ def test_bohmann(
     ))
 
     lam_max_real = len(results) / (w*h)
+    figsz = get_fig_width(sz)
 
     if not State.no_out:
-        figsz = get_fig_width(sz)
         # plot points
         fig,axs = plt.subplots(figsize=get_fig_width(point_sz))
         axs.scatter(results[:,0], results[:,1], s=1)
@@ -521,7 +553,7 @@ def test_bohmann(
         fig,axs = plt.subplots(figsize=get_fig_width(point_sz))
         img = np.zeros((int(w),int(w)))
         voronoi_to_image(img, vor)
-        axs.imshow(img, cmap='gray')
+        axs.imshow(255-img, cmap='gray')
         axs.set_aspect('equal', 'box')
         State.output(StateOutput(fig, point_sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_voronoi", open=True)
 
@@ -589,6 +621,16 @@ def test_bohmann(
         "measure1": 1/lam_max_real,
         "measure2": 1/lam_max,
     }
+
+    if not State.no_out:
+        # perform inverse watershedding here
+        watershedded = watershed_points(results, (w,h))
+        fix,axs = plt.subplots(figsize=get_fig_width(point_sz))
+        axs.imshow(watershedded)
+        axs.set_aspect('equal', 'box')
+        axs.set_xlabel("x")
+        axs.set_ylabel("y")
+        State.output(StateOutput(fix, point_sz), f"bohmann_{lam_max:0.3f}_{rhc_max:.3f}_watershed", open=True)
 
     return measures
 
