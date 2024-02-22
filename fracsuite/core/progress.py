@@ -48,17 +48,25 @@ def get_spinner(description: str = "Loading specimens...", with_bar: bool = Fals
     return ProgWrapper(prog, description)
 
 
-
-
-class prog:
-    def __init__(self, data):
+class tracker:
+    def __init__(self, data, title=None,total=None):
         self.baseiterator = data
+        self.current = 0
+        self.high = len(data) if isinstance(data, (list, tuple)) else total
+        if self.high is None:
+            raise ValueError("Total length of data must be provided if data is not a list or tuple.")
+
+        self.progress = get_progress(total=self.high, title=title)  # Add this line to create a progress with total set to the length of data
+        self.progress.start()
 
     def __iter__(self):
         return self
 
     def __next__(self): # Python 2: def next(self)
         self.current += 1
-        if self.current < self.high:
-            return self.current
+        if self.current <= self.high:
+            self.progress.advance()  # Add this line to advance the progress
+            return next(self.baseiterator)
+
+        self.progress.stop()
         raise StopIteration
