@@ -424,7 +424,7 @@ def lbreak(
             plt.show()
         fig.savefig(sim.get_file(f'{name}.pdf'))
 
-    section("Create spatial points...")
+    section("Modify spatial points...")
     exceptions = []
     with get_progress() as progress:
         progress.set_description('Creating spatial points')
@@ -597,6 +597,8 @@ def lbreak_like(
     simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position())
     # compare simulation with input
     compare(simulation.fullname, specimen.name)
+
+    return simulation
 
 @sim_app.command()
 def compare_all(name):
