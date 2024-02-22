@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
 from fracsuite.core.LinearestInterpolator import LinearestInterpolator
+from fracsuite.core.logging import info
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
@@ -78,6 +79,7 @@ def save_layer(
     data[1:,0] = Y.flatten()
     data[1:,1:] = Z
 
+    info(f"Saving layer to {file_path}")
     np.save(file_path, data)
 
 
