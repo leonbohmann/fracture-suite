@@ -228,6 +228,28 @@ def create(
     no_save: Annotated[bool, typer.Option(help='Do not save the created layers.')] = False,
     with_std: Annotated[bool, typer.Option(help='Save standard deviation layers.')] = False,
 ):
+    """
+    Create layers based on the given parameters. Also generated useful plots for the layers.
+
+    This function will create layers and save them to the output folder.
+    If `no_save` is set to `True`, the layers will not be saved and only plots will be created.
+
+
+    Args:
+        prop (str): Mode for the aspect ratio.
+        break_pos (SpecimenBreakPosition, optional): Break position. Defaults to SpecimenBreakPosition.CORNER.
+        break_mode (SpecimenBreakMode, optional): Break mode. Defaults to SpecimenBreakMode.PUNCH.
+        ignore_nan_u (bool, optional): Filter Ud values that are NaN from plot. Defaults to False.
+        thickness (float, optional): Specimen thickness. Defaults to None, which uses all.
+        exclude_names (str, optional): Exclude specimens with these names. Separated by comma. Defaults to "".
+        exclude_name_filter (str, optional): Exclude specimens matching this filter. Defaults to None.
+        normalize (bool, optional): Normalize specimen value ranges. Defaults to False.
+        name_filter (str, optional): Filter specimen names. Defaults to "*", which uses all specimens.
+        sz (FigureSize, optional): Figure size. Defaults to FigureSize.ROW3.
+        no_save (bool, optional): Do not save the created layers. Defaults to False.
+        with_std (bool, optional): Plot standard deviation layers. Defaults to False.
+    """
+
     if "," in prop or prop == "all":
         info("Detected pattern in property...")
         if prop == "all":
