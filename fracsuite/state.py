@@ -162,6 +162,7 @@ class State:
     "Disables automatic opening from State.output."
     no_out: bool = False
     "Disables all output via State.output."
+    kwargs: dict = {}
 
     __progress_started: bool = False
 

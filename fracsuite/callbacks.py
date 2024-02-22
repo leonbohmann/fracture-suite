@@ -63,6 +63,7 @@ def main_callback(
     State.maximum_specimen = max_spec
     State.no_open = no_open
     State.no_out = no_out
+    State.kwargs = {}
 
     State.pointoutput(subfolder)
 

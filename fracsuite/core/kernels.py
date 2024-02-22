@@ -72,7 +72,7 @@ def intensity_kernel(spl: list[Splinter], *args,**kwargs):
 
     area = np.sum([s.area for s in spl])
     # area = kwargs["window_size"]
-    return len(spl) / area, 0
+    return len(spl) / area, 0 # 0 has to stay!
 
 def rhc_kernel(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
@@ -91,7 +91,7 @@ def rhc_kernel(spl: list[Splinter], *args, **kwargs):
         fig.savefig(file)
         plt.close(fig)
 
-    return r1, 0
+    return r1, 0 # 0 has to stay!
 
 def acceptance_kernel(spl: list[Splinter], *args, **kwargs):
     """Calculate the hard core radius for a given set of splinters."""
@@ -113,7 +113,7 @@ def acceptance_kernel(spl: list[Splinter], *args, **kwargs):
         fig.savefig(file)
         plt.close(fig)
 
-    return acceptance, 0
+    return acceptance, 0 # 0 has to stay!
 
 kernels = {
     'Any': splinterproperty_kernel,
@@ -383,7 +383,8 @@ class ObjectKerneler():
                     # get the objects in the region
                     spl = spl_groups[j][i]
 
-                    debug(f'Defining window ({i},{j}): x: [{x0:.1f}, {x1:.1f}], y: [{y0:.1f}, {y1:.1f}], sz: {window_size:.1f}, len: {len(spl)}.')
+                    if i % 30 == 0:
+                        debug(f'Defining window ({i},{j}): x: [{x0:.1f}, {x1:.1f}], y: [{y0:.1f}, {y1:.1f}], sz: {window_size:.1f}, len: {len(spl)}.')
                     if State.debug:
                         kwargs['debug'] = True
 
@@ -491,7 +492,7 @@ class ObjectKerneler():
 
     def window(
         self,
-        prop,
+        prop: SplinterProp,
         kw: float,
         n_points: int | tuple[int,int],
         impact_position: tuple[float,float],
@@ -500,7 +501,27 @@ class ObjectKerneler():
         return_data = False,
         **kwargs
     ):
+        """
+        Applies a window function to the given property within a specified region.
 
+        If no calculator function is passed, the default calculator function for the property will be used.
+
+        If `n_points = -1`, the number of points will be calculated from the region and the window size. If
+        `n_points` is a tuple, the first value will be used for the x direction and the second value for the y direction.
+
+        Args:
+            prop: The property to be analyzed.
+            kw (float): The size of the window in millimeters.
+            n_points (int | tuple[int,int]): The number of points in the x and y directions or a tuple specifying the x and y dimensions of the region.
+            impact_position (tuple[float,float]): The position of the impact in millimeters.
+            pxpmm (float): The number of pixels per millimeter.
+            calculator (Callable[[list[T]], float], optional): A function to calculate a value from the property values within each window. Defaults to None.
+            return_data (bool, optional): Whether to return the analyzed data. Defaults to False.
+            **kwargs: Additional keyword arguments to be passed to the calculator function.
+
+        Returns:
+            The result of the calculator function if return_data is True, otherwise None.
+        """
 
         def center_function(s):
             return s.centroid_mm

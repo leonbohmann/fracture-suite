@@ -19,7 +19,7 @@ from fracsuite.core.anisotropy_images import AnisotropyImages
 from fracsuite.core.coloring import rand_col
 
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective, simplify_contour
-from fracsuite.core.kernels import KernelerData, ObjectKerneler
+from fracsuite.core.kernels import KernelerData, ObjectKerneler, rhc_kernel
 from fracsuite.core.model_layers import DEFAULT_ANGLE_DELTA, DEFAULT_RADIUS_DELTA
 from fracsuite.core.outputtable import Outputtable
 from fracsuite.core.plotting import get_log_range
@@ -645,21 +645,7 @@ class Specimen(Outputtable):
 
         f_intensity = self.simdata.get(Specimen.DAT_LAMBDA, None)
         if force_recalc or f_intensity is None:
-            region = self.settings[Specimen.SET_REALSIZE]
-            kernel = ObjectKerneler(
-                region,
-                self.splinters,
-                collector=lambda x,r: x.in_region(r),
-                skip_edge=True,
-            )
-            # run the kernel window, use int_calculator
-            _,_,Z,_ = kernel.window(
-                SplinterProp.INTENSITY,
-                D_mm,
-                n_points=25,
-                impact_position=self.get_impact_position(),
-                pxpmm = self.calculate_px_per_mm(),
-            )
+            _,_,Z,_ = self.calculate_2d(SplinterProp.INTENSITY, D_mm, 25)
 
             f_intensity = np.nanmean(Z)
             self.set_data(Specimen.DAT_LAMBDA, f_intensity)
@@ -678,7 +664,7 @@ class Specimen(Outputtable):
             lambda, rhc, acc: The fracture intensity parameter in 1/mm², the hard core radius in mm and the acceptance probability.
         """
         lam = self.calculate_break_lambda(force_recalc, D_mm)
-        rhc, acc = self.calculate_break_rhc(force_recalc)
+        rhc, acc = self.calculate_break_rhc_acc(force_recalc)
         return lam, rhc, acc
 
 
@@ -696,11 +682,13 @@ class Specimen(Outputtable):
         self.set_data(Specimen.DAT_LAMBDA, lam)
         return lam
 
-    def calculate_break_rhc(self, force_recalc: bool = False) -> float:
+    def calculate_break_rhc_acc(self, force_recalc: bool = False) -> float:
         """
         Use ripleys K-Function and L-Function to estimate the hard core radius between centroids. The maximum distance to calculate is estimated using
         the biggest splinter and assuming a minimum splinter width of 2mm. Making the maximum distance 1/4 of the
         biggest splinter area root.
+
+        The ratio between
 
 
         Arguments:
@@ -711,37 +699,21 @@ class Specimen(Outputtable):
             float, float: The hard core radius in mm and the acceptance probability.
         """
 
-        r1 = self.simdata.get(Specimen.DAT_HCRADIUS, None)
+        rhc = self.simdata.get(Specimen.DAT_HCRADIUS, None)
         acceptance = self.simdata.get(Specimen.DAT_ACCEPTANCE_PROB, None)
 
-        if force_recalc or r1 is None or acceptance is None:
-            all_centroids = np.asarray([s.centroid_mm for s in self.splinters])
+        if force_recalc or rhc is None or acceptance is None:
+            rhc,_ = rhc_kernel(self.splinters)
+            # be careful, if no minimum is found rhc will be the last value of Lhat-d
             pane_size = self.get_real_size()
-            d_max = 50
-            x2,y2 = lhatc_xy(all_centroids, pane_size[0], pane_size[1], d_max)
-            min_idx = rhc_minimum(y2)
-            print(min_idx)
 
-            if min_idx == -1:
-                r1 = np.nan
-                acceptance = np.nan
-            else:
-                r1 = x2[min_idx]
-                # acceptance parameter is simply the ratio of the first minimum to the maximum distance
-                acceptance = r1 / (np.sqrt(pane_size[0]**2 + pane_size[1]**2))
+            # acceptance parameter is simply the ratio of the first minimum to the maximum distance
+            acceptance = rhc / (np.sqrt(pane_size[0]**2 + pane_size[1]**2))
 
-                self.set_data(Specimen.DAT_ACCEPTANCE_PROB, float(acceptance))
-                self.set_data(Specimen.DAT_HCRADIUS, float(r1))
+            self.set_data(Specimen.DAT_ACCEPTANCE_PROB, float(acceptance))
+            self.set_data(Specimen.DAT_HCRADIUS, float(rhc))
 
-            # this is debug output
-            if State.debug:
-                fig,axs = plt.subplots(1,1)
-                axs.plot(x2,y2)
-                file = tempfile.mktemp(".png", "rhc")
-                fig.savefig(file)
-                plt.close(fig)
-
-        return r1,acceptance
+        return rhc,acceptance
 
     def calculate_px_per_mm(self, realsize_mm: None | tuple[float,float] = None):
         """Returns the size factor of the specimen. px/mm."""
@@ -923,7 +895,8 @@ class Specimen(Outputtable):
         prop: SplinterProp,
         kw: int = 50,
         n_points: int = 25,
-        quadrat_count: bool = False
+        quadrat_count: bool = False,
+        include_all_splinters: bool = False
     ):
         """
         Calculate a value in 2D.
@@ -945,13 +918,12 @@ class Specimen(Outputtable):
 
         if quadrat_count:
             kw = sz[0] / n_points
+            debug(f"Using quadrat counting. kw is now {kw:.2f}mm")
 
         # create kerneler
         kerneler = ObjectKerneler(
             sz,
-            self.splinters, # use filtered splinters here!
-            None,
-            False
+            self.splinters if not include_all_splinters else self.allsplinters,
         )
 
         X,Y,Z,Zstd = kerneler.window(

@@ -1,28 +1,5 @@
 """
-███████╗ ██████╗ █████╗ ██╗     ██████╗ ███████╗██████╗
-██╔════╝██╔════╝██╔══██╗██║     ██╔══██╗██╔════╝██╔══██╗
-███████╗██║     ███████║██║     ██████╔╝█████╗  ██████╔╝
-╚════██║██║     ██╔══██║██║     ██╔═══╝ ██╔══╝  ██╔══██╗
-███████║╚██████╗██║  ██║███████╗██║     ███████╗██║  ██║
-╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝
-Leon Bohmann     TUD - ISMD - GCC        www.tu-darmstadt.de/glass-cc
-
-
-ScalpProject:           Create with project file. This will split all measurements into
-                        specimens and then into locations.
-Specimen:               All measurements on a single specimen.
-MeasurementLocation:    One point on the ply that has been measured (3+ Measurements)
-Measurement:            A measurement at a location in one specific direction.
-
-
-This script iterates either one single project or recursively searches for projects in a folder.
-For every .scp File, a ScapProject is created, which will handle the reading of data
-and also the grouping into Specimens and MeasurementLocations and Measurement respectively.
-
-At the end of the script, all specimens are extracted for better organisation, so that
-individual specimen tasks can be performed. For example the calculation of prinicipal stresses
-and the mean value of all measurements.
-
+Tools for analyzing and importing scalp data.
 """
 
 import glob

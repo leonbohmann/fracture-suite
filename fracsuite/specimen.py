@@ -7,6 +7,7 @@ import json
 
 from regex import F
 from fracsuite.core.calculate import is_number
+from fracsuite.core.geometry import delta_hcp
 from fracsuite.core.logging import debug, error, info, warning
 
 import os
@@ -32,6 +33,7 @@ from fracsuite.core.imageprocessing import preprocess_image
 from fracsuite.core.mechanics import Ud2sigm
 from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_ud
 from fracsuite.core.plotting import FigureSize, KernelContourMode, fit_curve, get_fig_width, legend_without_duplicate_labels, plot_kernel_results
+from fracsuite.core.progress import tracker
 
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
@@ -1055,14 +1057,24 @@ def check_homogeneity():
     all_specimens = Specimen.get_all(load=True)
 
     for spec in all_specimens:
+        info(f"Specimen {spec.name}")
         if not spec.has_splinters:
             continue
+
+        d_hcp = delta_hcp(spec.calculate_intensity())
+        d_hc,_ = spec.calculate_break_rhc_acc()
+
+        info(f"> d_hcp={d_hcp}, d_hc={d_hc}")
+
+        alpha = d_hc / d_hcp
+
+        info(f"> alpha={alpha:.2f}")
 
         sz = spec.get_real_size()
         w = sz[0]
         h = sz[1]
 
-        events = [x.centroid_mm for x in spec.splinters]
+        events = [x.centroid_mm for x in spec.allsplinters]
 
         # only analyze centroids that are more than 5 cm away from the border
         d = 50
@@ -1071,23 +1083,25 @@ def check_homogeneity():
         events = np.array(events)
 
         X2, dof, c = quadrat_count(events, (w,h), 100)
-        print(f"Specimen {spec.name}: X²={X2}, c={c}, dof={dof}")
+        info(f"> X²={X2}, c={c}, dof={dof}")
 
         if X2 >= c:
-            print(f"Specimen {spec.name} is inhomogeneous! X²={X2}, c={c}")
+            print(f"> Specimen {spec.name} is inhomogeneous! X²={X2}, c={c}")
 
 
 @app.command('property')
 def plot_property(
     specimen_name: str = typer.Argument(help='Name of specimens to load'),
     prop: SplinterProp = typer.Argument(help='Property to plot.'),
-    n_points: str = typer.Option("25", help='Amount of points to evaluate.'),
-    w_mm: int = typer.Option(50, help='Size of the region to calculate the roughness on.'),
-    smooth: bool = typer.Option(True, help='Smooth the plot.'),
-    quadrat_count: bool = typer.Option(False, help='If used, modifies w_mm so that n_points are calculated in each dimension.'),
+    n_points: str = typer.Option("25", help='Amount of points to evaluate. Pass as "n" or "nx,ny", including Anführungszeichen!'),
+    w_mm: int = typer.Option(50, help='Size of the kernel window in mm. Defaults to 50mm.'),
+    smooth: bool = typer.Option(True, help='Plot a linear interpolation of the results. Default is True.'),
+    quadrat_count: bool = typer.Option(False, help='If used, modifies w_mm so that n_points are calculated in each dimension. This doesnt work yet for n_points="nx,ny"! Defaults to False.'),
 ):
     """
     Plot the property of the specimen using a KDE plot.
+
+    n_points
     """
     specimen = Specimen.get(specimen_name)
 

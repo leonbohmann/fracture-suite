@@ -10,6 +10,7 @@ from rich import print
 from rich.progress import Progress, TextColumn
 from rich.theme import Theme
 from rich.logging import RichHandler
+import fracsuite
 from fracsuite.core.logging import start
 
 # used for redirection of pickling
@@ -33,6 +34,7 @@ from fracsuite.anisotropy import ani_app
 from fracsuite.tools import tools_app
 from spazial import initialize as spazial_initialize
 from rich.console import Console
+import fracsuite.core.logging
 
 import scienceplots  # noqa: F401
 
@@ -113,6 +115,7 @@ def root_main_callback(ctx: typer.Context, debug: bool = None):
     State.progress = get_progress()
     State.sub_outpath = ctx.invoked_subcommand
 
+    fracsuite.core.logging.debug(ctx.args)
 
     os.makedirs(os.path.join(general.out_path, GeneralSettings.sub_outpath), exist_ok=True)
 
@@ -125,7 +128,13 @@ def end_callback(*args, **kwargs):
     d = time.time() - State.start_time
     print(f"Finished in {d:.2f}s.")
 
-app = typer.Typer(pretty_exceptions_short=True, pretty_exceptions_show_locals=False, result_callback=end_callback, callback=root_main_callback)
+app = typer.Typer(
+    pretty_exceptions_short=True,
+    pretty_exceptions_show_locals=False,
+    result_callback=end_callback,
+    callback=root_main_callback,
+    no_args_is_help=True,
+)
 app.add_typer(splinter_app, name="splinters")
 app.add_typer(config_app, name="config")
 app.add_typer(specimen_app, name="specimen")

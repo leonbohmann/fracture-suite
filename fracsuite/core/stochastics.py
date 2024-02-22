@@ -9,6 +9,7 @@ from scipy.spatial.distance import pdist, squareform
 from spazial import khat_test, lhat_test, lhatc_test, poisson
 from scipy.stats import chi2
 from scipy.signal import argrelextrema
+from fracsuite.core.logging import debug
 
 from fracsuite.core.signal import smooth_hanning
 from fracsuite.core.splinter_props import SplinterProp
@@ -355,10 +356,12 @@ def quadrat_count(points, size, d, alpha=0.05):
     # yhatv = np.var(counts)
     # I = yhatv**2 / yhat
 
-
     n = len(points)
     area = (x2 - x1) * (y2 - y1)
+    debug(f'Area: {area}')
     expected = n * (d**2) / area
+    debug(f'Expected amount per Window: {expected}')
+    debug(f'Mean actual amount per Window: {np.mean(counts)}')
     # X2 after pearson (papula)
     X2 = np.sum((counts - expected) ** 2 / expected)
     # dof
@@ -407,7 +410,7 @@ def rhc_minimum(data, x = None):
         first_min = -1
 
     # generate debug output if enabled
-    if State.debug:
+    if 'show_rhc_minimum' in State.kwargs:
         if x is None:
             x = np.linspace(0, 100, len(data))
         fig,axs = plt.subplots()

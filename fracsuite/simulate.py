@@ -1,3 +1,6 @@
+"""
+Commands for simulating and analyzing fracture morphologies.
+"""
 from fracsuite.core.logging import info
 import random
 from typing import Annotated

@@ -1,3 +1,4 @@
+from typing import Iterator, List, TypeVar
 from rich.progress import Progress, SpinnerColumn, \
     TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
 from fracsuite.core.ProgWrapper import ProgWrapper
@@ -47,9 +48,9 @@ def get_spinner(description: str = "Loading specimens...", with_bar: bool = Fals
             transient=True)
     return ProgWrapper(prog, description)
 
-
+T = TypeVar("T")
 class tracker:
-    def __init__(self, data, title=None,total=None):
+    def __init__(self, data: List[T], title=None,total=None):
         self.baseiterator = data
         self.current = 0
         self.high = len(data) if isinstance(data, (list, tuple)) else total
@@ -59,10 +60,10 @@ class tracker:
         self.progress = get_progress(total=self.high, title=title)  # Add this line to create a progress with total set to the length of data
         self.progress.start()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[T]:
         return self
 
-    def __next__(self): # Python 2: def next(self)
+    def __next__(self) -> T: # Python 2: def next(self)
         self.current += 1
         if self.current <= self.high:
             self.progress.advance()  # Add this line to advance the progress
