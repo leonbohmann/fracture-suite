@@ -45,6 +45,10 @@ class ProgWrapper():
     def remove_task(self, task_id):
         self.progress.remove_task(task_id)
 
+    def start(self):
+        self.__enter__()
+    def stop(self):
+        self.__exit__(None, None, None)
     def pause(self):
         self.progress.stop()
 
