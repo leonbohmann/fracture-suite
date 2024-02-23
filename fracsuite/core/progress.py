@@ -40,23 +40,17 @@ def get_progress(expand = True, bw = 80, title="Progress...", total=None):
 
 
 def get_spinner(description: str = "Loading specimens...", with_bar: bool = False) -> ProgWrapper:
-    prog = Progress(
-                TaskProgressColumn(),
-                BarColumn(bar_width=10) if with_bar else SpinnerColumn(),
-                TextColumn("[progress.description]{task.description:<50}"),
-                TimeElapsedColumn(),
-            transient=True)
-    return ProgWrapper(prog, description)
+    return get_progress(False, title=description)
 
 T = TypeVar("T")
 class tracker:
     def __init__(self, data: List[T], title=None,total=None):
-        self.baseiterator = data
         self.current = 0
         self.high = len(data) if isinstance(data, (list, tuple)) else total
         if self.high is None:
             raise ValueError("Total length of data must be provided if data is not a list or tuple.")
 
+        self.baseiterator = iter(data)
         self.progress = get_progress(total=self.high, title=title)  # Add this line to create a progress with total set to the length of data
         self.progress.start()
 

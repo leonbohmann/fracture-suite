@@ -21,15 +21,13 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from mpl_toolkits.axes_grid1 import Divider, Size
-from fracsuite.core.arrays import sort_two_arrays
 
 from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
-from fracsuite.core.logging import debug, info
+from fracsuite.core.logging import debug
 from fracsuite.core.splinter import Splinter
-from fracsuite.core.stochastics import calculate_dmode, calculate_kde, r_squared
 from fracsuite.general import GeneralSettings
 from fracsuite.state import StateOutput
 
@@ -693,6 +691,7 @@ def datahist_to_ax(
     Returns:
         tuple[Any, list[float], Any]: The container, binrange and values of the histogram.
     """
+    from fracsuite.core.stochastics import calculate_dmode, calculate_kde
 
     assert data_mode in ['pdf', 'cdf'], "data_mode must be either 'pdf' or 'cdf'."
     if n_bins is None and binrange is None:
@@ -1075,7 +1074,7 @@ def legend_without_duplicate_labels(ax, compact = False):
 
 def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit'):
     from scipy.optimize import curve_fit
-
+    from fracsuite.core.stochastics import r_squared
     x = np.asarray(x)
     y = np.asarray(y)
 
