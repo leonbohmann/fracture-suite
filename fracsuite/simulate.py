@@ -1,7 +1,8 @@
 """
 Commands for simulating and analyzing fracture morphologies.
 """
-from fracsuite.core.logging import info
+from tqdm import tqdm
+from fracsuite.core.logging import debug, info
 import random
 from typing import Annotated
 import cv2
@@ -13,14 +14,14 @@ import typer
 import numpy as np
 from fracsuite.callbacks import main_callback
 from fracsuite.core.geometry import delta_hcp
-from fracsuite.core.image import is_gray, to_rgb
+from fracsuite.core.image import is_gray, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.imageprocessing import dilateImg
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, has_layer, interp_layer
 from fracsuite.core.plotting import DataHistMode, FigureSize, annotate_corner, datahist_2d, datahist_plot, datahist_to_ax, get_fig_width, get_log_range, renew_ticks_ax, renew_ticks_cb, voronoi_to_image
 from fracsuite.core.point_process import gibbs_strauss_process
-from fracsuite.core.progress import get_progress
+from fracsuite.core.progress import get_progress, tracker
 from fracsuite.core.region import RectRegion
 from fracsuite.core.simulation import Simulation
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
@@ -289,7 +290,7 @@ def lbreak(
     acc, acc_std = interp_layer(SplinterProp.ACCEPTANCE, boundary, thickness, break_pos, energy_u)
     # create radii
     r_range, t_range = arrange_regions(break_pos=break_pos, w_mm=size[0], h_mm=size[1])
-    print(r_range)
+    info('Radius range', r_range)
 
     fracture_intensity = np.mean(intensity(r_range))
     hc_radius = np.mean(rhc(r_range))
@@ -306,17 +307,17 @@ def lbreak(
     area = size[0] * size[1]
     c = np.mean(acc(r_range))
 
-    print(f'Energy:             {energy_u:<15.2f} J/m²')
-    print(f'Fracture intensity: {fracture_intensity:<15.4f} 1/mm²')
-    print(f'HC Radius:          {hc_radius:<15.2f} mm')
-    print(f'Mean area:          {mean_area:<15.2f} mm²')
-    print(f'Impact position:    {impact_position}')
-    print(f'Area:               {area:<15.2f} mm²')
-    print(f'Real size:          {size[0]:<15.2f} x {size[1]:<15.2f} mm²')
+    info(f'Energy:             {energy_u:<15.2f} J/m²')
+    info(f'Fracture intensity: {fracture_intensity:<15.4f} 1/mm²')
+    info(f'HC Radius:          {hc_radius:<15.2f} mm')
+    info(f'Mean area:          {mean_area:<15.2f} mm²')
+    info(f'Impact position:    {impact_position}')
+    info(f'Area:               {area:<15.2f} mm²')
+    info(f'Real size:          {size[0]:<15.2f} x {size[1]:<15.2f} mm²')
     # estimate acceptance probability
     urr = relative_remaining_stress(mean_area, thickness)
     nue = 1 - urr
-    print(f'Urr: {urr:.2f}', f'nue: {nue:.2f}')
+    info(f'Urr: {urr:.2f}', f'nue: {nue:.2f}')
 
     # create spatial points
     # points = spazial_gibbs_strauss_process(fracture_intensity, hc_radius, 0.55, size)
@@ -373,6 +374,7 @@ def lbreak(
 
     # scaling factor (realsize > pixel size)
     size_f = 20
+    info('Scaling factor: ', size_f)
     region_scaled = (x_min, x_max, y_min, y_max)
     # create output image store
     markers = np.zeros((int(size[1]*size_f),int(size[0]*size_f)), dtype=np.uint8)
@@ -427,8 +429,8 @@ def lbreak(
     }
 
     section("Plotting layers...")
-    for layer in layers:
-        info('Plotting ', layer)
+    track
+    for layer in tracker(layers):
         il, il_stddev, mode_labels, name = layers[layer]
         r_range = np.linspace(0, np.sqrt(450**2+450**2), 100)
         fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW3))
@@ -546,6 +548,13 @@ def lbreak(
     cv2.imwrite(sim.get_file('layered_points.png'), markers_clipped)
 
 
+    # remove small regions
+    detected_contours = cv2.findContours(to_gray(markers), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = [c for c in detected_contours[0] if cv2.contourArea(c) < size_f]
+    info(f'Removing {len(contours)} small regions, smaller than {size_f} px².')
+    cv2.drawContours(markers, contours, -1, (0,0,0), -1)
+    plotImage(markers, 'markers after removing small regions')
+
     section("Watershed")
     markers = cv2.connectedComponents(np.uint8(markers))[1]
     shape = (int(size[1]*size_f),int(size[0]*size_f),3)
@@ -556,6 +565,7 @@ def lbreak(
     m_img[markers == -1] = 255
     m_img_clipped = cropimg(region_scaled, size_f, m_img)
     cv2.imwrite(sim.get_file('watershed_0.png'), m_img_clipped)
+
 
     section('Digitalizing image')
     black_white_img = np.zeros((shape[0], shape[1]), dtype=np.uint8)
