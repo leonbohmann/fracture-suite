@@ -65,12 +65,6 @@ def save_layer(
     # show error if any in Z is nan
     assert not np.isnan(Z).any(), "Z contains NaN values"
 
-    # horizontally interpolate missing values (nan)
-    nans = np.isnan(Z)
-    non_nans = ~nans
-    interpolated_Z = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), Z[non_nans])
-    Z[nans] = interpolated_Z
-
     # create 2d array with shape (len(Y)+1, len(X)+1)
     # the first row and column are the x and y values
     # the rest is the z values
