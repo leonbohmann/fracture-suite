@@ -2,9 +2,9 @@ from matplotlib import pyplot as plt
 from rich import print
 
 import numpy as np
-from scipy.stats import ks_2samp, ttest_ind, chisquare, gaussian_kde
+from scipy.stats import ks_2samp, gaussian_kde
 from scipy.spatial.distance import pdist, squareform
-
+import tempfile
 
 from spazial import khat_test, lhat_test, lhatc_test, poisson
 from scipy.stats import chi2
@@ -12,7 +12,6 @@ from scipy.signal import argrelextrema
 from fracsuite.core.logging import debug
 
 from fracsuite.core.signal import smooth_hanning
-from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.state import State
 
 def r_squared_f(x, y_real, func, popt):
@@ -376,7 +375,13 @@ def quadrat_count(points, size, d, alpha=0.05):
 
     return X2, dof, c
 
-def rhc_minimum(data, x = None):
+def square(x, a, b, c):
+    return a * x**2 + b*x + c
+
+def cubic(x, a, b, c, d):
+    return a * x**3 + b*x**2 + c*x + d
+
+def rhc_minimum(data, x):
     """
     Find the smallest local minimum in a dataset.
 
@@ -395,30 +400,36 @@ def rhc_minimum(data, x = None):
         int: The index of the first smallest local minimum. If no minimum is found, -1 is returned.
     """
     # smooth data to get rid of local noise
-    data_s = smooth_hanning(data, window_len=len(data) // 5)
+    data_s = smooth_hanning(data, window_len=len(data) // 3)
 
 
+    # info(f"Data length: {len(data)}, Order: {len(data)//5}")
     # find local minima
-    mins = argrelextrema(data_s, np.less, order=2)
+    mins = argrelextrema(data_s, np.less, order=len(data)//5)
     mins = mins[0]
     if len(mins) == 1:
         first_min = mins[0]
-    elif len(mins) >= 1:
-        first_min = mins[0]   # in some cases, gamma may create a second local minimum
+    if len(mins) > 1:
+        if data_s[mins[0]] > data_s[mins[1]]:
+            first_min = mins[1]
+        else:
+            first_min = mins[0]
     # return -1 if nothing found
     elif len(mins) == 0:
         first_min = -1
 
     # generate debug output if enabled
     if 'show_rhc_minimum' in State.kwargs:
-        if x is None:
-            x = np.linspace(0, 100, len(data))
-        fig,axs = plt.subplots()
+        from fracsuite.core.plotting import FigureSize, get_fig_width
+
+        fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
         axs.plot(x, data, label="Original")
-        axs.plot(x, data_s, label="Smoothed")
-        axs.scatter(x[mins], data_s[mins], c='red', label="Minima")
-        axs.scatter(x[first_min], data_s[first_min], c='blue', marker='o', facecolors='none', label="Minima")
+        axs.plot(x, data_s, label="Gleit. Durchschnitt")
+        axs.scatter(x[mins], data_s[mins], c='gray')
+        axs.scatter(x[first_min], data_s[first_min], c='red', marker='o', facecolors='none', label="Minimum")
         axs.legend()
+        file = tempfile.mktemp(".png", "rhcmin")
+        fig.savefig(file)
         plt.show()
         plt.close(fig)
 
