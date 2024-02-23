@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+import rich
 
 import typer
 from matplotlib import pyplot as plt
@@ -11,7 +12,7 @@ from rich.progress import Progress, TextColumn
 from rich.theme import Theme
 from rich.logging import RichHandler
 import fracsuite
-from fracsuite.core.logging import start
+from fracsuite.core.logging import exception, start, warning
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
@@ -256,9 +257,42 @@ def replot(
 def test(input: list[str]):
     print(input)
 
+console = Console()
+console.rule("Fracsuite")
+
 
 # initialization stuff
 spazial_initialize() # spazial rust module
+
+def try_convert(value):
+    try:
+        result = eval(value)
+    except ValueError:
+        result = value
+    return result
+
+for i, arg in enumerate(sys.argv):
+    if arg.startswith("--state."):
+        property = arg[2:].split(".")[1]
+
+        if len(sys.argv) <= i+1:
+            value = True
+        else:
+            value = try_convert(sys.argv[i+1])
+            sys.argv.pop(i+1)
+
+        try:
+            State.set_arg(property,value)
+        except Exception as e:
+            warning(f"Could not set State.{property} to {value}.")
+            exception(e)
+
+        sys.argv.pop(i)
+    elif arg.startswith('--debug'):
+        State.debug = True
+        sys.argv.pop(i)
+
+start("fracsuite", State.debug or 'debug' in State.kwargs)
 
 try:
     app()

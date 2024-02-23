@@ -18,7 +18,6 @@ def main_callback(
         set_additional_path: Annotated[str, typer.Option(help='Set an output path for the subcommand.')] = None,
         clear_path: Annotated[bool, typer.Option('--clear-path', help='Remove the additional output path.')] = None,
         clear_output: Annotated[bool, typer.Option(help='Clears similar files when generating output.')] = False,
-        debug: Annotated[bool, typer.Option(help='Set a debug flag for the subcommand.')] = False,
         no_additional: Annotated[bool, typer.Option(help='Do not use an additional output path.')] = False,
         to_temp: Annotated[bool, typer.Option(help='Redirect all output to temp folder.')] = False,
         save_plots: Annotated[bool, typer.Option(help='Save plots to output folder.')] = False,
@@ -31,8 +30,6 @@ def main_callback(
     ):
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
-
-    start("fracsuite", debug)
 
     if set_additional_path is not None:
         general.output_paths[cmd] = set_additional_path
@@ -55,7 +52,6 @@ def main_callback(
 
     os.makedirs(os.path.join(general.out_path, State.sub_outpath), exist_ok=True)
 
-    State.debug = debug
     State.to_temp = to_temp
     State.output_name_mod = mod
     State.save_plots = save_plots
@@ -63,7 +59,6 @@ def main_callback(
     State.maximum_specimen = max_spec
     State.no_open = no_open
     State.no_out = no_out
-    State.kwargs = {}
 
     State.pointoutput(subfolder)
 
