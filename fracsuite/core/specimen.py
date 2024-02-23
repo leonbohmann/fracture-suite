@@ -6,11 +6,9 @@ import os
 import pickle
 import re
 from stat import S_IREAD, S_IRGRP, S_IROTH
-import tempfile
 from typing import Any, Callable, List, TypeVar
 
 import cv2
-from matplotlib import pyplot as plt
 import numpy as np
 from rich import print
 from rich.progress import track
@@ -29,7 +27,7 @@ from fracsuite.core.region import RectRegion
 from fracsuite.core.specimenregion import SpecimenRegion
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import calculate_dmode, rhc_minimum, khat, khat_xy, lhat, lhat_xy, lhatc, lhatc_xy
+from fracsuite.core.stochastics import khat_xy, lhat_xy, lhatc_xy
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file, find_files
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
@@ -954,7 +952,7 @@ class Specimen(Outputtable):
         # create kerneler
         kerneler = ObjectKerneler(
             size,
-            self.allsplinters,
+            self.splinters,
             None,
             False
         )
