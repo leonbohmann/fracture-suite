@@ -336,7 +336,8 @@ def lbreak(
     points = bohmann_process(size[0], size[1], r_range, l_array, rhc_array, impact_position, c, int(1e6), False)
 
     # print region
-    region = (0,0,0.2,0.2)
+    center_point = (0.5,0.5) # in percent
+    region_size  = (200,200) # in mm
 
     section("Plotting points...")
     x,y = zip(*points)
@@ -344,15 +345,29 @@ def lbreak(
     fig,axs = plt.subplots()
     axs.scatter(x,y)
     # find maximum region from points
-    x_min = np.min(x) * region[0]
-    x_max = np.max(x) * region[2]
-    y_min = np.min(y) * region[1]
-    y_max = np.max(y) * region[3]
+    x_min = np.min(x)
+    x_max = np.max(x)
+    y_min = np.min(y)
+    y_max = np.max(y)
+
+    w = x_max - x_min
+    h = y_max - y_min
+
+    x_min = w * center_point[0] - region_size[0]/2
+    x_max = w * center_point[0] + region_size[0]/2
+    y_min = h * center_point[1] - region_size[1]/2
+    y_max = h * center_point[1] + region_size[1]/2
+
+
+
     axs.set_xlim(x_min, x_max)
     axs.set_ylim(y_min, y_max)
 
     if State.debug:
         plt.show()
+    axs.set_xlabel('x (mm)')
+    axs.set_ylabel('y (mm)')
+    axs.set_aspect('equal', 'box')
     fig.savefig(sim.get_file('pointsfig.png'))
 
 
@@ -362,7 +377,7 @@ def lbreak(
     # create output image store
     markers = np.zeros((int(size[1]*size_f),int(size[0]*size_f)), dtype=np.uint8)
     for point in points:
-        markers[int(point[1]*size_f), int(point[0]*size_f)] = 0
+        markers[int(point[1]*size_f), int(point[0]*size_f)] = 255
 
     # clip region from markers
     markers_clipped = cropimg(region_scaled, size_f, markers)
