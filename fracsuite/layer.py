@@ -257,11 +257,15 @@ def create(
             info(f"All properties will be calculated: {prop}")
             pass
 
+        import gc
         props = prop.split(',')
-        for p in tqdm(props, desc='Properties'):
+        for p in (t := tracker(props, title='Calculating properties')):
+            t.progress.set_description(f"Calculating '{p}'...")
+            info(f"Calculating property '{p}'...")
             p = SplinterProp(p)
-            info(f"Creating layer for: {prop}")
             create(p, break_pos, break_mode, ignore_nan_u, thickness, exclude_names, exclude_name_filter, normalize, name_filter, sz, no_save, with_std)
+            gc.collect()
+
         return
 
     prop = SplinterProp(prop)
