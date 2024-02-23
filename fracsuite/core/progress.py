@@ -1,8 +1,10 @@
-from typing import Iterator, List, TypeVar
+from typing import Any, Iterator, List, Sequence, TypeVar, Union
 from rich.progress import Progress, SpinnerColumn, \
     TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
 from fracsuite.core.ProgWrapper import ProgWrapper
 
+from fracsuite.state import State
+from typing import Iterator, TypeVar
 from fracsuite.state import State
 
 def default_progress(start = False):
@@ -42,26 +44,18 @@ def get_progress(expand = True, bw = 80, title="Progress...", total=None):
 def get_spinner(description: str = "Loading specimens...", with_bar: bool = False) -> ProgWrapper:
     return get_progress(False, title=description)
 
-T = TypeVar("T")
-class tracker:
-    def __init__(self, data: List[T], title=None,total=None):
-        self.current = 0
-        self.high = len(data) if isinstance(data, (list, tuple)) else total
-        if self.high is None:
-            raise ValueError("Total length of data must be provided if data is not a list or tuple.")
+T = TypeVar('T')
+def tracker(iterator: Union[Sequence[T] | Iterator[T] | dict[T,Any]], title=None, total=None) -> Iterator[T]:
 
-        self.baseiterator = iter(data)
-        self.progress = get_progress(total=self.high, title=title)  # Add this line to create a progress with total set to the length of data
-        self.progress.start()
+    if total is None and hasattr(iterator, '__len__'):
+        total = len(iterator)
 
-    def __iter__(self) -> Iterator[T]:
-        return self
+    progress = get_progress(total=total, title=title)
+    progress.start()
 
-    def __next__(self) -> T: # Python 2: def next(self)
-        self.current += 1
-        if self.current <= self.high:
-            self.progress.advance()  # Add this line to advance the progress
-            return next(self.baseiterator)
-
-        self.progress.stop()
-        raise StopIteration
+    try:
+        for obj in iterator:
+            yield obj
+            progress.advance()
+    finally:
+        progress.stop()

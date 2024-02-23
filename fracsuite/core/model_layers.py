@@ -144,7 +144,7 @@ def interp_layer(
     assert has_layer(mode, boundary, thickness, break_pos, False, layer), f"Layer {layer_name} does not exist"
 
     X,Y,V = load_layer(layer_name)
-    print('Loading layer: ', layer_name)
+    info('Loading layer: ', layer_name)
 
     # print('Radii', X)
     # print('Energies', Y)

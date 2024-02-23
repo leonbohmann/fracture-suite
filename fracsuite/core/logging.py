@@ -27,39 +27,47 @@ def start(name, debug = False):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO if not debug else logging.DEBUG)
 
+def to_msg(msg):
+    return " ".join(str(m) for m in msg)
 
 def info(*msg):
     if logger is None:
         print(*msg)
         return
-    logger.info(*msg)
+
+    logger.info(to_msg(msg), stacklevel=2)
 
 def debug(*msg):
     if logger is None:
         print(*msg)
         return
-    logger.debug(*msg, stacklevel=2)
+
+    logger.debug(to_msg(msg), stacklevel=2)
 
 def warning(*msg):
     if logger is None:
         print(*msg)
         return
-    logger.warning(*msg)
+
+    logger.warning(to_msg(msg), stacklevel=2)
 
 def error(*msg):
     if logger is None:
         print(*msg)
         return
-    logger.error(*msg)
+
+    logger.error(to_msg(msg), stacklevel=2)
 
 def critical(*msg):
     if logger is None:
         print(*msg)
         return
-    logger.critical(*msg)
+
+    logger.critical(to_msg(msg), stacklevel=2)
 
 def exception(*msg):
     if logger is None:
         print(*msg)
         return
-    logger.exception(*msg)
+
+    logger.exception(to_msg(msg), stacklevel=2)

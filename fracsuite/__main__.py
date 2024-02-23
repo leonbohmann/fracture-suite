@@ -267,8 +267,8 @@ spazial_initialize() # spazial rust module
 def try_convert(value):
     try:
         result = eval(value)
-    except ValueError:
-        result = value
+    except:
+        result = str(value)
     return result
 
 for i, arg in enumerate(sys.argv):

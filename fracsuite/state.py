@@ -4,6 +4,7 @@ from typing import Any
 
 from matplotlib import pyplot as plt
 from fracsuite.core.ProgWrapper import ProgWrapper
+from fracsuite.core.logging import debug, info, warning
 from fracsuite.core.outputtable import Outputtable
 from fracsuite.general import GeneralSettings
 
@@ -253,7 +254,15 @@ class State:
 
 
         if 'override_name' in kwargs:
-            print("[yellow]Warning: 'override_name' is deprecated. Use 'names' instead.[/yellow]")
+            warning("'override_name' is deprecated. Use 'names' instead.")
+
+        if 'override_figwidth' in State.kwargs:
+            info(f"Overriding figwidth with {State.kwargs['override_figwidth']}.")
+            if isinstance(object, StateOutput):
+                object.FigWidth = State.kwargs['override_figwidth']
+            else:
+                figwidth = State.kwargs['override_figwidth']
+
 
         assert not isinstance(object, tuple), "Object passed to State.output must not be a tuple."
         # make sure that all path parts are strings
@@ -263,7 +272,7 @@ class State:
         # warn, if figwidth is ignored
         if isinstance(object, StateOutput):
             if figwidth is not None:
-                print("[yellow]Warning: 'figwidth' is ignored when passing StateOutput.[/yellow]")
+                warning("'figwidth' is ignored when passing StateOutput")
         else:
             if not is_image(object):
                 assert figwidth is not None, "figwidth must be set when passing a figure."

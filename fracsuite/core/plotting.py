@@ -29,7 +29,7 @@ from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
 from fracsuite.core.logging import debug
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
-from fracsuite.state import StateOutput
+from fracsuite.state import State, StateOutput
 
 general = GeneralSettings.get()
 
@@ -120,6 +120,9 @@ def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     if w.endswith('h'):
         is_landscape = True
 
+    if 'override_figwidth' in State.kwargs:
+        w = State.kwargs['override_figwidth']
+
     assert FigureSize.has_value(w), f"FigWidth must be one of {FigureSize.values()}."
 
     mm_per_inch = 1 / 25.4
@@ -134,7 +137,7 @@ def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     wfac = 1 if not is_landscape else golden_ratio
 
     fig_width_in = w_inch * dimf
-    fig_height_in = h_inch * dimf * wfac
+    fig_height_in = h_inch * dimf
 
     return (fig_width_in, fig_height_in)
 
