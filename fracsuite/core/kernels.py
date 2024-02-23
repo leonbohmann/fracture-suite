@@ -1,5 +1,6 @@
 import json
-from fracsuite.core.logging import debug, start, warning
+from fracsuite.core.arrays import fill_nan
+from fracsuite.core.logging import debug
 from multiprocessing import Pool
 import tempfile
 from typing import Any, Callable, TypeVar
@@ -79,18 +80,10 @@ def rhc_kernel(spl: list[Splinter], *args, **kwargs):
     all_centroids = np.array([s.centroid_mm for s in spl])
     total_area = np.sum([s.area for s in spl])
     w = np.sqrt(total_area)
-    d_max = 5 # default(CALC_DMAX, estimate_dmax(spl))
+    d_max = 7.5 # default(CALC_DMAX, estimate_dmax(spl))
     x2,y2 = lhatc_xy(all_centroids, w, w, d_max, use_weights=False)
     min_idx = rhc_minimum(y2,x2)
     r1 = x2[min_idx]
-
-    if "debug" in kwargs and kwargs["debug"]:
-        fig,axs = plt.subplots(1,1)
-        axs.plot(x2,y2)
-        file = tempfile.mktemp(".png", "rhc")
-        fig.savefig(file)
-        plt.close(fig)
-
     return r1, 0 # 0 has to stay!
 
 def acceptance_kernel(spl: list[Splinter], *args, **kwargs):
@@ -166,8 +159,11 @@ class WindowResult:
 
 def process_window(args: WindowArguments):
     """Wrapper function for the window kerneler."""
-    mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, window_size=args.window_size, **args.kwargs) \
-        if len(args.objects_in_region) > 0 else (SKIP_VALUE, SKIP_VALUE)
+    if len(args.objects_in_region) < 50 and args.prop == SplinterProp.RHC:
+        debug(f'> Window ({args.i},{args.j}) discard, less than 50 splinters: {len(args.objects_in_region)}')
+        return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, np.nan, np.nan)
+
+    mean_value, stddev = args.calculator(args.objects_in_region, args.prop, args.impact_position, args.pxpmm, max_distance=args.max_d, window_size=args.window_size, **args.kwargs)
     return (args.i, args.j, (args.x1+args.x2)/2, (args.y1+args.y2)/2, mean_value, stddev)
 
 
@@ -441,6 +437,9 @@ class ObjectKerneler():
             debug('Returning meshgrid X,Y.')
             X,Y = np.meshgrid(X,Y)
 
+        # fill NaN values
+        fill_nan(Z)
+        fill_nan(Zstd)
 
         if return_data:
             debug('Returning rData...')
