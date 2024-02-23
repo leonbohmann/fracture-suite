@@ -170,6 +170,13 @@ class State:
 
     __suboutputfolder: str = None
 
+    @classmethod
+    def set_arg(cls, key, value):
+        if hasattr(cls, key):
+            setattr(cls, key, value)
+        else:
+            State.kwargs[key] = value
+
     def has_progress():
         return State.__progress_started
 
