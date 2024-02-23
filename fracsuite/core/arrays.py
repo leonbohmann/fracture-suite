@@ -84,3 +84,11 @@ def resample(X, Y, Z, nx=50, ny=30):
     results[0,0] = np.nan
 
     return results
+
+
+def fill_nan(Z: np.ndarray):
+    # horizontally interpolate missing values (nan)
+    nans = np.isnan(Z)
+    non_nans = ~nans
+    interpolated_Z = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), Z[non_nans])
+    Z[nans] = interpolated_Z
