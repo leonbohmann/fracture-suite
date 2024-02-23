@@ -610,7 +610,7 @@ def test_bohmann(
     maxi = x[maxima[0]]
 
     # find real rhc
-    mini = rhc_minimum(y)
+    mini = rhc_minimum(y, x)
     mini = mini if mini != -1 else 0
     measures = {
         "i1": lam_max,
