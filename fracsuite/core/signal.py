@@ -1,5 +1,16 @@
 from scipy import signal
 from scipy.signal import butter, sosfiltfilt
+import numpy as np
+
+def smooth_moving_average(x, window_len=11):
+    """smooth the data using a moving average window with requested size."""
+    assert x.ndim == 1, "smooth only accepts 1 dimension arrays."
+    assert x.size > window_len, "Input vector needs to be bigger than window size."
+
+    s = np.pad(x, (window_len//2, window_len//2), mode='edge')
+    w = np.ones(window_len, 'd')
+    y = np.convolve(w/w.sum(), s, mode='valid')
+    return y
 
 def smooth_hanning(x,window_len=11):
     """smooth the data using a hanning window with requested size.
