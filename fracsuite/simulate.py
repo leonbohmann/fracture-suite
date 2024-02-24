@@ -2,7 +2,7 @@
 Commands for simulating and analyzing fracture morphologies.
 """
 from tqdm import tqdm
-from fracsuite.core.logging import debug, info
+from fracsuite.core.logging import critical, debug, info
 import random
 from typing import Annotated
 import cv2
@@ -633,8 +633,10 @@ def compare_all(name):
     specimen = Specimen.get(name)
 
     if not specimen.has_scalp:
-        print('[red]Specimen has not been scalped.')
+        critical('[red]Specimen has not been scalped.')
         return
+
+    info(f'Comparing specimen {specimen.name} with nbreak and lbreak...')
 
     sigma_s = np.abs(specimen.sig_h)
     thickness = specimen.thickness
