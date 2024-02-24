@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import glob
 import os
-import pickle
-from collections import defaultdict
-from typing import Tuple, TypeVar
+from typing import TypeVar
 from rich import print
 import numpy as np
 from fracsuite.scalper.scalpSpecimen import ScalpProject, ScalpSpecimen
 
-from fracsuite.scalper.scalp_stress import calculate_simple
 
 descr = """
 ███████╗ ██████╗ █████╗ ██╗     ██████╗ ███████╗██████╗

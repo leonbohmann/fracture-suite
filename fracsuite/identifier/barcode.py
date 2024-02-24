@@ -1,12 +1,9 @@
-import os
-from pyzbar.pyzbar import decode
 from pylibdmtx.pylibdmtx import decode as decode_datamatrix
 
 from matplotlib import pyplot as plt
 import cv2
 import numpy as np
 
-from fracsuite.splinters.analyzer import is_gray
 
 def fourCornersSort(pts):
     """ Sort corners: top-left, bot-left, bot-right, top-right """

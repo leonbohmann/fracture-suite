@@ -1,13 +1,12 @@
 import argparse
 from argparse import RawDescriptionHelpFormatter
 import os
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 from apread import APReader, plot_multiple_datasets, Channel
 import numpy as np
 from scipy import integrate, signal
 
-from fracsuite.tools.general import GeneralSettings
+from fracsuite.general import GeneralSettings
 
 descr=\
 """
@@ -17,20 +16,20 @@ descr=\
 ██╔══██║██║     ██║     ██╔══╝  ██║     ██╔══╝  ██╔══██╗██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
 ██║  ██║╚██████╗╚██████╗███████╗███████╗███████╗██║  ██║██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
 ╚═╝  ╚═╝ ╚═════╝ ╚═════╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
-                                                                                               
+
 Leon Bohmann            TUD - ISMD - GCC              www.tu-darmstadt.de/glass-cc
 
 Description:
 -------------------------
 This module is used to analyze acceleration data, measured during the fracturing of the
 glass plys. The sensor data is read using the apreader from https://github.com/leonbohmann/apreader.
-  
+
 
 Usage:
 -------------------------
 Command line usage is shown below. For further information visit:
 https://github.com/leonbohmann/fracture-suite
-"""  
+"""
 
 general = GeneralSettings()
 
@@ -61,13 +60,13 @@ def plotChannels(chans: list[Channel], lbs: list[str], title: str):
     for x in range(0,len(chans)):
         if len(lbs) > x:
             styles[x] = lbs[x]
-            
+
     return plot_multiple_datasets([(x.Time.data, x.data, l, f'{x.Name} [{x.unit}]', x.Name) for x,l in zip(chans, styles)], title)
 
 
 def test_1(reader: APReader):
     time = reader.Groups[0].ChannelX.data
-    # impact_time_id = np.argmax([])    
+    # impact_time_id = np.argmax([])
     # time = time - time[impact_time_id-5]
     print([x.Name for x in reader.Channels])
 
@@ -76,14 +75,14 @@ def test_1(reader: APReader):
     fig,axs = plot_multiple_datasets([ \
         (time, ds[0].data, "g-", "Force [N]", "Fall 2"),
         (time, ds[1].data, "r-", "PCB Acc [g]", "PCB Acc"),
-        (time, ds[2].data, "b-", "Endevco Acc[g]", "Endevco Acc")], 
+        (time, ds[2].data, "b-", "Endevco Acc[g]", "Endevco Acc")],
         'Acceleration delay in fall weight')
-    
+
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
-    
+
 def test_4(reader: APReader):
     time = reader.Groups[0].ChannelX.data
-    # impact_time_id = np.argmax([])    
+    # impact_time_id = np.argmax([])
     # time = time - time[impact_time_id-5]
     print([x.Name for x in reader.Channels])
 
@@ -91,35 +90,35 @@ def test_4(reader: APReader):
 
     fig,axs = plot_multiple_datasets([ \
         (time, ds[0].data, "g-", "Force [N]", "Force"),
-        (time, ds[1].data, "r-", "Fall_g2 [g]", "Fall_g2")], 
+        (time, ds[1].data, "r-", "Fall_g2 [g]", "Fall_g2")],
         'Acceleration delay in fall weight')
-    
+
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
 
 def test_hammer_sensor_fallgewicht(reader: APReader):
     time = reader.Groups[0].ChannelX.data
-    # impact_time_id = np.argmax([])    
+    # impact_time_id = np.argmax([])
     # time = time - time[impact_time_id-5]
 
     ds = reader.collectChannels(['Force', 'Acc1', 'Fall_g2'])
 
-    fig,axs = plotChannels(ds, ['r-', 'g-', 'b-'], 
+    fig,axs = plotChannels(ds, ['r-', 'g-', 'b-'],
         'Acceleration delay in fall weight')
-    
+
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
 
 
 def test_impact_delay(reader:APReader):
     ds = reader.collectChannels(['Fall_g1', 'Fall_g2', 'Acc2', 'Acc6', 'Acc3'])
 
-    fig,axs = plotChannels(ds, ['b--', 'g--'], 
+    fig,axs = plotChannels(ds, ['b--', 'g--'],
         'Acceleration delay in fall weight')
-    
+
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_impact_delay.png"))
 
 def test_3(reader: APReader):
     time = reader.Groups[0].ChannelX.data
-    # impact_time_id = np.argmax([])    
+    # impact_time_id = np.argmax([])
     # time = time - time[impact_time_id-5]
     print([x.Name for x in reader.Channels])
 
@@ -131,9 +130,9 @@ def test_3(reader: APReader):
         (time, ds[2].data, "k-", "Acc 2 (S) [g]", "PCB Acc"),
         (time, ds[3].data, "y-", "Acc 3 [g]", "PCB Acc"),
         (time, ds[4].data, "m-", "Acc 4 (S) [g]", "PCB Acc"),
-        (time, ds[5].data, "b-", "Acc 7 [g]", "Acc 7")], 
+        (time, ds[5].data, "b-", "Acc 7 [g]", "Acc 7")],
         'Acceleration delay in fall weight')
-    
+
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_detail.png"))
 
 
@@ -147,7 +146,7 @@ def test_integrate(reader: APReader):
     channels = [x for x in reader.Channels if x.Name.startswith("Fall")]
 
     g = 9.81 # m/s²
-    drop_acc = channels[1] 
+    drop_acc = channels[1]
     drop_acc1 = channels[0].data
     time = drop_acc.Time.data
 
@@ -242,13 +241,13 @@ def test_integrate(reader: APReader):
         (time, drop_acc1, "k--", "Acc 1 [g]", "Ac1"), \
         (time, a, "m-", "Acc [m/s²]", "Acceleration"),
         (time, drop_data, "r--", "Acc [m/s²]", "Acceleration"),
-        # (time, v_shifted, "b--", "Speed [m/s]", "Acceleration"), 
+        # (time, v_shifted, "b--", "Speed [m/s]", "Acceleration"),
         (time, v, "b", "Speed [m/s]", "Speed"),
         # (time, s_shifted, "g--", "Distance [m]", "Distance"),
-        (time, s, "g", "Distance [m]", "Distance")], 
+        (time, s, "g", "Distance [m]", "Distance")],
         'Time integrals of Acceleration')
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_fall.png"))
-    
+
     time = time - time[impact_time_id-5]
     print([x.Name for x in reader.Channels])
     # Auswertung auf Impact beziehen und Zeit ab dort messen
@@ -267,7 +266,7 @@ def test_integrate(reader: APReader):
         (time, acc_g2.data, "g-", "Fall 2 [g]", "Fall 2"), \
         (time, acc3.data, "r-", "Acc 3 [g]", "Acc 2"), \
         (time, acc2.data, "b-", "Acc 2 [g]", "Acc 2"), \
-        (time, acc6.data, "y-", "Acc 6 [g]", "Acc 6")], 
+        (time, acc6.data, "y-", "Acc 6 [g]", "Acc 6")],
         'Comparison of different impact times')
     fig.savefig(os.path.join(out_dir, f"{reader.fileName}_fall2.png"))
 
@@ -276,7 +275,7 @@ test_funcs = [x for x in globals().values() if callable(x) and x.__name__.starts
 # strip leading underscore and test from names
 test_names = sorted([x.__name__[5:] for x in test_funcs])
 
-parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)    
+parser = argparse.ArgumentParser(description=descr, formatter_class=RawDescriptionHelpFormatter)
 
 parser.add_argument('measurement', nargs="?", \
     help="""The measurement to be processed. This can either be a .bin file or a project folder that
@@ -292,7 +291,7 @@ if args.measurement.lower().endswith('.bin'):
 else:
     if args.measurement.count('.') == 3:
         args.measurement = os.path.join(general.base_path, args.measurement)
-    
+
     search_path = os.path.join(args.measurement, 'fracture', 'acceleration')
     for pfile in os.listdir(search_path):
         if pfile.lower().endswith('bin'):
@@ -323,6 +322,3 @@ if args.test is not None:
 # plot_multiple_datasets(fall_group, 'Fallgewicht')
 
 # slow_group.plot()
-
-
-

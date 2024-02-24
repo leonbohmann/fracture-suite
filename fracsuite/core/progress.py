@@ -1,44 +1,61 @@
+from typing import Any, Iterator, List, Sequence, TypeVar, Union
 from rich.progress import Progress, SpinnerColumn, \
     TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
+from fracsuite.core.ProgWrapper import ProgWrapper
+
+from fracsuite.state import State
+from typing import Iterator, TypeVar
+from fracsuite.state import State
+
+def default_progress(start = False):
+    global state
+    if state is not None:
+        if start:
+            state['progress'].start()
+        return state['progress']
+
+    prog = get_progress()
+    prog.start()
+    return prog
+
+def on_progress_exit():
+    State.progress = None
+
+def get_progress(expand = True, bw = 80, title="Progress...", total=None):
+    if State.progress is None:
+        prog = Progress(
+                    TextColumn("[progress.description]{task.description:<50}"),
+                    BarColumn(bar_width=bw),
+                    TaskProgressColumn(justify="right"),
+                    TimeRemainingColumn(),
+                    TimeElapsedColumn(),
+                transient=True, refresh_per_second=3, expand=expand)
+        State.progress = ProgWrapper(prog, title=title, total=total)
+        State.progress.set_exit_handler(on_progress_exit)
+
+
+    State.progress.nset_description(title)
+    State.progress.nset_total(total)
+
+    return State.progress
 
 
 
-def get_progress():
-    return Progress(
-                TextColumn("[progress.description]{task.description:<50}"),
-                BarColumn(bar_width=80),
-                TaskProgressColumn(justify="right"),
-                TimeRemainingColumn(),
-                TimeElapsedColumn(),
-            transient=True)
+def get_spinner(description: str = "Loading specimens...", with_bar: bool = False) -> ProgWrapper:
+    return get_progress(False, title=description)
 
-class ProgSpinner():
+T = TypeVar('T')
+def tracker(iterator: Union[Sequence[T] | Iterator[T] | dict[T,Any]], title=None, total=None) -> Iterator[T]:
 
-    def __init__(self, spinnerProgress: Progress, title: str = "Loading ..."):
-        self.progress = spinnerProgress
-        self.task = self.progress.add_task(description=title)
+    if total is None and hasattr(iterator, '__len__'):
+        total = len(iterator)
 
-    def set_description(self, description: str):
-        self.progress.update(self.task, description=description)
-    def set_total(self, total: int):
-        self.progress.update(self.task, total=total)
-    def set_completed(self, completed: int):
-        self.progress.update(self.task, completed=completed)
-    def advance(self):
-        self.progress.advance(self.task)
+    progress = get_progress(total=total, title=title)
+    progress.start()
 
-    def __enter__(self):
-        self.progress.__enter__()
-        return self
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return self.progress.__exit__(exc_type, exc_val, exc_tb)
-
-
-def get_spinner(description: str = "Loading specimens...", with_bar: bool = False) -> ProgSpinner:
-    prog = Progress(
-                TaskProgressColumn(),
-                BarColumn(bar_width=10) if with_bar else SpinnerColumn(),
-                TextColumn("[progress.description]{task.description:<50}"),
-                TimeElapsedColumn(),
-            transient=True)
-    return ProgSpinner(prog, description)
+    try:
+        for obj in iterator:
+            yield obj
+            progress.advance()
+    finally:
+        progress.stop()

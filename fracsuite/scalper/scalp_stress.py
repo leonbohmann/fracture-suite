@@ -27,7 +27,6 @@ if __name__ == "__main__":
     
     
     
-    pass
 
 def calculate_simple(meas_x: list[float], meas_y: list[float], meas_xy: list[float], \
     beta: float, C: float, mohr: False) -> Tuple[float,float]:
