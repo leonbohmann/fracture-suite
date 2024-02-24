@@ -272,14 +272,18 @@ def try_convert(value):
     return result
 
 for i, arg in enumerate(sys.argv):
+    if sys.argv[i] is None:
+        continue
+
     if arg.startswith("--state."):
+        incr = 0
         property = arg[2:].split(".")[1]
 
-        if len(sys.argv) <= i+1:
+        if len(sys.argv) <= i+1 or sys.argv[i+1].startswith("--"):
             value = True
         else:
             value = try_convert(sys.argv[i+1])
-            sys.argv.pop(i+1)
+            sys.argv[i+1] = None
 
         try:
             State.set_arg(property,value)
@@ -287,10 +291,12 @@ for i, arg in enumerate(sys.argv):
             warning(f"Could not set State.{property} to {value}.")
             exception(e)
 
-        sys.argv.pop(i)
+        sys.argv[i] = None
     elif arg.startswith('--debug'):
         State.debug = True
-        sys.argv.pop(i)
+        sys.argv[i] = None
+
+sys.argv = [arg for arg in sys.argv if arg is not None]
 
 start("fracsuite", State.debug or 'debug' in State.kwargs)
 

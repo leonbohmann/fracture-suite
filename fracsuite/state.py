@@ -3,6 +3,7 @@ import tempfile
 from typing import Any
 
 from matplotlib import pyplot as plt
+from matplotlib.legend import Legend
 from fracsuite.core.ProgWrapper import ProgWrapper
 from fracsuite.core.logging import debug, info, warning
 from fracsuite.core.outputtable import Outputtable
@@ -29,7 +30,7 @@ def is_image(data):
     return type(data).__module__ == np.__name__
 
 class StateOutput:
-    Data: Any
+    Data: Figure | npt.ArrayLike
     "Data of the output, may be an image or a figure."
     FigWidth: Any
     "If generated using a plot command, the FigWidth of the figure."
@@ -64,6 +65,7 @@ class StateOutput:
 
     def save(self, path, resize_factor:float =1) -> str:
         """Saves the output to a file."""
+        from fracsuite.core.plotting import FigureSize
         saved = False
         while not saved:
             try:
@@ -75,12 +77,32 @@ class StateOutput:
                         data
                     )
                 elif self.is_figure:
+                    figw = None
+                    if FigureSize.has_value(self.FigWidth):
+                        figw = self.FigWidth
+                    else:
+                        figw = "custom"
+
+                    if 'override_legendpos' in State.kwargs:
+                        # get legend from figure
+                        origin = self.Data.axes[0]
+                        legend: Legend = origin.get_legend()
+                        if legend is not None:
+                            handles = legend.legendHandles
+                            labels = [t.get_text() for t in legend.texts]
+
+                            # remove existing legend from plot
+                            legend.remove()
+
+                            # add new legend
+                            origin.legend(handles, labels, loc=State.kwargs['override_legendpos'])
+
                     if not self.fig_as_img_only and not State.figasimgonly:
                         self.Data.savefig(
-                            outfile := f'{path}_{self.FigWidth}.{general.plot_extension}',
+                            outfile := f'{path}_{figw}.{general.plot_extension}',
                         )
                     self.Data.savefig(
-                        outfile := f'{path}_{self.FigWidth}.png',
+                        outfile := f'{path}_{figw}.png',
                     )
                 saved = True
 

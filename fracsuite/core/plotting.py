@@ -26,7 +26,7 @@ from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
-from fracsuite.core.logging import debug
+from fracsuite.core.logging import debug, info, warning
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
 from fracsuite.state import State, StateOutput
@@ -116,6 +116,8 @@ def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     Returns:
         Tuple[float, float]: The figure width and height in inches.
     """
+    golden_ratio = (5**.5 - 1) / 2
+
     is_landscape = False
     if w.endswith('h'):
         is_landscape = True
@@ -123,17 +125,21 @@ def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
     if 'override_figwidth' in State.kwargs:
         w = State.kwargs['override_figwidth']
 
-    assert FigureSize.has_value(w), f"FigWidth must be one of {FigureSize.values()}."
+    if w in general.figure_sizes_mm:
+        w_mm,h_mm = general.figure_sizes_mm[w]
+    elif isinstance(w, float):
+        w_mm = float(w)
+        h_mm = w * golden_ratio
+    elif isinstance(w, tuple):
+        w_mm,h_mm = w
+
 
     mm_per_inch = 1 / 25.4
-
-    w_mm,h_mm = general.figure_sizes_mm[w]
     w_inch = mm_per_inch * w_mm
     h_inch = mm_per_inch * h_mm
 
     # Golden ratio to set aesthetic figure height
     # https://disq.us/p/2940ij3
-    golden_ratio = (5**.5 - 1) / 2
     wfac = 1 if not is_landscape else golden_ratio
 
     fig_width_in = w_inch * dimf
