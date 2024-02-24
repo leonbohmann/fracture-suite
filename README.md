@@ -19,13 +19,11 @@
 > ```
 > @software{fracture-suite,
 >   author       = {Leon Bohmann},
->   title        = {leonbohmann/fracture-suite: 0.1.7},
->   month        = sep,
->   year         = 2023,
->   publisher    = {Zenodo},
->   version      = {0.1.7},
->   doi          = {10.5281/zenodo.8369156},
->   url          = {https://doi.org/10.5281/zenodo.8369156}
+>   title        = {fracsuite v0.2.0},
+>   data         = 2024-02,
+>   version      = {0.2.0},
+>   doi          = {10.5281/zenodo.10700742},
+>   url          = {https://doi.org/10.5281/zenodo.10700742}
 > }
 > ```
 
@@ -33,6 +31,8 @@
 ![Backend plot of analyzer, displaying original and preprocessed image and detected cracks](.content/backend.png)
 
 ## How it works
+
+:warning: This is deprecated. The documentation will be updated in the future!
 
 Several steps are necessary to analyze a fracture scan:
 1. Cropping of input image (_optional_)
