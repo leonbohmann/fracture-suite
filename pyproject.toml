@@ -10,7 +10,7 @@ dependencies = ["matplotlib", "opencv-python", "numpy",
         "deprecated", "spazial==0.1.10", "splintaz==0.1.5",]
 
 name = "fracsuite"
-version = "0.2.0a3"
+version = "0.2.0"
 authors = [
   { name="Leon Bohmann", email="mail@leonbohmann.de" },
 ]
