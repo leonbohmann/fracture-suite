@@ -4,7 +4,7 @@ authors:
   - family-names: "Bohmann"
     given-names: "Leon"
 doi: 10.5281/zenodo.8369155
-title: "leonbohmann/fracsuite"
+title: "fracsuite"
 version: 0.2.0
 date-released: 2024-02-24
 url: "https://github.com/leonbohmann/fracture-suite"
