@@ -109,7 +109,13 @@ class GeneralSettings:
         print(pretty_repr(self.__dict__))
 
     def __get_cfg_file(self) -> str:
-        return os.path.join(__file__, "..", "..", "config.json")
+        # return the user directory
+        user_data = os.path.expanduser("~")
+        # return the config file
+        cfg_path = os.path.join(user_data, "fracsuite", "config.json")
+        # create the directory if it does not exist
+        os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+        return cfg_path
 
     def clear(self):
         # delete cfg file
