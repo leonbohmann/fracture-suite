@@ -359,3 +359,4 @@ def region_sizes(x_range,ip_mm,region):
         # last r includes all remaining radii
         x0, x1 = x_range[i], x_range[i+1]
         sizes.append(polar_window_size_function(x0,x1, ip_mm, region))
+    return sizes

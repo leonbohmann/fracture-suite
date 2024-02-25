@@ -1,8 +1,7 @@
 """
 Commands for simulating and analyzing fracture morphologies.
 """
-from tqdm import tqdm
-from fracsuite.core.logging import critical, debug, info
+from fracsuite.core.logging import critical, info
 import random
 from typing import Annotated
 import cv2
@@ -14,15 +13,13 @@ import typer
 import numpy as np
 from fracsuite.callbacks import main_callback
 from fracsuite.core.geometry import delta_hcp
-from fracsuite.core.image import is_gray, to_gray, to_rgb
+from fracsuite.core.image import is_gray, to_gray
 from fracsuite.core.imageplotting import plotImage
-from fracsuite.core.imageprocessing import dilateImg
 from fracsuite.core.mechanics import U
-from fracsuite.core.model_layers import ModelLayer, arrange_regions, has_layer, interp_layer
-from fracsuite.core.plotting import DataHistMode, FigureSize, annotate_corner, datahist_2d, datahist_plot, datahist_to_ax, get_fig_width, get_log_range, renew_ticks_ax, renew_ticks_cb, voronoi_to_image
+from fracsuite.core.model_layers import arrange_regions, has_layer, interp_layer, region_sizes
+from fracsuite.core.plotting import DataHistMode, FigureSize, annotate_corner, datahist_plot, datahist_to_ax, get_fig_width, get_log_range, renew_ticks_ax, voronoi_to_image
 from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress, tracker
-from fracsuite.core.region import RectRegion
 from fracsuite.core.simulation import Simulation
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
@@ -334,7 +331,8 @@ def lbreak(
 
     l_values = intensity(r_range)
     l_array = np.column_stack((r_range, l_values))
-    points = bohmann_process(size[0], size[1], r_range, l_array, rhc_array, impact_position, c, int(1e6), False)
+    r_areas = region_sizes(r_range, impact_position, size)
+    points = bohmann_process(size[0], size[1], r_range, r_areas, l_array, rhc_array, impact_position, c, int(1e6), False)
 
     # print region
     center_point = (0.5,0.5) # in percent
