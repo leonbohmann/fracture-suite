@@ -1,17 +1,20 @@
 from enum import Enum
 import os
 from pyexpat.errors import XML_ERROR_SUSPEND_PE
+import tempfile
 from typing import Callable
+import cv2
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
 from fracsuite.core.LinearestInterpolator import LinearestInterpolator
-from fracsuite.core.logging import info
+from fracsuite.core.logging import debug, info
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
 from scipy.interpolate import interp2d, griddata, bisplrep, LinearNDInterpolator
 from fracsuite.core.specimenprops import SpecimenBreakPosition, SpecimenBoundary
+from fracsuite.state import State
 
 general = GeneralSettings.get()
 
@@ -314,3 +317,45 @@ def arrange_regions_px(
     )
 
     return r_range*px_per_mm,t_range
+
+def polar_window_size_function(x0: float,x1: float, ip_mm: tuple[float,float] | np.ndarray, region: tuple[float,float] | np.ndarray) -> int:
+    """
+    This uses a slow but accurate method to calculate the area of the region
+    by using a black image, drawing the region and counting the white pixels.
+
+    All input is based on mm so we do not need to convert anything.
+    """
+    ix,iy = map(int, ip_mm)
+    w,h = map(int, region)
+    img = np.zeros((h,w), dtype=np.uint8)
+    if x1 > 0:
+        cv2.ellipse(img, (int(ix),int(iy)), (int(x1),int(x1)), 0, 0, 360, 255, -1)
+    if x0 > 0:
+        cv2.ellipse(img, (int(ix),int(iy)), (int(x0),int(x0)), 0, 0, 360, 0, -1)
+    area = np.sum(img == 255)
+
+    if State.debug:
+        tmpfile = tempfile.mktemp(".png", "window")
+        cv2.imwrite(tmpfile, img)
+        debug(f'Polar band size: r0: {x0}, r1: {x1}, area: {area}.')
+
+    return area
+
+
+def region_sizes(x_range,ip_mm,region):
+    """
+    Returns the sizes of the regions in the r and t direction.
+
+    Args:
+        x_range (array): The radius range.
+        y_range (array): The angle range.
+
+    Returns:
+        (r_size, t_size): The sizes of the regions in the r and t direction.
+    """
+
+    sizes = []
+    for i in range(len(x_range)-1):
+        # last r includes all remaining radii
+        x0, x1 = x_range[i], x_range[i+1]
+        sizes.append(polar_window_size_function(x0,x1, ip_mm, region))
