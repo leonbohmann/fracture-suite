@@ -78,6 +78,9 @@ class StateOutput:
         saved = False
         while not saved:
             try:
+                if not os.path.exists(os.path.dirname(path)):
+                    os.makedirs(os.path.dirname(path))
+
                 if self.is_image:
                     extension = self.img_ext if self.img_ext is not None else general.image_extension
                     data = cv2.resize(self.Data, (0, 0), fx=resize_factor, fy=resize_factor)
@@ -373,7 +376,7 @@ class State:
                 to = os.path.join(general.to_base_path, to)
 
             if isinstance(to, str):
-                to_path = os.path.join(to, path_and_name[-1])
+                to_path = os.path.join(to, State.__suboutputfolder, path_and_name[-1])
                 to_path = object.save(to_path, resize_factor=resize_factor)
                 if not no_print:
                     print(SAVE_FORMAT.format('CUSTOM', to_path))

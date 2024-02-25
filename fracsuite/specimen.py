@@ -56,6 +56,9 @@ scatter_args = {
         'linewidth': 0.5
     }
 
+def barsomfit(x, a):
+    return (1/a)*x
+
 def linfit(x, a, b):
     return a*x + b
 
@@ -691,23 +694,17 @@ def import_files(
 
 @app.command()
 def compare_nfifty_estimation(
-    boundary: str = None,
+    name_filter: str = "*.*.*.*",
 ):
     """
     Compare the nfifty estimation of all specimens.
 
     This function compares the nfifty estimation of all specimens and calculates the mean and standard deviation.
     """
-    if boundary is None:
-        boundary = "*"
-
-    filterfunc = create_filter_function(f"*.*.{boundary}.*", needs_splinters=True)
+    filterfunc = create_filter_function(name_filter, needs_splinters=True)
 
     all_specimens = Specimen.get_all_by(filterfunc, load=True)
 
-
-    if boundary == "*":
-        boundary = "all"
 
     nfifties: dict[Specimen,float] = {}
     sigh = []
@@ -722,6 +719,9 @@ def compare_nfifty_estimation(
 
     def n50_analytic(sigm):
         return (sigm/14.96)**4
+
+    def custom(x, a, b):
+        return (a*x/14.96)**4 + b*x
 
     sz = FigureSize.ROW2
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
@@ -755,9 +755,10 @@ def compare_nfifty_estimation(
     sigh.sort()
     x = sigh
     y = n50_analytic(sigh)
-    axs.plot(x, y, 'r--')
+    axs.plot(x, y, 'r--', label='Barsom')
 
-    fit_curve(axs, x_total, y_total, cubicfit, color='black', pltlabel='Fit')
+    _,popt = fit_curve(axs, x_total, y_total, custom, color='black', pltlabel='Fit')
+
 
     legend_without_duplicate_labels(axs, compact=True)
 
@@ -837,7 +838,6 @@ def crack_surface_simple(
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
 
     for spec,spl_volume in splinter_volumes.items():
-
         clr = t_colors[spec.thickness]
         marker = b_markers[spec.boundary]
         axs.scatter(spec.U, spl_volume, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)

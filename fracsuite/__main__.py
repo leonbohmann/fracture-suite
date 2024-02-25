@@ -99,7 +99,7 @@ params = {
     'savefig.bbox' : 'tight',
     'savefig.pad_inches' : 0.05,
     'figure.constrained_layout.use': True,
-    'patch.force_edgecolor': True,
+    # 'patch.force_edgecolor': True, # this will put edges on all markers and filled regions
 }
 plt.rcParams.update(params)
 
@@ -259,6 +259,7 @@ def test(input: list[str]):
 console = Console()
 console.rule("Fracsuite")
 
+start("fracsuite", '--debug' in sys.argv)
 
 # initialization stuff
 spazial_initialize() # spazial rust module
@@ -306,7 +307,6 @@ if got_statekwargs:
     console.print("State kwargs were set from command line:")
     console.print(State.kwargs)
 
-start("fracsuite", State.debug or 'debug' in State.kwargs)
 
 try:
     app()

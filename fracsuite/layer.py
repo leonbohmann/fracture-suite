@@ -452,6 +452,7 @@ def create(
         if all_t_in_one:
             fig,axs = plt.subplots(figsize=get_fig_width(sz))
         cbar = None
+        boundary_empty = True
 
         for t in [4,8,12]:
             t_mask = results[:,1] == t
@@ -462,6 +463,8 @@ def create(
             # skip empty boundaries
             if np.sum(bt_mask) == 0:
                 continue
+
+            boundary_empty = False
 
             # boundary results
             b_results = results[bt_mask,:]
@@ -516,7 +519,7 @@ def create(
 
             if not all_t_in_one:
                 State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{prop}_{break_pos}" + ("_annotated" if annotate_names else ""), to_additional=True)
-        if all_t_in_one:
+        if all_t_in_one and not boundary_empty:
             State.output(StateOutput(fig, sz), f"impact-layer_{b}_all_{prop}_{break_pos}" + ("_annotated" if annotate_names else ""), to_additional=True)
 
 @layer_app.command()
