@@ -921,7 +921,7 @@ class Specimen(Outputtable):
         # create kerneler
         kerneler = ObjectKerneler(
             sz,
-            self.splinters if not include_all_splinters else self.allsplinters,
+            self.splinters if not include_all_splinters and 'use_all_splinters' not in State.kwargs else self.allsplinters,
         )
 
         X,Y,Z,Zstd = kerneler.window(
