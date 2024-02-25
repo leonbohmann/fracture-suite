@@ -550,6 +550,8 @@ def compare_boundaries(
     max_energy = u * (1+energy_range)
 
     def add_filter(specimen: Specimen):
+        if specimen.thickness not in [4,8]:
+            return False
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
 
@@ -645,6 +647,10 @@ def compare_boundaries(
         results_b = results_per_boundary_unclustered[b][0][b_mask]
         stddev_b = results_per_boundary_unclustered[b][1][b_mask]
 
+        # skip if no data
+        if len(results_b) == 0:
+            continue
+
         # plot the current boundary
         x = r_range + (r_range[1]-r_range[0])/2
         x = x[:-1]
@@ -653,12 +659,13 @@ def compare_boundaries(
 
         # scatter each line in results with x
         for i in range(len(y)):
-            axs.scatter(x, z[i,:], color='rkb'[ib], marker='x', linewidth=0.5, s=1.5)
+            axs.plot(x, z[i,:], color=f'C{ib:.0f}', linewidth=0.2, alpha=0.3)
+            axs.scatter(x, z[i,:], color=f'C{ib}', marker='x', linewidth=0.5, s=1.5)
 
 
         # plot the stdmean of the current boundary
         mean = np.nanmean(z, axis=0)
-        axs.plot(x, mean,  color='rkb'[ib], linestyle='-', alpha=1, label=bid_r[b])
+        axs.plot(x, mean,  color=f'C{ib}', linestyle='-', alpha=1, label=bid_r[b])
 
     axs.set_xlabel(xlabel)
     axs.set_ylabel(ylabel)
