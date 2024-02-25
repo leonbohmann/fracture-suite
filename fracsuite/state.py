@@ -364,7 +364,7 @@ class State:
         # save to ADDITIONAL output
         if (additional_path := State.additional_output_path) is not None \
             and to_additional and not State.to_temp:
-            add_path = os.path.join(additional_path, path_and_name[-1])
+            add_path = State.join_output_folder(additional_path, path_and_name[-1])
             add_path = object.save(add_path, resize_factor=resize_factor)
             if not no_print:
                 print(SAVE_FORMAT.format('ADDITIONAL', add_path))
@@ -376,7 +376,7 @@ class State:
                 to = os.path.join(general.to_base_path, to)
 
             if isinstance(to, str):
-                to_path = os.path.join(to, State.__suboutputfolder, path_and_name[-1])
+                to_path = State.join_output_folder(to, path_and_name[-1])
                 to_path = object.save(to_path, resize_factor=resize_factor)
                 if not no_print:
                     print(SAVE_FORMAT.format('CUSTOM', to_path))
@@ -424,6 +424,17 @@ class State:
             str: path
         """
         p = os.path.join(general.out_path, *names)
+
+        if not os.path.exists(os.path.dirname(p)):
+            os.makedirs(os.path.dirname(p))
+
+        return p
+
+    def join_output_folder(basepath: str, *names: str):
+        if State.__suboutputfolder is not None:
+            p = os.path.join(basepath, State.__suboutputfolder, *names)
+        else:
+            p = os.path.join(basepath, *names)
 
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))

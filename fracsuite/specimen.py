@@ -379,35 +379,35 @@ def create(name):
     Specimen.create(name)
 
 
-@app.command()
-def nfifty(name):
-    specimen = Specimen.get(name)
+# @app.command()
+# def nfifty(name):
+#     specimen = Specimen.get(name)
 
 
-    locations = [
-        [400,100],
-        [400,400],
-        [100,400],
-    ]
+#     locations = [
+#         [400,100],
+#         [400,400],
+#         [100,400],
+#     ]
 
-    nfifties = []
+#     nfifties = []
 
-    output_image = specimen.get_fracture_image()
+#     output_image = specimen.get_fracture_image()
 
-    for loc in locations:
-        nfifty_l,spl_l = specimen.calculate_esg_norm(tuple(loc))
-        nfifties.append(nfifty_l)
+#     for loc in locations:
+#         nfifty_l,spl_l = specimen.calculate_esg_norm(tuple(loc))
+#         nfifties.append(nfifty_l)
 
-        detail, output_image = specimen.plot_region_count(tuple(loc), (50,50), spl_l, nfifty_l, output_image)
+#         detail, output_image = specimen.plot_region_count(tuple(loc), (50,50), spl_l, nfifty_l, output_image)
 
 
-    nfifty = np.mean(nfifties)
+#     nfifty = np.mean(nfifties)
 
-    print(f"NFifty: {nfifty:.2f} (+- {np.std(nfifties):.2f})")
-    specimen.set_data("nfifty", nfifty)
-    specimen.set_data("nfifty_dev", np.std(nfifties))
+#     print(f"NFifty: {nfifty:.2f} (+- {np.std(nfifties):.2f})")
+#     specimen.set_data("nfifty", nfifty)
+#     specimen.set_data("nfifty_dev", np.std(nfifties))
 
-    State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)
+#     State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)
 
 
 @app.command()

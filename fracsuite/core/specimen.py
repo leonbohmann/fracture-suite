@@ -628,7 +628,7 @@ class Specimen(Outputtable):
 
         return np.array(id_list), np.array(p_list)
 
-    def calculate_intensity(self, force_recalc: bool = False, D_mm: float = 50) -> int:
+    def calculate_intensity(self, force_recalc: bool = False, D_mm: float = 50) -> float:
         """
         Calculates the fracture intensity by running a kde over the whole pane domain.
 
