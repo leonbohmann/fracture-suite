@@ -293,7 +293,7 @@ for i, arg in enumerate(sys.argv):
 
         sys.argv[i] = None
     elif arg.startswith('--debug'):
-        State.debug = True
+        State.kwargs['debug'] = True
         sys.argv[i] = None
 
 sys.argv = [arg for arg in sys.argv if arg is not None]

@@ -339,7 +339,7 @@ def polar_window_size_function(x0: float,x1: float, ip_mm: tuple[float,float] | 
     if State.debug:
         tmpfile = tempfile.mktemp(".png", "window")
         cv2.imwrite(tmpfile, img)
-        debug(f'Polar band size: r0: {x0}, r1: {x1}, area: {area}.')
+        debug(f'Saved polar band area calculation. r0: {x0}, r1: {x1}, area: {area}.')
 
     return area
 

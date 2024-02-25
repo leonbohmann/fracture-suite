@@ -10,6 +10,7 @@ class ProgWrapper():
     total: int
     descr: str
     tasks: list
+    completed: int
     def __init__(self, spinnerProgress: Progress, title: str = None, total = None):
         from fracsuite.state import State
 
@@ -21,6 +22,7 @@ class ProgWrapper():
 
         self.total = total
         self.descr = title
+        self.completed = 0
 
         self.ntotal = None
         self.ndescr = None
@@ -45,12 +47,17 @@ class ProgWrapper():
     def set_completed(self, completed: int):
         self.progress.update(self.tasks[self.enter_level], completed=completed, refresh=True)
     def advance(self):
-        from fracsuite.state import State
+        import fracsuite.state as st
 
-        if State.debug and self.enter_level > 0:
-            c = self.progress.tasks[self.enter_level].completed
-            info(f"Step {c}|{self.progress.tasks[self.enter_level].total} {self.progress.tasks[self.enter_level].description}")
-        self.progress.advance(self.tasks[self.enter_level])
+        if st.State.debug:
+            f = (self.completed/self.progress.tasks[self.enter_level].total)*100
+            if f % 10 == 0:
+                info(f"Step {self.completed}/{self.progress.tasks[self.enter_level].total}: {self.progress.tasks[self.enter_level].description}")
+
+        else:
+            self.progress.advance(self.tasks[self.enter_level])
+
+        self.completed += 1
     def advance_task(self, taskid):
         self.progress.advance(taskid)
     def add_task(self, description: str, total: int = None):
@@ -69,12 +76,16 @@ class ProgWrapper():
         self.progress.start()
 
     def __enter__(self):
+        import fracsuite.state as st
+
         if not self.entered:
             self.entered = True
+            self.completed = 0
             self.progress.__enter__()
 
             self.progress.update(self.tasks[self.enter_level], description=self.ndescr, total=self.ntotal, refresh=True)
         else:
+            self.completed = 0
             newtask = self.add_task('', None)
             self.tasks.insert(self.enter_level+1, newtask)
             self.enter_level += 1
@@ -83,6 +94,8 @@ class ProgWrapper():
             self.ndescr = None
             self.ntotal = None
 
+        if st.State.debug:
+            self.progress.update(self.tasks[self.enter_level], visible=False, refresh=True)
 
         return self
     def __exit__(self, exc_type, exc_val, exc_tb):

@@ -33,7 +33,6 @@ def get_progress(expand = True, bw = 80, title="Progress...", total=None):
         State.progress = ProgWrapper(prog, title=title, total=total)
         State.progress.set_exit_handler(on_progress_exit)
 
-
     State.progress.nset_description(title)
     State.progress.nset_total(total)
 

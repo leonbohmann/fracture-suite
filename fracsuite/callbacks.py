@@ -62,6 +62,8 @@ def main_callback(
 
     State.pointoutput(subfolder)
 
+    State.debug = State.debug or (True if 'debug' in State.kwargs and State.kwargs['debug'] else False)
+
     if mod != "":
         info(f"[cyan]Output name will be modified with: {mod}")
 
