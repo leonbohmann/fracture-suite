@@ -827,10 +827,10 @@ class Splinter:
         SplinterProp.CIRCUMFENCE: ("Umfang", "Circumference (mm)"),
         SplinterProp.ANGLE: ("", "Angle (°)"),
         SplinterProp.ANGLE0: ("", "$Angle^0$ (°)"),
-        SplinterProp.INTENSITY: ("", "Bruchintensität (1/mm²)"),
-        SplinterProp.RHC: ("", "RHC (mm)"),
+        SplinterProp.INTENSITY: ("Bruchintensität", "$\Lambda$ (1/mm²)"),
+        SplinterProp.RHC: ("Hard-Core Radius", "$r_\mathrm{HC}$ (mm)"),
         SplinterProp.ACCEPTANCE: ("", "Acceptance"),
-        SplinterProp.NFIFTY: ("", "$N_\mathrm{50}$"),
+        SplinterProp.NFIFTY: ("Bruchstückdichte", "$N_\mathrm{50}$"),
         SplinterProp.COUNT: ("", "$N$"),
     }
 

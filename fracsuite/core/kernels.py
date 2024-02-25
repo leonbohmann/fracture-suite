@@ -276,7 +276,7 @@ class ObjectKerneler():
         self.data_objects = data_objects
 
         if len(args) > 0 or len(kwargs) > 0:
-            debug(f'Additional arguments passed to kerneler: "{[k for k in kwargs]}". Consider removing them.')
+            debug(f'Additional arguments passed to kerneler: "{args}, {[k for k in kwargs]}". Consider removing them.')
 
 
     def __internalrun(

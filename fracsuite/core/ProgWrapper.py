@@ -1,13 +1,18 @@
 from rich.progress import Progress
+from fracsuite.core.logging import info
+
 
 
 class ProgWrapper():
+
     entered: bool
     enter_level: int
     total: int
     descr: str
     tasks: list
     def __init__(self, spinnerProgress: Progress, title: str = None, total = None):
+        from fracsuite.state import State
+
         self.progress = spinnerProgress
         self.task = self.progress.add_task(title, total=total)
         self.tasks = [self.task]
@@ -25,6 +30,9 @@ class ProgWrapper():
 
         self.exithandler = None
 
+        if State.debug:
+            self.progress.update(self.task, visible=False, refresh=True)
+
     def nset_description(self, description: str):
         self.ndescr = description
     def nset_total(self, total: int):
@@ -37,6 +45,11 @@ class ProgWrapper():
     def set_completed(self, completed: int):
         self.progress.update(self.tasks[self.enter_level], completed=completed, refresh=True)
     def advance(self):
+        from fracsuite.state import State
+
+        if State.debug and self.enter_level > 0:
+            c = self.progress.tasks[self.enter_level].completed
+            info(f"Step {c}|{self.progress.tasks[self.enter_level].total} {self.progress.tasks[self.enter_level].description}")
         self.progress.advance(self.tasks[self.enter_level])
     def advance_task(self, taskid):
         self.progress.advance(taskid)

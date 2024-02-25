@@ -97,6 +97,10 @@ class StateOutput:
                             # add new legend
                             origin.legend(handles, labels, loc=State.kwargs['override_legendpos'])
 
+                    if 'override_ylim' in State.kwargs:
+                        debug(f"Overriding ylim with {State.kwargs['override_ylim']}.")
+                        self.Data.axes[0].set_ylim(State.kwargs['override_ylim'])
+
                     if not self.fig_as_img_only and not State.figasimgonly:
                         self.Data.savefig(
                             outfile := f'{path}_{figw}.{general.plot_extension}',

@@ -7,12 +7,12 @@ import rich
 
 import typer
 from matplotlib import pyplot as plt
-from rich import print
+from rich import inspect, print
 from rich.progress import Progress, TextColumn
 from rich.theme import Theme
 from rich.logging import RichHandler
 import fracsuite
-from fracsuite.core.logging import exception, start, warning
+from fracsuite.core.logging import exception, info, start, warning
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
@@ -271,6 +271,7 @@ def try_convert(value):
         result = str(value)
     return result
 
+got_statekwargs = False
 for i, arg in enumerate(sys.argv):
     if sys.argv[i] is None:
         continue
@@ -287,6 +288,7 @@ for i, arg in enumerate(sys.argv):
 
         try:
             State.set_arg(property,value)
+            got_statekwargs = True
         except Exception as e:
             warning(f"Could not set State.{property} to {value}.")
             exception(e)
@@ -297,6 +299,10 @@ for i, arg in enumerate(sys.argv):
         sys.argv[i] = None
 
 sys.argv = [arg for arg in sys.argv if arg is not None]
+
+if got_statekwargs:
+    info("State kwargs were set from command line:")
+    info(State.kwargs)
 
 start("fracsuite", State.debug or 'debug' in State.kwargs)
 
