@@ -316,6 +316,10 @@ class Specimen(Outputtable):
                 f"Splinters: {checkmark(self.has_splinters)} ) "
                     f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
 
+        if 'extensive_specimen_data' in State.kwargs and State.kwargs['extensive_specimen_data'] and self.__scalp is not None:
+            print(f"  - {', '.join([f'{x.location_name}: {x.stress[0]=:>4.0f}' for x in self.scalp.measurementlocations])}")
+            # print stress deviation
+            print(f"  - {self.scalp.sig_h.deviation:.2f}MPa deviation")
     def put_scalp_data(self, scalp: ScalpSpecimen):
         """Puts the scalp data into the specimen folder."""
         with open(os.path.join(self.path, "scalp", Specimen.SCALP_DATA_FILENAME), "wb") as f:

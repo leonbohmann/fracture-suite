@@ -836,7 +836,12 @@ class Splinter:
 
     @classmethod
     def get_property_label(cls, mode, row3 = False) -> str:
+        from fracsuite.state import State
         if mode not in cls.splinter_prop_labels:
             raise Exception(f"Missing or invalid splinter-prop '{mode}'")
+
+        if 'override_figwidth' in State.kwargs and (overridesz := State.kwargs['override_figwidth']):
+            if overridesz != 'row3':
+                row3 = False
 
         return (cls.splinter_prop_labels[mode][0] + " " if not row3 else "") + cls.splinter_prop_labels[mode][1]

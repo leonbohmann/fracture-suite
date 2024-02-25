@@ -31,7 +31,8 @@ known_kwargs = [
     'override_ylim',
     'override_figwidth',
     'output_to',
-    'debug'
+    'debug',
+    'extensive_specimen_data'
 ]
 
 def is_image(data):

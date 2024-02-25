@@ -19,7 +19,7 @@ from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.logging import debug, info
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, has_layer, interp_layer, load_layer, load_layer_file, plt_layer, save_layer
-from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, get_legend, renew_ticks_cb
+from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, get_legend, label_image, renew_ticks_cb
 from fracsuite.core.progress import get_progress, tracker
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
@@ -227,6 +227,8 @@ def create(
     sz: FigureSize = typer.Option(FigureSize.ROW3, help='Figure size.'),
     no_save: Annotated[bool, typer.Option(help='Do not save the created layers.')] = False,
     with_std: Annotated[bool, typer.Option(help='Save standard deviation layers.')] = False,
+    all_t_in_one: Annotated[bool, typer.Option(help='Put all thicknesses into one plot.')] = False,
+    annotate_names: Annotated[bool, typer.Option(help='Annotate specimen names.')] = False,
 ):
     """
     Create layers based on the given parameters. Also generated useful plots for the layers.
@@ -337,8 +339,10 @@ def create(
     else:
         thickness = f'{thickness:.0f}'
 
-    xlabel = "Abstand zum Anschlagpunkt (mm)" if sz != FigureSize.ROW3 else "R (mm)"
-    ylabel = Splinter.get_property_label(prop, row3=sz==FigureSize.ROW3)
+    is_large = sz != FigureSize.ROW3 or ('override_figwidth' in State.kwargs and State.kwargs['override_figwidth'] != 'row3')
+    info(f"{is_large=}.")
+    xlabel = "Abstand $R$ zum Anschlagpunkt (mm)" if is_large else "R (mm)"
+    ylabel = Splinter.get_property_label(prop, row3=not is_large)
 
     # calculate the radius and theta range beforehand so we can compare results
     r_range, t_range = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
@@ -444,10 +448,15 @@ def create(
     for b in bid:
         b_mask = results[:,2] == bid[b]
 
+
+        if all_t_in_one:
+            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        cbar = None
+
         for t in [4,8,12]:
             t_mask = results[:,1] == t
 
-            # mask both
+            # mask both boundary and thickness
             bt_mask = b_mask & t_mask
 
             # skip empty boundaries
@@ -462,17 +471,18 @@ def create(
             max_u = np.nanmax(b_results[:,0])
             min_u = np.nanmin(b_results[:,0])
 
-            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+            if not all_t_in_one:
+                fig,axs = plt.subplots(figsize=get_fig_width(sz))
             # axs.set_autoscaley_on(False)
 
             colors = []
-            print('Current Boundary: ', b)
+            info('Current matrix: %s %s' % (b, t))
 
             # plot all individual results
             for i in range(len(b_results)):
                 bt_energies = b_results[i,4:]
                 # print specimen name
-                print(f'{specimens[int(b_results[i,3])].name}: {np.nanmean(bt_energies):.2f} (mpv: {calculate_dmode(bt_energies)[0]}) +/- {np.nanmax(b_stddevs[i,4:]):.2f} (max: {np.nanmax(bt_energies):.2f}, min: {np.nanmin(bt_energies):.2f})')
+                info(f'{specimens[int(b_results[i,3])].name}: (min: {np.nanmin(bt_energies):.4f}, max: {np.nanmax(bt_energies):.4f}, mean: {np.nanmean(bt_energies):.4f}) U={b_results[i,0]:.2f} J/m²')
 
                 # get color for current energy
                 c = norm_color(get_color(b_results[i,0], min_u, max_u))
@@ -481,30 +491,15 @@ def create(
                 # plot individual lines
                 axs.plot(x, bt_energies, color=c, linewidth=1, markersize=1.5) #
 
+                if annotate_names:
+                    # annotate specimen name
+                    axs.annotate(specimens[int(b_results[i,3])].name, (x[0], bt_energies[0]), textcoords="offset points", xytext=(5,0), ha='left', va='center', fontsize=6, color=c)
+
                 # fill stddev
                 if with_std:
                     axs.fill_between(x, b_results[i,4:] - b_stddevs[i,4:], b_results[i,4:] + b_stddevs[i,4:],
                                  color=c, alpha=0.1)
 
-            # plot mean values as thick lines
-            for i in range(len(ud_range)-1):
-                cud = (ud_range[i] + ud_range[i+1]) / 2
-                if i < len(ud_range)-1:
-                    ud_mask = (b_results[:,0] >= ud_range[i]) & (b_results[:,0] < ud_range[i+1])
-                else:
-                    ud_mask = (b_results[:,0] >= ud_range[i])
-
-                if np.sum(ud_mask) == 0:
-                    continue
-
-                ud_results = b_results[ud_mask,4:]
-                if np.nansum(ud_results) == 0:
-                    continue
-
-                mean = np.nanmean(ud_results, axis=0)
-                c = norm_color(get_color(cud, min_u, max_u))
-
-                # axs.plot(x, mean, color=c, linewidth=2)
 
             # put plot data onto axs
             axs.set_xlabel(xlabel)
@@ -512,10 +507,17 @@ def create(
             cmap = pltc.ListedColormap(colors)
             norm = pltc.Normalize(min_u, max_u)
             clabel = "Formänderungsenergie $U$ (J/m²)" if sz != FigureSize.ROW3 else "U (J/m²)"
-            cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label=clabel)
+
+            if cbar is None:
+                cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label=clabel)
             # renew_ticks_cb(cbar)
             # renew_ticks_ax(axs)
-            State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{prop}_{break_pos}", to_additional=True)
+
+
+            if not all_t_in_one:
+                State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{prop}_{break_pos}" + ("_annotated" if annotate_names else ""), to_additional=True)
+        if all_t_in_one:
+            State.output(StateOutput(fig, sz), f"impact-layer_{b}_all_{prop}_{break_pos}" + ("_annotated" if annotate_names else ""), to_additional=True)
 
 @layer_app.command()
 def compare_boundaries(
