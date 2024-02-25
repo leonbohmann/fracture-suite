@@ -26,6 +26,14 @@ general = GeneralSettings.get()
 
 SAVE_FORMAT = "[cyan]SAVE[/cyan] [dim white]{0:<11}[/dim white] '{1}'"
 
+known_kwargs = [
+    'override_legendpos',
+    'override_ylim',
+    'override_figwidth',
+    'output_to',
+    'debug'
+]
+
 def is_image(data):
     return type(data).__module__ == np.__name__
 

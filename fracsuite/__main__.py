@@ -25,6 +25,7 @@ from fracsuite.simulate import sim_app
 from fracsuite.specimen import app as specimen_app
 from fracsuite.splinters import app as splinter_app
 from fracsuite.state import State
+import fracsuite.state as st
 from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
 from fracsuite.highspeedimg import app as highspeed_app
@@ -277,6 +278,9 @@ for i, arg in enumerate(sys.argv):
     if arg.startswith("--state."):
         incr = 0
         property = arg[2:].split(".")[1]
+
+        if property not in st.known_kwargs:
+            warning(f"State does not have a property {property}.")
 
         if len(sys.argv) <= i+1 or sys.argv[i+1].startswith("--"):
             value = True
