@@ -427,7 +427,6 @@ def lbreak(
     }
 
     section("Plotting layers...")
-    track
     for layer in tracker(layers):
         il, il_stddev, mode_labels, name = layers[layer]
         r_range = np.linspace(0, np.sqrt(450**2+450**2), 100)
@@ -686,8 +685,8 @@ def compare(
         vor_splinters = voronoi
         vor_areas = [s.area for s in vor_splinters]
         datahist_to_ax(axs, vor_areas, binrange=binrange, label='Voronoi')
-    datahist_to_ax(axs, spec_areas, binrange=binrange, label='Probekörper')
-    datahist_to_ax(axs, sim_areas, binrange=binrange, label='Simulation')
+    datahist_to_ax(axs, spec_areas, binrange=binrange, label='Probekörper', color="C0")
+    datahist_to_ax(axs, sim_areas, binrange=binrange, label='Simulation', color="C1")
 
 
     axs[0].legend()
