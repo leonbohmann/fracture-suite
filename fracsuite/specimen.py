@@ -2,27 +2,17 @@
 Organisation module. Contains the Specimen class and some helpful tools to export specimens.
 """
 from __future__ import annotations
-from json import JSONEncoder
-import json
 
-from regex import F
 from fracsuite.core.calculate import is_number
 from fracsuite.core.geometry import delta_hcp
 from fracsuite.core.logging import debug, error, info, warning
 
 import os
-from pickle import NONE
 import re
 import cv2
 from matplotlib import pyplot as plt
-from matplotlib.figure import figaspect
-import rich
-from rich.prompt import Prompt
 
-from scipy.optimize import curve_fit
 import numpy as np
-from pygments import highlight
-from sklearn.metrics import mean_absolute_error
 from tqdm import tqdm
 import typer
 from rich import inspect, print
@@ -31,9 +21,8 @@ from fracsuite.callbacks import main_callback
 from fracsuite.core.detection import get_crack_surface, get_crack_surface_r
 from fracsuite.core.imageprocessing import preprocess_image
 from fracsuite.core.mechanics import Ud2sigm
-from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_ud
+from fracsuite.core.navid_results import navid_nfifty_ud
 from fracsuite.core.plotting import FigureSize, KernelContourMode, fit_curve, get_fig_width, legend_without_duplicate_labels, plot_kernel_results
-from fracsuite.core.progress import tracker
 
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
@@ -1128,3 +1117,13 @@ def plot_property(
     output.overlayImpact(specimen)
     outputname = f'{prop}_2d' + ('_nosmooth' if not smooth else '') + ('_quadrat' if quadrat_count else '')
     State.output(output, outputname, spec=specimen, to_additional=True)
+
+
+@app.command()
+def find(evaluation):
+    def filterfunc(s: Specimen):
+        evalstr = f"s.{evaluation}"
+
+        return eval(evalstr)
+
+    _ = Specimen.get_all_by(filterfunc, load=True)
