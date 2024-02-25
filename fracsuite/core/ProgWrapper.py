@@ -11,6 +11,7 @@ class ProgWrapper():
     descr: str
     tasks: list
     completed: int
+    lastf: float
     def __init__(self, spinnerProgress: Progress, title: str = None, total = None):
         from fracsuite.state import State
 
@@ -31,7 +32,7 @@ class ProgWrapper():
         self.nset_total(total)
 
         self.exithandler = None
-
+        self.lastf = -1
         if State.debug:
             self.progress.update(self.task, visible=False, refresh=True)
 
@@ -51,8 +52,9 @@ class ProgWrapper():
 
         if st.State.debug:
             f = (self.completed/self.progress.tasks[self.enter_level].total)*100
-            if f % 10 == 0:
+            if f % 10 == 0 and f > self.lastf:
                 info(f"Step {self.completed}/{self.progress.tasks[self.enter_level].total}: {self.progress.tasks[self.enter_level].description}")
+                self.lastf = f
 
         else:
             self.progress.advance(self.tasks[self.enter_level])
