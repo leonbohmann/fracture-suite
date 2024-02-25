@@ -340,7 +340,7 @@ def create(
     xlabel = "Abstand zum Anschlagpunkt (mm)" if sz != FigureSize.ROW3 else "R (mm)"
     ylabel = Splinter.get_property_label(prop, row3=sz==FigureSize.ROW3)
 
-
+    # calculate the radius and theta range beforehand so we can compare results
     r_range, t_range = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
 
     debug(f"Using radius range {r_range}.")
@@ -878,7 +878,7 @@ def plot_polar(
 
     # fetch radii and angles
 
-    r_range,t_range = arrange_regions(d_r,d_t,specimen.get_impact_position(),realsize[0],realsize[1])
+    r_range,t_range = arrange_regions(d_r,d_t,specimen.get_impact_position(),realsize[0],realsize[1],r_min=specimen.get_setting(Specimen.SET_CBREAKPOSEXCL,None))
     _,_,Z,Zstd,kData = specimen.calculate_2d_polar(prop=prop, r_range_mm=r_range, t_range_deg=t_range, return_data=True)
 
     # plot the results in a colored plot

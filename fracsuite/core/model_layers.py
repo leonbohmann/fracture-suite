@@ -257,13 +257,14 @@ def get_l1(U: float, boundary: SpecimenBoundary, thickness: int, break_pos: Spec
 
 
 def arrange_regions(
-    d_r_mm: int = DEFAULT_RADIUS_DELTA,
-    d_t_deg: int = DEFAULT_ANGLE_DELTA,
+    d_r_mm: float = DEFAULT_RADIUS_DELTA,
+    d_t_deg: float = DEFAULT_ANGLE_DELTA,
     break_pos: SpecimenBreakPosition | tuple[float,float] = SpecimenBreakPosition.CORNER,
-    w_mm: int = 500,
-    h_mm: int = 500,
-    cx_mm: int = None,
-    cy_mm: int = None,
+    w_mm: float = 500,
+    h_mm: float = 500,
+    cx_mm: float = None,
+    cy_mm: float = None,
+    r_min: float = None,
     **kwargs
 ):
     """
@@ -283,7 +284,8 @@ def arrange_regions(
 
     # maximum radius
     r_max = np.sqrt((w_mm-ip_x)**2 + (h_mm-ip_y)**2)
-    r_min = 10 # 1cm around impact has no splinters
+    if r_min is None:
+        r_min = 20 # 2cm around impact position is the default
 
     # calculate angle and radius steps
     n_t = int(360 / d_t_deg)

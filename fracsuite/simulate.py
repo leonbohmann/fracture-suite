@@ -288,6 +288,7 @@ def lbreak(
     # create radii
     r_range, t_range = arrange_regions(break_pos=break_pos, w_mm=size[0], h_mm=size[1])
     info('Radius range', r_range)
+    info('Theta range', t_range)
 
     fracture_intensity = np.mean(intensity(r_range))
     hc_radius = np.mean(rhc(r_range))

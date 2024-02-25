@@ -1,18 +1,15 @@
-import logging
 import os
 import subprocess
 import sys
 import time
-import rich
 
 import typer
 from matplotlib import pyplot as plt
-from rich import inspect, print
+from rich import print
 from rich.progress import Progress, TextColumn
 from rich.theme import Theme
-from rich.logging import RichHandler
 import fracsuite
-from fracsuite.core.logging import exception, info, start, warning
+from fracsuite.core.logging import exception, start, warning
 
 # used for redirection of pickling
 import fracsuite.core.splinter as splt
@@ -37,7 +34,8 @@ from spazial import initialize as spazial_initialize
 from rich.console import Console
 import fracsuite.core.logging
 
-import scienceplots  # noqa: F401
+import scienceplots
+_ = scienceplots.isdir # dummy usage to avoid removing on isort
 
 custom_theme = Theme({
     "info": "dim cyan",
@@ -267,7 +265,7 @@ spazial_initialize() # spazial rust module
 def try_convert(value):
     try:
         result = eval(value)
-    except:
+    except:  # noqa: E722
         result = str(value)
     return result
 
@@ -301,8 +299,8 @@ for i, arg in enumerate(sys.argv):
 sys.argv = [arg for arg in sys.argv if arg is not None]
 
 if got_statekwargs:
-    info("State kwargs were set from command line:")
-    info(State.kwargs)
+    console.print("State kwargs were set from command line:")
+    console.print(State.kwargs)
 
 start("fracsuite", State.debug or 'debug' in State.kwargs)
 

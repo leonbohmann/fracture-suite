@@ -357,6 +357,18 @@ class State:
             if not no_print:
                 print(SAVE_FORMAT.format('ADDITIONAL', add_path))
 
+        if 'output_to' in State.kwargs:
+            to = State.kwargs['output_to']
+
+            if general.to_base_path is not None:
+                to = os.path.join(general.to_base_path, to)
+
+            if isinstance(to, str):
+                to_path = os.path.join(to, path_and_name[-1])
+                to_path = object.save(to_path, resize_factor=resize_factor)
+                if not no_print:
+                    print(SAVE_FORMAT.format('CUSTOM', to_path))
+
         if close_fig:
             object.clear()
 

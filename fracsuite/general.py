@@ -49,6 +49,7 @@ class GeneralSettings:
         }
         self.n_points_kernel: int = 25
         "Amount of points in kernelers."
+        self.to_base_path: str = None
 
         GeneralSettings.sub_outpath: str = ""
 

@@ -1,8 +1,7 @@
 import json
 
-import cv2
 from fracsuite.core.arrays import fill_nan
-from fracsuite.core.logging import debug, info
+from fracsuite.core.logging import debug
 from multiprocessing import Pool
 import tempfile
 from typing import Any, Callable, TypeVar
