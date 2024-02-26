@@ -699,7 +699,9 @@ def compare_nfifty_estimation(
     """
     Compare the nfifty estimation of all specimens.
 
-    This function compares the nfifty estimation of all specimens and calculates the mean and standard deviation.
+    Uses a function proposed by Nielsen (2016) to estimate the mean fragment density based on
+    an approach from Barsom (1968), who proposed a relation between the mean stress and the mean weight
+    of fragments.
     """
     filterfunc = create_filter_function(name_filter, needs_splinters=True)
 
@@ -1120,8 +1122,16 @@ def plot_property(
 
 
 @app.command()
-def find(evaluation):
+def find(evaluation: str):
+    """
+    Evaluate the expression in evaluation for all specimens and list them.
+
+    Evaluated expression looks like this: specimen.[evaluation]
+    """
+
     def filterfunc(s: Specimen):
+        # s.load()
+        _ = s.splinters if s.has_splinters else None
         evalstr = f"s.{evaluation}"
 
         return eval(evalstr)

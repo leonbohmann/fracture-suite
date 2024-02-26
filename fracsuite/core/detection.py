@@ -1,18 +1,17 @@
 import multiprocessing
 import multiprocessing.shared_memory as sm
 from multiprocessing import Pool
-from typing import Literal
 
 import cv2
 import numpy as np
 import numpy.typing as nptyp
-from rich import inspect, print
+from rich import print
 from rich.progress import track
 from tqdm import tqdm
 from fracsuite.core.image import to_rgb
-from fracsuite.core.imageplotting import plotImage
 
 from fracsuite.core.imageprocessing import preprocess_spot_detect
+from fracsuite.core.logging import debug
 from fracsuite.core.progress import get_progress
 from fracsuite.state import State
 
@@ -316,7 +315,7 @@ def check_splinter_adj(
     i0, i1, all_contours, im_shape = data
 
 
-    print(f"{i0} - {i1}: Running...")
+    debug(f"{i0} - {i1}: Running...")
     all_ctrs = [c[0] for c in all_contours]
 
     connected_contours = [None] * (i1-i0)
@@ -380,7 +379,7 @@ def check_splinter_adj(
                 i_connections.append(j)
 
 
-    print(f"{i0} - {i1}: Finished.")
+    debug(f"{i0} - {i1}: Finished.")
     return (i0,i1,connected_contours)
 
 def chunk_len(length, n):
@@ -395,16 +394,16 @@ def get_adjacent_splinters_parallel(splinters, im_shape):
         splinters (List[Splinter]): Splinter list.
         simplify (float): Percentage to simplify the splinter contours.
     """
-    print("Starting parallel splinter check")
+    debug("Starting parallel splinter check")
     # create list of splinters and their centroids
     contour_centroids = [(s.contour, s.centroid_px) for s in splinters]
     # create empty list of connected splinters
     connected_splinters = [None] * len(contour_centroids)
 
     # split splinters into n chunks
-    chunks = chunk_len(len(contour_centroids), multiprocessing.cpu_count()*2)
-    print(f"Chunked into [cyan]{len(chunks)}[/cyan] chunks.")
-    print(chunks)
+    chunks = chunk_len(len(contour_centroids), multiprocessing.cpu_count())
+    debug(f"Chunked into [cyan]{len(chunks)}[/cyan] chunks.")
+    debug(chunks)
 
     tasks = []
     for chunk in chunks:
@@ -412,7 +411,7 @@ def get_adjacent_splinters_parallel(splinters, im_shape):
 
     # create 4 processes
     with Pool() as pool:
-        with get_progress(title="Checking adjacency...") as progress:
+        with get_progress(title="Checking adjacency...",total=len(tasks)) as progress:
             for result in pool.imap_unordered(check_splinter_adj, tasks):
                 progress.advance()
                 i0 = result[0]

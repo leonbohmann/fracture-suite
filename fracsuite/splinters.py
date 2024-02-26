@@ -203,7 +203,8 @@ def gen_adjacent_all(
 
 @app.command()
 def gen_adjacent(
-    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load or a pkl file.')],
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load.')] = "*",
+    ask_for_overwrite: Annotated[bool, typer.Option(help='Ask for overwrite.')] = False,
 ):
     """Modify the existing splinters and attach adjacent splinters into them."""
 
@@ -211,21 +212,35 @@ def gen_adjacent(
         specimen = Specimen.get(specimen_name, load=False)
         assert specimen.has_splinters, "Specimen has no splinters."
         specimen.load_splinters()
-    elif specimen_name.endswith(".pkl"):
-        raise Exception("Generating adjacency from .pkl file is not supported yet.")
-        # with open(specimen_name, 'rb') as f:
-        #     splinters = pickle.load(f)
-        # output_splinter_file = os.path.join(os.path.dirname(specimen_name), Specimen.adjacency_file)
+        specimens = [specimen]
+    elif specimen_name == "*":
+        specimens = Specimen.get_all_by(lambda x: x.has_splinters, load=True)
     else:
         raise Exception("Invalid input. Neither .pkl file nor specimen name.")
 
-    adjacent_ids = get_adjacent_splinters_parallel(
-        specimen.splinters,
-        specimen.get_fracture_image().shape[:2]
-    )
-    attach_connections(specimen.splinters, adjacent_ids)
-    with open(specimen.splinters_file, 'wb') as f:
-        pickle.dump(specimen.splinters, f)
+    with get_progress(total=len(specimens),title='Checking adjacency of specimens') as progress:
+        for specimen in specimens:
+            if not specimen.has_splinters:
+                progress.advance()
+                info(f"Specimen {specimen.name} does not have splinters.")
+                continue
+
+            if specimen.has_adjacency:
+                progress.advance()
+                info(f"Specimen {specimen.name} already has adjacency data.")
+
+                if not ask_for_overwrite:
+                    continue
+                elif not typer.confirm(f"Overwrite adjacency data for {specimen.name}?"):
+                    continue
+
+            adjacent_ids = get_adjacent_splinters_parallel(
+                specimen.splinters,
+                specimen.get_fracture_image().shape[:2]
+            )
+            attach_connections(specimen.splinters, adjacent_ids)
+            with open(specimen.splinters_file, 'wb') as f:
+                pickle.dump(specimen.splinters, f)
 
 
 @app.command()

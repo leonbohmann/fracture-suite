@@ -123,11 +123,18 @@ class Specimen(Outputtable):
         return ret
 
     @property
+    def has_adjacency(self):
+        # adjacency depends on splinters, so we need to load them before we can access it
+        if self.has_splinters and self.__has_adjacency is None:
+            self.load_splinters()
+        return self.__has_adjacency
+
+    @property
     def splinters(self) -> list[Splinter]:
         "Splinters on the glass ply."
         if self.has_splinters and self.__splinters is None:
             self.load_splinters()
-            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
+            self.__has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
 
         assert self.__splinters is not None, f"Splinters are empty. Specimen {self.name} not loaded?"
         return self.__splinters
@@ -137,7 +144,7 @@ class Specimen(Outputtable):
         "All splinters on the glass ply."
         if self.has_splinters and self.__allsplinters is None:
             self.load_splinters()
-            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
+            self.__has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
         return self.__allsplinters
 
     @property
@@ -441,7 +448,7 @@ class Specimen(Outputtable):
         "File that contains splinter information."
         self.has_splinters = self.splinters_file is not None
         "States wether there is a file with splinter information or not."
-        self.has_adjacency = False
+        self.__has_adjacency = None
         "States wether adjacency information are present or not."
 
 
