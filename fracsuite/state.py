@@ -210,6 +210,11 @@ class State:
 
     __suboutputfolder: str = None
 
+    def has_small_figures() -> bool:
+        if 'override_figwidth' in State.kwargs:
+            return State.kwargs['override_figwidth'] == 'row3'
+
+
     @classmethod
     def set_arg(cls, key, value):
         if hasattr(cls, key):

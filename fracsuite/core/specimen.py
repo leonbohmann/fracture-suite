@@ -882,8 +882,7 @@ class Specimen(Outputtable):
         return s_count, splinters_in_region
 
     def calculate_energy(self):
-        t0 = self.scalp.measured_thickness
-        # print('Thickness: ', t0)
+        t0 = self.scalp.measured_thickness # this is mm!
         return calc_U(self.scalp.sig_h, t0)
 
     def calculate_energy_density(self):

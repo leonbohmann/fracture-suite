@@ -20,7 +20,7 @@ from rich.progress import track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.detection import get_crack_surface, get_crack_surface_r
 from fracsuite.core.imageprocessing import preprocess_image
-from fracsuite.core.mechanics import Ud2sigm
+from fracsuite.core.mechanics import U, U2sigs, Ud2sigms
 from fracsuite.core.navid_results import navid_nfifty_ud
 from fracsuite.core.plotting import FigureSize, KernelContourMode, fit_curve, get_fig_width, legend_without_duplicate_labels, plot_kernel_results
 
@@ -676,7 +676,9 @@ def import_files(
     print('[yellow]> Running threshold tester <')
     if not no_tester:
         from fracsuite.tester import threshold
-        threshold(specimen.name)
+        # calculate a fraction of the specimen region to display
+        region = np.asarray((imgsize[0]//2, imgsize[1]//2, imgsize[0]//7, imgsize[1]//7)) / specimen.calculate_px_per_mm()
+        threshold(specimen.name, region=region)
 
     print('[yellow]> Marking impact point <')
     mark_impact(specimen.name)
@@ -741,7 +743,7 @@ def compare_nfifty_estimation(
 
     n50_navid = navid_nfifty_ud()
     # convert ud to sigm
-    n50_navid[:,1] = Ud2sigm(n50_navid[:,1])
+    n50_navid[:,1] = Ud2sigms(n50_navid[:,1])
     n50s_navid = n50_navid[:,0].flatten()
     sigm_navid = n50_navid[:,1].flatten()
 # 1e6/5 * (1-nue)/E * (sigma_s ** 2)
@@ -777,7 +779,7 @@ def compare_nfifty_estimation(
 
     n50_navid = navid_nfifty_ud()
     # convert ud to sigm
-    n50_navid[:,1] = Ud2sigm(n50_navid[:,1])
+    n50_navid[:,1] = Ud2sigms(n50_navid[:,1])
     # create fits for individual thicknesses
     for t in thicknesses:
         nfifties = np.array([(x,x.sig_h//-2,x.calculate_nfifty_count(simple=True)) for x in all_specimens if x.thickness == t])
@@ -1240,3 +1242,18 @@ def find(evaluation: str):
         return eval(evalstr)
 
     _ = Specimen.get_all_by(filterfunc, load=True)
+
+@app.command()
+def urr(name):
+    """
+    Calculate the energy release rate for a specific specimen.
+    """
+    specimen = Specimen.get(name)
+
+    mean_area = specimen.mean_splinter_area
+    urr = relative_remaining_stress(mean_area, specimen.measured_thickness)
+    print(f"URR: {urr:.2f}")
+    print(f'U_1: {specimen.U*urr:.2f} J/m²')
+
+    sig_s = U2sigs(specimen.U*urr, specimen.measured_thickness)
+    print(f"sig_s: {sig_s:.2f} MPa")

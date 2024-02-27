@@ -934,7 +934,7 @@ def plot_polar(
 
     State.output(output, f'polar-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
-    ylabel = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3)
+    ylabel = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3 or State.has_small_figures())
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
     x_values = r_range[:-1]
     y_values = Z.flatten()
@@ -954,7 +954,8 @@ def plot_polar(
     axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
     axs.set_ylabel(ylabel)
 
-    axs.legend(*get_legend(axs, axs2))
+    if not State.has_small_figures():
+        axs.legend(*get_legend(axs, axs2))
     State.output(StateOutput(fig,sz), f'polargraph-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
 @layer_app.command()

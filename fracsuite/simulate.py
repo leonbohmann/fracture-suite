@@ -52,11 +52,11 @@ def meanrand(mean, stddev):
     d = rng.random() - 0.5
     return mean + d * stddev
 
-def image_to_fig(image, ret_ax=False, figwidth=FigureSize.ROW3):
+def image_to_fig(image, ret_ax=False, figwidth=FigureSize.ROW3, unit='mm'):
     fig,axs = plt.subplots(figsize=get_fig_width(figwidth))
     axs.imshow(image, cmap='gray')
-    axs.set_xlabel('x (mm)')
-    axs.set_ylabel('y (mm)')
+    axs.set_xlabel(f'x ({unit})')
+    axs.set_ylabel(f'y ({unit})')
     axs.grid(False)
 
     if ret_ax:
@@ -267,7 +267,8 @@ def lbreak(
     break_pos: SpecimenBreakPosition = SpecimenBreakPosition.CORNER,
     E: float = 70e3,
     nue: float = 0.23,
-    impact_position: tuple[float,float] = (-1,-1)
+    impact_position: tuple[float,float] = (-1,-1),
+    no_region_crop: bool = False
 ):
     """
     Simulate a fracture morphology using the given parameters.
@@ -322,6 +323,7 @@ def lbreak(
     info(f'Energy:             {energy_u:<15.2f} J/m²')
     info(f'Fracture intensity: {fracture_intensity:<15.4f} 1/mm²')
     info(f'HC Radius:          {hc_radius:<15.2f} mm')
+    info(f'Acceptance:         {c:<15.4f}')
     info(f'Mean area:          {mean_area:<15.2f} mm²')
     info(f'Impact position:    {impact_position}')
     info(f'Area:               {area:<15.2f} mm²')
@@ -353,11 +355,15 @@ def lbreak(
     center_point = (0.3,0.3) # in percent
     region_size  = (50,50) # in mm
 
+    if no_region_crop:
+        center_point = (0.5,0.5)
+        region_size = (size[0], size[1])
+
     section("Plotting points...")
     x,y = zip(*points)
     # plot points
     fig,axs = plt.subplots(figsize=get_fig_width(pointsz))
-    axs.scatter(x,y)
+    axs.scatter(x,y, s=0.5 if no_region_crop else 1)
     # find maximum region from points
     x_min = np.min(x)
     x_max = np.max(x)
@@ -373,12 +379,14 @@ def lbreak(
     y_max = h * center_point[1] + region_size[1]/2
 
 
-
     axs.set_xlim(x_min, x_max)
     axs.set_ylim(y_min, y_max)
 
     if State.debug:
         plt.show()
+
+    # make 0,0 top left
+    axs.invert_yaxis()
     axs.set_xlabel('x (mm)')
     axs.set_ylabel('y (mm)')
     axs.set_aspect('equal', 'box')
@@ -557,7 +565,7 @@ def lbreak(
     # cv2.ellipse(markers, (200*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (255,120,0), -1)
     plotImage(markers, 'markers')
     markers_clipped = cropimg(region_scaled, size_f, markers)
-    fig = image_to_fig(markers_clipped, figwidth=pointsz)
+    fig = image_to_fig(markers_clipped, figwidth=pointsz, unit='px')
     fig.savefig(sim.get_file('points_modified.pdf'))
 
 
@@ -598,9 +606,9 @@ def lbreak(
         plt.show()
 
     State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2, open=State.debug)
-    fig = image_to_fig(cropimg(region_scaled, size_f, out_img), figwidth=pointsz)
+    fig = image_to_fig(cropimg(region_scaled, size_f, out_img), figwidth=pointsz, unit='px')
     fig.savefig(sim.get_file('splinters_filled.pdf'))
-    fig = image_to_fig(cropimg(region_scaled, size_f, 255-black_white_img), figwidth=pointsz)
+    fig = image_to_fig(cropimg(region_scaled, size_f, 255-black_white_img), figwidth=pointsz, unit='px')
     fig.savefig(sim.get_file('splinters_contours.pdf'))
 
     section('Saving...')
@@ -619,7 +627,8 @@ def lbreak_like(
     sigma_s: float = None,
     thickness: float = None,
     boundary: SpecimenBoundary = None,
-    break_pos: SpecimenBreakPosition = None
+    break_pos: SpecimenBreakPosition = None,
+    no_region_crop: bool = False
 ):
 
     specimen = Specimen.get(name)
@@ -636,10 +645,26 @@ def lbreak_like(
     E = 70e3
     nue = 0.23
 
+    info(f'Creating simulation for {specimen.name}')
+    info(f'> Sigma_s: {sigma_s}')
+    info(f'> Thickness: {thickness} (real: {specimen.measured_thickness})')
+    info(f'> Size: {size}')
+    info(f'> Boundary: {boundary}')
+    info(f'> Break position: {break_pos}')
+
     # create simulation
-    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position())
+    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+                        no_region_crop=no_region_crop)
     # compare simulation with input
     compare(simulation.fullname, specimen.name)
+
+    # put the original fracture image on a figure into the simulatio
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    axs.imshow(specimen.get_fracture_image())
+    axs.set_xlabel('x (px)')
+    axs.set_ylabel('y (px)')
+    axs.grid(False)
+    fig.savefig(simulation.get_file('original_fracture_image.pdf'))
 
     return simulation
 

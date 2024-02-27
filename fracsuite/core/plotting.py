@@ -1095,13 +1095,22 @@ def legend_without_duplicate_labels(ax, compact = False):
     ax.legend(*zip(*unique))
 
 axs_annotation_counts = {}
-def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annotate=True, annotate_popt=False,annotate_sz=6):
+def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annotate=True, annotate_popt=False,
+              annotate_sz=6,
+              annotate_label=None):
     from scipy.optimize import curve_fit
     from fracsuite.core.stochastics import r_squared
     x = np.asarray(x)
     y = np.asarray(y)
 
-    popt, pcov = curve_fit(func, x, y)
+    popt = None
+    pcov = None
+    try:
+        popt, pcov = curve_fit(func, x, y)
+    except:
+        warning(f"Could not fit curve {func.__name__} to data.")
+        return None, None
+
     y_fit = func(x, *popt)
 
     # use original values to calculate r²
@@ -1111,7 +1120,10 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annot
     x_fit = np.linspace(min(x), max(x), 100)
     y_fit = func(x_fit, *popt)
 
-    short_label = '{}: R²={:.2f}'.format(func.__name__, rsqr)
+
+    if annotate_label is None:
+        annotate_label = func.__name__
+    short_label = '{}: R²={:.2f}'.format(annotate_label, rsqr)
     label = short_label + "\n" + ", ".join([f'a{i+1}={value:.4f}' for i, value in enumerate(popt)])
     axs.plot(x_fit, y_fit, color=color, linestyle=ls, label=pltlabel, linewidth=lw)
 

@@ -1783,7 +1783,6 @@ def nfifty(
                 navid_y,
                 marker='o',
                 facecolors=f'C{ith}',
-                label=f'{th}mm',
                 linewidth=lwscatter,
                 alpha = 0.4
             )
@@ -1809,7 +1808,6 @@ def nfifty(
                 facecolors=f'C{it}',
                 linewidth=lwscatter,
                 alpha=0.4,
-                label=f'{thick}mm'
             )
         elif unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
             navid_r = navid_n50[navid_n50[:,2] == thick]
@@ -1817,6 +1815,14 @@ def nfifty(
             navid_x = navid_r[:,0] #n50
             navid_y = navid_r[:,1] #ud
 
+        # scatter current thickness leon
+        for b in bmarkers:
+            mask = (results[:,4] == thick) & (results[:,-2] == b)
+            ms = 's'
+            axs.scatter(results[mask,-1],results[mask,id],
+                        marker=ms, linewidth=lwscatter, color=clr, edgecolor='k',label=f"{thick}mm",)
+
+        # plot interpolation curves of x and navidx
         if len(y) > 0:
             # fit a curve
             def func(x, a, b):
@@ -1826,42 +1832,30 @@ def nfifty(
             y = np.concatenate([y,navid_y])
             p = np.column_stack([x,y])
 
-            debug(p.shape)
-            debug(p[0])
-            # sort for x
-            p = p[p[:,0].argsort()]
-
-            x = p[:,0]
-            y = p[:,1]
-            popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
-            info(f'{thick}mm Fitting cov:', pcov)
-
-            # plot the curve
-            x = np.linspace(np.min(x), np.max(x), 100)
-            y = func(x, *popt)
-            axs.plot(x, y, linestyle=(0,(1,1)), color=clr, linewidth=lwlines)
-
-            # calculate r^2
-            residuals = y - func(x, *popt)
-            ss_res = np.sum(residuals**2)
-            ss_tot = np.sum((y-np.mean(y))**2)
-            r_squared = 1 - (ss_res / ss_tot)
-            info(f'{thick}mm r^2:', r_squared)
-
-        # navid_n50, navid_ud, navid_u = navid_nfifty_interpolated(thick)
-        # if unit == EnergyUnit.U:
-        #     # print(navid_n50, navid_ud, navid_u)
-        #     plt.plot(navid_n50, navid_u, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
-        # elif unit == EnergyUnit.UD:
-        #     plt.plot(navid_n50, navid_ud, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
+            fit_curve(axs, x, y, func, clr, pltlabel="", annotate_label="")
 
 
+            # debug(p.shape)
+            # debug(p[0])
+            # # sort for x
+            # p = p[p[:,0].argsort()]
 
-        for b in bmarkers:
-            mask = (results[:,4] == thick) & (results[:,-2] == b)
-            ms = '*'
-            axs.scatter(results[mask,-1], results[mask,id], marker=ms, linewidth=lwscatter, color=clr)
+            # x = p[:,0]
+            # y = p[:,1]
+            # popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
+            # info(f'{thick}mm Fitting cov:', pcov)
 
+            # # plot the curve
+            # x = np.linspace(np.min(x), np.max(x), 100)
+            # y = func(x, *popt)
+            # axs.plot(x, y, linestyle=(0,(1,1)), color=clr, linewidth=lwlines)
+
+            # # calculate r^2
+            # residuals = y - func(x, *popt)
+            # ss_res = np.sum(residuals**2)
+            # ss_tot = np.sum((y-np.mean(y))**2)
+            # r_squared = 1 - (ss_res / ss_tot)
+            # info(f'{thick}mm r^2:', r_squared)
 
     ux = np.linspace(min_N50, max_N50, 100)
     u4y = U4(ux)
@@ -1879,11 +1873,8 @@ def nfifty(
             axs.plot(ux, u12y, linestyle='--', color=tcolors[3], alpha=0.4)
     # plots the ud curve from literatur
     elif id == 1:
-        axs.plot(ux, udy, label="Literatur", linestyle='--', color='k', alpha=0.4)
+        axs.plot(ux, udy, linestyle='--', color='k', alpha=0.4)
 
-    # labeling for leons data
-    for b,t in zip(bid.values(), thicknesses):
-        axs.scatter([], [], label=f"{t}mm", marker='o', facecolors=tcolors[b])
     # for b,t in zip(bid.values(), thicknesses):
     #     axs.plot([],[], label=f"{t}mm", color=tcolors[b])
 

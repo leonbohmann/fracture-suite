@@ -245,7 +245,7 @@ def best_params(image):
 @tester_app.command()
 def threshold(
     source: Annotated[str, typer.Argument(help='Path to image file.')],
-    region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = (250,250,100,100),
+    region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = None,
     region_f: Annotated[tuple[float,float], typer.Option(help='Region center in percent.')] = None,
 ):
     # Initialize GUI
@@ -267,14 +267,15 @@ def threshold(
         source = specimen.get_splinter_outfile("dummy")
         # switch directory to specimen directory
         dir = os.path.dirname(source)
+        rsize = specimen.get_real_size()
 
         img = specimen.get_fracture_image()
         px_per_mm = specimen.calculate_px_per_mm()
         print("px/mm: ", px_per_mm)
-        
+
         # take a small portion of the image
         if region is None:
-            region = np.array((250,250,500,500)) * px_per_mm
+            region = np.array((rsize[0]//2,rsize[1]//2,rsize[0],rsize[1])) * px_per_mm
         else:
             region = np.array(region) * px_per_mm
 
@@ -283,10 +284,10 @@ def threshold(
             region = np.asarray(region)
 
         region = region.astype(np.uint32)
-        print(region)
-        print(img.shape)
         # get region cx cy w h from image
         img = img[region[1]-region[3]//2:region[1]+region[3]//2, region[0]-region[2]//2:region[0]+region[2]//2]
+        print(region)
+        print(img.shape)
 
         # img = img[region[0]-region[2]//2:region[0]+region[2]//2, region[1]-region[3]//2:region[1]-region[3]//2]
         is_specimen = True
