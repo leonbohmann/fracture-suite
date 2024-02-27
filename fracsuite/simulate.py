@@ -588,7 +588,7 @@ def lbreak(
     for s in splinters:
         clr = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
         cv2.drawContours(out_img, [s.contour], -1, clr, -1)
-        cv2.drawContours(black_white_img, [s.contour], -1, 255, 1)
+        cv2.drawContours(black_white_img, [s.contour], -1, 255, 2)
 
     if State.debug:
         plt.imshow(out_img)
