@@ -148,36 +148,18 @@ def interp_layer(
 
     X,Y,V = load_layer(layer_name)
     info('Loading layer: ', layer_name)
-
-    # print('Radii', X)
-    # print('Energies', Y)
-    # print('Values', V)
-    X,Y = np.meshgrid(X,Y)
-    X = X.flatten()
-    Y = Y.flatten()
-    V = V.flatten()
-
-    interpolator = LinearestInterpolator(np.vstack([X,Y]).T, V)
-
-    # f = interp2d(X, Y, V, kind='linear')
+    f = interp2d(X, Y, V, kind='linear')
     # f = bisplrep(X, Y, V,  s=0.1)
     def r_func(r: float) -> float:
         """Calculate the value of the layer at a given radius. The energy was given to interp_layer."""
-        return interpolator(r, U)
+        return f(r, U)
 
     layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, True)
     Xs,Ys,Vs = load_layer(layer_name)
-
-    Xs,Ys = np.meshgrid(Xs,Ys)
-    Xs = Xs.flatten()
-    Ys = Ys.flatten()
-    Vs = Vs.flatten()
-    # print(Xs)
-    # print(Ys)
-    interpolator_std = LinearestInterpolator(np.vstack([Xs,Ys]).T, Vs)
+    fs = interp2d(Xs, Ys, Vs, kind='linear')
 
     def r_func_std(r: float) -> float:
-        return interpolator_std(r, U)
+        return fs(r, U)
 
     return r_func, r_func_std
 

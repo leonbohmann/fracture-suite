@@ -18,8 +18,8 @@ class LinearestInterpolator:
     def __call__(self, *args) -> Union[float, np.ndarray]:
         t = self.linear_interpolator(*args)
 
-        if np.isnan(t).any():
-            t[np.isnan(t)] = self.nearest_neighbor_interpolator(*args)[np.isnan(t)]
+        # if np.isnan(t).any():
+        #     t[np.isnan(t)] = self.nearest_neighbor_interpolator(*args)[np.isnan(t)]
 
         if t.size == 1:
             return t.item(0)

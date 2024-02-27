@@ -502,7 +502,7 @@ def lbreak(
             ## calculate length of major axis using l1 and its deviation
             # calculate length of major axis (this is radius, so divide by 2)
             l_major = l1 / 2 # this will be filled from the algorithm
-            l_minor = l2 / 2 # before: l_major / l1l2
+            l_minor = l_major / l1l2
 
             # make dimensions smaller so that the algorithm can fill it
             l_major = l_major
