@@ -45,22 +45,25 @@ b_markers = {
 }
 
 t_colors = {
-    4: 'green',
-    8: 'red',
-    12: 'blue'
+    4: 'C0',
+    8: 'C1',
+    12: 'C2'
 }
 
 scatter_args = {
-        's': 10,
-        'edgecolors': 'gray',
-        'linewidth': 0.5
-    }
+    's': 10,
+    'edgecolors': 'gray',
+    'linewidth': 0.5
+}
 
 def barsomfit(x, a):
     return (1/a)*x
 
 def linfit(x, a, b):
     return a*x + b
+
+def lnfit(x, a, b, c, d):
+    return a * np.log(b*x+c) + d
 
 def squarefit(x, a, b, c):
     return a*x**2 + b*x + c
@@ -705,7 +708,15 @@ def compare_nfifty_estimation(
     """
     filterfunc = create_filter_function(name_filter, needs_splinters=True)
 
-    all_specimens = Specimen.get_all_by(filterfunc, load=True)
+    thicknesses = [4,8]
+
+    def filtfilt(s):
+        if s.thickness not in thicknesses:
+            return False
+
+        return filterfunc(s)
+
+    all_specimens = Specimen.get_all_by(filtfilt, load=True)
 
 
     nfifties: dict[Specimen,float] = {}
@@ -735,6 +746,8 @@ def compare_nfifty_estimation(
     sigm_navid = n50_navid[:,1].flatten()
 # 1e6/5 * (1-nue)/E * (sigma_s ** 2)
     for i in range(len(n50s_navid)):
+        if n50_navid[i,2] not in thicknesses:
+            continue
         axs.scatter(sigm_navid[i], n50s_navid[i], marker='x', color='gray', label='Literatur', alpha=0.75, **scatter_args)
         x_total.append(sigm_navid[i])
         y_total.append(n50s_navid[i])
@@ -759,8 +772,26 @@ def compare_nfifty_estimation(
     y = n50_analytic(sigh)
     axs.plot(x, y, 'r--', label='Barsom')
 
-    _,popt = fit_curve(axs, x_total, y_total, custom, color='black', pltlabel='Fit')
+    # _,popt = fit_curve(axs, x_total, y_total, custom, color='black', pltlabel='Fit')
 
+
+    n50_navid = navid_nfifty_ud()
+    # convert ud to sigm
+    n50_navid[:,1] = Ud2sigm(n50_navid[:,1])
+    # create fits for individual thicknesses
+    for t in thicknesses:
+        nfifties = np.array([(x,x.sig_h//-2,x.calculate_nfifty_count(simple=True)) for x in all_specimens if x.thickness == t])
+        x = nfifties[:,1]
+        y = nfifties[:,2]
+
+        navidmask = n50_navid[:,2] == t
+        xn = n50_navid[navidmask,1]
+        yn = n50_navid[navidmask,0]
+
+        # concatenate the data
+        x = np.concatenate((x,xn))
+        y = np.concatenate((y,yn))
+        _,popt = fit_curve(axs, x, y, custom, color=f'C{t//4-1}', pltlabel=f'{t}mm',annotate_sz=6,annotate_popt=True)
 
     legend_without_duplicate_labels(axs, compact=True)
 
@@ -770,16 +801,25 @@ def compare_nfifty_estimation(
 
 @app.command()
 def crack_surface_simple(
+    name_filter: str = "*.*.*.*",
     boundary: str = None,
+    rho: float = None
 ):
+    thicknesses = [4,8]
+    filter_func = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
+    def basefilter(s):
+        if boundary is not None and s.boundary != boundary:
+            return False
+        if s.thickness not in thicknesses:
+            return False
+
+        return filter_func(s)
+
+
+    specimens = Specimen.get_all_by(basefilter, load=True)
+
     if boundary is None:
-        boundary = "*"
-    filter_func = create_filter_function(f"*.*.{boundary}.*", needs_scalp=True, needs_splinters=True)
-
-    specimens = Specimen.get_all_by(filter_func, load=True)
-
-    if boundary == "*":
-        boundary = "all"
+        boundary = "any"
 
     # calculate total crack surfaces
     crack_surfaces = {}
@@ -813,22 +853,85 @@ def crack_surface_simple(
 
     sz = FigureSize.ROW2
 
+    def get_ut(spec: Specimen):
+        # calculate base total energy
+        ut = spec.U * (spec.get_real_size()[0] * spec.get_real_size()[1]) * 1e-6
+
+        # calculate additional energy from fallweight
+        m = 2.41 # kg
+        g = 9.81 # m/s²
+        h = spec.get_fall_height_m()
+        ufall = m * g * h
+
+        ut = ut + ufall
+
+        return ut
 
     ##########################
     # plot crack surface
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
-
+    x = []
+    y = []
     for spec,crack_area in crack_surfaces.items():
+        spec: Specimen
         clr = t_colors[spec.thickness]
         marker = b_markers[spec.boundary]
-        axs.scatter(spec.U, crack_area, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
 
-    axs.set_xlabel("Formänderungsenergie $U$ (J/m²)")
-    axs.set_ylabel("$U_\\text{S} \cdot t$ (mm²)")
+        ut = get_ut(spec)
+
+        axs.scatter(ut, crack_area, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+        x.append(ut)
+        y.append(crack_area)
+
+    fit_curve(axs, x, y, lnfit, color='black', pltlabel='Fit')
+    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
+    axs.set_ylabel("Rissoberfläche $A_\mathrm{F} = \sum U_\mathrm{S,i} \cdot t$ (mm²)")
     legend_without_duplicate_labels(axs)
-
     State.output(StateOutput(fig,sz), f"cracksurface_vs_energy_{boundary}")
 
+    ##########################
+    # calculate theoretical mass from areas
+    if rho is None:
+        rho = 2500 # kg/m³
+
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    x = {}
+    y = {}
+
+    for t in thicknesses:
+        x[t] = []
+        y[t] = []
+    for spec,spl_area in splinter_areas.items():
+        spl_rel_mass = spl_area * rho * 1e-6 # mm² * kg/m³ * 1e-6 = kg/mm
+        ut = get_ut(spec)
+
+        clr = t_colors[spec.thickness]
+        marker = b_markers[spec.boundary]
+
+        axs.scatter(ut, spl_rel_mass, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+        x[spec.thickness].append(ut)
+        y[spec.thickness].append(spl_rel_mass)
+
+    # plot fits
+    for t in thicknesses:
+        xt = x[t]
+        yt = y[t]
+        if len(yt) == 0:
+            continue
+        _, popt = fit_curve(axs, xt, yt, squarefit, color=f'C{t//4-1}', pltlabel='Fit',annotate_sz=6, annotate_popt=True)
+        info(f'{t=}:{popt=}')
+
+    # approaching hline
+    axs.axhline(0.0225, color='black', linestyle='--')
+    axs.annotate('$A_\mathrm{S}=9 mm²$', (45, 0.0225), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
+    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
+    axs.set_ylabel("$\\sfrac{m_\mathrm{S}}{t} = A_\mathrm{S}\cdot \\rho$ (kg/mm)")
+    legend_without_duplicate_labels(axs)
+    State.output(StateOutput(fig,sz), f"weightedmass_vs_energy_{boundary}")
+
+
+
+    return
     n50_navid = navid_nfifty_ud()
     # convert ud to sigm
     n50_navid[:,1] = n50_navid[:,1] * n50_navid[:,2] * 1e-3

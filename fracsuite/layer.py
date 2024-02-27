@@ -229,6 +229,7 @@ def create(
     with_std: Annotated[bool, typer.Option(help='Save standard deviation layers.')] = False,
     all_t_in_one: Annotated[bool, typer.Option(help='Put all thicknesses into one plot.')] = False,
     annotate_names: Annotated[bool, typer.Option(help='Annotate specimen names.')] = False,
+    smooth_layer_plots: Annotated[bool, typer.Option(help='Interpolate layer plots.')] = False,
 ):
     """
     Create layers based on the given parameters. Also generated useful plots for the layers.
@@ -384,33 +385,34 @@ def create(
     results = results[results[:,0].argsort()]
     stddevs = stddevs[stddevs[:,0].argsort()]
 
-    if not no_save:
-        ########################
-        # Save results as layer
-        ########################
-        for b in bid:
-            # mask all results for the current boundary
-            b_mask = results[:,2] == bid[b]
 
-            # mask thicknesses
-            for t in [4,8,12]:
-                t_mask = results[:,1] == t
+    ########################
+    # Save results as layer
+    ########################
+    for b in tracker(bid, title='Iterating layers',total=len(bid)):
+        # mask all results for the current boundary
+        b_mask = results[:,2] == bid[b]
 
-                # mask both
-                bt_mask = b_mask & t_mask
+        # mask thicknesses
+        for t in [4,8,12]:
+            t_mask = results[:,1] == t
 
-                # skip empty boundaries
-                if np.sum(bt_mask) == 0:
-                    continue
+            # mask both
+            bt_mask = b_mask & t_mask
 
-                # boundary results
-                b_results = results[bt_mask,:]
-                b_stddevs = stddevs[bt_mask,4:]
+            # skip empty boundaries
+            if np.sum(bt_mask) == 0:
+                continue
 
-                b_energies = b_results[:,0]
-                b_values = b_results[:,4:]
-                b_r_range = r_range[:-1] # -1 because the last range is not closed (last r_range is calculated as lower bound)
+            # boundary results
+            b_results = results[bt_mask,:]
+            b_stddevs = stddevs[bt_mask,4:]
 
+            b_energies = b_results[:,0]
+            b_values = b_results[:,4:]
+            b_r_range = r_range[:-1] # -1 because the last range is not closed (last r_range is calculated as lower bound)
+
+            if not no_save:
                 # save layer
                 save_layer(
                     prop,
@@ -433,6 +435,8 @@ def create(
                     b_energies,
                     b_stddevs
                 )
+            fig = plt_layer(b_r_range, b_energies, b_values, figwidth=sz, interpolate=smooth_layer_plots, xlabel=xlabel, clabel=ylabel)
+            State.output(StateOutput(fig, sz), f"2D-{prop}_{b}_{t:.0f}_{break_pos}", to_additional=True)
 
     # define an energy range to plot mean values in
     n_ud = 7 # J/m²

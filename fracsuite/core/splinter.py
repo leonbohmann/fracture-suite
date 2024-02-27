@@ -620,14 +620,16 @@ class Splinter:
     @staticmethod
     def analyze_contour_image(contour_image, px_per_mm: float = 1.0, prep: PreprocessorConfig = None, areabounds: tuple[int,int] = None):
         """Analyze a contour image and return a list of splinters."""
-        if prep is None and areabounds is None:
-            from fracsuite.core.preps import defaultPrepConfig
-            prep = defaultPrepConfig
+        if areabounds is None:
+            if prep is None:
+                from fracsuite.core.preps import defaultPrepConfig
+                prep = defaultPrepConfig
 
             min_area = prep.min_area
             max_area = prep.max_area
         elif prep is None and areabounds is not None:
             min_area, max_area = areabounds
+
 
         contour_image = to_gray(contour_image)
         contours = detect_fragments(contour_image, min_area_px=min_area, max_area_px=max_area, filter=True)

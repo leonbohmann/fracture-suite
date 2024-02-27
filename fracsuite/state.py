@@ -32,7 +32,8 @@ known_kwargs = [
     'override_figwidth',
     'output_to',
     'debug',
-    'extensive_specimen_data'
+    'extensive_specimen_data',
+    'fitcurve_annotation_pos'
 ]
 
 def is_image(data):
@@ -226,6 +227,18 @@ class State:
     def stop_progress():
         State.progress.stop()
         State.__progress_started = False
+
+    @staticmethod
+    def initialize():
+        """Performs some checks on kwargs and the state."""
+        if 'fitcurve_annotation_pos' in State.kwargs:
+            pos = State.kwargs['fitcurve_annotation_pos']
+
+            if isinstance(pos, tuple):
+                pos = [pos]
+                State.kwargs['fitcurve_annotation_pos'] = pos
+
+
 
     def output_nopen(
         object: Figure | npt.ArrayLike,

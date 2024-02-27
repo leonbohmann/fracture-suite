@@ -227,8 +227,10 @@ def replot(
         for li, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith(plot_command):
-                command = stripped[len(plot_command)+1:]
+                command = stripped[len(plot_command)+1:] + " --state.no_open"
                 commands.append((f'[cyan]{file}[/cyan] ([dim white]L{li}[/dim white])',command))
+
+    errors = []
 
     with Progress(
             TextColumn("[progress.description]{task.description:<50}"),
@@ -240,16 +242,29 @@ def replot(
             cmd_task = progress.add_task(cmd_task_descr)
             tasks.append((file, command, cmd_task))
 
+        def logfile(msg):
+            with open("replot.log", "a") as f:
+                f.write(msg + "\n")
+
         for file, command, task in tasks:
             if not dry:
                 progress.update(task, description=f"{file} [green]> [/green] {command}")
                 proc = subprocess.Popen(["cmd", "/c", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 out,err = proc.communicate()
-                progress.update(task, description=f"{file} [green]{command}")
+                # check if command ran successfully
+                logfile(f"Running {command} on {file}")
+                if proc.returncode != 0:
+                    logfile(f"Error running {command} on {file}:\n{err.decode('utf-8')}")
+                    errors.append(f"Error running {command}:\n{err.decode('utf-8')}")
+                    progress.update(task, description=f"{file} [red]{command}")
+                else:
+                    progress.update(task, description=f"{file} [green]{command}")
             else:
                 print(f"DRY: Running {command}")
                 time.sleep(1)
 
+    if len(errors) != 0:
+        print(errors)
 
 
 @app.command()

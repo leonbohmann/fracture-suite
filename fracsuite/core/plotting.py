@@ -1080,8 +1080,8 @@ def legend_without_duplicate_labels(ax, compact = False):
 
     ax.legend(*zip(*unique))
 
-
-def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit'):
+axs_annotation_counts = {}
+def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annotate=True, annotate_popt=False,annotate_sz=6):
     from scipy.optimize import curve_fit
     from fracsuite.core.stochastics import r_squared
     x = np.asarray(x)
@@ -1097,15 +1097,34 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit'):
     x_fit = np.linspace(min(x), max(x), 100)
     y_fit = func(x_fit, *popt)
 
-    short_label = '{}: R²={:.2f}, '.format(func.__name__, rsqr)
-    label = short_label
-    for i, value in enumerate(popt):
-        label += f'a{i+1}={value:.1f}, '
+    short_label = '{}: R²={:.2f}'.format(func.__name__, rsqr)
+    label = short_label + "\n" + ", ".join([f'a{i+1}={value:.4f}' for i, value in enumerate(popt)])
     axs.plot(x_fit, y_fit, color=color, linestyle=ls, label=pltlabel, linewidth=lw)
 
-    axs.annotate(short_label[:-2], (x_fit[5], y_fit[5]), textcoords="offset points", xytext=(25,-5), ha='left', va='center', color=color)
+    if annotate:
+        if axs in axs_annotation_counts:
+            annotation_id = axs_annotation_counts[axs]
+            axs_annotation_counts[axs] += 1
+        else:
+            annotation_id = 0
+            axs_annotation_counts[axs] = 1
 
-    print(label[:-2])
+        if 'fitcurve_annotation_pos' in State.kwargs and len(State.kwargs['fitcurve_annotation_pos']) > annotation_id:
+            defin = State.kwargs['fitcurve_annotation_pos'][annotation_id]
+            pos = (defin[0],defin[1])
+            ha = defin[2] if len(defin) > 2 else 'left'
+            va = defin[3] if len(defin) > 3 else 'top'
+        else:
+            pos = (x_fit[5], y_fit[5])
+            ha = 'left'
+            va = 'top'
+
+        xytext0 = -5 if ha == 'right' else 5
+        xytext1 = -5 if va == 'bottom' else 5
+
+        axs.annotate(short_label if not annotate_popt else label, pos, textcoords="offset points", xytext=(xytext0,xytext1), ha=ha, va=va, color=color,fontsize=annotate_sz)
+
+
     return y_fit, popt
 
 

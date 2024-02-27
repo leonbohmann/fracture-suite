@@ -181,7 +181,7 @@ def interp_layer(
 
     return r_func, r_func_std
 
-def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="~",interpolate=True,figwidth=FigureSize.ROW1) -> Figure:
+def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="$U\, (J/m²)$", clabel="~",interpolate=True,figwidth=FigureSize.ROW1) -> Figure:
     """
     Plots a given layer on a 2d contour plot.
 
@@ -226,7 +226,7 @@ def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="
     axs.set_xlabel(xlabel)
     axs.set_ylabel(ylabel)
     axs.autoscale()
-    axs.set_xlim((0, R[-3]))
+    axs.set_xlim((R[0], R[-3]))
     return fig
 
 def get_asp(U: float, boundary: SpecimenBoundary, thickness: int, break_pos: SpecimenBreakPosition) -> Callable[[float], float]:

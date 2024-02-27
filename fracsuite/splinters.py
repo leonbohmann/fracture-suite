@@ -1091,7 +1091,7 @@ def log_2d_histograms(
 
     dt = np.array(data)
     axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-    fig.colorbar(axim, ax=axs, orientation='vertical', label='PD $p(A_S)$', pad=0.2)
+    fig.colorbar(axim, ax=axs, orientation='vertical', label='PD $f(A_S)$', pad=0.2)
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
@@ -1107,6 +1107,8 @@ def log_2d_histograms(
     # disable minor ticks on y axis
     axs.yaxis.set_minor_locator(plt.NullLocator())
     axy.yaxis.set_minor_locator(plt.NullLocator())
+
+    axs.annotate("x-Werte nach $10^x$", xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
 
 
     State.output(fig, f'loghist2d_{out_name}', to_additional=True, figwidth=sz)
@@ -1731,10 +1733,10 @@ def nfifty(
     id = idd[unit]
 
     id_name = {
-        0: "Formänderungsenergie $U$ [J/m²]",
-        1: "Formänderungsenergiedichte $U_d$ [J/m³]",
-        2: "Effektive Formänderungsenergie $U_t$ [J/m²]",
-        3: "Effektive Formänderungsenergiedichte $U_{dt}$ [J/m³]",
+        0: "Formänderungsenergie $U$ (J/m²)",
+        1: "Formänderungsenergiedichte $U_d$ (J/m³)",
+        2: "Effektive Formänderungsenergie $U_t$ (J/m²)",
+        3: "Effektive Formänderungsenergiedichte $U_{dt}$ (J/m³)",
     }
 
     def U4(x):

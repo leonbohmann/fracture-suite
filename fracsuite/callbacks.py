@@ -57,7 +57,7 @@ def main_callback(
     State.save_plots = save_plots
     State.figasimgonly = figasimgonly
     State.maximum_specimen = max_spec
-    State.no_open = no_open
+    State.no_open = no_open or (True if 'no_open' in State.kwargs and State.kwargs['no_open'] else False)
     State.no_out = no_out
 
     State.pointoutput(subfolder)
@@ -69,6 +69,8 @@ def main_callback(
 
     if to_temp:
         info("[cyan]Output will be written to temp folder.")
+
+    State.initialize()
 
 #TODO: In the future this can be used to make the commands more modular
 def specimen_callback(name_or_names_with_sigma: list[str]):
