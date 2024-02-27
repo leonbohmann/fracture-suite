@@ -728,16 +728,30 @@ def datahist_to_ax(
             binrange = np.linspace(data[0], data[-1], n_bins)
         if plot_mode == DataHistPlotMode.HIST or plot_mode == DataHistPlotMode.STEPS:
             fillcolor = norm_color(color)
-            edgecolor = 'gray' if plot_mode == DataHistPlotMode.HIST else 'none'
 
-            # density: normalize the bins data count to the total amount of data
-            binned_data,edges,bin_container = ax.hist(data, bins=binrange,
-                    density=as_density,
-                    histtype='step' if plot_mode == DataHistPlotMode.STEPS else 'bar',
-                    color=fillcolor,
-                    label=label,
-                    linewidth=1 if plot_mode == DataHistPlotMode.STEPS else 0.2,
-                    alpha=alpha)
+            if plot_mode == DataHistPlotMode.STEPS:
+                # density: normalize the bins data count to the total amount of data
+                binned_data,_,bin_container = ax.hist(data, bins=binrange,
+                        density=as_density,
+                        histtype='step',
+                        color=fillcolor,
+                        label=label,
+                        linewidth=1,
+                        alpha=alpha)
+            elif plot_mode == DataHistPlotMode.HIST:
+                edgecolor = 'gray'
+
+                # density: normalize the bins data count to the total amount of data
+                binned_data,_,bin_container = ax.hist(data, bins=binrange,
+                        density=as_density,
+                        histtype='bar',
+                        color=fillcolor,
+                        edgecolor=edgecolor,
+                        label=label,
+                        linewidth=0.2,
+                        alpha=alpha)
+
+
             color = edgecolor if plot_mode == DataHistPlotMode.STEPS else fillcolor
         elif plot_mode == DataHistPlotMode.KDE or plot_mode == DataHistPlotMode.KDE2:
             x,y = calculate_kde(data)

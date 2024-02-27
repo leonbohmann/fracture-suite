@@ -1,7 +1,8 @@
 """
 Commands for simulating and analyzing fracture morphologies.
 """
-from fracsuite.core.logging import critical, info
+import shutil
+from fracsuite.core.logging import critical, info, warning
 import random
 from typing import Annotated
 import cv2
@@ -50,6 +51,18 @@ def meanrand(mean, stddev):
     """Returns a random number between mean-stdev and mean+stdev"""
     d = rng.random() - 0.5
     return mean + d * stddev
+
+def image_to_fig(image, ret_ax=False, figwidth=FigureSize.ROW3):
+    fig,axs = plt.subplots(figsize=get_fig_width(figwidth))
+    axs.imshow(image, cmap='gray')
+    axs.set_xlabel('x (mm)')
+    axs.set_ylabel('y (mm)')
+    axs.grid(False)
+
+    if ret_ax:
+        return fig, axs
+
+    return fig
 
 @sim_app.command()
 def nbreak(
@@ -275,9 +288,10 @@ def lbreak(
     if impact_position[0] == -1 or impact_position[1] == -1:
         impact_position = None
 
-    # this will create the
+    # this will create the simulation
     sim = Simulation.create(thickness, sigma_s, boundary, None)
 
+    pointsz = FigureSize.ROW3 if 'override_figwidth' not in State.kwargs else State.kwargs['override_figwidth']
 
     # calculate energy
     energy_u = U(sigma_s, thickness)
@@ -336,13 +350,13 @@ def lbreak(
     points = bohmann_process(size[0], size[1], r_range, r_areas, l_array, rhc_array, impact_position, c, int(1e6), False)
 
     # print region
-    center_point = (0.5,0.5) # in percent
-    region_size  = (200,200) # in mm
+    center_point = (0.3,0.3) # in percent
+    region_size  = (50,50) # in mm
 
     section("Plotting points...")
     x,y = zip(*points)
     # plot points
-    fig,axs = plt.subplots()
+    fig,axs = plt.subplots(figsize=get_fig_width(pointsz))
     axs.scatter(x,y)
     # find maximum region from points
     x_min = np.min(x)
@@ -368,7 +382,7 @@ def lbreak(
     axs.set_xlabel('x (mm)')
     axs.set_ylabel('y (mm)')
     axs.set_aspect('equal', 'box')
-    fig.savefig(sim.get_file('pointsfig.png'))
+    fig.savefig(sim.get_file('points_original.pdf'))
 
 
     # scaling factor (realsize > pixel size)
@@ -382,7 +396,7 @@ def lbreak(
 
     # clip region from markers
     markers_clipped = cropimg(region_scaled, size_f, markers)
-    cv2.imwrite(sim.get_file('points.png'), markers_clipped)
+    cv2.imwrite(sim.get_file('markers.png'), markers_clipped)
 
     section("Loading layers...")
     # apply layers to points
@@ -440,7 +454,7 @@ def lbreak(
         axs.set_ylabel(mode_labels)
         if State.debug:
             plt.show()
-        fig.savefig(sim.get_file(f'{name}.pdf'))
+        fig.savefig(sim.get_file(f'layer_{name}.pdf'))
 
     section("Modify spatial points...")
     exceptions = []
@@ -543,7 +557,8 @@ def lbreak(
     # cv2.ellipse(markers, (200*size_f,400*size_f), (int(5), int(20)), 0, 0, 360, (255,120,0), -1)
     plotImage(markers, 'markers')
     markers_clipped = cropimg(region_scaled, size_f, markers)
-    cv2.imwrite(sim.get_file('layered_points.png'), markers_clipped)
+    fig = image_to_fig(markers_clipped, figwidth=pointsz)
+    fig.savefig(sim.get_file('points_modified.pdf'))
 
 
     # remove small regions
@@ -583,8 +598,10 @@ def lbreak(
         plt.show()
 
     State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2, open=State.debug)
-    cv2.imwrite(sim.get_file('filled.png'), out_img)
-    cv2.imwrite(sim.get_file('contours.png'), 255-black_white_img)
+    fig = image_to_fig(cropimg(region_scaled, size_f, out_img), figwidth=pointsz)
+    fig.savefig(sim.get_file('splinters_filled.pdf'))
+    fig = image_to_fig(cropimg(region_scaled, size_f, 255-black_white_img), figwidth=pointsz)
+    fig.savefig(sim.get_file('splinters_contours.pdf'))
 
     section('Saving...')
     sim.put_splinters(splinters)
@@ -628,6 +645,12 @@ def lbreak_like(
 
 @sim_app.command()
 def compare_all(name):
+    """
+    Compares both the nbreak and lbreak of a specimen.
+
+    Args:
+        name (str): Name of the specimen for which to create the comparison.
+    """
     specimen = Specimen.get(name)
 
     if not specimen.has_scalp:
@@ -691,7 +714,11 @@ def compare(
 
 
     axs[0].legend()
+    #save figure to simulation
     State.output(fig, f'{specimen.name}--{sim.name}_{sim.nbr}', figwidth=FigureSize.ROW2)
+
+
+    fig.savefig(sim.get_file(f'{specimen.name}_vs_{sim.name}_{sim.nbr}.pdf'))
 
     info('Specimen: ', len(spec_splinters))
     info('Simulation: ', len(sim_splinters))

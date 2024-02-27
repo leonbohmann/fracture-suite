@@ -6,6 +6,7 @@ import shutil
 import numpy as np
 
 import typer
+from fracsuite.core.logging import warning
 from fracsuite.core.mechanics import U, Ud
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.specimenprops import SpecimenBoundary
@@ -52,7 +53,7 @@ class Simulation:
         return simu
 
     @classmethod
-    def create(cls, thickness:int, sigma_s:float, boundary: str, splinters: list[Splinter]):
+    def create(cls, thickness:int, sigma_s:float, boundary: str, splinters: list[Splinter], override_simulation:bool = False):
         name = f"{thickness:.0f}-{sigma_s:.0f}-{boundary}"
 
         simpath = os.path.join(general.simulation_path, name)
@@ -94,6 +95,7 @@ class Simulation:
 
     def __init__(self, path: str, realsize = (500,500)):
         self.path = path
+        "The directory of this simulation."
         self.name = os.path.basename(path)
 
         if "_" in self.name:
@@ -110,6 +112,8 @@ class Simulation:
             with open(self.splinter_file, "rb") as f:
                 self.__splinters = pickle.load(f)
 
+
+        # NOTE, since this is a simulation, the forbidden areas are always the same!
         # remove all splinters whose centroid is closer than 1 cm to the edge
         delta_edge = 10
         self.__splinters = [s for s in self.__splinters
