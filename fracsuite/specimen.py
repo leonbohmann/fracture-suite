@@ -807,7 +807,7 @@ def crack_surface_simple(
     name_filter: str = "*.*.*.*",
     boundary: str = None,
     rho: float = None,
-    no_induce: bool = False
+    induce: bool = False
 ):
     thicknesses = [4,8]
     filter_func = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
@@ -824,7 +824,7 @@ def crack_surface_simple(
 
     virtual_specimens: dict[int, list[VirtualSpecimen]] = {}
 
-    if not no_induce:
+    if induce:
         for t in thicknesses:
             virtual_specimens[t] = load_virtual_specimens(t)
 
@@ -955,7 +955,7 @@ def crack_surface_simple(
 
     # approaching hline
     axs.axhline(0.0225, color='black', linestyle='--')
-    axs.annotate('$A_\mathrm{S}=9 mm²$', (45, 0.0225), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
+    axs.annotate('$A_\mathrm{S}=9 mm^2$', (45, 0.0225), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
     axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
     axs.set_ylabel("$\\sfrac{m_\mathrm{S}}{t} = A_\mathrm{S}\cdot \\rho$ (kg/mm)")
     legend_without_duplicate_labels(axs)
