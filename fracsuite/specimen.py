@@ -29,6 +29,7 @@ from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import quadrat_count, r_squared_f
 from fracsuite.core.stress import relative_remaining_stress
+from fracsuite.core.virtualspecimen import VirtualSpecimen, load_virtual_specimens
 from fracsuite.general import GeneralSettings
 from fracsuite.splinters import create_filter_function
 from fracsuite.state import State, StateOutput
@@ -820,6 +821,11 @@ def crack_surface_simple(
 
     specimens = Specimen.get_all_by(basefilter, load=True)
 
+    virtual_specimens: dict[int, list[VirtualSpecimen]] = {}
+
+    for t in thicknesses:
+        virtual_specimens[t] = load_virtual_specimens(t)
+
     if boundary is None:
         boundary = "any"
 
@@ -855,7 +861,7 @@ def crack_surface_simple(
 
     sz = FigureSize.ROW2
 
-    def get_ut(spec: Specimen):
+    def get_ut(spec: Specimen | VirtualSpecimen):
         # calculate base total energy
         ut = spec.U * (spec.get_real_size()[0] * spec.get_real_size()[1]) * 1e-6
 
@@ -911,13 +917,36 @@ def crack_surface_simple(
         marker = b_markers[spec.boundary]
 
         axs.scatter(ut, spl_rel_mass, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
-        x[spec.thickness].append(ut)
-        y[spec.thickness].append(spl_rel_mass)
+
+        if spec.boundary == 'B':
+            x[spec.thickness].append(ut)
+            y[spec.thickness].append(spl_rel_mass)
+
+    for t in thicknesses:
+        # only use available thicknesses
+        if t not in virtual_specimens:
+            continue
+        # only use thicknesses that have been plotted
+        if len(x[t]) == 0:
+            continue
+
+        vspecs = virtual_specimens[t]
+        for vspec in vspecs:
+            ut = get_ut(vspec)
+            clr = t_colors[vspec.thickness]
+            spl_rel_mass = vspec.M / vspec.measured_thickness
+            marker = b_markers[vspec.boundary]
+            axs.scatter(ut, spl_rel_mass, marker=marker, facecolors='none', edgecolors=clr, alpha=0.5)
+
+            x[vspec.thickness].append(ut)
+            y[vspec.thickness].append(spl_rel_mass)
+
 
     # plot fits
     for t in thicknesses:
-        xt = x[t]
-        yt = y[t]
+        xt = np.array(x[t])
+        yt = np.array(y[t])
+
         if len(yt) == 0:
             continue
         _, popt = fit_curve(axs, xt, yt, squarefit, color=f'C{t//4-1}', pltlabel='Fit',annotate_sz=6, annotate_popt=True)
