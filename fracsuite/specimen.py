@@ -824,7 +824,7 @@ def crack_surface_simple(
 
     virtual_specimens: dict[int, list[VirtualSpecimen]] = {}
 
-    if no_induce:
+    if not no_induce:
         for t in thicknesses:
             virtual_specimens[t] = load_virtual_specimens(t)
 
