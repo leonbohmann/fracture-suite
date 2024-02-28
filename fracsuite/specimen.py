@@ -920,9 +920,8 @@ def crack_surface_simple(
 
         axs.scatter(ut, spl_rel_mass, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
 
-        if spec.boundary == 'B':
-            x[spec.thickness].append(ut)
-            y[spec.thickness].append(spl_rel_mass)
+        x[spec.thickness].append(ut)
+        y[spec.thickness].append(spl_rel_mass)
 
     for t in thicknesses:
         # only use available thicknesses
