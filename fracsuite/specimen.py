@@ -806,7 +806,8 @@ def compare_nfifty_estimation(
 def crack_surface_simple(
     name_filter: str = "*.*.*.*",
     boundary: str = None,
-    rho: float = None
+    rho: float = None,
+    no_induce: bool = False
 ):
     thicknesses = [4,8]
     filter_func = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
@@ -823,8 +824,9 @@ def crack_surface_simple(
 
     virtual_specimens: dict[int, list[VirtualSpecimen]] = {}
 
-    for t in thicknesses:
-        virtual_specimens[t] = load_virtual_specimens(t)
+    if no_induce:
+        for t in thicknesses:
+            virtual_specimens[t] = load_virtual_specimens(t)
 
     if boundary is None:
         boundary = "any"
