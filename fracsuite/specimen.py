@@ -744,16 +744,18 @@ def compare_nfifty_estimation(
 
     n50_navid = navid_nfifty_ud()
     # convert ud to sigm
-    n50_navid[:,1] = Ud2sigms(n50_navid[:,1])
+    n50_navid[:,1] = Ud2sigms(n50_navid[:,1]) / 2.0
     n50s_navid = n50_navid[:,0].flatten()
     sigm_navid = n50_navid[:,1].flatten()
 # 1e6/5 * (1-nue)/E * (sigma_s ** 2)
     for i in range(len(n50s_navid)):
         if n50_navid[i,2] not in thicknesses:
             continue
-        axs.scatter(sigm_navid[i], n50s_navid[i], marker='x', color='gray', label='Literatur', alpha=0.75, **scatter_args)
+        clr = t_colors[n50_navid[i,2]]
+        axs.scatter(sigm_navid[i], n50s_navid[i], marker='x', color=clr, alpha=0.75, **scatter_args)
         x_total.append(sigm_navid[i])
         y_total.append(n50s_navid[i])
+    axs.scatter([],[], marker='x', color='black', label='Literatur', **scatter_args)
 
     # plot data
     for spec,n50 in tqdm(nfifties.items(), desc="Plotting data...", leave=False):
@@ -780,7 +782,7 @@ def compare_nfifty_estimation(
 
     n50_navid = navid_nfifty_ud()
     # convert ud to sigm
-    n50_navid[:,1] = Ud2sigms(n50_navid[:,1])
+    n50_navid[:,1] = Ud2sigms(n50_navid[:,1]) / 2.0
     # create fits for individual thicknesses
     for t in thicknesses:
         nfifties = np.array([(x,x.sig_h//-2,x.calculate_nfifty_count(simple=True)) for x in all_specimens if x.thickness == t])
@@ -904,6 +906,10 @@ def crack_surface_simple(
     if rho is None:
         rho = 2500 # kg/m³
 
+    def ms_gpmm(A_mm2) -> float:
+        """Returns g/mm"""
+        return A_mm2 * rho * 1e-6
+
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
     x = {}
     y = {}
@@ -912,7 +918,7 @@ def crack_surface_simple(
         x[t] = []
         y[t] = []
     for spec,spl_area in splinter_areas.items():
-        spl_rel_mass = spl_area * rho * 1e-6 # mm² * kg/m³ * 1e-6 = kg/mm
+        spl_rel_mass = ms_gpmm(spl_area)
         ut = get_ut(spec)
 
         clr = t_colors[spec.thickness]
@@ -954,10 +960,12 @@ def crack_surface_simple(
         info(f'{t=}:{popt=}')
 
     # approaching hline
-    axs.axhline(0.0225, color='black', linestyle='--')
-    axs.annotate('$A_\mathrm{S}=9 mm^2$', (45, 0.0225), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
+    yasymptote_mm = 9
+    yasymptote = ms_gpmm(yasymptote_mm)
+    axs.axhline(yasymptote, color='black', linestyle='--')
+    axs.annotate(f'$A_\mathrm{{S}}={yasymptote_mm:.0f} mm^2$', (45, yasymptote), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
     axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
-    axs.set_ylabel("$\\sfrac{m_\mathrm{S}}{t} = A_\mathrm{S}\cdot \\rho$ (kg/mm)")
+    axs.set_ylabel("$\\sfrac{m_\mathrm{S}}{t} = A_\mathrm{S}\cdot \\rho$ (g/mm)")
     legend_without_duplicate_labels(axs)
     State.output(StateOutput(fig,sz), f"weightedmass_vs_energy_{boundary}")
 

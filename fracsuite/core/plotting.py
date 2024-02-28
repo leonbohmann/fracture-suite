@@ -1124,7 +1124,7 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annot
     if annotate_label is None:
         annotate_label = func.__name__
     short_label = '{}: R²={:.2f}'.format(annotate_label, rsqr)
-    label = short_label + "\n" + ", ".join([f'a{i+1}={value:.4f}' for i, value in enumerate(popt)])
+    label = short_label + "\n" + ", ".join([f'a{i+1}={value:.2e}' for i, value in enumerate(popt)])
     axs.plot(x_fit, y_fit, color=color, linestyle=ls, label=pltlabel, linewidth=lw)
 
     if annotate:
