@@ -1,9 +1,11 @@
 """
 Commands for simulating and analyzing fracture morphologies.
 """
+import json
 import shutil
-from fracsuite.core.logging import critical, info, warning
+from fracsuite.core.logging import critical, info
 import random
+import os
 from typing import Annotated
 import cv2
 from matplotlib import pyplot as plt
@@ -18,23 +20,26 @@ from fracsuite.core.image import is_gray, to_gray
 from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import arrange_regions, has_layer, interp_layer, region_sizes
-from fracsuite.core.plotting import DataHistMode, FigureSize, annotate_corner, datahist_plot, datahist_to_ax, get_fig_width, get_log_range, renew_ticks_ax, voronoi_to_image
+from fracsuite.core.outputtable import NumpyEncoder
+from fracsuite.core.plotting import DataHistMode, FigureSize, annotate_corner, datahist_plot, datahist_to_ax, get_fig_width, get_log_range, legend_without_duplicate_labels, renew_ticks_ax, voronoi_to_image
 from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress, tracker
 from fracsuite.core.simulation import Simulation
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
+from fracsuite.core.stochastics import data_mse
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from fracsuite.core.vectors import angle_between
+from fracsuite.general import GeneralSettings
 
 from fracsuite.state import State
 
 from spazial import csstraussproc2, bohmann_process
 import matplotlib.ticker as ticker
 
-
+general = GeneralSettings.get()
 
 sim_app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -71,11 +76,12 @@ def nbreak(
     plotsz: Annotated[FigureSize, typer.Option(help="Figure size for graph plots.")] = FigureSize.ROW2,
     with_poisson: Annotated[bool, typer.Option(help="Plot poisson's distribution functions.")] = False,
     legend_outside: Annotated[bool, typer.Option(help="Place legend outside of plot.")] = False,
-    region: Annotated[tuple[float,float,float,float], typer.Option(help="Region to plot in mm. (x1,x2,y1,y2)")] = (-1,-1,-1,-1)
+    region: Annotated[tuple[float,float,float,float], typer.Option(help="Region to plot in mm. (x1,x2,y1,y2)")] = (-1,-1,-1,-1),
+    force_recalc: Annotated[bool, typer.Option(help="Force recalculation of parameters.")] = True
 ):
     specimen = Specimen.get(specimen_name)
     section('Estimating parameters...')
-    intensity, rhc,acceptance = specimen.calculate_break_params(force_recalc=True)
+    intensity, rhc,acceptance = specimen.calculate_break_params(force_recalc=force_recalc)
     info(f'Fracture intensity: {intensity:.2f} 1/mm²')
     info(f'HC Radius: {rhc:.2f} mm')
     info(f'Acceptance: {acceptance:.2e}')
@@ -157,13 +163,14 @@ def nbreak(
     axs.grid(False)
     State.output(fig, 'points', spec=specimen, figwidth=sz, open=State.debug)
 
-
+    voronoi_scale = 5
+    points = np.asarray(points) * voronoi_scale
     # create voronoi of points
     voronoi = Voronoi(points)
 
 
     section('Transforming voronoi...')
-    voronoi_img = np.full((int(size[1]), int(size[0])), 0, dtype=np.uint8)
+    voronoi_img = np.full((int(size[1]*voronoi_scale), int(size[0]*voronoi_scale)), 0, dtype=np.uint8)
     if not is_gray(voronoi_img):
         voronoi_img = cv2.cvtColor(voronoi_img, cv2.COLOR_BGR2GRAY)
     voronoi_to_image(voronoi_img, voronoi)
@@ -177,7 +184,7 @@ def nbreak(
     State.output(fig, 'voronoi', spec=specimen, open=State.debug, figwidth=sz)
 
     section('Digitalize splinters...')
-    splinters = Splinter.analyze_contour_image(voronoi_img, px_per_mm=1)
+    splinters = Splinter.analyze_contour_image(voronoi_img, px_per_mm=voronoi_scale)
     info(f'Found {len(splinters)} splinters.')
     if State.debug:
         imgtest = np.zeros((int(size[1]), int(size[0]), 3), dtype=np.uint8)
@@ -253,8 +260,6 @@ def nbreak(
     axs[0].legend()
     State.output(fig, 'compare_cdf', spec=specimen, figwidth=plotsz)
 
-
-
     return splinters
 
 
@@ -268,7 +273,8 @@ def lbreak(
     E: float = 70e3,
     nue: float = 0.23,
     impact_position: tuple[float,float] = (-1,-1),
-    no_region_crop: bool = False
+    no_region_crop: bool = False,
+    reference: str = None
 ):
     """
     Simulate a fracture morphology using the given parameters.
@@ -301,7 +307,7 @@ def lbreak(
     rhc, rhc_std = interp_layer(SplinterProp.RHC, boundary, thickness, break_pos, energy_u)
     acc, acc_std = interp_layer(SplinterProp.ACCEPTANCE, boundary, thickness, break_pos, energy_u)
     # create radii
-    r_range, t_range = arrange_regions(break_pos=break_pos, w_mm=size[0], h_mm=size[1])
+    r_range, t_range = arrange_regions(d_r_mm=40, break_pos=break_pos, w_mm=size[0], h_mm=size[1])
     info('Radius range', r_range)
     info('Theta range', t_range)
 
@@ -332,6 +338,7 @@ def lbreak(
     urr = relative_remaining_stress(mean_area, thickness)
     nue = 1 - urr
     info(f'Urr: {urr:.2f}', f'nue: {nue:.2f}')
+
 
     # create spatial points
     # points = spazial_gibbs_strauss_process(fracture_intensity, hc_radius, 0.55, size)
@@ -441,12 +448,13 @@ def lbreak(
     )
 
     layers = {
-        'orientation': (il_orientation, il_orientation_stddev, Splinter.get_property_label(SplinterProp.ORIENTATION), 'orientation'),
-        'l1': (il_l1, il_l1_stddev, Splinter.get_property_label(SplinterProp.L1), 'l1'),
-        'l2': (il_l2, il_l2_stddev, Splinter.get_property_label(SplinterProp.L2), 'l2'),
-        'l1l2': (il_l1l2, il_l1l2_stddev, Splinter.get_property_label(SplinterProp.ASP0), 'l1l2'),
-        'intensity': (intensity, intensity_std, Splinter.get_property_label(SplinterProp.INTENSITY), 'intensity'),
-        'rhc': (rhc, rhc_std, Splinter.get_property_label(SplinterProp.RHC), 'rhc'),
+        'orientation': (il_orientation, il_orientation_stddev, Splinter.get_property_label(SplinterProp.ORIENTATION, row3=True), 'orientation'),
+        'l1': (il_l1, il_l1_stddev, Splinter.get_property_label(SplinterProp.L1, row3=True), 'l1'),
+        'l2': (il_l2, il_l2_stddev, Splinter.get_property_label(SplinterProp.L2, row3=True), 'l2'),
+        'l1l2': (il_l1l2, il_l1l2_stddev, Splinter.get_property_label(SplinterProp.ASP0, row3=True), 'l1l2'),
+        'intensity': (intensity, intensity_std, Splinter.get_property_label(SplinterProp.INTENSITY, row3=True), 'intensity'),
+        'rhc': (rhc, rhc_std, Splinter.get_property_label(SplinterProp.RHC, row3=True), 'rhc'),
+        'accprob': (acc, acc_std, Splinter.get_property_label(SplinterProp.ACCEPTANCE, row3=True), 'acc'),
     }
 
     section("Plotting layers...")
@@ -459,6 +467,7 @@ def lbreak(
         axs.plot(r_range, r_il)
         # add error bars to plot
         axs.fill_between(r_range, r_il-r_il_stddev/2, r_il+r_il_stddev/2, alpha=0.3)
+        axs.set_xlabel('R (mm)')
         axs.set_ylabel(mode_labels)
         if State.debug:
             plt.show()
@@ -571,8 +580,8 @@ def lbreak(
 
     # remove small regions
     detected_contours = cv2.findContours(to_gray(markers), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours = [c for c in detected_contours[0] if cv2.contourArea(c) < size_f]
-    info(f'Removing {len(contours)} small regions, smaller than {size_f} px².')
+    contours = [c for c in detected_contours[0] if cv2.contourArea(c) < size_f/2]
+    info(f'Removing {len(contours)} small regions, smaller than {size_f/2:.2f} px².')
     cv2.drawContours(markers, contours, -1, (0,0,0), -1)
     plotImage(markers, 'markers after removing small regions')
 
@@ -614,6 +623,37 @@ def lbreak(
     section('Saving...')
     sim.put_splinters(splinters)
     info(f'Simulation created: {sim.name}_{sim.nbr}')
+
+    sim_areas = [s.area for s in splinters]
+    spec_areas = [s.area for s in Specimen.get(reference).splinters]
+    # sim_vs_spec = calculate_chi2(sim_areas, spec_areas)
+    sim_vs_spec = data_mse(spec_areas, sim_areas)
+    # sim_vs_spec_chi2 = data_chi2(sim_areas, spec_areas)
+    info('MSE: ', sim_vs_spec)
+
+    simulation_data = {
+        'energy': energy_u,
+        'fracture_intensity': fracture_intensity,
+        'hc_radius': hc_radius,
+        'acceptance': c,
+        'impact_position': impact_position,
+        'area': float(area),
+        'size': tuple(size),
+        'nue': nue,
+        'sizef': size_f,
+        'reference': reference if reference is not None else '',
+        # 'chi2': sim_vs_spec_chi2,
+        'mse': sim_vs_spec,
+    }
+
+    with open(sim.get_file('simulation.json'), 'w') as f:
+        json.dump(simulation_data, f, indent=4 ,cls=NumpyEncoder)
+
+
+    if 'output_to' in State.kwargs:
+        shutil.copytree(sim.get_file(""), os.path.join(general.to_base_path, State.kwargs['output_to'], sim.name), dirs_exist_ok=True)
+
+
     return sim
 
 def cropimg(region, size_f, markers):
@@ -628,9 +668,9 @@ def lbreak_like(
     thickness: float = None,
     boundary: SpecimenBoundary = None,
     break_pos: SpecimenBreakPosition = None,
-    no_region_crop: bool = False
+    no_region_crop: bool = False,
+    validate: int = -1
 ):
-
     specimen = Specimen.get(name)
 
     if sigma_s is None:
@@ -652,21 +692,46 @@ def lbreak_like(
     info(f'> Boundary: {boundary}')
     info(f'> Break position: {break_pos}')
 
-    # create simulation
-    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
-                        no_region_crop=no_region_crop)
-    # compare simulation with input
-    compare(simulation.fullname, specimen.name)
+    if validate == -1:
+        # create simulation
+        simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+                            no_region_crop=no_region_crop, reference=specimen.name)
+        # compare simulation with input
+        compare(simulation.fullname, specimen.name)
 
-    # put the original fracture image on a figure into the simulatio
-    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-    axs.imshow(specimen.get_fracture_image())
-    axs.set_xlabel('x (px)')
-    axs.set_ylabel('y (px)')
-    axs.grid(False)
-    fig.savefig(simulation.get_file('original_fracture_image.pdf'))
+        # put the original fracture image on a figure into the simulatio
+        fig0,axs0 = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+        axs0.imshow(specimen.get_fracture_image())
+        axs0.set_xlabel('x (px)')
+        axs0.set_ylabel('y (px)')
+        axs0.grid(False)
+        fig0.savefig(simulation.get_file('original_fracture_image.pdf'))
 
-    return simulation
+        return simulation
+    else:
+        spec_areas = [s.area for s in specimen.splinters]
+        binrange = get_log_range(spec_areas, 30)
+
+        fig0,axs0 = None,None
+        with plt.ion():
+            fig0,axs0 = datahist_plot(figwidth=FigureSize.ROW1)
+            datahist_to_ax(axs0, spec_areas, binrange=binrange, color='C0', data_mode=DataHistMode.CDF)
+            fig0.canvas.draw()
+            fig0.canvas.flush_events()
+
+        for i in range(validate):
+            sim = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+                            no_region_crop=no_region_crop, reference=specimen.name)
+            areas = [s.area for s in sim.splinters]
+            info(f'Validation {i+1}/{validate}: {len(sim.splinters)} splinters, mean area: {np.mean(areas):.2f} mm²')
+            datahist_to_ax(axs0, areas, binrange=binrange, color='C1', data_mode=DataHistMode.CDF, linewidth=0.3)
+            fig0.canvas.draw()
+            fig0.canvas.flush_events()
+
+        axs0[0].set_xlabel('Bruchstückflächeninhalt $A_\mathrm{S}$ (mm²)')
+        axs0[0].set_ylabel('CDF')
+        legend_without_duplicate_labels(axs0[0])
+        State.output(fig0, f'validation_{specimen.name}', figwidth=FigureSize.ROW1)
 
 @sim_app.command()
 def compare_all(name):
@@ -693,9 +758,9 @@ def compare_all(name):
     nue = 0.23
 
     # create simulation
-    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue)
+    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, reference=name)
 
-    voronoi = nbreak(specimen.name)
+    voronoi = nbreak(specimen.name, force_recalc=False)
     # compare simulation with input
     compare(simulation.fullname, specimen.name, voronoi)
 
@@ -715,38 +780,53 @@ def compare(
     sim = Simulation.get(simulation_name)
     specimen = Specimen.get(specimen_name)
 
-    max_area = np.min([np.max([s.area for s in sim.splinters]), np.max([s.area for s in specimen.splinters])])
-
     # create histogram of simulation
     sim_splinters = sim.splinters
-    sim_areas = [s.area for s in sim_splinters]
-    sim_hist, sim_bins = np.histogram(sim_areas, bins=30, density=True, range=(0, max_area))
-
     # create histogram of specimen
     spec_splinters = specimen.splinters
+
+    plotmode = 'hist'
+    sim_areas = [s.area for s in sim_splinters]
     spec_areas = [s.area for s in spec_splinters]
-
-    # plot histograms
-    fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
     binrange = get_log_range(spec_areas, 30)
+    # spec_areas_h = np.histogram(spec_areas, bins=binrange)[0]
+    # sim_areas_h = np.histogram(sim_areas, bins=binrange)[0]
 
+    # create voronoi if available
+    vor_areas = None
+    # vor_compare = "Voronoi" if voronoi is not None else ""
+    # lbr_compare = ""
     if voronoi is not None:
         vor_splinters = voronoi
         vor_areas = [s.area for s in vor_splinters]
-        datahist_to_ax(axs, vor_areas, binrange=binrange, label='Voronoi')
-    datahist_to_ax(axs, spec_areas, binrange=binrange, label='Probekörper', color="C0")
-    datahist_to_ax(axs, sim_areas, binrange=binrange, label='Simulation', color="C1")
+        # vor_areas_h = np.histogram(vor_areas, bins=binrange)[0]
+        plotmode = 'steps'
+        # mse_vor = data_mse(spec_areas_h, vor_areas_h)
+        # chi2_vor = data_chi2(vor_areas, spec_areas)
+        # vor_compare = f'$MSE_{{break}}$: {mse_vor:.2f}'
+
+    # lbr_compare = f'$MSE_{{sim}}$: {data_mse(spec_areas_h, sim_areas_h):.2f}'
 
 
-    axs[0].legend()
-    #save figure to simulation
-    State.output(fig, f'{specimen.name}--{sim.name}_{sim.nbr}', figwidth=FigureSize.ROW2)
+    for mode in [DataHistMode.PDF, DataHistMode.CDF]:
+        # plot histograms
+        fig,axs = datahist_plot(figwidth=FigureSize.ROW2, data_mode=mode)
+        if vor_areas is not None:
+            datahist_to_ax(axs, vor_areas, binrange=binrange, label='BREAK', color="C2", data_mode=mode, plot_mode=plotmode)
+        datahist_to_ax(axs, spec_areas, binrange=binrange, label='Probekörper', color="C0", data_mode=mode, plot_mode=plotmode)
+        datahist_to_ax(axs, sim_areas, binrange=binrange, label='Simulation', color="C1", data_mode=mode, plot_mode=plotmode)
+
+        # axs[0].annotate(lbr_compare, xy=(0.95, 0.95), xycoords='axes fraction', ha='right', va='top', fontsize=6)
+        # axs[0].annotate(vor_compare, xy=(0.95, 0.90), xycoords='axes fraction', ha='right', va='top', fontsize=6)
+        axs[0].legend()
+        #save figure to simulation
+        State.output(fig, f'lbreak--nbreak--real_{mode}', figwidth=FigureSize.ROW2)
 
 
-    fig.savefig(sim.get_file(f'{specimen.name}_vs_{sim.name}_{sim.nbr}.pdf'))
+        fig.savefig(sim.get_file(f'comparison_{mode}.pdf'))
 
-    info('Specimen: ', len(spec_splinters))
-    info('Simulation: ', len(sim_splinters))
+    info('Specimen: ', len(spec_splinters), ' Splinters')
+    info('Simulation: ', len(sim_splinters), ' Splinters')
 
 
     # data_list = [
@@ -764,155 +844,42 @@ def compare(
 
     # State.output(fig2d, f'{specimen.name}--{sim.fullname}--voronoi', figwidth=FigureSize.ROW2)
 
-# @sim_app.command()
-# def create_spatial():
-#     area = (500,500)
-#     intensity = 0.1
-#     n_points = 500
-#     image = np.zeros((area[0],area[1],3), dtype=np.uint8)
-
-#     points = gibbs_strauss_process(n_points, 20, intensity, area=area)
-#     # points = CSR_process(10, area[0])
-#     x,y = zip(*points)
-
-#     plt.figure()
-#     plt.scatter(x,y)
-#     plt.show()
-
-#     # perform watershed on the points
-#     markers = np.zeros(area, dtype=np.uint8)
-#     for point in points:
-#         markers[int(point[0]), int(point[1])] = 255
-
-#     markers = dilateImg(markers, 5)
-#     markers_rgb = to_rgb(markers)
-#     # from top left elongate markers
-#     p0 = np.asarray((area[0]*0.2,area[1]*0.2))
-#     max_elong = 20
-#     elong_d = 2 #px
-#     ds = np.linspace(0, np.sqrt(area[0]**2+area[1]**2), 100)
-
-#     dmax = np.max(ds)
-#     done = []
-#     print(ds)
-#     for d in track(ds):
-#         fd = 1-d/dmax
-#         print(fd)
-
-#         for i,p in enumerate(points):
-#             if i in done:
-#                 continue
-
-#             p = np.asarray(p)
-
-#             # get vector from p0 to p
-#             v = p-p0
-#             # normalize
-#             dp = np.linalg.norm(v)
-
-#             if dp > d:
-#                 continue
-
-#             done.append(i)
-
-#             v = v/dp
-#             for j in np.linspace(0, max_elong*fd, int(max_elong*fd/elong_d)*5):
-#                 # calculate new point from p with v0 and elong_d distance
-#                 new_point = p+v*j
-#                 # and other side as well
-#                 new_point2 = p-v*j
-#                 # print(p)
-#                 # print(v)
-#                 # print(new_point)
-#                 # print(new_point2)
-#                 # input("")
-#                 # add filled circle to both new points
-#                 # cv2.circle(markers_rgb, (int(p[1]), int(p[0])), elong_d, (0,255,255), -1)
-#                 # cv2.circle(markers_rgb, (int(new_point[1]), int(new_point[0])), elong_d, (255,0,0), -1)
-#                 cv2.circle(markers, (int(new_point[1]), int(new_point[0])), elong_d, 255, -1)
-#                 cv2.circle(markers, (int(new_point2[1]), int(new_point2[0])), elong_d, 255, -1)
+@sim_app.command()
+def compare_polar(
+    prop: SplinterProp,
+    simulation_name: str,
+    specimen_name: str = None,
+):
+    simulation = Simulation.get(simulation_name)
 
 
-
-#     plotImage(markers, 'elongated markers', force=True)
-
-#     markers = cv2.connectedComponents(np.uint8(markers))[1]
-
-#     markers = cv2.watershed(np.zeros_like(image), markers)
-
-#     m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-#     m_img[markers == -1] = 255
-
-#     splinters = Splinter.analyze_contour_image(m_img)
-
-#     out_img = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
-#     for s in splinters:
-#         clr = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-#         cv2.drawContours(out_img, [s.contour], -1, clr, -1)
-
-#     plt.imshow(out_img)
-#     plt.show()
-
-# @sim_app.command()
-# def compare_spatial(specimen_name):
-#     specimen = Specimen.get(specimen_name)
+    if specimen_name is None and (specimen := simulation.reference) is not None:
+        info(f'Using reference from simulation: {specimen.name}')
+    elif specimen_name is not None:
+        specimen = Specimen.get(specimen_name)
+    else:
+        assert False, 'Simulation has no reference. Please provide a specimen name.'
 
 
-#     size = 300
-#     x1 = 500
-#     x2 = x1 + size
-#     y1 = 500
-#     y2 = y1 + size
+    r_range_mm, t_range_deg = arrange_regions(break_pos=SpecimenBreakPosition.CORNER)
+    # get splinters of both simulation
+    r,_,simZ,_ = simulation.calculate_2d_polar(prop, r_range_mm,t_range_deg)
+    _,_,specZ,_ = specimen.calculate_2d_polar(prop, r_range_mm,t_range_deg)
+    r = r.flatten()
+    simZ = simZ.flatten()
+    specZ = specZ.flatten()
 
-#     # choose a region to replicate
-#     region = RectRegion(x1,y1,x2,y2)
-
-#     # get region from specimen fracture image
-#     splinters_in_region = specimen.get_splinters_in_region(region)
-#     frac_img = specimen.get_fracture_image()
-
-#     image = np.zeros((size,size,3), dtype=np.uint8)
-
-#     orig_contours = to_rgb(np.zeros_like(frac_img, dtype=np.uint8))
-
-#     # perform watershed on the points
-#     markers = np.zeros((size,size), dtype=np.uint8)
-#     for s in splinters_in_region:
-#         point = s.centroid_px
-#         ix = np.max([np.min([int(point[0])-x1, size-1]), 0])
-#         iy = np.max([np.min([int(point[1])-y1, size-1]), 0])
-#         markers[ix,iy] = 255
-
-#         cv2.drawContours(orig_contours, [s.contour], -1, (0,0,255), 2)
-
-#     orig_contours = orig_contours[x1:x2, y1:y2,:]
-
-#     markers = dilateImg(markers, 3, it=3)
-#     plt.imshow( markers)
-#     plt.show()
-
-#     markers = cv2.connectedComponents(np.uint8(markers))[1]
-
-#     markers = cv2.watershed(np.zeros_like(image), markers)
-
-#     m_img = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-#     m_img[markers == -1] = 255
-
-#     splinters = Splinter.analyze_contour_image(m_img)
-
-#     gen_contours = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
-#     for s in splinters:
-#         clr = (255,0,0)
-#         cv2.drawContours(gen_contours, [s.contour], -1, clr, 1)
-
-#     print(orig_contours.shape)
-#     print(gen_contours.shape)
-#     comparison = cv2.addWeighted(orig_contours, 0.5, gen_contours, 0.5, 0)
+    # plot in the same fig
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+    axs.plot(r, specZ, label='Probekörper')
+    axs.plot(r, simZ, label='Simulation')
+    axs.set_xlabel('R (mm)')
+    axs.set_ylabel(Splinter.get_property_label(prop, row3=False))
+    axs.legend()#
+    # axs.annotate(f'NRMSE: {nrmse1:.1f}%', xy=(0.5, 0.5), xycoords='axes fraction', ha='center', va='center')
+    State.output(fig, f'{specimen.name}--{simulation.fullname}--{prop}', figwidth=FigureSize.ROW2)
 
 
-#     plt.imshow(comparison)
-#     plt.show()
-# endregion
 
 @sim_app.command()
 def create_voronoi():

@@ -692,7 +692,8 @@ def datahist_to_ax(
     as_density = True,
     plot_mode: DataHistPlotMode = DataHistPlotMode.HIST,
     unit: str = "mm²",
-    mean_format: str = ".1f"
+    mean_format: str = ".1f",
+    linewidth: float = 1,
 ) -> tuple[Any, list[float], Any]:
     """
     Plot a histogram of the data to axes ax.
@@ -735,9 +736,9 @@ def datahist_to_ax(
                         density=as_density,
                         histtype='step',
                         color=fillcolor,
-                        label=label,
                         linewidth=1,
                         alpha=alpha)
+                ax.plot([],[], label=label, color=fillcolor, alpha=alpha, linewidth=1)
             elif plot_mode == DataHistPlotMode.HIST:
                 edgecolor = 'gray'
 
@@ -752,7 +753,7 @@ def datahist_to_ax(
                         alpha=alpha)
 
 
-            color = edgecolor if plot_mode == DataHistPlotMode.STEPS else fillcolor
+            color = fillcolor
         elif plot_mode == DataHistPlotMode.KDE or plot_mode == DataHistPlotMode.KDE2:
             x,y = calculate_kde(data)
             gauss_kde_plot = ax.plot(x,y, label=label, color=color, alpha=1.0, zorder=0)
@@ -768,18 +769,20 @@ def datahist_to_ax(
         binned_data, edges = np.histogram(data, bins=binrange, density=as_density)
         cumsum = np.cumsum(binned_data)
         # density: normalize the bins data count to the total amount of data
-        bin_container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha, color=norm_color(color))[0]
+        bin_container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha, color=norm_color(color), linewidth=linewidth)[0]
         color = bin_container.get_color()
 
     if plot_mean:
         mean_format = f'{{0:{mean_format}}}'
 
-        most_probable_area,_ = calculate_dmode(data)
+        most_probable_area,_ = calculate_dmode(data, bins=50)
         print(most_probable_area)
         most_probable_area_value = 10**most_probable_area if as_log else most_probable_area
         most_probable_area_string = mean_format.format(most_probable_area_value)
         print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
-        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"{most_probable_area_string}{unit}", color=color, alpha=alpha)
+        idmax = np.argmax(binned_data)
+        ymax = binned_data[idmax] if data_mode == DataHistMode.PDF else cumsum[idmax] / np.max(cumsum)
+        ax.vlines(x=most_probable_area, ymin=0,ymax=ymax, linestyle='--', label=f"{most_probable_area_string}{unit}", color=color, alpha=alpha)
 
         # axd = ax.get_xlim()[1] - ax.get_xlim()[0]
         # ayd = ax.get_ylim()[1] - ax.get_ylim()[0]

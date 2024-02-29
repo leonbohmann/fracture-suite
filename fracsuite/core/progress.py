@@ -15,7 +15,7 @@ def default_progress(start = False):
         return state['progress']
 
     prog = get_progress()
-    prog.start()
+    prog.enter()
     return prog
 
 def on_progress_exit():
@@ -45,16 +45,5 @@ def get_spinner(description: str = "Loading specimens...", with_bar: bool = Fals
 
 T = TypeVar('T')
 def tracker(iterator: Union[Sequence[T] | Iterator[T] | dict[T,Any]], title=None, total=None) -> Iterator[T]:
-
-    if total is None and hasattr(iterator, '__len__'):
-        total = len(iterator)
-
-    progress = get_progress(total=total, title=title)
-    progress.start()
-
-    try:
-        for obj in iterator:
-            yield obj
-            progress.advance()
-    finally:
-        progress.stop()
+    for obj in iterator:
+        yield obj
