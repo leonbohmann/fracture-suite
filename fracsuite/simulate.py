@@ -54,7 +54,7 @@ def stdrand(mean, stddev):
 
 def meanrand(mean, stddev):
     """Returns a random number between mean-stdev and mean+stdev"""
-    d = rng.random() - 0.5
+    d = 2.0*(rng.random() - 0.5)
     return mean + d * stddev
 
 def image_to_fig(image, ret_ax=False, figwidth=FigureSize.ROW3, unit='mm'):
@@ -519,7 +519,7 @@ def lbreak(
             ## calculate length of major axis using l1 and its deviation
             # calculate length of major axis (this is radius, so divide by 2)
             l_major = l1 / 2 # this will be filled from the algorithm
-            l_minor = l_major / l1l2
+            l_minor = l2 / 2
 
             # make dimensions smaller so that the algorithm can fill it
             l_major = l_major
@@ -575,6 +575,7 @@ def lbreak(
     plotImage(markers, 'markers')
     markers_clipped = cropimg(region_scaled, size_f, markers)
     fig = image_to_fig(markers_clipped, figwidth=pointsz, unit='px')
+    cv2.imwrite(sim.get_file('points_modified.png'), markers_clipped)
     fig.savefig(sim.get_file('points_modified.pdf'))
 
 
@@ -615,8 +616,10 @@ def lbreak(
         plt.show()
 
     State.output(black_white_img, f'generated_{sigma_s}_{thickness}', spec=None, figwidth=FigureSize.ROW2, open=State.debug)
+    cv2.imwrite(sim.get_file('splinters_filled.png'), out_img)
     fig = image_to_fig(cropimg(region_scaled, size_f, out_img), figwidth=pointsz, unit='px')
     fig.savefig(sim.get_file('splinters_filled.pdf'))
+    cv2.imwrite(sim.get_file('splinters_contours.png'), 255-black_white_img)
     fig = image_to_fig(cropimg(region_scaled, size_f, 255-black_white_img), figwidth=pointsz, unit='px')
     fig.savefig(sim.get_file('splinters_contours.pdf'))
 
@@ -851,6 +854,7 @@ def compare_polar(
     prop: SplinterProp,
     simulation_name: str,
     specimen_name: str = None,
+    sz: FigureSize = FigureSize.ROW3
 ):
     simulation = Simulation.get(simulation_name)
 
@@ -872,14 +876,14 @@ def compare_polar(
     specZ = specZ.flatten()
 
     # plot in the same fig
-    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
     axs.plot(r, specZ, label='Probekörper')
     axs.plot(r, simZ, label='Simulation')
     axs.set_xlabel('R (mm)')
-    axs.set_ylabel(Splinter.get_property_label(prop, row3=False))
+    axs.set_ylabel(Splinter.get_property_label(prop, row3=sz==FigureSize.ROW3))
     axs.legend()#
     # axs.annotate(f'NRMSE: {nrmse1:.1f}%', xy=(0.5, 0.5), xycoords='axes fraction', ha='center', va='center')
-    State.output(fig, f'{specimen.name}--{simulation.fullname}--{prop}', figwidth=FigureSize.ROW2)
+    State.output(fig, f'lbreak--real--{prop}', figwidth=sz)
 
 
 
