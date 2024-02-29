@@ -114,13 +114,26 @@ class StateOutput:
                         debug(f"Overriding ylim with {State.kwargs['override_ylim']}.")
                         self.Data.axes[0].set_ylim(State.kwargs['override_ylim'])
 
-                    if not self.fig_as_img_only and not State.figasimgonly:
+                    save_fig = (not self.fig_as_img_only and not State.figasimgonly) or State.figaspdfonly
+                    save_img = State.figasimgonly or self.fig_as_img_only
+
+                    if not save_fig and not save_img:
+                        warning("No output format specified. Saving as image.")
+                        save_img = True
+
+                    if save_fig:
                         self.Data.savefig(
                             outfile := f'{path}_{figw}.{general.plot_extension}',
                         )
-                    self.Data.savefig(
-                        outfile := f'{path}_{figw}.png',
-                    )
+                        if not save_img:
+                            filename = os.path.basename(outfile)
+                            self.Data.savefig(
+                                outfile := tempfile.mktemp(suffix=f'_{filename}.png'),
+                            )
+                    if save_img:
+                        self.Data.savefig(
+                            outfile := f'{path}_{figw}.png',
+                        )
                 saved = True
 
             except PermissionError:
@@ -196,6 +209,8 @@ class State:
     "When doing image processing this will save the plots instead of just showing them."
     figasimgonly: bool = False
     "Save plots as images only."
+    figaspdfonly: bool = False
+    "Save plots as pdfs only."
     maximum_specimen: int = 1000
     "Globaly define the maximum amount of specimen that can be loaded."
     no_open: bool = False
@@ -226,11 +241,11 @@ class State:
         return State.__progress_started
 
     def start_progress():
-        State.progress.start()
+        State.progress.enter()
         State.__progress_started = True
 
     def stop_progress():
-        State.progress.stop()
+        State.progress.exit()
         State.__progress_started = False
 
     @staticmethod
