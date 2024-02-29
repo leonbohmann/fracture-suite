@@ -642,6 +642,8 @@ def lbreak(
         'nue': nue,
         'sizef': size_f,
         'reference': reference if reference is not None else '',
+        'reference_sigma': sigma_s,
+        'reference_thickness': thickness,
         # 'chi2': sim_vs_spec_chi2,
         'mse': sim_vs_spec,
     }

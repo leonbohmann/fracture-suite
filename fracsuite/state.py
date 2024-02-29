@@ -129,6 +129,7 @@ class StateOutput:
                             filename = os.path.basename(outfile)
                             self.Data.savefig(
                                 outfile := tempfile.mktemp(suffix=f'_{filename}.png'),
+                                dpi=96
                             )
                     if save_img:
                         self.Data.savefig(
