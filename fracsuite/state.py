@@ -125,7 +125,7 @@ class StateOutput:
                         self.Data.savefig(
                             outfile := f'{path}_{figw}.{general.plot_extension}',
                         )
-                        if not save_img:
+                        if not save_img and not State.no_open:
                             filename = os.path.basename(outfile)
                             self.Data.savefig(
                                 outfile := tempfile.mktemp(suffix=f'_{filename}.png'),
