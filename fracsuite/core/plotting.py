@@ -694,6 +694,7 @@ def datahist_to_ax(
     unit: str = "mm²",
     mean_format: str = ".1f",
     linewidth: float = 1,
+    no_log_convert: bool = False
 ) -> tuple[Any, list[float], Any]:
     """
     Plot a histogram of the data to axes ax.
@@ -710,7 +711,7 @@ def datahist_to_ax(
         ax = ax[0]
 
     def cvt(x):
-        return np.log10(x) if as_log else x
+        return np.log10(x) if as_log and not no_log_convert else x
 
     if not as_log:
         ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(x))
