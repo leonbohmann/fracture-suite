@@ -711,7 +711,7 @@ def datahist_to_ax(
         ax = ax[0]
 
     def cvt(x):
-        return np.log10(x) if as_log and not no_log_convert else x
+        return np.log10(x) if as_log else x
 
     if not as_log:
         ticks = FuncFormatter(lambda x, pos: '{0:.00f}'.format(x))

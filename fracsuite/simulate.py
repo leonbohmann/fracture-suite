@@ -356,6 +356,7 @@ def alfa(
     l_values = intensity(r_range)
     l_array = np.column_stack((r_range, l_values))
     r_areas = region_sizes(r_range, impact_position, size)
+
     points = bohmann_process(size[0], size[1], r_range, r_areas, l_array, rhc_array, impact_position, c, int(1e6), False)
 
     # print region
@@ -739,7 +740,11 @@ def alfa_like(
         State.output(fig0, f'validation_{specimen.name}', figwidth=FigureSize.ROW1)
 
 @sim_app.command()
-def compare_all(name):
+def compare_all(
+    name,
+    voronoi_count: int = 1,
+    alfa_count: int = 1
+):
     """
     Compares both the nbreak and alfa of a specimen.
 
@@ -762,12 +767,72 @@ def compare_all(name):
     E = 70e3
     nue = 0.23
 
-    # create simulation
-    simulation = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, reference=name)
+    sim_areas = [s.area for s in specimen.splinters]
+    binrange = get_log_range(sim_areas, 30)
+    sim_bins = np.histogram(sim_areas, bins=binrange)[0]
 
-    voronoi = nbreak(specimen.name, force_recalc=False)
-    # compare simulation with input
-    compare(simulation.fullname, specimen.name, voronoi)
+    ## ALFA
+    # create alfa simulations
+    simulations = []
+    for i in range(alfa_count):
+        simulation = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, reference=name)
+        simulations.append(simulation)
+    # transform areas to bins
+    simulation_area_bins = []
+    for sim in simulations:
+        simulation_areas = [s.area for s in sim.splinters]
+        simulation_areas = np.histogram(simulation_areas, bins=binrange)[0]
+        simulation_area_bins.append(simulation_areas)
+
+    ## VORONOI
+    # create voronoi simulations
+    voronois = []
+    for i in range(voronoi_count):
+        voronoi = nbreak(specimen.name, force_recalc=False)
+        voronois.append(voronoi)
+    # transform areas to bins
+    voronoi_area_bins = []
+    for vor in voronois:
+        vor_areas = [s.area for s in vor]
+        vor_areas = np.histogram(vor_areas, bins=binrange)[0]
+        voronoi_area_bins.append(vor_areas)
+
+
+    create_validation_plots(
+        sim_bins,
+        simulation_area_bins,
+        voronoi_area_bins,
+        name,
+        binrange
+    )
+
+def create_validation_plots(
+    spec_area_bins: list, # lists of bins!
+    sim_area_bins: list,
+    vor_area_bins: list,
+    name,
+    binrange,
+    plot_all: bool = False,
+):
+
+    # calculate mean of all simulations
+    simulation_area_bins = np.mean(sim_area_bins, axis=0)
+    # calculate mean of all simulations
+    vor_area_bins = np.mean(vor_area_bins, axis=0)
+
+    fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
+    axs[0].plot(binrange[:-1], np.cumsum(spec_area_bins), label='Probekörper', color='C0')
+    axs[0].plot(binrange[:-1], np.cumsum(simulation_area_bins), label='ALFA', color='C1')
+    axs[0].plot(binrange[:-1], np.cumsum(vor_area_bins), label='Voronoi', color='C2')
+    State.output(fig, f'validation_{name}_cdf', figwidth=FigureSize.ROW2)
+
+
+    fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
+    axs[0].bar(binrange[:-1], spec_area_bins, width=np.diff(binrange), label='Probekörper', color='C0')
+    axs[0].bar(binrange[:-1], simulation_area_bins, width=np.diff(binrange), label='ALFA', color='C1')
+    axs[0].bar(binrange[:-1], vor_area_bins, width=np.diff(binrange), label='Voronoi', color='C2')
+    State.output(fig, f'validation_{name}_cdf', figwidth=FigureSize.ROW2)
+
 
 @sim_app.command()
 def compare(
