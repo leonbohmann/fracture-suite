@@ -21,14 +21,14 @@ from fracsuite.core.imageplotting import plotImage
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import arrange_regions, has_layer, interp_layer, region_sizes
 from fracsuite.core.outputtable import NumpyEncoder
-from fracsuite.core.plotting import DataHistMode, FigureSize, annotate_corner, datahist_plot, datahist_to_ax, get_fig_width, get_log_range, legend_without_duplicate_labels, renew_ticks_ax, voronoi_to_image
+from fracsuite.core.plotting import DataHistMode, DataHistPlotMode, FigureSize, annotate_corner, datahist_plot, datahist_to_ax, get_fig_width, get_log_range, legend_without_duplicate_labels, renew_ticks_ax, voronoi_to_image
 from fracsuite.core.point_process import gibbs_strauss_process
 from fracsuite.core.progress import get_progress, tracker
 from fracsuite.core.simulation import Simulation
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import data_mse
+from fracsuite.core.stochastics import calculate_dmode, data_mse
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from fracsuite.core.vectors import angle_between
@@ -956,3 +956,88 @@ def create_voronoi():
     voronoi_plot_2d(vor, ax=axs)
 
     plt.show()
+
+
+@sim_app.command()
+def alfa_validate(
+    name: str,
+    sigma_s: float = None,
+    thickness: float = None,
+    boundary: SpecimenBoundary = None,
+    break_pos: SpecimenBreakPosition = None,
+    no_region_crop: bool = False,
+    validation_count: int = 10
+):
+    specimen = Specimen.get(name)
+
+    if sigma_s is None:
+        sigma_s = np.abs(specimen.sig_h)
+    if thickness is None:
+        thickness = specimen.thickness
+    size = specimen.get_real_size()
+    if boundary is None:
+        boundary = specimen.boundary
+    if break_pos is None:
+        break_pos = specimen.break_pos
+    E = 70e3
+    nue = 0.23
+
+    info(f'Creating simulation for {specimen.name}')
+    info(f'> Sigma_s: {sigma_s}')
+    info(f'> Thickness: {thickness} (real: {specimen.measured_thickness})')
+    info(f'> Size: {size}')
+    info(f'> Boundary: {boundary}')
+    info(f'> Break position: {break_pos}')
+
+    spec_areas = [s.area for s in specimen.splinters]
+    vor_splinters = nbreak(specimen.name, force_recalc=False)
+    vor_areas = [s.area for s in vor_splinters]
+    binrange = get_log_range(spec_areas, 30)
+
+    sim_areas_all = []
+    mpv_areas_all = []
+
+    fig0,axs0 = None,None
+    with plt.ion():
+        fig0,axs0 = datahist_plot(figwidth=FigureSize.ROW1)
+        datahist_to_ax(axs0, spec_areas, binrange=binrange, color='C0', data_mode=DataHistMode.PDF)
+        fig0.canvas.draw()
+        fig0.canvas.flush_events()
+
+    for i in range(validation_count):
+        sim = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+                        no_region_crop=no_region_crop, reference=specimen.name)
+        areas = [s.area for s in sim.splinters]
+        sim_areas_all.append(areas)
+
+        most_prob_area = calculate_dmode(np.asarray(areas))
+        mpv_areas_all.append(most_prob_area)
+
+        info(f'Validation {i+1}/{validation_count}: {len(sim.splinters)} splinters, mean area: {np.mean(areas):.2f} mm²')
+        datahist_to_ax(axs0, areas, binrange=binrange, color='C1', data_mode=DataHistMode.PDF, plot_mode=DataHistPlotMode.STEPS, linewidth=0.3)
+        fig0.canvas.draw()
+        fig0.canvas.flush_events()
+
+    axs0[0].set_xlabel('Bruchstückflächeninhalt $A_\mathrm{S}$ (mm²)')
+    axs0[0].set_ylabel('CDF')
+    legend_without_duplicate_labels(axs0[0])
+    State.output(fig0, f'validation_{specimen.name}', figwidth=FigureSize.ROW1)
+
+    print(mpv_areas_all)
+
+    sim_areas_all_hist = []
+    # calculate mean areas
+    for sim_area in sim_areas_all:
+        sim_area_hist = np.histogram(np.log10(sim_area), bins=binrange, density=True)[0]
+        sim_areas_all_hist.append(sim_area_hist)
+
+    sim_areas_all_hist = np.array(sim_areas_all_hist)
+    sim_areas_all_mean = np.mean(sim_areas_all_hist, axis=0)
+
+    for mode in [DataHistMode.PDF, DataHistMode.CDF]:
+        dmode = DataHistPlotMode.STEPS
+        fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
+        datahist_to_ax(axs, spec_areas, binrange=binrange, label="Probekörper", color='C0', data_mode=mode, plot_mode=dmode)
+        datahist_to_ax(axs, vor_areas, binrange=binrange, label="Voronoi", color='C2', data_mode=mode, plot_mode=dmode)
+        datahist_to_ax(axs, 10**sim_areas_all_mean, binrange=binrange, label="Simulation", color='C1', data_mode=mode, plot_mode=dmode)
+        State.output(fig, f'validation_{specimen.name}_mean_{dmode}', figwidth=FigureSize.ROW2)
