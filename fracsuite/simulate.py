@@ -370,7 +370,7 @@ def alfa(
     x,y = zip(*points)
     # plot points
     fig,axs = plt.subplots(figsize=get_fig_width(pointsz))
-    axs.scatter(x,y, s=0.5 if no_region_crop else 1)
+    axs.scatter(x,y, s=0.01 if no_region_crop else 1)
     # find maximum region from points
     x_min = np.min(x)
     x_max = np.max(x)
@@ -606,7 +606,7 @@ def alfa(
     for s in splinters:
         clr = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
         cv2.drawContours(out_img, [s.contour], -1, clr, -1)
-        cv2.drawContours(black_white_img, [s.contour], -1, 255, 2)
+        cv2.drawContours(black_white_img, [s.contour], -1, 255, 3)
 
     if State.debug:
         plt.imshow(out_img)
