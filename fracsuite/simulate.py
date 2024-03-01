@@ -77,7 +77,8 @@ def nbreak(
     with_poisson: Annotated[bool, typer.Option(help="Plot poisson's distribution functions.")] = False,
     legend_outside: Annotated[bool, typer.Option(help="Place legend outside of plot.")] = False,
     region: Annotated[tuple[float,float,float,float], typer.Option(help="Region to plot in mm. (x1,x2,y1,y2)")] = (-1,-1,-1,-1),
-    force_recalc: Annotated[bool, typer.Option(help="Force recalculation of parameters.")] = True
+    force_recalc: Annotated[bool, typer.Option(help="Force recalculation of parameters.")] = True,
+    no_plot_creation: Annotated[bool, typer.Option(help="Do not create plots.")] = False
 ):
     specimen = Specimen.get(specimen_name)
     section('Estimating parameters...')
@@ -94,57 +95,58 @@ def nbreak(
         # see Baddeley et al. S.206 K_pois
         return d
 
-    section('Plotting kfunc...')
-    x,y = specimen.kfun()
-    fig, ax = plt.subplots(figsize=get_fig_width(plotsz))
-    ax.plot(x,y, label='$\hat{K}$') # , marker='x' # to display the points
-    if with_poisson:
-        ax.plot(x,Kpois(np.asarray(x)), label='$\hat{K}_{t}$')
-    if legend_outside:
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    else:
-        ax.legend()
-    ax.set_ylabel('$\hat{K}(d)$')
-    ax.set_xlabel('$d$ (mm)')
-    State.output(fig,'kfunc', spec=specimen, figwidth=plotsz, open=State.debug)
+    if not no_plot_creation:
+        section('Plotting kfunc...')
+        x,y = specimen.kfun()
+        fig, ax = plt.subplots(figsize=get_fig_width(plotsz))
+        ax.plot(x,y, label='$\hat{K}$') # , marker='x' # to display the points
+        if with_poisson:
+            ax.plot(x,Kpois(np.asarray(x)), label='$\hat{K}_{t}$')
+        if legend_outside:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        else:
+            ax.legend()
+        ax.set_ylabel('$\hat{K}(d)$')
+        ax.set_xlabel('$d$ (mm)')
+        State.output(fig,'kfunc', spec=specimen, figwidth=plotsz, open=State.debug)
 
 
-    section('Plotting lfunc...')
-    x2,y2 = specimen.lfun()
-    min_L = rhc
+        section('Plotting lfunc...')
+        x2,y2 = specimen.lfun()
+        min_L = rhc
 
-    ax: Axes
-    fig, ax = plt.subplots(figsize=get_fig_width(plotsz))
-    ax.plot(x2,y2, label='$\hat{L}$')
-    ax.axvline(rhc, linestyle='--', color='r', label='$r_{{hc}}$')
-    if with_poisson:
-        ax.plot(x2,Lpois(np.asarray(x)), label='$\hat{L}_{t}$')
-    if legend_outside:
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    else:
-        ax.legend()
-    annotate_corner(ax, f'$r_{{hc}}={rhc:.2f}$')
-    ax.set_ylabel('$\hat{L}(d)$')
-    ax.set_xlabel('$d$ (mm)')
-    State.output(fig, 'lfunc', spec=specimen, figwidth=plotsz, open=State.debug)
+        ax: Axes
+        fig, ax = plt.subplots(figsize=get_fig_width(plotsz))
+        ax.plot(x2,y2, label='$\hat{L}$')
+        ax.axvline(rhc, linestyle='--', color='r', label='$r_{{hc}}$')
+        if with_poisson:
+            ax.plot(x2,Lpois(np.asarray(x)), label='$\hat{L}_{t}$')
+        if legend_outside:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        else:
+            ax.legend()
+        annotate_corner(ax, f'$r_{{hc}}={rhc:.2f}$')
+        ax.set_ylabel('$\hat{L}(d)$')
+        ax.set_xlabel('$d$ (mm)')
+        State.output(fig, 'lfunc', spec=specimen, figwidth=plotsz, open=State.debug)
 
-    section('Plotting centered lfunc...')
-    x2,y2 = specimen.lcfun()
-    min_L = rhc
-    ax: Axes
-    fig, ax = plt.subplots(figsize=get_fig_width(plotsz))
-    ax.plot(x2,y2, label='$\hat{L}-d$')
-    if with_poisson:
-        ax.plot(x2,x2-x2, label='$\hat{L}_{t}-d$')
-    ax.axvline(rhc, linestyle='--', color='r', label='$r_{{hc}}$')
-    if legend_outside:
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    else:
-        ax.legend()
-    annotate_corner(ax, f'$r_{{hc}}={rhc:.2f}$')
-    ax.set_ylabel('$\hat{L}(d)-d$')
-    ax.set_xlabel('$d$ (mm)')
-    State.output(fig, 'lcfunc', spec=specimen, figwidth=plotsz, open=State.debug)
+        section('Plotting centered lfunc...')
+        x2,y2 = specimen.lcfun()
+        min_L = rhc
+        ax: Axes
+        fig, ax = plt.subplots(figsize=get_fig_width(plotsz))
+        ax.plot(x2,y2, label='$\hat{L}-d$')
+        if with_poisson:
+            ax.plot(x2,x2-x2, label='$\hat{L}_{t}-d$')
+        ax.axvline(rhc, linestyle='--', color='r', label='$r_{{hc}}$')
+        if legend_outside:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        else:
+            ax.legend()
+        annotate_corner(ax, f'$r_{{hc}}={rhc:.2f}$')
+        ax.set_ylabel('$\hat{L}(d)-d$')
+        ax.set_xlabel('$d$ (mm)')
+        State.output(fig, 'lcfunc', spec=specimen, figwidth=plotsz, open=State.debug)
 
     section('Creating voronoi and plotting points...')
     # create actual voronoi plots
@@ -163,7 +165,7 @@ def nbreak(
     axs.grid(False)
     State.output(fig, 'points', spec=specimen, figwidth=sz, open=State.debug)
 
-    voronoi_scale = 5
+    voronoi_scale = 1
     points = np.asarray(points) * voronoi_scale
     # create voronoi of points
     voronoi = Voronoi(points)
@@ -769,7 +771,7 @@ def compare_all(
 
     sim_areas = [s.area for s in specimen.splinters]
     binrange = get_log_range(sim_areas, 30)
-    sim_bins = np.histogram(sim_areas, bins=binrange)[0]
+    sim_bins = np.histogram(np.log10(sim_areas), bins=binrange)[0]
 
     ## ALFA
     # create alfa simulations
@@ -781,20 +783,20 @@ def compare_all(
     simulation_area_bins = []
     for sim in simulations:
         simulation_areas = [s.area for s in sim.splinters]
-        simulation_areas = np.histogram(simulation_areas, bins=binrange)[0]
+        simulation_areas = np.histogram(np.log10(simulation_areas), bins=binrange, density=True)[0]
         simulation_area_bins.append(simulation_areas)
 
     ## VORONOI
     # create voronoi simulations
     voronois = []
     for i in range(voronoi_count):
-        voronoi = nbreak(specimen.name, force_recalc=False)
+        voronoi = nbreak(specimen.name, force_recalc=False, no_plot_creation=True)
         voronois.append(voronoi)
     # transform areas to bins
     voronoi_area_bins = []
     for vor in voronois:
         vor_areas = [s.area for s in vor]
-        vor_areas = np.histogram(vor_areas, bins=binrange)[0]
+        vor_areas = np.histogram(np.log10(vor_areas), bins=binrange, density=True)[0]
         voronoi_area_bins.append(vor_areas)
 
 
