@@ -1125,6 +1125,7 @@ class Specimen(Outputtable):
             if panic:
                 raise SpecimenException(f"Specimen '{name}' not found.")
             else:
+                warning(f"Specimen '{name}' not found.")
                 return None
 
         spec = Specimen(path, load=load)

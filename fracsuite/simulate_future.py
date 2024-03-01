@@ -8,7 +8,7 @@
 #     no_region_crop: bool = False,
 #     validate: int = -1
 # ):
-#     """Validate lbreak by running the algorithm `validate` times and plotting the cdf onto the specimen cdf."""
+#     """Validate alfa by running the algorithm `validate` times and plotting the cdf onto the specimen cdf."""
 #     specimen = Specimen.get(name)
 
 #     if sigma_s is None:
@@ -32,7 +32,7 @@
 
 #     if validate == -1:
 #         # create simulation
-#         simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+#         simulation = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
 #                             no_region_crop=no_region_crop, reference=specimen.name)
 #         # compare simulation with input
 #         compare(simulation.fullname, specimen.name)
@@ -58,7 +58,7 @@
 #             fig0.canvas.flush_events()
 
 #         for i in range(validate):
-#             sim = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+#             sim = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
 #                             no_region_crop=no_region_crop, reference=specimen.name)
 #             areas = [s.area for s in sim.splinters]
 #             info(f'Validation {i+1}/{validate}: {len(sim.splinters)} splinters, mean area: {np.mean(areas):.2f} mm²')

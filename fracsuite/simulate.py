@@ -264,7 +264,7 @@ def nbreak(
 
 
 @sim_app.command()
-def lbreak(
+def alfa(
     sigma_s: float,
     thickness: float,
     size: tuple[float,float] = (500,500),
@@ -667,7 +667,7 @@ def cropimg(region, size_f, markers):
     return markers_clipped
 
 @sim_app.command()
-def lbreak_like(
+def alfa_like(
     name: str,
     sigma_s: float = None,
     thickness: float = None,
@@ -699,7 +699,7 @@ def lbreak_like(
 
     if validate == -1:
         # create simulation
-        simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+        simulation = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
                             no_region_crop=no_region_crop, reference=specimen.name)
         # compare simulation with input
         compare(simulation.fullname, specimen.name)
@@ -725,7 +725,7 @@ def lbreak_like(
             fig0.canvas.flush_events()
 
         for i in range(validate):
-            sim = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
+            sim = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, impact_position=specimen.get_impact_position(),
                             no_region_crop=no_region_crop, reference=specimen.name)
             areas = [s.area for s in sim.splinters]
             info(f'Validation {i+1}/{validate}: {len(sim.splinters)} splinters, mean area: {np.mean(areas):.2f} mm²')
@@ -741,7 +741,7 @@ def lbreak_like(
 @sim_app.command()
 def compare_all(name):
     """
-    Compares both the nbreak and lbreak of a specimen.
+    Compares both the nbreak and alfa of a specimen.
 
     Args:
         name (str): Name of the specimen for which to create the comparison.
@@ -752,7 +752,7 @@ def compare_all(name):
         critical('[red]Specimen has not been scalped.')
         return
 
-    info(f'Comparing specimen {specimen.name} with nbreak and lbreak...')
+    info(f'Comparing specimen {specimen.name} with nbreak and alfa...')
 
     sigma_s = np.abs(specimen.sig_h)
     thickness = specimen.thickness
@@ -763,7 +763,7 @@ def compare_all(name):
     nue = 0.23
 
     # create simulation
-    simulation = lbreak(sigma_s, thickness, size, boundary, break_pos, E, nue, reference=name)
+    simulation = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, reference=name)
 
     voronoi = nbreak(specimen.name, force_recalc=False)
     # compare simulation with input
@@ -819,7 +819,7 @@ def compare(
         if vor_areas is not None:
             datahist_to_ax(axs, vor_areas, binrange=binrange, label='BREAK', color="C2", data_mode=mode, plot_mode=plotmode)
         datahist_to_ax(axs, spec_areas, binrange=binrange, label='Probekörper', color="C0", data_mode=mode, plot_mode=plotmode)
-        datahist_to_ax(axs, sim_areas, binrange=binrange, label='Simulation', color="C1", data_mode=mode, plot_mode=plotmode)
+        datahist_to_ax(axs, sim_areas, binrange=binrange, label='ALFA', color="C1", data_mode=mode, plot_mode=plotmode)
 
         # axs[0].annotate(lbr_compare, xy=(0.95, 0.95), xycoords='axes fraction', ha='right', va='top', fontsize=6)
         # axs[0].annotate(vor_compare, xy=(0.95, 0.90), xycoords='axes fraction', ha='right', va='top', fontsize=6)

@@ -245,9 +245,14 @@ def best_params(image):
 @tester_app.command()
 def threshold(
     source: Annotated[str, typer.Argument(help='Path to image file.')],
-    region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = None,
-    region_f: Annotated[tuple[float,float], typer.Option(help='Region center in percent.')] = None,
+    region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = (-1,-1,-1,-1),
+    region_f: Annotated[tuple[float,float], typer.Option(help='Region center in percent.')] = (-1,-1),
 ):
+    if any(x < 0 for x in region):
+        region = None
+    if any(x < 0 for x in region_f):
+        region_f = None
+
     # Initialize GUI
     root = tk.Tk()
     root.title("Adaptive Threshold GUI")
