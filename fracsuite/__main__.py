@@ -272,6 +272,9 @@ def test(input: list[str]):
     print(input)
 
 console = Console()
+
+State.console = console
+
 console.rule("Fracsuite")
 
 start("fracsuite", '--debug' in sys.argv)

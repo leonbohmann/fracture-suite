@@ -299,6 +299,25 @@ def calculate_dmode(data, bins: int = 1000):
 
     return mpv, mpv_prob
 
+def calculate_dmodei(data, bins: int = 1000):
+    """
+    Finds the most probable value of a distribution by calculating the mode.
+    Applies a Gaussian KDE to the data and finds the maximum value of the KDE.
+
+    Args:
+        data (list): Data to find the most probable value of.
+        bins (int, optional): Number of bins to use for the histogram. Defaults to 100.
+
+    Returns:
+        float: The most probable value of the distribution!
+    """
+    data = np.asarray(data)
+    x_vals, y_vals = calculate_kde(data, bins)
+    # calculate most probable value (mode)
+    mpv = x_vals[np.argmax(y_vals)]
+
+    return float(mpv)
+
 
 def distances(events: list[tuple[float,float]]):
     """

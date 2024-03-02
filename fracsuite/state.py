@@ -4,6 +4,7 @@ from typing import Any
 
 from matplotlib import pyplot as plt
 from matplotlib.legend import Legend
+import rich
 from fracsuite.core.ProgWrapper import ProgWrapper
 from fracsuite.core.logging import debug, info, warning
 from fracsuite.core.outputtable import Outputtable
@@ -197,6 +198,7 @@ class State:
     "Current additional path for output."
     sub_specimen: str = ""
     "Current specimen, if any is analysed."
+    console: rich.console.Console = None
 
     current_subcommand: str = ""
     "The current subcommand."

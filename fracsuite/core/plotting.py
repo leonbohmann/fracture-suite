@@ -782,7 +782,7 @@ def datahist_to_ax(
         most_probable_area_string = mean_format.format(most_probable_area_value)
         print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
         idmax = np.argmax(binned_data)
-        ymax = binned_data[idmax] if data_mode == DataHistMode.PDF else cumsum[idmax] / np.max(cumsum)
+        ymax = binned_data[idmax] if data_mode == DataHistMode.PDF else cumsum[idmax+1] / np.max(cumsum)
         ax.vlines(x=most_probable_area, ymin=0,ymax=ymax, linestyle='--', label=f"{most_probable_area_string}{unit}", color=color, alpha=alpha)
 
         # axd = ax.get_xlim()[1] - ax.get_xlim()[0]

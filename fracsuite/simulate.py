@@ -3,6 +3,7 @@ Commands for simulating and analyzing fracture morphologies.
 """
 import json
 import shutil
+from turtle import color
 from fracsuite.core.logging import critical, info
 import random
 import os
@@ -28,7 +29,7 @@ from fracsuite.core.simulation import Simulation
 from fracsuite.core.specimen import Specimen, SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
-from fracsuite.core.stochastics import calculate_dmode, data_mse
+from fracsuite.core.stochastics import calculate_dmode, calculate_dmodei, data_mse
 from fracsuite.core.stress import relative_remaining_stress
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from fracsuite.core.vectors import angle_between
@@ -155,17 +156,18 @@ def nbreak(
     n_points = int(intensity * area)
     acceptance = acceptance
     points = csstraussproc2(size[0], size[1], rhc, n_points, acceptance, int(1e6))
-    fig,axs = plt.subplots(figsize=get_fig_width(sz))
-    axs.scatter(*zip(*points), s=1)
-    if State.debug:
-        plt.show()
-    axs.set_xlabel('x (mm)')
-    axs.set_ylabel('y (mm)')
-    renew_ticks_ax(axs, (0, size[1]), (0, size[0]), 0)
-    axs.grid(False)
-    State.output(fig, 'points', spec=specimen, figwidth=sz, open=State.debug)
+    if not no_plot_creation:
+        fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        axs.scatter(*zip(*points), s=1)
+        if State.debug:
+            plt.show()
+        axs.set_xlabel('x (mm)')
+        axs.set_ylabel('y (mm)')
+        renew_ticks_ax(axs, (0, size[1]), (0, size[0]), 0)
+        axs.grid(False)
+        State.output(fig, 'points', spec=specimen, figwidth=sz, open=State.debug)
 
-    voronoi_scale = 1
+    voronoi_scale = 5
     points = np.asarray(points) * voronoi_scale
     # create voronoi of points
     voronoi = Voronoi(points)
@@ -176,14 +178,13 @@ def nbreak(
     if not is_gray(voronoi_img):
         voronoi_img = cv2.cvtColor(voronoi_img, cv2.COLOR_BGR2GRAY)
     voronoi_to_image(voronoi_img, voronoi)
-    fig,axs = plt.subplots(figsize=get_fig_width(sz))
-    axs.imshow(255-voronoi_img, cmap='gray')
-    axs.set_xlabel('x (mm)')
-    axs.set_ylabel('y (mm)')
-    axs.grid(False)
-
-
-    State.output(fig, 'voronoi', spec=specimen, open=State.debug, figwidth=sz)
+    if not no_plot_creation:
+        fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        axs.imshow(255-voronoi_img, cmap='gray')
+        axs.set_xlabel('x (mm)')
+        axs.set_ylabel('y (mm)')
+        axs.grid(False)
+        State.output(fig, 'voronoi', spec=specimen, open=State.debug, figwidth=sz)
 
     section('Digitalize splinters...')
     splinters = Splinter.analyze_contour_image(voronoi_img, px_per_mm=voronoi_scale)
@@ -206,61 +207,62 @@ def nbreak(
     centroids = np.asarray([s.centroid_px for s in specimen.splinters])
     f = specimen.calculate_px_per_mm()
     voronoi = Voronoi(centroids)
-    fig,axs = plt.subplots(figsize=get_fig_width(sz))
-    base_img = specimen.get_fracture_image()
-    base_img = cv2.cvtColor(base_img, cv2.COLOR_BGR2RGB)
-    voronoi_to_image(base_img, voronoi, color=(255,0,0), thickness=int(f))
-    for i, p in enumerate(voronoi.points):
-        cv2.circle(base_img, (int(p[0]), int(p[1])), int(f/1.5), (0,0,255), -1)
+    if not no_plot_creation:
+        fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        base_img = specimen.get_fracture_image()
+        base_img = cv2.cvtColor(base_img, cv2.COLOR_BGR2RGB)
+        voronoi_to_image(base_img, voronoi, color=(255,0,0), thickness=int(f))
+        for i, p in enumerate(voronoi.points):
+            cv2.circle(base_img, (int(p[0]), int(p[1])), int(f/1.5), (0,0,255), -1)
 
-    def millimeter_formatter(x, pos):
-        return f'{x / f:.0f}'
-    axs.xaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
-    axs.yaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
+        def millimeter_formatter(x, pos):
+            return f'{x / f:.0f}'
+        axs.xaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
+        axs.yaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
 
+        # base_img = cv2.resize(base_img, (int(size[0]), int(size[1])))
+        axs.imshow(base_img)
+        axs.grid(False)
 
-
-    # base_img = cv2.resize(base_img, (int(size[0]), int(size[1])))
-    axs.imshow(base_img)
-    axs.grid(False)
-
-    if not any([x == -1 for x in region]):
-        region = np.asarray(region) * f
-        axs.set_xlim(region[0], region[1])
-        axs.set_ylim(region[2], region[3])
-    axs.set_xlabel('x (mm)')
-    axs.set_ylabel('y (mm)')
-    State.output(fig, 'voronoi_overlay', spec=specimen, figwidth=sz)
+        if not any([x == -1 for x in region]):
+            region = np.asarray(region) * f
+            axs.set_xlim(region[0], region[1])
+            axs.set_ylim(region[2], region[3])
+        axs.set_xlabel('x (mm)')
+        axs.set_ylabel('y (mm)')
+        State.output(fig, 'voronoi_overlay', spec=specimen, figwidth=sz)
 
     section('Print original image in a plot')
-    fig,axs = plt.subplots(figsize=get_fig_width(sz))
-    base_img = specimen.get_fracture_image()
-    axs.imshow(base_img)
-    axs.set_xlabel('x (mm)')
-    axs.set_ylabel('y (mm)')
-    axs.xaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
-    axs.yaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
-    axs.grid(False)
-    State.output(fig, 'original', spec=specimen, figwidth=sz)
+    if not no_plot_creation:
+        fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        base_img = specimen.get_fracture_image()
+        axs.imshow(base_img)
+        axs.set_xlabel('x (mm)')
+        axs.set_ylabel('y (mm)')
+        axs.xaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
+        axs.yaxis.set_major_formatter(ticker.FuncFormatter(millimeter_formatter))
+        axs.grid(False)
+        State.output(fig, 'original', spec=specimen, figwidth=sz)
 
-    section('Comparing break to splinters')
-    # create pdf
-    areas_original = [s.area for s in specimen.splinters]
-    areas_voronoi =[s.area for s in splinters]
+    if not no_plot_creation:
+        section('Comparing break to splinters')
+        # create pdf
+        areas_original = [s.area for s in specimen.splinters]
+        areas_voronoi =[s.area for s in splinters]
 
-    fig,axs = datahist_plot(figwidth=plotsz)
-    binrange = get_log_range(areas_original, 30)
-    datahist_to_ax(axs, areas_original, binrange=binrange, label='Probekörper')
-    datahist_to_ax(axs, areas_voronoi, binrange=binrange, label='Voronoi')
-    axs[0].legend()
-    State.output(fig, 'compare_pdf', spec=specimen, figwidth=plotsz)
+        fig,axs = datahist_plot(figwidth=plotsz)
+        binrange = get_log_range(areas_original, 30)
+        datahist_to_ax(axs, areas_original, binrange=binrange, label='Probekörper')
+        datahist_to_ax(axs, areas_voronoi, binrange=binrange, label='Voronoi')
+        axs[0].legend()
+        State.output(fig, 'compare_pdf', spec=specimen, figwidth=plotsz)
 
-    # create cdf
-    fig,axs = datahist_plot(figwidth=plotsz)
-    datahist_to_ax(axs, areas_original, binrange=binrange, label='Probekörper', data_mode=DataHistMode.CDF)
-    datahist_to_ax(axs, areas_voronoi, binrange=binrange, label='Voronoi', data_mode=DataHistMode.CDF)
-    axs[0].legend()
-    State.output(fig, 'compare_cdf', spec=specimen, figwidth=plotsz)
+        # create cdf
+        fig,axs = datahist_plot(figwidth=plotsz)
+        datahist_to_ax(axs, areas_original, binrange=binrange, label='Probekörper', data_mode=DataHistMode.CDF)
+        datahist_to_ax(axs, areas_voronoi, binrange=binrange, label='Voronoi', data_mode=DataHistMode.CDF)
+        axs[0].legend()
+        State.output(fig, 'compare_cdf', spec=specimen, figwidth=plotsz)
 
     return splinters
 
@@ -769,71 +771,126 @@ def compare_all(
     E = 70e3
     nue = 0.23
 
-    sim_areas = [s.area for s in specimen.splinters]
-    binrange = get_log_range(sim_areas, 30)
-    sim_bins = np.histogram(np.log10(sim_areas), bins=binrange)[0]
+    specimen_areas = [s.area for s in specimen.splinters]
 
     ## ALFA
     # create alfa simulations
     simulations = []
     for i in range(alfa_count):
+        State.console.rule(f'ALFA {i+1}/{alfa_count}', align='left')
         simulation = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, reference=name)
         simulations.append(simulation)
+
+        plt.close('all')
     # transform areas to bins
-    simulation_area_bins = []
+    simulation_areas = []
     for sim in simulations:
-        simulation_areas = [s.area for s in sim.splinters]
-        simulation_areas = np.histogram(np.log10(simulation_areas), bins=binrange, density=True)[0]
-        simulation_area_bins.append(simulation_areas)
+        simulation_area = [s.area for s in sim.splinters]
+        simulation_areas.append(simulation_area)
 
     ## VORONOI
     # create voronoi simulations
     voronois = []
     for i in range(voronoi_count):
+        State.console.rule(f'Voronoi {i+1}/{voronoi_count}', align='left')
         voronoi = nbreak(specimen.name, force_recalc=False, no_plot_creation=True)
         voronois.append(voronoi)
+
+        plt.close('all')
     # transform areas to bins
-    voronoi_area_bins = []
+    voronoi_areas = []
     for vor in voronois:
         vor_areas = [s.area for s in vor]
-        vor_areas = np.histogram(np.log10(vor_areas), bins=binrange, density=True)[0]
-        voronoi_area_bins.append(vor_areas)
+        voronoi_areas.append(vor_areas)
 
 
     create_validation_plots(
-        sim_bins,
-        simulation_area_bins,
-        voronoi_area_bins,
-        name,
-        binrange
+        specimen_areas,
+        simulation_areas,
+        voronoi_areas,
+        'lbreak--nbreak--real',
     )
 
 def create_validation_plots(
-    spec_area_bins: list, # lists of bins!
-    sim_area_bins: list,
-    vor_area_bins: list,
-    name,
-    binrange,
+    spec_areas: list[float],
+    sim_areas: list[list[float]],
+    vor_areas: list[list[float]],
+    name: str,
     plot_all: bool = False,
 ):
+    """
+    Create validation plots for the given areas. The areas will be transformed into bins and then plotted as a CDF and PDF.
+
+    Args:
+        spec_areas (): Areas from the reference specimen.
+        sim_areas (): Areas from the alfa simulations.
+        vor_areas (): Areas from the voronoi simulations.
+        name (str): Name of the output plots.
+        plot_all (bool, optional): Not implemented yet. Defaults to False.
+    """
+    spec_areas = np.asarray(spec_areas)
+    binrange = get_log_range(spec_areas, 30)
+    spec_areas_bins = np.histogram(np.log10(spec_areas), bins=binrange, density=True)[0]
+
+    sim_mpv = []
+    vor_mpv = []
+    sim_areas_bins = []
+    vor_areas_bins = []
+    # transform data into bins
+    for i in range(len(sim_areas)):
+        area_hist = np.histogram(np.log10(sim_areas[i]), bins=binrange, density=True)[0]
+        sim_mpv.append(calculate_dmodei(sim_areas[i]))
+        sim_areas_bins.append(area_hist)
+    for i in range(len(vor_areas)):
+        area_hist = np.histogram(np.log10(vor_areas[i]), bins=binrange, density=True)[0]
+        vor_mpv.append(calculate_dmodei(vor_areas[i]))
+        vor_areas_bins.append(area_hist)
 
     # calculate mean of all simulations
-    simulation_area_bins = np.mean(sim_area_bins, axis=0)
+    mean_simulation_area_bins = np.mean(sim_areas_bins, axis=0)
     # calculate mean of all simulations
-    vor_area_bins = np.mean(vor_area_bins, axis=0)
+    mean_vor_area_bins = np.nanmean(vor_areas_bins, axis=0)
+
+    mpvs = []
+    mpvs.append(calculate_dmodei(spec_areas))
+    mpvs.append(np.mean(sim_mpv))
+    mpvs.append(np.mean(vor_mpv))
+
+    print(mpvs)
+    def plot_mpv(ax: Axes):
+        ymax = ax.get_ylim()[1] * 0.1
+        for i in range(len(mpvs)):
+            mpv = mpvs[i]
+            ax.arrow(np.log10(mpv), ymax, 0, -ymax, head_width=0.05, head_length=ymax*0.2, fc=f'C{i}', ec=f'C{i}')
+
+    def annotate_mse(ax: Axes):
+        mse_sim = np.mean(np.abs(spec_areas_bins - mean_simulation_area_bins))
+        mse_vor = np.mean(np.abs(spec_areas_bins - mean_vor_area_bins))
+        ax.annotate(f'$MAE_\mathrm{{ALFA}}$: {mse_sim:.2f}', xy=(0.98, 0.95), xycoords='axes fraction', ha='right', va='top', fontsize=6)
+        ax.annotate(f'$MAE_\mathrm{{BREAK}}$: {mse_vor:.2f}', xy=(0.98, 0.90), xycoords='axes fraction', ha='right', va='top', fontsize=6)
+
+    def mklegend(ax):
+        ax.plot([], [], label=f'Referenz ({mpvs[0]:.1f}mm²)', color='C0')
+        ax.plot([], [], label=f'ALFA ({mpvs[1]:.1f}mm²)', color='C1')
+        ax.plot([], [], label=f'BREAK ({mpvs[2]:.1f}mm²)', color='C2')
 
     fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
-    axs[0].plot(binrange[:-1], np.cumsum(spec_area_bins), label='Probekörper', color='C0')
-    axs[0].plot(binrange[:-1], np.cumsum(simulation_area_bins), label='ALFA', color='C1')
-    axs[0].plot(binrange[:-1], np.cumsum(vor_area_bins), label='Voronoi', color='C2')
-    State.output(fig, f'validation_{name}_cdf', figwidth=FigureSize.ROW2)
+    axs[0].plot(binrange[:-1], np.cumsum(spec_areas_bins), label='Referenz', color='C0')
+    axs[0].plot(binrange[:-1], np.cumsum(mean_simulation_area_bins), label='ALFA', color='C1')
+    axs[0].plot(binrange[:-1], np.cumsum(mean_vor_area_bins), label='BREAK', color='C2')
+    axs[0].legend()
+    State.output(fig, f'{name}_cdf', figwidth=FigureSize.ROW2)
 
 
     fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
-    axs[0].bar(binrange[:-1], spec_area_bins, width=np.diff(binrange), label='Probekörper', color='C0')
-    axs[0].bar(binrange[:-1], simulation_area_bins, width=np.diff(binrange), label='ALFA', color='C1')
-    axs[0].bar(binrange[:-1], vor_area_bins, width=np.diff(binrange), label='Voronoi', color='C2')
-    State.output(fig, f'validation_{name}_cdf', figwidth=FigureSize.ROW2)
+    axs[0].stairs(spec_areas_bins, binrange, color='C0')
+    axs[0].stairs(mean_simulation_area_bins, binrange, color='C1')
+    axs[0].stairs(mean_vor_area_bins, binrange, color='C2')
+    mklegend(axs[0])
+    annotate_mse(axs[0])
+    plot_mpv(axs[0])
+    axs[0].legend(fontsize=7)
+    State.output(fig, f'{name}_pdf', figwidth=FigureSize.ROW2)
 
 
 @sim_app.command()
