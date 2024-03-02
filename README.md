@@ -19,11 +19,11 @@
 > ```
 > @software{fracture-suite,
 >   author       = {Leon Bohmann},
->   title        = {fracsuite v0.2.0},
->   data         = 2024-02,
->   version      = {0.2.0},
->   doi          = {10.5281/zenodo.10700742},
->   url          = {https://doi.org/10.5281/zenodo.10700742}
+>   title        = {fracsuite v1},
+>   data         = 2024-03,
+>   version      = {1.0.0},
+>   doi          = {10.5281/zenodo.10758208},
+>   url          = {https://github.com/leonbohmann/fracture-suite/tree/masterrelease}
 > }
 > ```
 
