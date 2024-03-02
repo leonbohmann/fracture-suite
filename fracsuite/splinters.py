@@ -1114,6 +1114,57 @@ def log_2d_histograms(
     State.output(fig, f'loghist2d_{out_name}', to_additional=True, figwidth=sz)
 
 
+def custom_regex_filter(s: Specimen, filter: str) -> bool:
+    # format: t.sigma.b.nbr
+    values = filter.split(".")
+    t, sigma, b, nbr = "*", "*", "*", "*"
+
+    if len(values) > 0:
+        t = values[0]
+    if len(values) > 1:
+        sigma = values[1]
+    if len(values) > 2:
+        b = values[2]
+    if len(values) > 3:
+        nbr = values[3]
+
+    rt = ""
+    rsigma = ""
+    rb = ""
+    rnbr = ""
+
+    if ":" in t:
+        t = t.split(":")
+        # create regex pattern which matches any possible t values
+        rt = "(" + "|".join(t) + ")"
+    else:
+        rt = t.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+    if ":" in sigma:
+        sigma = sigma.split(":")
+        # create regex pattern which matches any possible sigma values
+        rsigma = "(" + "|".join(sigma) + ")"
+    else:
+        rsigma = sigma.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+    if ":" in b:
+        b = b.split(":")
+        # create regex pattern which matches any possible b values
+        rb = "(" + "|".join(b) + ")"
+    else:
+        rb = b.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+    if ":" in nbr:
+        nbr = nbr.split(":")
+        # create regex pattern which matches any possible nbr values
+        rnbr = "(" + "|".join(nbr) + ")"
+    else:
+        rnbr = nbr.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+
+    regex = f"{rt}\.{rsigma}\.{rb}\.{rnbr}"
+    # print(regex)
+    return re.match(regex, s.name) is not None
 def create_filter_function(name_filter,
                            sigmas=None,
                            sigma_delta=10,
@@ -1146,50 +1197,6 @@ def create_filter_function(name_filter,
     def all_names(s, filter) -> bool:
         return True
 
-    def custom_regex_filter(s: Specimen, filter: str) -> bool:
-        # format: t.sigma.b.nbr
-        values = filter.split(".")
-        # print(values)
-        t, sigma, b, nbr = values
-
-
-        rt = ""
-        rsigma = ""
-        rb = ""
-        rnbr = ""
-
-        if ":" in t:
-            t = t.split(":")
-            # create regex pattern which matches any possible t values
-            rt = "(" + "|".join(t) + ")"
-        else:
-            rt = t.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-        if ":" in sigma:
-            sigma = sigma.split(":")
-            # create regex pattern which matches any possible sigma values
-            rsigma = "(" + "|".join(sigma) + ")"
-        else:
-            rsigma = sigma.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-        if ":" in b:
-            b = b.split(":")
-            # create regex pattern which matches any possible b values
-            rb = "(" + "|".join(b) + ")"
-        else:
-            rb = b.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-        if ":" in nbr:
-            nbr = nbr.split(":")
-            # create regex pattern which matches any possible nbr values
-            rnbr = "(" + "|".join(nbr) + ")"
-        else:
-            rnbr = nbr.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-
-        regex = f"{rt}\.{rsigma}\.{rb}\.{rnbr}"
-        # print(regex)
-        return re.match(regex, s.name) is not None
 
     name_filter_function: Callable[[Specimen, Any], bool] = None
 

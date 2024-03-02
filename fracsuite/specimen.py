@@ -31,7 +31,7 @@ from fracsuite.core.stochastics import quadrat_count, r_squared_f
 from fracsuite.core.stress import relative_remaining_stress
 from fracsuite.core.virtualspecimen import VirtualSpecimen, load_virtual_specimens
 from fracsuite.general import GeneralSettings
-from fracsuite.splinters import create_filter_function
+from fracsuite.splinters import create_filter_function, custom_regex_filter
 from fracsuite.state import State, StateOutput
 
 app = typer.Typer(help=__doc__, callback=main_callback)
@@ -415,25 +415,34 @@ def create(name):
 
 
 @app.command()
-def to_tex(exclude_thickness: int = None):
+def to_tex(
+    name_filter: str = "*.*.*.*",
+    exclude_filter: str = None
+):
     """
     Retrieves all specimens and exports them to a latex file.
 
     The data is sorted in a table and contains several columns with information about the specimen.
     """
-    all_specimens = Specimen.get_all(load=True)
+    filterfunc = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
+
+    def filtfilt(s):
+
+        if custom_regex_filter(s, exclude_filter):
+            return False
+
+        return filterfunc(s)
+
+    all_specimens = Specimen.get_all_by(filtfilt, load=True)
 
     # sort by thickness, then nominal stress, then boundary and then number
     all_specimens.sort(key=lambda x: (x.thickness, x.nom_stress, x.boundary, x.nbr))
-
-    if exclude_thickness is not None:
-        all_specimens = [x for x in all_specimens if x.thickness != exclude_thickness]
 
     # define some columns
     def t(s: Specimen):
         return s.thickness
     def stress(s: Specimen):
-        return f"{-s.nom_stress:.0f}"
+        return f"{s.nom_stress:.0f}"
     def boundary(s: Specimen):
         return s.boundary
     def nbr(s: Specimen):
@@ -443,7 +452,7 @@ def to_tex(exclude_thickness: int = None):
             return None
         return f"{s.measured_thickness:.2f}"
 
-    def u0(s: Specimen):
+    def ut(s: Specimen):
         if not s.has_scalp:
             return None
         sz = s.get_real_size()
@@ -461,10 +470,10 @@ def to_tex(exclude_thickness: int = None):
     def stress_real(s: Specimen):
         if not s.has_scalp:
             return None
-        return f"{s.sig_h:.2f}"
+        return f"{-s.sig_h:.0f}"
     def n50(s: Specimen):
         if s.has_fracture_scans and s.has_splinters:
-            return f"{s.calculate_nfifty_count():.2f}"
+            return f"{s.calculate_nfifty_count():.0f}"
         else:
             return None
 
@@ -479,7 +488,7 @@ def to_tex(exclude_thickness: int = None):
         "$t_{\\text{real}}$": (t_real, "mm"),
         "$\glsm{sig_s}_{,\\text{real}}$": (stress_real, "MPa"),
         "$\glsm{fdens}$": (n50, None),
-        "$\glsm{ut}$": (u0, "J"),
+        "$\glsm{ut}$": (ut, "J"),
         "$\glsm{u}$": (u, "J/m²"),
         "$\glsm{ud}$": (ud, "J/m³"),
         "$\glsm{farea}$": (farea, "m²"),

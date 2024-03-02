@@ -777,7 +777,7 @@ def compare_all(
     # create alfa simulations
     simulations = []
     for i in range(alfa_count):
-        State.console.rule(f'ALFA {i+1}/{alfa_count}', align='left')
+        State.console.rule(f'ALFA {i+1}/{alfa_count}', align='right')
         simulation = alfa(sigma_s, thickness, size, boundary, break_pos, E, nue, reference=name)
         simulations.append(simulation)
 
@@ -792,7 +792,7 @@ def compare_all(
     # create voronoi simulations
     voronois = []
     for i in range(voronoi_count):
-        State.console.rule(f'Voronoi {i+1}/{voronoi_count}', align='left')
+        State.console.rule(f'Voronoi {i+1}/{voronoi_count}', align='right')
         voronoi = nbreak(specimen.name, force_recalc=False, no_plot_creation=True)
         voronois.append(voronoi)
 
@@ -1001,8 +1001,8 @@ def compare_polar(
 
     # plot in the same fig
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
-    axs.plot(r, specZ, label='Probekörper')
-    axs.plot(r, simZ, label='Simulation')
+    axs.plot(r, specZ, label='Referenz')
+    axs.plot(r, simZ, label='ALFA')
     axs.set_xlabel('R (mm)')
     axs.set_ylabel(Splinter.get_property_label(prop, row3=sz==FigureSize.ROW3))
     axs.legend()#
