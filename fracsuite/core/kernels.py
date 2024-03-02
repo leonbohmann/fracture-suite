@@ -1,4 +1,5 @@
 import json
+
 from fracsuite.core.arrays import fill_nan
 from fracsuite.core.logging import debug
 from multiprocessing import Pool
@@ -56,8 +57,8 @@ def splinterproperty_kernel(spl: list[Splinter], prop: SplinterProp, ip, pxpmm, 
 
 def nfifty_kernel(spl: list[Splinter], *args,**kwargs):
     """Count splinters and relate them to an area of 50x50."""
-    # factor to convert the area to 50x50
     f = 2500/kwargs["window_size"]
+    debug(f'nfifty_kernel: f: {f}, window_size: {kwargs["window_size"]}')
     return int(len(spl)*f), 0
 
 def count_kernel(spl: list[Splinter], *args, **kwargs):
@@ -274,7 +275,7 @@ class ObjectKerneler():
         self.data_objects = data_objects
 
         if len(args) > 0 or len(kwargs) > 0:
-            debug('ObjectKerneler: Additional arguments passed. Consider removing them.')
+            debug(f'Additional arguments passed to kerneler: "{args}, {[k for k in kwargs]}". Consider removing them.')
 
 
     def __internalrun(
@@ -379,7 +380,7 @@ class ObjectKerneler():
                     # get the objects in the region
                     spl = spl_groups[j][i]
 
-                    if i % 30 == 0:
+                    if i % 5 == 0:
                         debug(f'Defining window ({i},{j}): x: [{x0:.1f}, {x1:.1f}], y: [{y0:.1f}, {y1:.1f}], sz: {window_size:.1f}, len: {len(spl)}.')
                     if State.debug:
                         kwargs['debug'] = True
@@ -460,6 +461,9 @@ class ObjectKerneler():
         return_data = False,
         **kwargs
     ):
+
+        from fracsuite.core.model_layers import polar_window_size_function
+
         def center_function(s):
             dr = s.centroid_mm - ip_mm
             r = np.linalg.norm(dr)
@@ -467,10 +471,7 @@ class ObjectKerneler():
             return r,a
 
         def window_size_function(x0,x1,y0,y1):
-            # area factor for circle segment
-            cf = np.abs(y1-y0) / 360
-            c = np.pi*(x1**2-x0**2)
-            return c * cf
+            return polar_window_size_function(x0,x1,ip_mm,self.region)
 
         def window_location_function(x0,x1,y0,y1):
             return x0,x1,y0,y1

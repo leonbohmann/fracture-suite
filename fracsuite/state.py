@@ -4,6 +4,7 @@ from typing import Any
 
 from matplotlib import pyplot as plt
 from matplotlib.legend import Legend
+import rich
 from fracsuite.core.ProgWrapper import ProgWrapper
 from fracsuite.core.logging import debug, info, warning
 from fracsuite.core.outputtable import Outputtable
@@ -25,6 +26,16 @@ import time
 general = GeneralSettings.get()
 
 SAVE_FORMAT = "[cyan]SAVE[/cyan] [dim white]{0:<11}[/dim white] '{1}'"
+
+known_kwargs = [
+    'override_legendpos',
+    'override_ylim',
+    'override_figwidth',
+    'output_to',
+    'debug',
+    'extensive_specimen_data',
+    'fitcurve_annotation_pos'
+]
 
 def is_image(data):
     return type(data).__module__ == np.__name__
@@ -69,6 +80,9 @@ class StateOutput:
         saved = False
         while not saved:
             try:
+                if not os.path.exists(os.path.dirname(path)):
+                    os.makedirs(os.path.dirname(path))
+
                 if self.is_image:
                     extension = self.img_ext if self.img_ext is not None else general.image_extension
                     data = cv2.resize(self.Data, (0, 0), fx=resize_factor, fy=resize_factor)
@@ -97,13 +111,31 @@ class StateOutput:
                             # add new legend
                             origin.legend(handles, labels, loc=State.kwargs['override_legendpos'])
 
-                    if not self.fig_as_img_only and not State.figasimgonly:
+                    if 'override_ylim' in State.kwargs:
+                        debug(f"Overriding ylim with {State.kwargs['override_ylim']}.")
+                        self.Data.axes[0].set_ylim(State.kwargs['override_ylim'])
+
+                    save_fig = (not self.fig_as_img_only and not State.figasimgonly) or State.figaspdfonly
+                    save_img = State.figasimgonly or self.fig_as_img_only
+
+                    if not save_fig and not save_img:
+                        warning("No output format specified. Saving as image.")
+                        save_img = True
+
+                    if save_fig:
                         self.Data.savefig(
                             outfile := f'{path}_{figw}.{general.plot_extension}',
                         )
-                    self.Data.savefig(
-                        outfile := f'{path}_{figw}.png',
-                    )
+                        if not save_img and not State.no_open:
+                            filename = os.path.basename(outfile)
+                            self.Data.savefig(
+                                outfile := tempfile.mktemp(suffix=f'_{filename}.png'),
+                                dpi=96
+                            )
+                    if save_img:
+                        self.Data.savefig(
+                            outfile := f'{path}_{figw}.png',
+                        )
                 saved = True
 
             except PermissionError:
@@ -166,6 +198,7 @@ class State:
     "Current additional path for output."
     sub_specimen: str = ""
     "Current specimen, if any is analysed."
+    console: rich.console.Console = None
 
     current_subcommand: str = ""
     "The current subcommand."
@@ -179,6 +212,8 @@ class State:
     "When doing image processing this will save the plots instead of just showing them."
     figasimgonly: bool = False
     "Save plots as images only."
+    figaspdfonly: bool = False
+    "Save plots as pdfs only."
     maximum_specimen: int = 1000
     "Globaly define the maximum amount of specimen that can be loaded."
     no_open: bool = False
@@ -193,6 +228,11 @@ class State:
 
     __suboutputfolder: str = None
 
+    def has_small_figures() -> bool:
+        if 'override_figwidth' in State.kwargs:
+            return State.kwargs['override_figwidth'] == 'row3'
+
+
     @classmethod
     def set_arg(cls, key, value):
         if hasattr(cls, key):
@@ -204,12 +244,24 @@ class State:
         return State.__progress_started
 
     def start_progress():
-        State.progress.start()
+        State.progress.enter()
         State.__progress_started = True
 
     def stop_progress():
-        State.progress.stop()
+        State.progress.exit()
         State.__progress_started = False
+
+    @staticmethod
+    def initialize():
+        """Performs some checks on kwargs and the state."""
+        if 'fitcurve_annotation_pos' in State.kwargs:
+            pos = State.kwargs['fitcurve_annotation_pos']
+
+            if isinstance(pos, tuple):
+                pos = [pos]
+                State.kwargs['fitcurve_annotation_pos'] = pos
+
+
 
     def output_nopen(
         object: Figure | npt.ArrayLike,
@@ -348,10 +400,22 @@ class State:
         # save to ADDITIONAL output
         if (additional_path := State.additional_output_path) is not None \
             and to_additional and not State.to_temp:
-            add_path = os.path.join(additional_path, path_and_name[-1])
+            add_path = State.join_output_folder(additional_path, path_and_name[-1])
             add_path = object.save(add_path, resize_factor=resize_factor)
             if not no_print:
                 print(SAVE_FORMAT.format('ADDITIONAL', add_path))
+
+        if 'output_to' in State.kwargs:
+            to = State.kwargs['output_to']
+
+            if general.to_base_path is not None:
+                to = os.path.join(general.to_base_path, to)
+
+            if isinstance(to, str):
+                to_path = State.join_output_folder(to, path_and_name[-1])
+                to_path = object.save(to_path, resize_factor=resize_factor)
+                if not no_print:
+                    print(SAVE_FORMAT.format('CUSTOM', to_path))
 
         if close_fig:
             object.clear()
@@ -396,6 +460,17 @@ class State:
             str: path
         """
         p = os.path.join(general.out_path, *names)
+
+        if not os.path.exists(os.path.dirname(p)):
+            os.makedirs(os.path.dirname(p))
+
+        return p
+
+    def join_output_folder(basepath: str, *names: str):
+        if State.__suboutputfolder is not None:
+            p = os.path.join(basepath, State.__suboutputfolder, *names)
+        else:
+            p = os.path.join(basepath, *names)
 
         if not os.path.exists(os.path.dirname(p)):
             os.makedirs(os.path.dirname(p))

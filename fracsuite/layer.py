@@ -19,7 +19,7 @@ from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.logging import debug, info
 from fracsuite.core.mechanics import U
 from fracsuite.core.model_layers import ModelLayer, arrange_regions, arrange_regions_px, has_layer, interp_layer, load_layer, load_layer_file, plt_layer, save_layer
-from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, get_legend, renew_ticks_cb
+from fracsuite.core.plotting import FigureSize, annotate_image, fill_polar_cell, get_fig_width, get_legend, label_image, renew_ticks_cb
 from fracsuite.core.progress import get_progress, tracker
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
@@ -227,6 +227,9 @@ def create(
     sz: FigureSize = typer.Option(FigureSize.ROW3, help='Figure size.'),
     no_save: Annotated[bool, typer.Option(help='Do not save the created layers.')] = False,
     with_std: Annotated[bool, typer.Option(help='Save standard deviation layers.')] = False,
+    all_t_in_one: Annotated[bool, typer.Option(help='Put all thicknesses into one plot.')] = False,
+    annotate_names: Annotated[bool, typer.Option(help='Annotate specimen names.')] = False,
+    smooth_layer_plots: Annotated[bool, typer.Option(help='Interpolate layer plots.')] = False,
 ):
     """
     Create layers based on the given parameters. Also generated useful plots for the layers.
@@ -337,10 +340,12 @@ def create(
     else:
         thickness = f'{thickness:.0f}'
 
-    xlabel = "Abstand zum Anschlagpunkt (mm)" if sz != FigureSize.ROW3 else "R (mm)"
-    ylabel = Splinter.get_property_label(prop, row3=sz==FigureSize.ROW3)
+    is_large = sz != FigureSize.ROW3 or ('override_figwidth' in State.kwargs and State.kwargs['override_figwidth'] != 'row3')
+    info(f"{is_large=}.")
+    xlabel = "Abstand $R$ zum Anschlagpunkt (mm)" if is_large else "R (mm)"
+    ylabel = Splinter.get_property_label(prop, row3=not is_large)
 
-
+    # calculate the radius and theta range beforehand so we can compare results
     r_range, t_range = arrange_regions(d_r_mm=25,d_t_deg=360,break_pos=break_pos,w_mm=500,h_mm=500)
 
     debug(f"Using radius range {r_range}.")
@@ -380,33 +385,34 @@ def create(
     results = results[results[:,0].argsort()]
     stddevs = stddevs[stddevs[:,0].argsort()]
 
-    if not no_save:
-        ########################
-        # Save results as layer
-        ########################
-        for b in bid:
-            # mask all results for the current boundary
-            b_mask = results[:,2] == bid[b]
 
-            # mask thicknesses
-            for t in [4,8,12]:
-                t_mask = results[:,1] == t
+    ########################
+    # Save results as layer
+    ########################
+    for b in tracker(bid, title='Iterating layers',total=len(bid)):
+        # mask all results for the current boundary
+        b_mask = results[:,2] == bid[b]
 
-                # mask both
-                bt_mask = b_mask & t_mask
+        # mask thicknesses
+        for t in [4,8,12]:
+            t_mask = results[:,1] == t
 
-                # skip empty boundaries
-                if np.sum(bt_mask) == 0:
-                    continue
+            # mask both
+            bt_mask = b_mask & t_mask
 
-                # boundary results
-                b_results = results[bt_mask,:]
-                b_stddevs = stddevs[bt_mask,4:]
+            # skip empty boundaries
+            if np.sum(bt_mask) == 0:
+                continue
 
-                b_energies = b_results[:,0]
-                b_values = b_results[:,4:]
-                b_r_range = r_range[:-1] # -1 because the last range is not closed (last r_range is calculated as lower bound)
+            # boundary results
+            b_results = results[bt_mask,:]
+            b_stddevs = stddevs[bt_mask,4:]
 
+            b_energies = b_results[:,0]
+            b_values = b_results[:,4:]
+            b_r_range = r_range[:-1] # -1 because the last range is not closed (last r_range is calculated as lower bound)
+
+            if not no_save:
                 # save layer
                 save_layer(
                     prop,
@@ -429,6 +435,8 @@ def create(
                     b_energies,
                     b_stddevs
                 )
+            fig = plt_layer(b_r_range, b_energies, b_values, figwidth=sz, interpolate=smooth_layer_plots, xlabel=xlabel, clabel=ylabel)
+            State.output(StateOutput(fig, sz), f"2D-{prop}_{b}_{t:.0f}_{break_pos}", to_additional=True)
 
     # define an energy range to plot mean values in
     n_ud = 7 # J/m²
@@ -444,15 +452,23 @@ def create(
     for b in bid:
         b_mask = results[:,2] == bid[b]
 
+
+        if all_t_in_one:
+            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+        cbar = None
+        boundary_empty = True
+
         for t in [4,8,12]:
             t_mask = results[:,1] == t
 
-            # mask both
+            # mask both boundary and thickness
             bt_mask = b_mask & t_mask
 
             # skip empty boundaries
             if np.sum(bt_mask) == 0:
                 continue
+
+            boundary_empty = False
 
             # boundary results
             b_results = results[bt_mask,:]
@@ -462,17 +478,18 @@ def create(
             max_u = np.nanmax(b_results[:,0])
             min_u = np.nanmin(b_results[:,0])
 
-            fig,axs = plt.subplots(figsize=get_fig_width(sz))
+            if not all_t_in_one:
+                fig,axs = plt.subplots(figsize=get_fig_width(sz))
             # axs.set_autoscaley_on(False)
 
             colors = []
-            print('Current Boundary: ', b)
+            info('Current matrix: %s %s' % (b, t))
 
             # plot all individual results
             for i in range(len(b_results)):
                 bt_energies = b_results[i,4:]
                 # print specimen name
-                print(f'{specimens[int(b_results[i,3])].name}: {np.nanmean(bt_energies):.2f} (mpv: {calculate_dmode(bt_energies)[0]}) +/- {np.nanmax(b_stddevs[i,4:]):.2f} (max: {np.nanmax(bt_energies):.2f}, min: {np.nanmin(bt_energies):.2f})')
+                info(f'{specimens[int(b_results[i,3])].name}: (min: {np.nanmin(bt_energies):.4f}, max: {np.nanmax(bt_energies):.4f}, mean: {np.nanmean(bt_energies):.4f}) U={b_results[i,0]:.2f} J/m²')
 
                 # get color for current energy
                 c = norm_color(get_color(b_results[i,0], min_u, max_u))
@@ -481,30 +498,15 @@ def create(
                 # plot individual lines
                 axs.plot(x, bt_energies, color=c, linewidth=1, markersize=1.5) #
 
+                if annotate_names:
+                    # annotate specimen name
+                    axs.annotate(specimens[int(b_results[i,3])].name, (x[0], bt_energies[0]), textcoords="offset points", xytext=(5,0), ha='left', va='center', fontsize=6, color=c)
+
                 # fill stddev
                 if with_std:
                     axs.fill_between(x, b_results[i,4:] - b_stddevs[i,4:], b_results[i,4:] + b_stddevs[i,4:],
                                  color=c, alpha=0.1)
 
-            # plot mean values as thick lines
-            for i in range(len(ud_range)-1):
-                cud = (ud_range[i] + ud_range[i+1]) / 2
-                if i < len(ud_range)-1:
-                    ud_mask = (b_results[:,0] >= ud_range[i]) & (b_results[:,0] < ud_range[i+1])
-                else:
-                    ud_mask = (b_results[:,0] >= ud_range[i])
-
-                if np.sum(ud_mask) == 0:
-                    continue
-
-                ud_results = b_results[ud_mask,4:]
-                if np.nansum(ud_results) == 0:
-                    continue
-
-                mean = np.nanmean(ud_results, axis=0)
-                c = norm_color(get_color(cud, min_u, max_u))
-
-                # axs.plot(x, mean, color=c, linewidth=2)
 
             # put plot data onto axs
             axs.set_xlabel(xlabel)
@@ -512,10 +514,17 @@ def create(
             cmap = pltc.ListedColormap(colors)
             norm = pltc.Normalize(min_u, max_u)
             clabel = "Formänderungsenergie $U$ (J/m²)" if sz != FigureSize.ROW3 else "U (J/m²)"
-            cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label=clabel)
+
+            if cbar is None:
+                cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label=clabel)
             # renew_ticks_cb(cbar)
             # renew_ticks_ax(axs)
-            State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{prop}_{break_pos}", to_additional=True)
+
+
+            if not all_t_in_one:
+                State.output(StateOutput(fig, sz), f"impact-layer_{b}_{t:.0f}_{prop}_{break_pos}" + ("_annotated" if annotate_names else ""), to_additional=True)
+        if all_t_in_one and not boundary_empty:
+            State.output(StateOutput(fig, sz), f"impact-layer_{b}_all_{prop}_{break_pos}" + ("_annotated" if annotate_names else ""), to_additional=True)
 
 @layer_app.command()
 def compare_boundaries(
@@ -550,6 +559,8 @@ def compare_boundaries(
     max_energy = u * (1+energy_range)
 
     def add_filter(specimen: Specimen):
+        if specimen.thickness not in [4,8]:
+            return False
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
 
@@ -645,6 +656,10 @@ def compare_boundaries(
         results_b = results_per_boundary_unclustered[b][0][b_mask]
         stddev_b = results_per_boundary_unclustered[b][1][b_mask]
 
+        # skip if no data
+        if len(results_b) == 0:
+            continue
+
         # plot the current boundary
         x = r_range + (r_range[1]-r_range[0])/2
         x = x[:-1]
@@ -653,12 +668,13 @@ def compare_boundaries(
 
         # scatter each line in results with x
         for i in range(len(y)):
-            axs.scatter(x, z[i,:], color='rkb'[ib], marker='x', linewidth=0.5, s=1.5)
+            axs.plot(x, z[i,:], color=f'C{ib:.0f}', linewidth=0.2, alpha=0.3)
+            axs.scatter(x, z[i,:], color=f'C{ib}', marker='x', linewidth=0.5, s=1.5)
 
 
         # plot the stdmean of the current boundary
         mean = np.nanmean(z, axis=0)
-        axs.plot(x, mean,  color='rkb'[ib], linestyle='-', alpha=1, label=bid_r[b])
+        axs.plot(x, mean,  color=f'C{ib}', linestyle='-', alpha=1, label=bid_r[b])
 
     axs.set_xlabel(xlabel)
     axs.set_ylabel(ylabel)
@@ -871,7 +887,7 @@ def plot_polar(
 
     # fetch radii and angles
 
-    r_range,t_range = arrange_regions(d_r,d_t,specimen.get_impact_position(),realsize[0],realsize[1])
+    r_range,t_range = arrange_regions(d_r,d_t,specimen.get_impact_position(),realsize[0],realsize[1],r_min=specimen.get_setting(Specimen.SET_CBREAKPOSEXCL,None))
     _,_,Z,Zstd,kData = specimen.calculate_2d_polar(prop=prop, r_range_mm=r_range, t_range_deg=t_range, return_data=True)
 
     # plot the results in a colored plot
@@ -918,7 +934,7 @@ def plot_polar(
 
     State.output(output, f'polar-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
-    ylabel = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3)
+    ylabel = Splinter.get_property_label(prop, row3=sz == FigureSize.ROW3 or State.has_small_figures())
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
     x_values = r_range[:-1]
     y_values = Z.flatten()
@@ -938,7 +954,8 @@ def plot_polar(
     axs.set_xlabel("Abstand zum Anschlagpunkt (mm)")
     axs.set_ylabel(ylabel)
 
-    axs.legend(*get_legend(axs, axs2))
+    if not State.has_small_figures():
+        axs.legend(*get_legend(axs, axs2))
     State.output(StateOutput(fig,sz), f'polargraph-{specimen_name}_{prop}_{d_r}mm_{d_t}deg', to_additional=True)
 
 @layer_app.command()

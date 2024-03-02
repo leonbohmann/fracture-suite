@@ -104,7 +104,7 @@ def thickness(exclude_names: str = None):
 
         ax = axs[it]
         ax.set_title(f"{nom_thick}mm")
-        ax.hist(real_thickness, bins=10, label=f'{nom_thick}mm', alpha=0.9)
+        ax.hist(real_thickness, bins=10, label=f'{nom_thick}mm', alpha=0.9, edgecolor='gray', linewidth=0.3)
 
         # tick format as integer and only integers
         ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))

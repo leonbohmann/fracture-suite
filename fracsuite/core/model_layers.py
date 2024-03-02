@@ -1,17 +1,20 @@
 from enum import Enum
 import os
 from pyexpat.errors import XML_ERROR_SUSPEND_PE
+import tempfile
 from typing import Callable
+import cv2
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
 from fracsuite.core.LinearestInterpolator import LinearestInterpolator
-from fracsuite.core.logging import info
+from fracsuite.core.logging import debug, info
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
 from scipy.interpolate import interp2d, griddata, bisplrep, LinearNDInterpolator
 from fracsuite.core.specimenprops import SpecimenBreakPosition, SpecimenBoundary
+from fracsuite.state import State
 
 general = GeneralSettings.get()
 
@@ -145,40 +148,22 @@ def interp_layer(
 
     X,Y,V = load_layer(layer_name)
     info('Loading layer: ', layer_name)
-
-    # print('Radii', X)
-    # print('Energies', Y)
-    # print('Values', V)
-    X,Y = np.meshgrid(X,Y)
-    X = X.flatten()
-    Y = Y.flatten()
-    V = V.flatten()
-
-    interpolator = LinearestInterpolator(np.vstack([X,Y]).T, V)
-
-    # f = interp2d(X, Y, V, kind='linear')
+    f = interp2d(X, Y, V, kind='linear')
     # f = bisplrep(X, Y, V,  s=0.1)
     def r_func(r: float) -> float:
         """Calculate the value of the layer at a given radius. The energy was given to interp_layer."""
-        return interpolator(r, U)
+        return f(r, U)
 
     layer_name = ModelLayer.get_name(layer, mode, boundary, thickness, break_pos, True)
     Xs,Ys,Vs = load_layer(layer_name)
-
-    Xs,Ys = np.meshgrid(Xs,Ys)
-    Xs = Xs.flatten()
-    Ys = Ys.flatten()
-    Vs = Vs.flatten()
-    # print(Xs)
-    # print(Ys)
-    interpolator_std = LinearestInterpolator(np.vstack([Xs,Ys]).T, Vs)
+    fs = interp2d(Xs, Ys, Vs, kind='linear')
 
     def r_func_std(r: float) -> float:
-        return interpolator_std(r, U)
+        return fs(r, U)
 
     return r_func, r_func_std
 
-def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="~",interpolate=True,figwidth=FigureSize.ROW1) -> Figure:
+def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="$U\, (J/m²)$", clabel="~",interpolate=True,figwidth=FigureSize.ROW1) -> Figure:
     """
     Plots a given layer on a 2d contour plot.
 
@@ -223,7 +208,7 @@ def plt_layer(R,U,V,ignore_nan=False, xlabel="Radius", ylabel="Energy", clabel="
     axs.set_xlabel(xlabel)
     axs.set_ylabel(ylabel)
     axs.autoscale()
-    axs.set_xlim((0, R[-3]))
+    axs.set_xlim((R[0], R[-3]))
     return fig
 
 def get_asp(U: float, boundary: SpecimenBoundary, thickness: int, break_pos: SpecimenBreakPosition) -> Callable[[float], float]:
@@ -254,13 +239,14 @@ def get_l1(U: float, boundary: SpecimenBoundary, thickness: int, break_pos: Spec
 
 
 def arrange_regions(
-    d_r_mm: int = DEFAULT_RADIUS_DELTA,
-    d_t_deg: int = DEFAULT_ANGLE_DELTA,
+    d_r_mm: float = DEFAULT_RADIUS_DELTA,
+    d_t_deg: float = DEFAULT_ANGLE_DELTA,
     break_pos: SpecimenBreakPosition | tuple[float,float] = SpecimenBreakPosition.CORNER,
-    w_mm: int = 500,
-    h_mm: int = 500,
-    cx_mm: int = None,
-    cy_mm: int = None,
+    w_mm: float = 500,
+    h_mm: float = 500,
+    cx_mm: float = None,
+    cy_mm: float = None,
+    r_min: float = None,
     **kwargs
 ):
     """
@@ -280,7 +266,8 @@ def arrange_regions(
 
     # maximum radius
     r_max = np.sqrt((w_mm-ip_x)**2 + (h_mm-ip_y)**2)
-    r_min = 10 # 1cm around impact has no splinters
+    if r_min is None:
+        r_min = 20 # 2cm around impact position is the default
 
     # calculate angle and radius steps
     n_t = int(360 / d_t_deg)
@@ -314,3 +301,46 @@ def arrange_regions_px(
     )
 
     return r_range*px_per_mm,t_range
+
+def polar_window_size_function(x0: float,x1: float, ip_mm: tuple[float,float] | np.ndarray, region: tuple[float,float] | np.ndarray) -> int:
+    """
+    This uses a slow but accurate method to calculate the area of the region
+    by using a black image, drawing the region and counting the white pixels.
+
+    All input is based on mm so we do not need to convert anything.
+    """
+    ix,iy = map(int, ip_mm)
+    w,h = map(int, region)
+    img = np.zeros((h,w), dtype=np.uint8)
+    if x1 > 0:
+        cv2.ellipse(img, (int(ix),int(iy)), (int(x1),int(x1)), 0, 0, 360, 255, -1)
+    if x0 > 0:
+        cv2.ellipse(img, (int(ix),int(iy)), (int(x0),int(x0)), 0, 0, 360, 0, -1)
+    area = np.sum(img == 255)
+
+    if State.debug:
+        tmpfile = tempfile.mktemp(".png", "window")
+        cv2.imwrite(tmpfile, img)
+        debug(f'Saved polar band area calculation. r0: {x0}, r1: {x1}, area: {area}.')
+
+    return area
+
+
+def region_sizes(x_range,ip_mm,region):
+    """
+    Returns the sizes of the regions in the r and t direction.
+
+    Args:
+        x_range (array): The radius range.
+        y_range (array): The angle range.
+
+    Returns:
+        (r_size, t_size): The sizes of the regions in the r and t direction.
+    """
+
+    sizes = []
+    for i in range(len(x_range)-1):
+        # last r includes all remaining radii
+        x0, x1 = x_range[i], x_range[i+1]
+        sizes.append(polar_window_size_function(x0,x1, ip_mm, region))
+    return sizes

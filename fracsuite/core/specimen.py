@@ -123,11 +123,18 @@ class Specimen(Outputtable):
         return ret
 
     @property
+    def has_adjacency(self):
+        # adjacency depends on splinters, so we need to load them before we can access it
+        if self.has_splinters and self.__has_adjacency is None:
+            self.load_splinters()
+        return self.__has_adjacency
+
+    @property
     def splinters(self) -> list[Splinter]:
         "Splinters on the glass ply."
         if self.has_splinters and self.__splinters is None:
             self.load_splinters()
-            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
+            self.__has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
 
         assert self.__splinters is not None, f"Splinters are empty. Specimen {self.name} not loaded?"
         return self.__splinters
@@ -137,7 +144,7 @@ class Specimen(Outputtable):
         "All splinters on the glass ply."
         if self.has_splinters and self.__allsplinters is None:
             self.load_splinters()
-            self.has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
+            self.__has_adjacency = any([len(s.adjacent_splinter_ids) > 0 for s in self.splinters])
         return self.__allsplinters
 
     @property
@@ -316,6 +323,10 @@ class Specimen(Outputtable):
                 f"Splinters: {checkmark(self.has_splinters)} ) "
                     f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
 
+        if 'extensive_specimen_data' in State.kwargs and State.kwargs['extensive_specimen_data'] and self.__scalp is not None:
+            print(f"  - {', '.join([f'{x.location_name}: {x.stress[0]=:>4.0f}' for x in self.scalp.measurementlocations])}")
+            # print stress deviation
+            print(f"  - {self.scalp.sig_h.deviation:.2f}MPa deviation")
     def put_scalp_data(self, scalp: ScalpSpecimen):
         """Puts the scalp data into the specimen folder."""
         with open(os.path.join(self.path, "scalp", Specimen.SCALP_DATA_FILENAME), "wb") as f:
@@ -437,7 +448,7 @@ class Specimen(Outputtable):
         "File that contains splinter information."
         self.has_splinters = self.splinters_file is not None
         "States wether there is a file with splinter information or not."
-        self.has_adjacency = False
+        self.__has_adjacency = None
         "States wether adjacency information are present or not."
 
 
@@ -624,7 +635,7 @@ class Specimen(Outputtable):
 
         return np.array(id_list), np.array(p_list)
 
-    def calculate_intensity(self, force_recalc: bool = False, D_mm: float = 50) -> int:
+    def calculate_intensity(self, force_recalc: bool = False, D_mm: float = 50) -> float:
         """
         Calculates the fracture intensity by running a kde over the whole pane domain.
 
@@ -871,8 +882,7 @@ class Specimen(Outputtable):
         return s_count, splinters_in_region
 
     def calculate_energy(self):
-        t0 = self.scalp.measured_thickness
-        # print('Thickness: ', t0)
+        t0 = self.scalp.measured_thickness # this is mm!
         return calc_U(self.scalp.sig_h, t0)
 
     def calculate_energy_density(self):
@@ -921,7 +931,7 @@ class Specimen(Outputtable):
         # create kerneler
         kerneler = ObjectKerneler(
             sz,
-            self.splinters if not include_all_splinters else self.allsplinters,
+            self.splinters if not include_all_splinters and 'use_all_splinters' not in State.kwargs else self.allsplinters,
         )
 
         X,Y,Z,Zstd = kerneler.window(
@@ -1115,6 +1125,7 @@ class Specimen(Outputtable):
             if panic:
                 raise SpecimenException(f"Specimen '{name}' not found.")
             else:
+                warning(f"Specimen '{name}' not found.")
                 return None
 
         spec = Specimen(path, load=load)

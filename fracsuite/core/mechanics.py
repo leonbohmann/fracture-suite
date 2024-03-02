@@ -1,5 +1,7 @@
 import numpy as np
 
+nue = 0.23
+E = 70e3
 
 def U(sigma_s, t0):
     """
@@ -7,7 +9,7 @@ def U(sigma_s, t0):
 
     Args:
         sigma_s (float): Surface stress in MPa.
-        t0 (float): Thickness in m.
+        t0 (float): Thickness in mm.
     """
     # print('Thickness: ', t0)
     return Ud(sigma_s) * t0 * 1e-3 # thickness in mm
@@ -19,11 +21,13 @@ def Ud(sigma_s):
     Args:
         sigma_s (float): Surface stress in MPa.
     """
-    nue = 0.23
-    E = 70e3
     # print('Sigma_h: ', self.scalp.sig_h)
     return 1e6/5 * (1-nue)/E * (sigma_s ** 2)
 
+# np.sqrt(ud / 1e6/5 * (1-nue)/E)
 
-def Ud2sigm(ud):
-    return np.sqrt(ud * 5 / 4e6 * 70e3 / (1-0.25))
+def Ud2sigms(ud):
+    return np.sqrt((ud * 5 * E) / ((1-nue) * 1e6))
+
+def U2sigs(u, t):
+    return np.sqrt((u * 5 * E) / ((1-nue) * 1e6 * t))

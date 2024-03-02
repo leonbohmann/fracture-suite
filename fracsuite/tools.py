@@ -216,7 +216,7 @@ def layers_to_tex(base_path: str = ""):
     rows_per_page = 4
 
     main_latex = r"""
-    \chapter{LBREAK Layer}
+    \chapter{ALFA Layer}
     [PROPERTIES]
     """
 
@@ -296,7 +296,7 @@ def layers_to_tex(base_path: str = ""):
     main_latex = main_latex.replace("[PROPERTIES]", "\n".join(prop_latexs))
 
     # create an output latex file
-    with open(os.path.join(layer_folder, "A_lbreak_LAYERS.tex"), "w", encoding='utf-8') as f:
+    with open(os.path.join(layer_folder, "A_ALFA_LAYERS.tex"), "w", encoding='utf-8') as f:
         f.write(main_latex)
 
 

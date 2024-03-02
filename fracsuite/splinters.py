@@ -3,7 +3,7 @@ Splinter analyzation tools.
 """
 
 from enum import Enum
-from fracsuite.core.logging import debug
+from fracsuite.core.logging import debug, info
 import multiprocessing.shared_memory as sm
 import os
 import pickle
@@ -44,8 +44,10 @@ from fracsuite.core.plotting import (
     create_splinter_sizes_image,
     datahist_plot,
     datahist_to_ax,
+    fit_curve,
     get_fig_width,
     label_image,
+    legend_without_duplicate_labels,
     modified_turbo,
     plot_image_movavg,
     plot_kernel_results,
@@ -201,7 +203,8 @@ def gen_adjacent_all(
 
 @app.command()
 def gen_adjacent(
-    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load or a pkl file.')],
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load.')] = "*",
+    ask_for_overwrite: Annotated[bool, typer.Option(help='Ask for overwrite.')] = False,
 ):
     """Modify the existing splinters and attach adjacent splinters into them."""
 
@@ -209,21 +212,35 @@ def gen_adjacent(
         specimen = Specimen.get(specimen_name, load=False)
         assert specimen.has_splinters, "Specimen has no splinters."
         specimen.load_splinters()
-    elif specimen_name.endswith(".pkl"):
-        raise Exception("Generating adjacency from .pkl file is not supported yet.")
-        # with open(specimen_name, 'rb') as f:
-        #     splinters = pickle.load(f)
-        # output_splinter_file = os.path.join(os.path.dirname(specimen_name), Specimen.adjacency_file)
+        specimens = [specimen]
+    elif specimen_name == "*":
+        specimens = Specimen.get_all_by(lambda x: x.has_splinters, load=True)
     else:
         raise Exception("Invalid input. Neither .pkl file nor specimen name.")
 
-    adjacent_ids = get_adjacent_splinters_parallel(
-        specimen.splinters,
-        specimen.get_fracture_image().shape[:2]
-    )
-    attach_connections(specimen.splinters, adjacent_ids)
-    with open(specimen.splinters_file, 'wb') as f:
-        pickle.dump(specimen.splinters, f)
+    with get_progress(total=len(specimens),title='Checking adjacency of specimens') as progress:
+        for specimen in specimens:
+            if not specimen.has_splinters:
+                progress.advance()
+                info(f"Specimen {specimen.name} does not have splinters.")
+                continue
+
+            if specimen.has_adjacency:
+                progress.advance()
+                info(f"Specimen {specimen.name} already has adjacency data.")
+
+                if not ask_for_overwrite:
+                    continue
+                elif not typer.confirm(f"Overwrite adjacency data for {specimen.name}?"):
+                    continue
+
+            adjacent_ids = get_adjacent_splinters_parallel(
+                specimen.splinters,
+                specimen.get_fracture_image().shape[:2]
+            )
+            attach_connections(specimen.splinters, adjacent_ids)
+            with open(specimen.splinters_file, 'wb') as f:
+                pickle.dump(specimen.splinters, f)
 
 
 @app.command()
@@ -1074,7 +1091,7 @@ def log_2d_histograms(
 
     dt = np.array(data)
     axim = axs.imshow(dt, cmap=modified_turbo, aspect='auto', interpolation='none')
-    fig.colorbar(axim, ax=axs, orientation='vertical', label='PD $p(A_S)$', pad=0.2)
+    fig.colorbar(axim, ax=axs, orientation='vertical', label='PD $f(A_S)$', pad=0.2)
     # fig2 = plot_histograms((0,2), specimens, plot_mean=True)
     # plt.show()
 
@@ -1091,10 +1108,63 @@ def log_2d_histograms(
     axs.yaxis.set_minor_locator(plt.NullLocator())
     axy.yaxis.set_minor_locator(plt.NullLocator())
 
+    axs.annotate("x-Werte nach $10^x$", xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
+
 
     State.output(fig, f'loghist2d_{out_name}', to_additional=True, figwidth=sz)
 
 
+def custom_regex_filter(s: Specimen, filter: str) -> bool:
+    # format: t.sigma.b.nbr
+    values = filter.split(".")
+    t, sigma, b, nbr = "*", "*", "*", "*"
+
+    if len(values) > 0:
+        t = values[0]
+    if len(values) > 1:
+        sigma = values[1]
+    if len(values) > 2:
+        b = values[2]
+    if len(values) > 3:
+        nbr = values[3]
+
+    rt = ""
+    rsigma = ""
+    rb = ""
+    rnbr = ""
+
+    if ":" in t:
+        t = t.split(":")
+        # create regex pattern which matches any possible t values
+        rt = "(" + "|".join(t) + ")"
+    else:
+        rt = t.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+    if ":" in sigma:
+        sigma = sigma.split(":")
+        # create regex pattern which matches any possible sigma values
+        rsigma = "(" + "|".join(sigma) + ")"
+    else:
+        rsigma = sigma.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+    if ":" in b:
+        b = b.split(":")
+        # create regex pattern which matches any possible b values
+        rb = "(" + "|".join(b) + ")"
+    else:
+        rb = b.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+    if ":" in nbr:
+        nbr = nbr.split(":")
+        # create regex pattern which matches any possible nbr values
+        rnbr = "(" + "|".join(nbr) + ")"
+    else:
+        rnbr = nbr.replace(".", "\.").replace("*", ".*").replace('!', '|')
+
+
+    regex = f"{rt}\.{rsigma}\.{rb}\.{rnbr}"
+    # print(regex)
+    return re.match(regex, s.name) is not None
 def create_filter_function(name_filter,
                            sigmas=None,
                            sigma_delta=10,
@@ -1127,50 +1197,6 @@ def create_filter_function(name_filter,
     def all_names(s, filter) -> bool:
         return True
 
-    def custom_regex_filter(s: Specimen, filter: str) -> bool:
-        # format: t.sigma.b.nbr
-        values = filter.split(".")
-        # print(values)
-        t, sigma, b, nbr = values
-
-
-        rt = ""
-        rsigma = ""
-        rb = ""
-        rnbr = ""
-
-        if ":" in t:
-            t = t.split(":")
-            # create regex pattern which matches any possible t values
-            rt = "(" + "|".join(t) + ")"
-        else:
-            rt = t.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-        if ":" in sigma:
-            sigma = sigma.split(":")
-            # create regex pattern which matches any possible sigma values
-            rsigma = "(" + "|".join(sigma) + ")"
-        else:
-            rsigma = sigma.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-        if ":" in b:
-            b = b.split(":")
-            # create regex pattern which matches any possible b values
-            rb = "(" + "|".join(b) + ")"
-        else:
-            rb = b.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-        if ":" in nbr:
-            nbr = nbr.split(":")
-            # create regex pattern which matches any possible nbr values
-            rnbr = "(" + "|".join(nbr) + ")"
-        else:
-            rnbr = nbr.replace(".", "\.").replace("*", ".*").replace('!', '|')
-
-
-        regex = f"{rt}\.{rsigma}\.{rb}\.{rnbr}"
-        # print(regex)
-        return re.match(regex, s.name) is not None
 
     name_filter_function: Callable[[Specimen, Any], bool] = None
 
@@ -1629,6 +1655,8 @@ def test_navid_nfifty():
     axs.set_yscale('log')
     axs.legend()
     State.output(fig, "u", to_additional=True,figwidth=sz)
+
+
 @app.command()
 def nfifty(
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
@@ -1644,9 +1672,9 @@ def nfifty(
     }
 
     tcolors = {
-        1: 'green',
-        2: 'red',
-        3: 'blue',
+        1: 'C0',
+        2: 'C1',
+        3: 'C2',
     }
     bname = {
         1: 'A',
@@ -1658,9 +1686,12 @@ def nfifty(
         2: 'v',
         3: 'X',
     }
-    thicknesses = [4, 8, 12]
+    thicknesses = [4, 8]
 
     def add_filter(specimen: Specimen):
+        if specimen.thickness not in thicknesses:
+            return False
+
         if break_pos is not None and specimen.break_pos != break_pos:
             return False
         if specimen.boundary == SpecimenBoundary.Unknown:
@@ -1692,7 +1723,8 @@ def nfifty(
             if not use_mean:
                 nfifty = specimen.calculate_nfifty_count(centers, (50,50), force_recalc=recalc)
             else:
-                nfifty = specimen.calculate_intensity(force_recalc=recalc)
+                nfifty = specimen.calculate_intensity(force_recalc=recalc, D_mm=50)
+                nfifty = nfifty * 2500 # n50 is intensity on 50x50mm area
             results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_energy(), specimen.calculate_energy_density() , specimen.thickness, bid[specimen.boundary], nfifty)
 
             progress.advance()
@@ -1708,10 +1740,10 @@ def nfifty(
     id = idd[unit]
 
     id_name = {
-        0: "Formänderungsenergie $U$ [J/m²]",
-        1: "Formänderungsenergiedichte $U_d$ [J/m³]",
-        2: "Effektive Formänderungsenergie $U_t$ [J/m²]",
-        3: "Effektive Formänderungsenergiedichte $U_{dt}$ [J/m³]",
+        0: "Formänderungsenergie $U$ (J/m²)",
+        1: "Formänderungsenergiedichte $U_d$ (J/m³)",
+        2: "Effektive Formänderungsenergie $U_t$ (J/m²)",
+        3: "Effektive Formänderungsenergiedichte $U_{dt}$ (J/m³)",
     }
 
     def U4(x):
@@ -1727,9 +1759,9 @@ def nfifty(
         return 0.255 * x ** 2 + 109.28 * x + 5603.2
 
 
-    sz = FigureSize.ROW3
-    lw = 0.3 # line width for scatter plots
-
+    sz = FigureSize.ROW3 if 'override_figwidth' not in State.kwargs else State.kwargs['override_figwidth']
+    lwscatter = 0.3 # line width for scatter plots
+    lwlines = 1.4
     if sz == FigureSize.ROW3:
         for idn in id_name:
             id_name[idn] = " ".join(id_name[idn].split(" ")[-2:])
@@ -1742,10 +1774,11 @@ def nfifty(
     fig, axs = plt.subplots(figsize=get_fig_width(sz))
     cfg_logplot(axs)
 
+    # plot navids ud results
     if unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
         navid_n50 = navid_nfifty_ud()
 
-        for ith, th in enumerate([4,8,12]):
+        for ith, th in enumerate(thicknesses):
             navid_r = navid_n50[navid_n50[:,2] == th]
 
             navid_x = navid_r[:,0] #n50
@@ -1755,14 +1788,13 @@ def nfifty(
             axs.scatter(
                 navid_x,
                 navid_y,
-                marker='osv'[ith],
-                facecolors='grb'[ith],
-                edgecolors='none',
-                label=f'{th:.0f}mm (old)',
-                linewidth=lw,
+                marker='o',
+                facecolors=f'C{ith}',
+                linewidth=lwscatter,
                 alpha = 0.4
             )
 
+    # plot fitting curves for navids results as well as own results
     for it, thick in enumerate(thicknesses):
         clr = tcolors[it+1]
         mask = results[:,4] == thick
@@ -1770,9 +1802,9 @@ def nfifty(
         x = results[mask,-1]
         y = results[mask,id]
 
-        # get results from navid
+        # getting u results from navid depends on thickness
         if unit == EnergyUnit.U or unit == EnergyUnit.Ut:
-            navid_n50 = navid_nfifty(thick, as_ud=(unit == EnergyUnit.UD or unit == EnergyUnit.UDt))
+            navid_n50 = navid_nfifty(thick, as_ud=False)
             navid_x = navid_n50[:,0]
             navid_y = navid_n50[:,1]
             # navids points
@@ -1780,11 +1812,9 @@ def nfifty(
                 navid_x,
                 navid_y,
                 marker='o',
-                facecolors='none',
-                label=f'{thick:.0f}mm (old)',
-                edgecolors=clr,
-                linewidth=lw,
-                alpha=0.4
+                facecolors=f'C{it}',
+                linewidth=lwscatter,
+                alpha=0.4,
             )
         elif unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
             navid_r = navid_n50[navid_n50[:,2] == thick]
@@ -1792,6 +1822,14 @@ def nfifty(
             navid_x = navid_r[:,0] #n50
             navid_y = navid_r[:,1] #ud
 
+        # scatter current thickness leon
+        for b in bmarkers:
+            mask = (results[:,4] == thick) & (results[:,-2] == b)
+            ms = 's'
+            axs.scatter(results[mask,-1],results[mask,id],
+                        marker=ms, linewidth=lwscatter, color=clr, edgecolor='k',label=f"{thick}mm",)
+
+        # plot interpolation curves of x and navidx
         if len(y) > 0:
             # fit a curve
             def func(x, a, b):
@@ -1801,42 +1839,30 @@ def nfifty(
             y = np.concatenate([y,navid_y])
             p = np.column_stack([x,y])
 
-            print(p.shape)
-            print(p[0])
-            # sort for x
-            p = p[p[:,0].argsort()]
-
-            x = p[:,0]
-            y = p[:,1]
-            popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
-            print(f'{thick}mm Fitting cov:', pcov)
-
-            # plot the curve
-            x = np.linspace(np.min(x), np.max(x), 100)
-            y = func(x, *popt)
-            axs.plot(x, y, linestyle=(0,(1,1)), color=clr)
-
-            # calculate r^2
-            residuals = y - func(x, *popt)
-            ss_res = np.sum(residuals**2)
-            ss_tot = np.sum((y-np.mean(y))**2)
-            r_squared = 1 - (ss_res / ss_tot)
-            print(f'{thick}mm r^2:', r_squared)
-
-        # navid_n50, navid_ud, navid_u = navid_nfifty_interpolated(thick)
-        # if unit == EnergyUnit.U:
-        #     # print(navid_n50, navid_ud, navid_u)
-        #     plt.plot(navid_n50, navid_u, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
-        # elif unit == EnergyUnit.UD:
-        #     plt.plot(navid_n50, navid_ud, linestyle='-.', color=clr, label=f"{thick}mm (Appendix)", linewidth=0.6)
+            fit_curve(axs, x, y, func, clr, pltlabel="", annotate_label="")
 
 
+            # debug(p.shape)
+            # debug(p[0])
+            # # sort for x
+            # p = p[p[:,0].argsort()]
 
-        for b in bmarkers:
-            mask = (results[:,4] == thick) & (results[:,-2] == b)
-            ms = '*'
-            axs.scatter(results[mask,-1], results[mask,id], marker=ms, linewidth=lw, color=clr)
+            # x = p[:,0]
+            # y = p[:,1]
+            # popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
+            # info(f'{thick}mm Fitting cov:', pcov)
 
+            # # plot the curve
+            # x = np.linspace(np.min(x), np.max(x), 100)
+            # y = func(x, *popt)
+            # axs.plot(x, y, linestyle=(0,(1,1)), color=clr, linewidth=lwlines)
+
+            # # calculate r^2
+            # residuals = y - func(x, *popt)
+            # ss_res = np.sum(residuals**2)
+            # ss_tot = np.sum((y-np.mean(y))**2)
+            # r_squared = 1 - (ss_res / ss_tot)
+            # info(f'{thick}mm r^2:', r_squared)
 
     ux = np.linspace(min_N50, max_N50, 100)
     u4y = U4(ux)
@@ -1844,39 +1870,20 @@ def nfifty(
     u12y = U12(ux)
     udy = UD(ux)
 
+    # plot navid u curves
     if id == 0:
-        axs.plot(ux, u4y, linestyle='--', color=tcolors[1], alpha=0.4)
-        axs.plot(ux, u8y, linestyle='--', color=tcolors[2], alpha=0.4)
-        axs.plot(ux, u12y, linestyle='--', color=tcolors[3], alpha=0.4)
-
+        if 4 in thicknesses:
+            axs.plot(ux, u4y, linestyle='--', color=tcolors[1], alpha=0.4)
+        if 8 in thicknesses:
+            axs.plot(ux, u8y, linestyle='--', color=tcolors[2], alpha=0.4)
+        if 12 in thicknesses:
+            axs.plot(ux, u12y, linestyle='--', color=tcolors[3], alpha=0.4)
+    # plots the ud curve from literatur
     elif id == 1:
-        axs.plot(ux, udy, label="P-Mogh. (2020)", linestyle='--', color='k', alpha=0.4)
-        # fit a curve into all scattered points
-        x = np.concatenate([results[:,-1], navid_x])
-        y = np.concatenate([results[:,id], navid_y])
+        axs.plot(ux, udy, linestyle='--', color='k', alpha=0.4)
 
-        # sort for x
-        x,y = sort_arrays(x,y)
-
-        x = np.asarray(x, dtype=np.float64)
-        y = np.asarray(y, dtype=np.float64)
-
-        # fit a curve to x and y
-        def func(x, a, b):
-            return np.float64(a * x + b)
-
-        popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
-
-        # plot the curve
-        x = np.linspace(np.min(x), np.max(x), 100)
-        y = func(x, *popt)
-        # axs.plot(x, y, linestyle=(0,(1,1)), color='k', alpha=1, label='Bohmann (2024)')
-
-    # labeling for leons data
-    for b,t in zip(bid.values(), thicknesses):
-        axs.scatter([], [], label=f"{t}mm", marker='x', color=tcolors[b])
-    for b,t in zip(bid.values(), thicknesses):
-        axs.plot([],[], label=f"{t}mm", color=tcolors[b])
+    # for b,t in zip(bid.values(), thicknesses):
+    #     axs.plot([],[], label=f"{t}mm", color=tcolors[b])
 
     axs.set_ylabel(id_name[id])
     axs.set_xlabel("Bruchstückdichte $N_\\text{50}$")
@@ -1887,7 +1894,11 @@ def nfifty(
     # Anpassen der Y-Achsen-Grenzen
     axs.set_ylim(bottom=axs.get_ylim()[0], top=y_max)
 
+    legend_without_duplicate_labels(axs, compact=True)
+
     name = 'nfifty' if not use_mean else 'nperwindow'
+    if bound is None:
+        bound = 'all'
     State.output(StateOutput(fig, sz), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)
 
     if State.debug:

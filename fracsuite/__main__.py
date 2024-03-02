@@ -1,16 +1,13 @@
-import logging
 import os
 import subprocess
 import sys
 import time
-import rich
 
 import typer
 from matplotlib import pyplot as plt
 from rich import print
 from rich.progress import Progress, TextColumn
 from rich.theme import Theme
-from rich.logging import RichHandler
 import fracsuite
 from fracsuite.core.logging import exception, start, warning
 
@@ -28,6 +25,7 @@ from fracsuite.simulate import sim_app
 from fracsuite.specimen import app as specimen_app
 from fracsuite.splinters import app as splinter_app
 from fracsuite.state import State
+import fracsuite.state as st
 from fracsuite.test_prep import test_prep_app
 from fracsuite.tester import tester_app
 from fracsuite.highspeedimg import app as highspeed_app
@@ -37,7 +35,8 @@ from spazial import initialize as spazial_initialize
 from rich.console import Console
 import fracsuite.core.logging
 
-import scienceplots  # noqa: F401
+import scienceplots
+_ = scienceplots.isdir # dummy usage to avoid removing on isort
 
 custom_theme = Theme({
     "info": "dim cyan",
@@ -100,7 +99,7 @@ params = {
     'savefig.bbox' : 'tight',
     'savefig.pad_inches' : 0.05,
     'figure.constrained_layout.use': True,
-    'patch.force_edgecolor': True,
+    # 'patch.force_edgecolor': True, # this will put edges on all markers and filled regions
 }
 plt.rcParams.update(params)
 
@@ -228,8 +227,10 @@ def replot(
         for li, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith(plot_command):
-                command = stripped[len(plot_command)+1:]
+                command = stripped[len(plot_command)+1:] + " --state.no_open"
                 commands.append((f'[cyan]{file}[/cyan] ([dim white]L{li}[/dim white])',command))
+
+    errors = []
 
     with Progress(
             TextColumn("[progress.description]{task.description:<50}"),
@@ -241,16 +242,29 @@ def replot(
             cmd_task = progress.add_task(cmd_task_descr)
             tasks.append((file, command, cmd_task))
 
+        def logfile(msg):
+            with open("replot.log", "a") as f:
+                f.write(msg + "\n")
+
         for file, command, task in tasks:
             if not dry:
                 progress.update(task, description=f"{file} [green]> [/green] {command}")
                 proc = subprocess.Popen(["cmd", "/c", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 out,err = proc.communicate()
-                progress.update(task, description=f"{file} [green]{command}")
+                # check if command ran successfully
+                logfile(f"Running {command} on {file}")
+                if proc.returncode != 0:
+                    logfile(f"Error running {command} on {file}:\n{err.decode('utf-8')}")
+                    errors.append(f"Error running {command}:\n{err.decode('utf-8')}")
+                    progress.update(task, description=f"{file} [red]{command}")
+                else:
+                    progress.update(task, description=f"{file} [green]{command}")
             else:
                 print(f"DRY: Running {command}")
                 time.sleep(1)
 
+    if len(errors) != 0:
+        print(errors)
 
 
 @app.command()
@@ -258,8 +272,12 @@ def test(input: list[str]):
     print(input)
 
 console = Console()
+
+State.console = console
+
 console.rule("Fracsuite")
 
+start("fracsuite", '--debug' in sys.argv)
 
 # initialization stuff
 spazial_initialize() # spazial rust module
@@ -267,10 +285,11 @@ spazial_initialize() # spazial rust module
 def try_convert(value):
     try:
         result = eval(value)
-    except:
+    except:  # noqa: E722
         result = str(value)
     return result
 
+got_statekwargs = False
 for i, arg in enumerate(sys.argv):
     if sys.argv[i] is None:
         continue
@@ -278,6 +297,9 @@ for i, arg in enumerate(sys.argv):
     if arg.startswith("--state."):
         incr = 0
         property = arg[2:].split(".")[1]
+
+        if property not in st.known_kwargs:
+            warning(f"State does not have a property {property}.")
 
         if len(sys.argv) <= i+1 or sys.argv[i+1].startswith("--"):
             value = True
@@ -287,18 +309,22 @@ for i, arg in enumerate(sys.argv):
 
         try:
             State.set_arg(property,value)
+            got_statekwargs = True
         except Exception as e:
             warning(f"Could not set State.{property} to {value}.")
             exception(e)
 
         sys.argv[i] = None
     elif arg.startswith('--debug'):
-        State.debug = True
+        State.kwargs['debug'] = True
         sys.argv[i] = None
 
 sys.argv = [arg for arg in sys.argv if arg is not None]
 
-start("fracsuite", State.debug or 'debug' in State.kwargs)
+if got_statekwargs:
+    console.print("State kwargs were set from command line:")
+    console.print(State.kwargs)
+
 
 try:
     app()

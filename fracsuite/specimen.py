@@ -2,27 +2,17 @@
 Organisation module. Contains the Specimen class and some helpful tools to export specimens.
 """
 from __future__ import annotations
-from json import JSONEncoder
-import json
 
-from regex import F
 from fracsuite.core.calculate import is_number
 from fracsuite.core.geometry import delta_hcp
 from fracsuite.core.logging import debug, error, info, warning
 
 import os
-from pickle import NONE
 import re
 import cv2
 from matplotlib import pyplot as plt
-from matplotlib.figure import figaspect
-import rich
-from rich.prompt import Prompt
 
-from scipy.optimize import curve_fit
 import numpy as np
-from pygments import highlight
-from sklearn.metrics import mean_absolute_error
 from tqdm import tqdm
 import typer
 from rich import inspect, print
@@ -30,18 +20,18 @@ from rich.progress import track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.detection import get_crack_surface, get_crack_surface_r
 from fracsuite.core.imageprocessing import preprocess_image
-from fracsuite.core.mechanics import Ud2sigm
-from fracsuite.core.navid_results import navid_nfifty, navid_nfifty_ud
+from fracsuite.core.mechanics import U, U2sigs, Ud2sigms
+from fracsuite.core.navid_results import navid_nfifty_ud
 from fracsuite.core.plotting import FigureSize, KernelContourMode, fit_curve, get_fig_width, legend_without_duplicate_labels, plot_kernel_results
-from fracsuite.core.progress import tracker
 
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import quadrat_count, r_squared_f
 from fracsuite.core.stress import relative_remaining_stress
+from fracsuite.core.virtualspecimen import VirtualSpecimen, load_virtual_specimens
 from fracsuite.general import GeneralSettings
-from fracsuite.splinters import create_filter_function
+from fracsuite.splinters import create_filter_function, custom_regex_filter
 from fracsuite.state import State, StateOutput
 
 app = typer.Typer(help=__doc__, callback=main_callback)
@@ -56,19 +46,25 @@ b_markers = {
 }
 
 t_colors = {
-    4: 'green',
-    8: 'red',
-    12: 'blue'
+    4: 'C0',
+    8: 'C1',
+    12: 'C2'
 }
 
 scatter_args = {
-        's': 10,
-        'edgecolors': 'gray',
-        'linewidth': 0.5
-    }
+    's': 10,
+    'edgecolors': 'gray',
+    'linewidth': 0.5
+}
+
+def barsomfit(x, a):
+    return (1/a)*x
 
 def linfit(x, a, b):
     return a*x + b
+
+def lnfit(x, a, b, c, d):
+    return a * np.log(b*x+c) + d
 
 def squarefit(x, a, b, c):
     return a*x**2 + b*x + c
@@ -387,57 +383,66 @@ def create(name):
     Specimen.create(name)
 
 
+# @app.command()
+# def nfifty(name):
+#     specimen = Specimen.get(name)
+
+
+#     locations = [
+#         [400,100],
+#         [400,400],
+#         [100,400],
+#     ]
+
+#     nfifties = []
+
+#     output_image = specimen.get_fracture_image()
+
+#     for loc in locations:
+#         nfifty_l,spl_l = specimen.calculate_esg_norm(tuple(loc))
+#         nfifties.append(nfifty_l)
+
+#         detail, output_image = specimen.plot_region_count(tuple(loc), (50,50), spl_l, nfifty_l, output_image)
+
+
+#     nfifty = np.mean(nfifties)
+
+#     print(f"NFifty: {nfifty:.2f} (+- {np.std(nfifties):.2f})")
+#     specimen.set_data("nfifty", nfifty)
+#     specimen.set_data("nfifty_dev", np.std(nfifties))
+
+#     State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)
+
+
 @app.command()
-def nfifty(name):
-    specimen = Specimen.get(name)
-
-
-    locations = [
-        [400,100],
-        [400,400],
-        [100,400],
-    ]
-
-    nfifties = []
-
-    output_image = specimen.get_fracture_image()
-
-    for loc in locations:
-        nfifty_l,spl_l = specimen.calculate_esg_norm(tuple(loc))
-        nfifties.append(nfifty_l)
-
-        detail, output_image = specimen.plot_region_count(tuple(loc), (50,50), spl_l, nfifty_l, output_image)
-
-
-    nfifty = np.mean(nfifties)
-
-    print(f"NFifty: {nfifty:.2f} (+- {np.std(nfifties):.2f})")
-    specimen.set_data("nfifty", nfifty)
-    specimen.set_data("nfifty_dev", np.std(nfifties))
-
-    State.output(output_image, spec=specimen, figwidth=FigureSize.ROW1)
-
-
-@app.command()
-def to_tex(exclude_thickness: int = None):
+def to_tex(
+    name_filter: str = "*.*.*.*",
+    exclude_filter: str = None
+):
     """
     Retrieves all specimens and exports them to a latex file.
 
     The data is sorted in a table and contains several columns with information about the specimen.
     """
-    all_specimens = Specimen.get_all(load=True)
+    filterfunc = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
+
+    def filtfilt(s):
+
+        if custom_regex_filter(s, exclude_filter):
+            return False
+
+        return filterfunc(s)
+
+    all_specimens = Specimen.get_all_by(filtfilt, load=True)
 
     # sort by thickness, then nominal stress, then boundary and then number
     all_specimens.sort(key=lambda x: (x.thickness, x.nom_stress, x.boundary, x.nbr))
-
-    if exclude_thickness is not None:
-        all_specimens = [x for x in all_specimens if x.thickness != exclude_thickness]
 
     # define some columns
     def t(s: Specimen):
         return s.thickness
     def stress(s: Specimen):
-        return f"{-s.nom_stress:.0f}"
+        return f"{s.nom_stress:.0f}"
     def boundary(s: Specimen):
         return s.boundary
     def nbr(s: Specimen):
@@ -447,7 +452,7 @@ def to_tex(exclude_thickness: int = None):
             return None
         return f"{s.measured_thickness:.2f}"
 
-    def u0(s: Specimen):
+    def ut(s: Specimen):
         if not s.has_scalp:
             return None
         sz = s.get_real_size()
@@ -465,10 +470,10 @@ def to_tex(exclude_thickness: int = None):
     def stress_real(s: Specimen):
         if not s.has_scalp:
             return None
-        return f"{s.sig_h:.2f}"
+        return f"{-s.sig_h:.0f}"
     def n50(s: Specimen):
         if s.has_fracture_scans and s.has_splinters:
-            return f"{s.calculate_nfifty_count():.2f}"
+            return f"{s.calculate_nfifty_count():.0f}"
         else:
             return None
 
@@ -483,7 +488,7 @@ def to_tex(exclude_thickness: int = None):
         "$t_{\\text{real}}$": (t_real, "mm"),
         "$\glsm{sig_s}_{,\\text{real}}$": (stress_real, "MPa"),
         "$\glsm{fdens}$": (n50, None),
-        "$\glsm{ut}$": (u0, "J"),
+        "$\glsm{ut}$": (ut, "J"),
         "$\glsm{u}$": (u, "J/m²"),
         "$\glsm{ud}$": (ud, "J/m³"),
         "$\glsm{farea}$": (farea, "m²"),
@@ -681,7 +686,9 @@ def import_files(
     print('[yellow]> Running threshold tester <')
     if not no_tester:
         from fracsuite.tester import threshold
-        threshold(specimen.name)
+        # calculate a fraction of the specimen region to display
+        region = np.asarray((imgsize[0]//2, imgsize[1]//2, imgsize[0]//7, imgsize[1]//7)) / specimen.calculate_px_per_mm()
+        threshold(specimen.name, region=region)
 
     print('[yellow]> Marking impact point <')
     mark_impact(specimen.name)
@@ -702,23 +709,27 @@ def import_files(
 
 @app.command()
 def compare_nfifty_estimation(
-    boundary: str = None,
+    name_filter: str = "*.*.*.*",
 ):
     """
     Compare the nfifty estimation of all specimens.
 
-    This function compares the nfifty estimation of all specimens and calculates the mean and standard deviation.
+    Uses a function proposed by Nielsen (2016) to estimate the mean fragment density based on
+    an approach from Barsom (1968), who proposed a relation between the mean stress and the mean weight
+    of fragments.
     """
-    if boundary is None:
-        boundary = "*"
+    filterfunc = create_filter_function(name_filter, needs_splinters=True)
 
-    filterfunc = create_filter_function(f"*.*.{boundary}.*", needs_splinters=True)
+    thicknesses = [4,8]
 
-    all_specimens = Specimen.get_all_by(filterfunc, load=True)
+    def filtfilt(s):
+        if s.thickness not in thicknesses:
+            return False
 
+        return filterfunc(s)
 
-    if boundary == "*":
-        boundary = "all"
+    all_specimens = Specimen.get_all_by(filtfilt, load=True)
+
 
     nfifties: dict[Specimen,float] = {}
     sigh = []
@@ -734,19 +745,26 @@ def compare_nfifty_estimation(
     def n50_analytic(sigm):
         return (sigm/14.96)**4
 
+    def custom(x, a, b):
+        return (a*x/14.96)**4 + b*x
+
     sz = FigureSize.ROW2
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
 
     n50_navid = navid_nfifty_ud()
     # convert ud to sigm
-    n50_navid[:,1] = Ud2sigm(n50_navid[:,1])
+    n50_navid[:,1] = Ud2sigms(n50_navid[:,1]) / 2.0
     n50s_navid = n50_navid[:,0].flatten()
     sigm_navid = n50_navid[:,1].flatten()
 # 1e6/5 * (1-nue)/E * (sigma_s ** 2)
     for i in range(len(n50s_navid)):
-        axs.scatter(sigm_navid[i], n50s_navid[i], marker='x', color='gray', label='Literatur', alpha=0.75, **scatter_args)
+        if n50_navid[i,2] not in thicknesses:
+            continue
+        clr = t_colors[n50_navid[i,2]]
+        axs.scatter(sigm_navid[i], n50s_navid[i], marker='x', color=clr, alpha=0.75, **scatter_args)
         x_total.append(sigm_navid[i])
         y_total.append(n50s_navid[i])
+    axs.scatter([],[], marker='x', color='black', label='Literatur', **scatter_args)
 
     # plot data
     for spec,n50 in tqdm(nfifties.items(), desc="Plotting data...", leave=False):
@@ -766,9 +784,28 @@ def compare_nfifty_estimation(
     sigh.sort()
     x = sigh
     y = n50_analytic(sigh)
-    axs.plot(x, y, 'r--')
+    axs.plot(x, y, 'r--', label='Barsom')
 
-    fit_curve(axs, x_total, y_total, cubicfit, color='black', pltlabel='Fit')
+    # _,popt = fit_curve(axs, x_total, y_total, custom, color='black', pltlabel='Fit')
+
+
+    n50_navid = navid_nfifty_ud()
+    # convert ud to sigm
+    n50_navid[:,1] = Ud2sigms(n50_navid[:,1]) / 2.0
+    # create fits for individual thicknesses
+    for t in thicknesses:
+        nfifties = np.array([(x,x.sig_h//-2,x.calculate_nfifty_count(simple=True)) for x in all_specimens if x.thickness == t])
+        x = nfifties[:,1]
+        y = nfifties[:,2]
+
+        navidmask = n50_navid[:,2] == t
+        xn = n50_navid[navidmask,1]
+        yn = n50_navid[navidmask,0]
+
+        # concatenate the data
+        x = np.concatenate((x,xn))
+        y = np.concatenate((y,yn))
+        _,popt = fit_curve(axs, x, y, custom, color=f'C{t//4-1}', pltlabel=f'{t}mm',annotate_sz=6,annotate_popt=True)
 
     legend_without_duplicate_labels(axs, compact=True)
 
@@ -778,16 +815,32 @@ def compare_nfifty_estimation(
 
 @app.command()
 def crack_surface_simple(
+    name_filter: str = "*.*.*.*",
     boundary: str = None,
+    rho: float = None,
+    induce: bool = False
 ):
+    thicknesses = [4,8]
+    filter_func = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
+    def basefilter(s):
+        if boundary is not None and s.boundary != boundary:
+            return False
+        if s.thickness not in thicknesses:
+            return False
+
+        return filter_func(s)
+
+
+    specimens = Specimen.get_all_by(basefilter, load=True)
+
+    virtual_specimens: dict[int, list[VirtualSpecimen]] = {}
+
+    if induce:
+        for t in thicknesses:
+            virtual_specimens[t] = load_virtual_specimens(t)
+
     if boundary is None:
-        boundary = "*"
-    filter_func = create_filter_function(f"*.*.{boundary}.*", needs_scalp=True, needs_splinters=True)
-
-    specimens = Specimen.get_all_by(filter_func, load=True)
-
-    if boundary == "*":
-        boundary = "all"
+        boundary = "any"
 
     # calculate total crack surfaces
     crack_surfaces = {}
@@ -821,22 +874,113 @@ def crack_surface_simple(
 
     sz = FigureSize.ROW2
 
+    def get_ut(spec: Specimen | VirtualSpecimen):
+        # calculate base total energy
+        ut = spec.U * (spec.get_real_size()[0] * spec.get_real_size()[1]) * 1e-6
+
+        # calculate additional energy from fallweight
+        m = 2.41 # kg
+        g = 9.81 # m/s²
+        h = spec.get_fall_height_m()
+        ufall = m * g * h
+
+        ut = ut + ufall
+
+        return ut
 
     ##########################
     # plot crack surface
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
-
+    x = []
+    y = []
     for spec,crack_area in crack_surfaces.items():
+        spec: Specimen
         clr = t_colors[spec.thickness]
         marker = b_markers[spec.boundary]
-        axs.scatter(spec.U, crack_area, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
 
-    axs.set_xlabel("Formänderungsenergie $U$ (J/m²)")
-    axs.set_ylabel("$U_\\text{S} \cdot t$ (mm²)")
+        ut = get_ut(spec)
+
+        axs.scatter(ut, crack_area, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+        x.append(ut)
+        y.append(crack_area)
+
+    fit_curve(axs, x, y, lnfit, color='black', pltlabel='Fit')
+    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
+    axs.set_ylabel("Rissoberfläche $A_\mathrm{F} = \sum U_\mathrm{S,i} \cdot t$ (mm²)")
     legend_without_duplicate_labels(axs)
-
     State.output(StateOutput(fig,sz), f"cracksurface_vs_energy_{boundary}")
 
+    ##########################
+    # calculate theoretical mass from areas
+    if rho is None:
+        rho = 2500 # kg/m³
+
+    def ms_gpmm(A_mm2) -> float:
+        """Returns g/mm"""
+        return A_mm2 * rho * 1e-6
+
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+    x = {}
+    y = {}
+
+    for t in thicknesses:
+        x[t] = []
+        y[t] = []
+    for spec,spl_area in splinter_areas.items():
+        spl_rel_mass = ms_gpmm(spl_area)
+        ut = get_ut(spec)
+
+        clr = t_colors[spec.thickness]
+        marker = b_markers[spec.boundary]
+
+        axs.scatter(ut, spl_rel_mass, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
+
+        x[spec.thickness].append(ut)
+        y[spec.thickness].append(spl_rel_mass)
+
+    for t in thicknesses:
+        # only use available thicknesses
+        if t not in virtual_specimens:
+            continue
+        # only use thicknesses that have been plotted
+        if len(x[t]) == 0:
+            continue
+
+        vspecs = virtual_specimens[t]
+        for vspec in vspecs:
+            ut = get_ut(vspec)
+            clr = t_colors[vspec.thickness]
+            spl_rel_mass = vspec.M / vspec.measured_thickness
+            marker = b_markers[vspec.boundary]
+            axs.scatter(ut, spl_rel_mass, marker=marker, facecolors='none', edgecolors=clr, alpha=0.5)
+
+            x[vspec.thickness].append(ut)
+            y[vspec.thickness].append(spl_rel_mass)
+
+
+    # plot fits
+    for t in thicknesses:
+        xt = np.array(x[t])
+        yt = np.array(y[t])
+
+        if len(yt) == 0:
+            continue
+        _, popt = fit_curve(axs, xt, yt, squarefit, color=f'C{t//4-1}', pltlabel='Fit',annotate_sz=6, annotate_popt=True)
+        info(f'{t=}:{popt=}')
+
+    # approaching hline
+    yasymptote_mm = 9
+    yasymptote = ms_gpmm(yasymptote_mm)
+    axs.axhline(yasymptote, color='black', linestyle='--')
+    axs.annotate(f'$A_\mathrm{{S}}={yasymptote_mm:.0f} mm^2$', (45, yasymptote), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
+    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
+    axs.set_ylabel("$\\sfrac{m_\mathrm{S}}{t} = A_\mathrm{S}\cdot \\rho$ (g/mm)")
+    legend_without_duplicate_labels(axs)
+    State.output(StateOutput(fig,sz), f"weightedmass_vs_energy_{boundary}")
+
+
+
+    return
     n50_navid = navid_nfifty_ud()
     # convert ud to sigm
     n50_navid[:,1] = n50_navid[:,1] * n50_navid[:,2] * 1e-3
@@ -848,7 +992,6 @@ def crack_surface_simple(
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
 
     for spec,spl_volume in splinter_volumes.items():
-
         clr = t_colors[spec.thickness]
         marker = b_markers[spec.boundary]
         axs.scatter(spec.U, spl_volume, marker=marker, color=clr, label=f'{spec.thickness}mm, {spec.boundary}', **scatter_args)
@@ -1128,3 +1271,36 @@ def plot_property(
     output.overlayImpact(specimen)
     outputname = f'{prop}_2d' + ('_nosmooth' if not smooth else '') + ('_quadrat' if quadrat_count else '')
     State.output(output, outputname, spec=specimen, to_additional=True)
+
+
+@app.command()
+def find(evaluation: str):
+    """
+    Evaluate the expression in evaluation for all specimens and list them.
+
+    Evaluated expression looks like this: specimen.[evaluation]
+    """
+
+    def filterfunc(s: Specimen):
+        # s.load()
+        _ = s.splinters if s.has_splinters else None
+        evalstr = f"s.{evaluation}"
+
+        return eval(evalstr)
+
+    _ = Specimen.get_all_by(filterfunc, load=True)
+
+@app.command()
+def urr(name):
+    """
+    Calculate the energy release rate for a specific specimen.
+    """
+    specimen = Specimen.get(name)
+
+    mean_area = specimen.mean_splinter_area
+    urr = relative_remaining_stress(mean_area, specimen.measured_thickness)
+    print(f"URR: {urr:.2f}")
+    print(f'U_1: {specimen.U*urr:.2f} J/m²')
+
+    sig_s = U2sigs(specimen.U*urr, specimen.measured_thickness)
+    print(f"sig_s: {sig_s:.2f} MPa")

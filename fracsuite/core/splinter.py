@@ -620,14 +620,16 @@ class Splinter:
     @staticmethod
     def analyze_contour_image(contour_image, px_per_mm: float = 1.0, prep: PreprocessorConfig = None, areabounds: tuple[int,int] = None):
         """Analyze a contour image and return a list of splinters."""
-        if prep is None and areabounds is None:
-            from fracsuite.core.preps import defaultPrepConfig
-            prep = defaultPrepConfig
+        if areabounds is None:
+            if prep is None:
+                from fracsuite.core.preps import defaultPrepConfig
+                prep = defaultPrepConfig
 
             min_area = prep.min_area
             max_area = prep.max_area
         elif prep is None and areabounds is not None:
             min_area, max_area = areabounds
+
 
         contour_image = to_gray(contour_image)
         contours = detect_fragments(contour_image, min_area_px=min_area, max_area_px=max_area, filter=True)
@@ -827,16 +829,21 @@ class Splinter:
         SplinterProp.CIRCUMFENCE: ("Umfang", "Circumference (mm)"),
         SplinterProp.ANGLE: ("", "Angle (°)"),
         SplinterProp.ANGLE0: ("", "$Angle^0$ (°)"),
-        SplinterProp.INTENSITY: ("", "Bruchintensität (1/mm²)"),
-        SplinterProp.RHC: ("", "RHC (mm)"),
+        SplinterProp.INTENSITY: ("Bruchintensität", "$\Lambda$ (1/mm²)"),
+        SplinterProp.RHC: ("Hard-Core Radius", "$r_\mathrm{HC}$ (mm)"),
         SplinterProp.ACCEPTANCE: ("", "Acceptance"),
-        SplinterProp.NFIFTY: ("", "$N_\mathrm{50}$"),
+        SplinterProp.NFIFTY: ("Bruchstückdichte", "$N_\mathrm{50}$"),
         SplinterProp.COUNT: ("", "$N$"),
     }
 
     @classmethod
     def get_property_label(cls, mode, row3 = False) -> str:
+        from fracsuite.state import State
         if mode not in cls.splinter_prop_labels:
             raise Exception(f"Missing or invalid splinter-prop '{mode}'")
+
+        if 'override_figwidth' in State.kwargs and (overridesz := State.kwargs['override_figwidth']):
+            if overridesz != 'row3':
+                row3 = False
 
         return (cls.splinter_prop_labels[mode][0] + " " if not row3 else "") + cls.splinter_prop_labels[mode][1]

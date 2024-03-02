@@ -22,6 +22,7 @@ def main_callback(
         to_temp: Annotated[bool, typer.Option(help='Redirect all output to temp folder.')] = False,
         save_plots: Annotated[bool, typer.Option(help='Save plots to output folder.')] = False,
         figasimgonly: Annotated[bool, typer.Option(help='Save plots as images only.')] = False,
+        figaspdfonly: Annotated[bool, typer.Option(help='Save plots as images only.')] = False,
         mod: Annotated[str, typer.Option(help='Modifies the output name.')] = '',
         subfolder: Annotated[str, typer.Option(help='Puts all output in a subfolder.')] = None,
         max_spec: Annotated[int, typer.Option(help='Maximum number of specimens to process.')] = 1000,
@@ -30,6 +31,8 @@ def main_callback(
     ):
     """Splinter analyzation tools."""
     cmd = os.path.basename(State.sub_outpath) + "/" + ctx.invoked_subcommand
+
+    assert not (figasimgonly and figaspdfonly), "Cannot use both --figasimgonly and --figaspdfonly at the same time."
 
     if set_additional_path is not None:
         general.output_paths[cmd] = set_additional_path
@@ -56,17 +59,22 @@ def main_callback(
     State.output_name_mod = mod
     State.save_plots = save_plots
     State.figasimgonly = figasimgonly
+    State.figaspdfonly = figaspdfonly
     State.maximum_specimen = max_spec
-    State.no_open = no_open
+    State.no_open = no_open or (True if 'no_open' in State.kwargs and State.kwargs['no_open'] else False)
     State.no_out = no_out
 
     State.pointoutput(subfolder)
+
+    State.debug = State.debug or (True if 'debug' in State.kwargs and State.kwargs['debug'] else False)
 
     if mod != "":
         info(f"[cyan]Output name will be modified with: {mod}")
 
     if to_temp:
         info("[cyan]Output will be written to temp folder.")
+
+    State.initialize()
 
 #TODO: In the future this can be used to make the commands more modular
 def specimen_callback(name_or_names_with_sigma: list[str]):

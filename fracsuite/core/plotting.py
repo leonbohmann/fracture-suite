@@ -692,7 +692,9 @@ def datahist_to_ax(
     as_density = True,
     plot_mode: DataHistPlotMode = DataHistPlotMode.HIST,
     unit: str = "mm²",
-    mean_format: str = ".1f"
+    mean_format: str = ".1f",
+    linewidth: float = 1,
+    no_log_convert: bool = False
 ) -> tuple[Any, list[float], Any]:
     """
     Plot a histogram of the data to axes ax.
@@ -728,17 +730,31 @@ def datahist_to_ax(
             binrange = np.linspace(data[0], data[-1], n_bins)
         if plot_mode == DataHistPlotMode.HIST or plot_mode == DataHistPlotMode.STEPS:
             fillcolor = norm_color(color)
-            edgecolor = 'gray' if plot_mode == DataHistPlotMode.HIST else 'none'
 
-            # density: normalize the bins data count to the total amount of data
-            binned_data,edges,bin_container = ax.hist(data, bins=binrange,
-                    density=as_density,
-                    histtype='step' if plot_mode == DataHistPlotMode.STEPS else 'bar',
-                    color=fillcolor,
-                    label=label,
-                    linewidth=1 if plot_mode == DataHistPlotMode.STEPS else 0.2,
-                    alpha=alpha)
-            color = edgecolor if plot_mode == DataHistPlotMode.STEPS else fillcolor
+            if plot_mode == DataHistPlotMode.STEPS:
+                # density: normalize the bins data count to the total amount of data
+                binned_data,_,bin_container = ax.hist(data, bins=binrange,
+                        density=as_density,
+                        histtype='step',
+                        color=fillcolor,
+                        linewidth=1,
+                        alpha=alpha)
+                ax.plot([],[], label=label, color=fillcolor, alpha=alpha, linewidth=1)
+            elif plot_mode == DataHistPlotMode.HIST:
+                edgecolor = 'gray'
+
+                # density: normalize the bins data count to the total amount of data
+                binned_data,_,bin_container = ax.hist(data, bins=binrange,
+                        density=as_density,
+                        histtype='bar',
+                        color=fillcolor,
+                        edgecolor=edgecolor,
+                        label=label,
+                        linewidth=0.2,
+                        alpha=alpha)
+
+
+            color = fillcolor
         elif plot_mode == DataHistPlotMode.KDE or plot_mode == DataHistPlotMode.KDE2:
             x,y = calculate_kde(data)
             gauss_kde_plot = ax.plot(x,y, label=label, color=color, alpha=1.0, zorder=0)
@@ -754,18 +770,20 @@ def datahist_to_ax(
         binned_data, edges = np.histogram(data, bins=binrange, density=as_density)
         cumsum = np.cumsum(binned_data)
         # density: normalize the bins data count to the total amount of data
-        bin_container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha, color=norm_color(color))[0]
+        bin_container = ax.plot(binrange[:-1], cumsum / np.max(cumsum), label=label, alpha=alpha, color=norm_color(color), linewidth=linewidth)[0]
         color = bin_container.get_color()
 
     if plot_mean:
         mean_format = f'{{0:{mean_format}}}'
 
-        most_probable_area,_ = calculate_dmode(data)
+        most_probable_area,_ = calculate_dmode(data, bins=50)
         print(most_probable_area)
         most_probable_area_value = 10**most_probable_area if as_log else most_probable_area
         most_probable_area_string = mean_format.format(most_probable_area_value)
         print(f"Most probable area: {most_probable_area_value:.2f}{unit}")
-        ax.axvline(x=most_probable_area, ymin=0,ymax=100, linestyle='--', label=f"{most_probable_area_string}{unit}", color=color, alpha=alpha)
+        idmax = np.argmax(binned_data)
+        ymax = binned_data[idmax] if data_mode == DataHistMode.PDF else cumsum[idmax+1] / np.max(cumsum)
+        ax.vlines(x=most_probable_area, ymin=0,ymax=ymax, linestyle='--', label=f"{most_probable_area_string}{unit}", color=color, alpha=alpha)
 
         # axd = ax.get_xlim()[1] - ax.get_xlim()[0]
         # ayd = ax.get_ylim()[1] - ax.get_ylim()[0]
@@ -1080,14 +1098,23 @@ def legend_without_duplicate_labels(ax, compact = False):
 
     ax.legend(*zip(*unique))
 
-
-def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit'):
+axs_annotation_counts = {}
+def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annotate=True, annotate_popt=False,
+              annotate_sz=6,
+              annotate_label=None):
     from scipy.optimize import curve_fit
     from fracsuite.core.stochastics import r_squared
     x = np.asarray(x)
     y = np.asarray(y)
 
-    popt, pcov = curve_fit(func, x, y)
+    popt = None
+    pcov = None
+    try:
+        popt, pcov = curve_fit(func, x, y)
+    except:
+        warning(f"Could not fit curve {func.__name__} to data.")
+        return None, None
+
     y_fit = func(x, *popt)
 
     # use original values to calculate r²
@@ -1097,15 +1124,37 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit'):
     x_fit = np.linspace(min(x), max(x), 100)
     y_fit = func(x_fit, *popt)
 
-    short_label = '{}: R²={:.2f}, '.format(func.__name__, rsqr)
-    label = short_label
-    for i, value in enumerate(popt):
-        label += f'a{i+1}={value:.1f}, '
+
+    if annotate_label is None:
+        annotate_label = func.__name__
+    short_label = '{}: R²={:.2f}'.format(annotate_label, rsqr)
+    label = short_label + "\n" + ", ".join([f'a{i+1}={value:.2e}' for i, value in enumerate(popt)])
     axs.plot(x_fit, y_fit, color=color, linestyle=ls, label=pltlabel, linewidth=lw)
 
-    axs.annotate(short_label[:-2], (x_fit[5], y_fit[5]), textcoords="offset points", xytext=(25,-5), ha='left', va='center', color=color)
+    if annotate:
+        if axs in axs_annotation_counts:
+            annotation_id = axs_annotation_counts[axs]
+            axs_annotation_counts[axs] += 1
+        else:
+            annotation_id = 0
+            axs_annotation_counts[axs] = 1
 
-    print(label[:-2])
+        if 'fitcurve_annotation_pos' in State.kwargs and len(State.kwargs['fitcurve_annotation_pos']) > annotation_id:
+            defin = State.kwargs['fitcurve_annotation_pos'][annotation_id]
+            pos = (defin[0],defin[1])
+            ha = defin[2] if len(defin) > 2 else 'left'
+            va = defin[3] if len(defin) > 3 else 'top'
+        else:
+            pos = (x_fit[5], y_fit[5])
+            ha = 'left'
+            va = 'top'
+
+        xytext0 = -5 if ha == 'right' else 5
+        xytext1 = -5 if va == 'bottom' else 5
+
+        axs.annotate(short_label if not annotate_popt else label, pos, textcoords="offset points", xytext=(xytext0,xytext1), ha=ha, va=va, color=color,fontsize=annotate_sz)
+
+
     return y_fit, popt
 
 

@@ -12,6 +12,7 @@ from scipy.signal import argrelextrema
 from fracsuite.core.logging import debug
 
 from fracsuite.core.signal import smooth_hanning
+from fracsuite.scalper.scalpSpecimen import Measurement
 from fracsuite.state import State
 
 def r_squared_f(x, y_real, func, popt):
@@ -137,7 +138,37 @@ def mse(reference, measure):
     return np.mean((reference - measure) ** 2)
 
 def nrmse(reference, measure):
+    """Normalised root mean square error."""
     return np.sqrt(mse(reference, measure)) / np.mean(reference)
+
+def even_data(reference, measure, n=50):
+    reference = np.asarray(reference)
+    measure = np.asarray(measure)
+
+    maxv = max(np.max(reference), np.max(measure))
+
+    xr = np.linspace(0, maxv, len(reference))
+    xm = np.linspace(0, maxv, len(measure))
+
+    interpr = np.linspace(reference[0], reference[-1], n)
+    interpm = np.linspace(measure[0], measure[-1], n)
+
+    # create evenly spaced interpolations
+    ref = np.interp(interpr, xr, reference)
+    meas = np.interp(interpm, xm, measure)
+    return ref, meas
+
+def data_mse(reference, measure, n=50):
+    ref, meas = even_data(reference, measure, n)
+    return mse(ref, meas)
+
+# def data_chi2(reference, measure, n=100):
+#     ref,meas = even_data(reference, measure)
+#     return calculate_chi2(ref, meas)
+
+# def nrstd(reference, measure):
+#     """Normalised root mean square error using standard deviation."""
+#     return np.sqrt(mse(reference, measure)) / np.std(reference)
 
 def detercoeff(reference, measure):
     return (1 - mse(reference, measure) / np.var(reference)) * 100
@@ -157,6 +188,31 @@ def mae(reference, measure):
 def jaccard(x, y):
     jaccard_index = np.sum(np.minimum(x, y)) / np.sum(np.maximum(x, y))
     return jaccard_index * 100
+
+# def calculate_mse(expected, actual, n_bins=100):
+#     """
+#     """
+#     return np.mean((expected - actual) ** 2)
+
+# def calculate_chi2(expected, actual, n_bins=100):
+#     expected = np.asarray(expected)
+#     actual = np.asarray(actual)
+
+#     # calculate pearson X2 for expected and actual which are not the same size
+#     X2 = np.mean((expected - actual) ** 2 / expected)
+
+#     # Calculate degrees of freedom
+#     dof = 1
+
+#     # Calculate critical value
+#     alpha = 0.05
+#     gamma = 1 - alpha
+#     p = chi2.ppf(gamma, dof)
+
+#     return {'X2': X2, 'dof': dof, 'p': p, 'htrue': bool(X2 < p)}
+
+# def compare_data(reference, measure):
+#     std = np.std(reference)
 
 def similarity(reference, measure, binrange=100, no_print=False):
     reference = np.histogram(reference, bins=binrange)[0]
@@ -242,6 +298,25 @@ def calculate_dmode(data, bins: int = 1000):
     mpv_prob = y_vals[np.argmax(y_vals)]
 
     return mpv, mpv_prob
+
+def calculate_dmodei(data, bins: int = 1000):
+    """
+    Finds the most probable value of a distribution by calculating the mode.
+    Applies a Gaussian KDE to the data and finds the maximum value of the KDE.
+
+    Args:
+        data (list): Data to find the most probable value of.
+        bins (int, optional): Number of bins to use for the histogram. Defaults to 100.
+
+    Returns:
+        float: The most probable value of the distribution!
+    """
+    data = np.asarray(data)
+    x_vals, y_vals = calculate_kde(data, bins)
+    # calculate most probable value (mode)
+    mpv = x_vals[np.argmax(y_vals)]
+
+    return float(mpv)
 
 
 def distances(events: list[tuple[float,float]]):
@@ -442,9 +517,11 @@ def lhat(points, width, height, d, use_weights=True):
     return np.array(lhat_test(points, width, height, d, use_weights))
 
 def lhatc(points, width, height, d, use_weights=True):
+    f"""{lhatc_test.__doc__}"""
     return np.array(lhatc_test(points, width, height, d, use_weights))
 
 def khat_xy(points, width, height, d, use_weights=True):
+    f"""{khat.__doc__}"""
     p = khat(points, width, height, d, use_weights=use_weights)
     x = p[:,0]
     y = p[:,1]

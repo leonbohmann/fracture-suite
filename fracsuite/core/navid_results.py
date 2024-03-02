@@ -173,7 +173,6 @@ nue  = 0.23
 # transform u data to ud while preserving the thickness
 #
 # With this, we can plot all data from the N50(U) plot to the N50(Ud) plot.
-# It is shown using fracsuite splinters nfifty, that the data has been filtered to better fit the N50(Ud) curve.
 ########################################
 total_len = len(nfifty_u_4mm) + len(nfifty_u_8mm) + len(nfifty_u_12mm)
 
