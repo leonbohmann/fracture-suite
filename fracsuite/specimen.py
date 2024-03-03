@@ -965,7 +965,7 @@ def crack_surface_simple(
 
         if len(yt) == 0:
             continue
-        _, popt = fit_curve(axs, xt, yt, squarefit, color=f'C{t//4-1}', pltlabel='Fit',annotate_sz=6, annotate_popt=True)
+        _, popt = fit_curve(axs, xt, yt, squarefit, color=f'C{t//4-1}', pltlabel=None,annotate_sz=6, annotate_popt=True)
         info(f'{t=}:{popt=}')
 
     # approaching hline

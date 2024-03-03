@@ -1683,8 +1683,8 @@ def nfifty(
     }
     bmarkers ={
         1: 'o',
-        2: 'v',
-        3: 'X',
+        2: 's',
+        3: 'D',
     }
     thicknesses = [4, 8]
 
@@ -1788,7 +1788,7 @@ def nfifty(
             axs.scatter(
                 navid_x,
                 navid_y,
-                marker='o',
+                marker='s',
                 facecolors=f'C{ith}',
                 linewidth=lwscatter,
                 alpha = 0.4
@@ -1811,7 +1811,7 @@ def nfifty(
             axs.scatter(
                 navid_x,
                 navid_y,
-                marker='o',
+                marker='s',
                 facecolors=f'C{it}',
                 linewidth=lwscatter,
                 alpha=0.4,
@@ -1825,7 +1825,7 @@ def nfifty(
         # scatter current thickness leon
         for b in bmarkers:
             mask = (results[:,4] == thick) & (results[:,-2] == b)
-            ms = 's'
+            ms = bmarkers[b]
             axs.scatter(results[mask,-1],results[mask,id],
                         marker=ms, linewidth=lwscatter, color=clr, edgecolor='k',label=f"{thick}mm",)
 
