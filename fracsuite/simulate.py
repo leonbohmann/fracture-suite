@@ -882,7 +882,7 @@ def create_validation_plots(
     State.output(fig, f'{name}_cdf', figwidth=FigureSize.ROW2)
 
 
-    fig,axs = datahist_plot(figwidth=FigureSize.ROW2)
+    fig,axs = datahist_plot(figwidth=FigureSize.ROW2, data_mode=DataHistMode.CDF)
     axs[0].stairs(spec_areas_bins, binrange, color='C0')
     axs[0].stairs(mean_simulation_area_bins, binrange, color='C1')
     axs[0].stairs(mean_vor_area_bins, binrange, color='C2')
