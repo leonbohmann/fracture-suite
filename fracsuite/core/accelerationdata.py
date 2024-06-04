@@ -1,15 +1,16 @@
 import re
 import os
+from typing import Tuple
 
 import numpy as np
 
 from rich import print
-from apread import APReader
+from apread import APReader 
 from apread.entries import Channel
 from matplotlib import pyplot as plt
 from scipy.signal import find_peaks, spectrogram
 
-from fracsuite.core.signal import lowpass, remove_freq
+from fracsuite.core.signal import lowpass
 
 # enable this to display debug info and plots when loading any acceleration data
 DEBUG = False
@@ -77,7 +78,9 @@ class AccelerationData:
     Created from specimens using their acceleration file.
     """
 
-    def __init__(self, file):
+    channels: list[Channel]
+
+    def __init__(self, file, zero_channels: bool = True):
         """
         Create a new AccelerationData object from a given file.
 
@@ -90,9 +93,36 @@ class AccelerationData:
 
         self.channels: list[Channel] = None
 
-        self.load()
+        self.load(zero_channels=zero_channels)
 
-    def load(self):
+    def filter_drop_channels(self, lowpassfreq = 7500) -> Tuple[list[np.ndarray], list[Channel]]:
+        """
+        Filter the drop channels from the acceleration data. This is done by applying a lowpass filter to the data.
+
+        Args:
+            lowpassfreq (int, optional): The frequency to filter. Defaults to 7500.
+        Returns:
+            list[np.ndarray]: The original channel data before filtering.
+        """
+        drop_chan = self.get_channel_like("[Ff]all(_?)g[1-9]")
+        original_chan_data = None
+
+        print("Filter eigenfrequencies of drop channel...")
+        original_chan_data = drop_chan.data
+        # transform channel data
+        time = drop_chan.Time
+        drop_chan.data = lowpass(time, drop_chan.data, lowpassfreq, 1/(time[1]-time[0]))
+
+        return original_chan_data, drop_chan
+    
+    def load(self, zero_channels: bool = True):
+        """
+        Loads the acceleration data from the file and calculates the time of impact and fracture.
+        By default, the channels are zeroed using the first 0.35 seconds of the data.
+
+        Args:
+            zero_channels (bool, optional): Whether to zero the channels. Defaults to True.
+        """
         # create APReader to read the file
         reader = APReader(self.file)
         self.reader = reader
@@ -102,7 +132,14 @@ class AccelerationData:
             return
 
         # save channels
-        self.channels = reader.Channels
+        self.channels: list[Channel] = reader.Channels
+
+        # when zeroing channels, calculate zeroing
+        if zero_channels:
+            print("Zeroing channels...")
+            for channel in self.channels:
+                channel.zero(seconds=0.35)
+
 
         # preliminary runtime calculations
         _, _, t_c = runtimes()
@@ -172,6 +209,9 @@ class AccelerationData:
 
     def get_acc_chans(self) -> list[Channel]:
         return [channel for channel in self.channels if re.match("[Aa]cc(_?)", channel.Name) is not None]
+
+    def get_channels_like(self, filter: str) -> list[Channel]:
+        return [channel for channel in self.channels if re.match(filter, channel.Name) is not None]
 
     def get_channel_like(self, filter: str) -> Channel:
         for channel in self.channels:

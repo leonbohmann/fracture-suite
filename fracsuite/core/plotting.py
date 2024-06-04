@@ -26,7 +26,7 @@ from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
-from fracsuite.core.logging import debug, info, warning
+from fracsuite.core.logging import debug,  warning
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
 from fracsuite.state import State, StateOutput
@@ -1163,3 +1163,11 @@ def annotate_corner(
     annotation
 ):
     ax.annotate(annotation, xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
+
+
+def plot_series(time, data, name):
+    fig, axs = plt.subplots()
+    axs.plot(time, data, label=name)
+    axs.set_xlabel('Time')
+    axs.set_ylabel(name)
+    return fig, axs

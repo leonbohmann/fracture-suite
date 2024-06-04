@@ -14,12 +14,12 @@ from scipy.integrate import cumulative_trapezoid
 import numpy as np
 import typer
 from apread import APReader, Channel
-from rich import print
+from rich import inspect, print
 from rich.progress import track
-from fracsuite.core.accelerationdata import AccelerationData
-from fracsuite.core.plotting import FigureSize, get_fig_width
+from fracsuite.core.accelerationdata import DEBUG, AccelerationData
+from fracsuite.core.plotting import FigureSize, get_fig_width, plot_series
 from fracsuite.core.signal import lowpass
-from fracsuite.state import State
+from fracsuite.state import State, StateOutput
 
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import find_file
@@ -650,34 +650,105 @@ def to_csv(
     reader_to_csv(reader, acc_path, number_dot)
 
 @app.command()
-def fft(file, chan: str = "Fall_g"):
-    """Calculates the fft of the given file."""
+def ffts(specimen_name, channel_names: list[str], seconds: float = None):
+    spec = Specimen.get(specimen_name, load=True)
+    channels: list[Channel] = []
+    for name in channel_names:
+        channels.extend(spec.accdata.reader.collectChannelsLike(name))
 
-    if (spec := Specimen.get(file, panic=False)) is not None:
-        file = spec.acc_file
+    fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))    
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel("dbZ")
 
-    reader = APReader(file)
-    reader.printSummary()
+    for chan in channels:       
+        time, data = untilSeconds(chan, seconds)
 
-    chan = reader.collectChannelsLike(chan)[0]
-    freq, ffts = fft_calc(chan.data, chan.Time.data, plot=False, title=chan.Name)
+        plot_series(time,data, chan.Name)
+        freq, ffts = fft_calc(data, time, plot=False, title=chan.Name)
+        # ax.fill_between(freq, 0, ffts, label=chan.Name)
+        ax.plot(freq[::50], ffts[::50], label=chan.Name)
 
-    fig, ax = plt.subplots()
-    ax.plot(freq, ffts)
+    plt.legend()
     plt.show()
 
+
+
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1))
+
+
+def untilSeconds(chan, seconds):
+    if seconds is not None:
+        time = chan.Time.data
+        data = chan.data
+        t0 = time[0]
+        time = time[time < time[0] + seconds]
+        data = data[:len(time)]
+        return time, data
+    return chan.Time.data, chan.data
+
 @app.command()
-def test_data(file):
+def fft(file, chan: str = "Fall_g", seconds: float = None):
+    """
+    Calculates the fft of the given file.
+    
+    Args:
+        file (str): The file to calculate the fft of.
+        chan (str, optional): The channel to calculate the fft of. Defaults to "Fall_g".
+        seconds (float, optional): The time up until which to calculate the fft of. Defaults to None.
+    """
+
+    if (spec := Specimen.get(file, panic=False)) is not None:
+        file = spec.acc_file
+        reader = spec.accdata.reader
+    else:
+        reader = APReader(file)
+    
+    reader.printSummary()
+
+
+    chan = reader.collectChannelsLike(chan)[0]
+
+    # only fft until time
+    time, data = untilSeconds(chan, seconds)
+    plot_series(time, data, chan.Name)
+    
+    # perform fft
+    freq, ffts = fft_calc(data, time, plot=False, title=chan.Name)
+
+    fig, ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    ax.plot(freq, ffts)
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel("dbZ")
+    ax.set_title(f"FFT of {chan.Name}")
+    plt.show()
+
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1))
+
+@app.command()
+def test_filter(file):
     """Calculates the fft of the given file."""
 
     if (spec := Specimen.get(file, panic=False)) is not None:
         file = spec.acc_file
 
-
     accdata = AccelerationData(file)
+    original_data, drop_channel = accdata.filter_drop_channels()
+
+    fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    
+    time = drop_channel.Time.data
+
+    ax = axs
+    ax.plot(time, original_data, label=drop_channel.Name)
+    ax.plot(time, drop_channel.data, label=drop_channel.Name + " filtered")
+    ax.legend()
+
+    plt.show()
+    State.output(fig, figwidth=FigureSize.ROW1)
+
 
 @app.command()
-def transform(
+def to_csv(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
 ):
     specimen = Specimen.get(specimen_name)
@@ -724,3 +795,14 @@ def transform(
                     else:
                         f.write(";")
             f.write("\n")
+
+@app.command()
+def calculate_load_time(
+    specimen_name: str
+):
+    # load data
+    specimen = Specimen.get(specimen_name)
+    accdata = specimen.accdata
+
+    # filter eigenfrequencies of drop channels
+    accdata.filter_drop_channels()
