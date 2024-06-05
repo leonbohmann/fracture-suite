@@ -1165,9 +1165,16 @@ def annotate_corner(
     ax.annotate(annotation, xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
 
 
-def plot_series(time, data, name):
-    fig, axs = plt.subplots()
-    axs.plot(time, data, label=name)
-    axs.set_xlabel('Time')
-    axs.set_ylabel(name)
-    return fig, axs
+def plot_series(time, data, name, axs = None):
+    if axs is None:
+        _, ax = plt.subplots()
+    else:
+        ax = axs
+        
+    ax.plot(time, data, label=name)
+    ax.set_xlabel('Time')
+    ax.set_ylabel(name)
+    ax.legend()
+
+    if axs is None:
+        plt.show()
