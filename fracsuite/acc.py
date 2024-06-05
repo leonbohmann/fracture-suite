@@ -16,8 +16,8 @@ from scipy.signal import savgol_filter
 from scipy.integrate import cumulative_trapezoid
 import numpy as np
 import typer
-from apread import APReader, Channel
-from apread.tools import betweenSeconds, untilSeconds, afterSeconds
+from apread import APReader, Channel # type: ignore
+from fracsuite.core.series import betweenSeconds, untilSeconds, afterSeconds
 from rich import inspect, print
 from rich.progress import track
 from fracsuite.core.accelerationdata import DEBUG, AccelerationData
@@ -800,7 +800,7 @@ def test_filter(
 
     time = drop_channel.Time.data
 
-    # filter out noise
+    # filter out noise in midrange
     drop_channel.data = bandstop(time, drop_channel.data, 600,2500)
 
     # plot filtered data
@@ -831,6 +831,8 @@ def calculate_load_time(
         accdata.filter_fallgewicht_lowpass(f0=4000)
         # accdata.filter_fallgewicht_highpass(f0=10)
         accdata.filter_fallgewicht_eigenfrequencies()
+        accdata.filter_fallgewicht_noise()
+
 
     # get drop channel
     drop_channel = accdata.drop_channel

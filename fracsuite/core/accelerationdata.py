@@ -116,7 +116,12 @@ class AccelerationData:
 
         return original_chan_data, self.drop_channel
 
+    def filter_fallgewicht_noise(self):
+        """Filter out some more noise from the signal."""
+        self.drop_channel.data = bandstop(self.drop_channel.Time, self.drop_channel.data, 600,2500)
+
     def filter_fallgewicht_highpass(self, f0: float = 1000):
+        """Filter out a highpass filter from the signal."""
         original_chan_data = None
 
         print(
@@ -125,9 +130,7 @@ class AccelerationData:
         original_chan_data = self.drop_channel.data
         # transform channel data
         time = self.drop_channel.Time
-
         self.drop_channel.data = highpass(time, self.drop_channel.data, f0)
-
         return original_chan_data, self.drop_channel
 
     def filter_fallgewicht_eigenfrequencies(
@@ -170,7 +173,7 @@ class AccelerationData:
 
         ## EIGENFREQUENCIES FROM FFT (Experiment)
         # (100,130), (2050, 2100),
-        for f in [ (100,130), (4950,5050), (7200, 7400), (7700, 7850), (9300, 9800)]:
+        for f in [ (4950,5050), (7200, 7400), (7700, 7850), (9300, 9800)]:
             f0, f1 = f
             print(f" > Filtering {f0}-{f1}...")
             self.drop_channel.data = bandstop(
