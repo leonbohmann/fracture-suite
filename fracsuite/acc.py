@@ -5,6 +5,7 @@ Acceleration tools.
 import os
 from pstats import StatsProfile
 import re
+import shutil
 from tracemalloc import start
 from typing import Annotated
 from unittest import skip
@@ -763,7 +764,8 @@ def test_filter(
     high: float = None,
     bands: bool = False,    
     chan_name:str = None,
-    fft_range: tuple[float,float] = (None, None)
+    fft_range: tuple[float,float] = (None, None),
+    wiener: bool = False
 ):
     """
     Tests the filtering algorithm and displays both the unfiltered and filtered signal.
@@ -775,7 +777,10 @@ def test_filter(
     if (spec := Specimen.get(file, panic=False)) is not None:
         assert spec.acc_file is not None, f"Specimen '{file}' has no acceleration data."
         accdata = spec.accdata
-    elif not os.path.exists(file):
+    elif file in general.aliases:
+        file = general.aliases[file]
+    
+    if not os.path.exists(file) and accdata is None:
         raise FileNotFoundError(f"File '{file}' not found.")
 
     if accdata is None:
@@ -788,6 +793,7 @@ def test_filter(
 
     original_data = drop_channel.data.copy()
 
+
     # filter out high frequencies
     if low is not None:
         accdata.filter_fallgewicht_lowpass(f0=low)
@@ -797,11 +803,15 @@ def test_filter(
 
     if bands:
         accdata.filter_fallgewicht_eigenfrequencies()
-
+        accdata.filter_fallgewicht_wiener()
+        
     time = drop_channel.Time.data
 
-    # filter out noise in midrange
-    drop_channel.data = bandstop(time, drop_channel.data, 600,2500)
+
+    if wiener:
+        from scipy.signal import wiener as w2
+        drop_channel.data = w2(drop_channel.data, 11)
+
 
     # plot filtered data
     fig, axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
@@ -815,39 +825,130 @@ def test_filter(
     perform_plot_fft((time, drop_channel.data, drop_channel.Name + " filtered"), fft_range)
 
 @app.command()
+def wiener_test(
+    file: str,
+    chan_name: str = None
+):
+    """
+    Compare the wiener filter with the original data.
+
+    Args:
+        name (str): File name, specimen name or alias.
+    """
+    accdata: AccelerationData = None
+    if (spec := Specimen.get(file, panic=False)) is not None:
+        assert spec.acc_file is not None, f"Specimen '{file}' has no acceleration data."
+        accdata = spec.accdata
+    elif file in general.aliases:
+        file = general.aliases[file]
+    
+    if not os.path.exists(file) and accdata is None:
+        raise FileNotFoundError(f"File '{file}' not found.")
+
+    if accdata is None:
+        accdata = AccelerationData(file)
+        
+    if chan_name is None:
+        drop_channel = accdata.drop_channel
+    else:
+        drop_channel = accdata.get_channel_like(chan_name)
+
+    original_data = drop_channel.data.copy()
+    
+    # filter using wiener
+    from scipy.signal import wiener as w2
+    data_wienered = {}
+
+    wiener_sizes = [1, 3, 5, 7, 9, 11, 13, 15, 17]
+
+    for i in wiener_sizes:
+        data_wienered[i] = w2(original_data, i)    
+    
+    time = drop_channel.Time.data    
+    # fig, axs = plt.subplots(len(wiener_sizes) // 3, 3, figsize=get_fig_width(FigureSize.ROW1), sharex=True, sharey=True)
+    
+    # for i, (size, data) in enumerate(data_wienered.items()):
+    #     row = i // 3
+    #     col = i % 3
+
+    #     axs[row,col].set_title(f"Wiener filter size {size}")
+    #     axs[row,col].plot(time, original_data, label='Original' )
+    #     axs[row,col].plot(time, data, label='Wienered')
+    #     axs[row,col].legend()
+        
+    # plt.show()
+
+    # fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    # for size, data in data_wienered.items():
+    #     freq, ffts = fft_calc(data, time, plot=False)
+    #     axs.plot(freq, ffts, label=f"Wiener size {size}")
+        
+    # axs.legend()
+    # plt.show()
+    
+    # plot all wieners in one plot
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    axs.plot(time, original_data, label="Original")
+    for size, data in data_wienered.items():
+        axs.plot(time, data, label=f"{size}")
+        
+    axs.legend()
+    plt.show()
+        
+
+@app.command()
 def calculate_load_time(
     specimen_name: str,    
-    start_seconds: float = 0,
-    end_seconds: float = np.inf,
     skip_filters: bool = False,
-    trunc_start_seconds: float = None
 ):
+    if ',' in specimen_name:
+        specimen_names = specimen_name.split(',')
+        for name in specimen_names:
+            calculate_load_time(name, skip_filters)
+        return
+    
+    
     # load data
     specimen = Specimen.get(specimen_name)
     accdata = specimen.accdata
 
     # filter drop channel
-    if not skip_filters:
-        accdata.filter_fallgewicht_lowpass(f0=4000)
+    # if not skip_filters:
         # accdata.filter_fallgewicht_highpass(f0=10)
-        accdata.filter_fallgewicht_eigenfrequencies()
-        accdata.filter_fallgewicht_noise()
+        # accdata.filter_fallgewicht_eigenfrequencies()
+        
+    accdata.filter_fallgewicht_lowpass(f0=15000)
+    accdata.filter_fallgewicht_wiener()
 
 
     # get drop channel
     drop_channel = accdata.drop_channel
     data = drop_channel.data
     time = drop_channel.Time.data
+    
+    # get the exact time of fall initiation
+    ti = 0.5 # this is the trigger time from catmanAP
+    
+    sfall = specimen.fall_height_m
+    tfall = np.sqrt(2*sfall/9.81)
+    t0 = ti - tfall
+    # fetch time and data of fall weight from fall to impact + 1 second
+    time, data = betweenSeconds((time, data), t0, t0 + 0.5)
 
-    if trunc_start_seconds is not None:
-        time, data = afterSeconds((time, data), trunc_start_seconds)
+    # normalize time
+    time = time - time[0]
+
+    m = 2.41
 
     # acceleration
     a = data * 9.81 # g to m/s²
     # velocity
     v = cumulative_trapezoid(a, time, initial=0)
     # distance
-    s = cumulative_trapezoid(v, time, initial=0)
+    s = cumulative_trapezoid(v, time, initial=0) + sfall
+
+    kin = 0.5 * 9.81 * v ** 2
+    F = m * a
 
     # plot the data into subplots over each other
     fig, axs = plt.subplots(3, 1, figsize=general.figure_size, sharex=True, sharey=False)
@@ -855,21 +956,28 @@ def calculate_load_time(
     axs[1].plot(time, v, label="Velocity")
     axs[2].plot(time, s, label="Distance")
 
-
-    axs[0].set_ylim((-10, +5))
-    axs[1].set_ylim((-1, 0.01))
-    axs[2].set_ylim((-0.1, 0.01))
-
     axs[0].set_ylabel("Acceleration [m/s²]")
     axs[1].set_ylabel("Velocity [m/s]")
     axs[2].set_ylabel("Distance [m]")
 
-    for ax in axs:
-        ax.set_xlim((start_seconds, end_seconds))
+    for ax in axs:        
         # ax.autoscale()
         ax.legend()
         ax.grid()
 
     plt.show()
 
-    State.output(StateOutput(fig, figwidth=FigureSize.ROW1))
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), f'{specimen_name}-load-time', spec=specimen)
+
+
+    # create csv file
+    csv_file = State.get_output_file(f"{specimen_name}-load-time.csv")
+    with open(csv_file, 'w') as f:
+        f.write("Time [s];Acceleration [m/s²];Velocity[m/s];Distance[m];E_kin[J];F[N]\n")
+        for i in range(len(time)):
+            f.write(f"{time[i]};{a[i]};{v[i]};{s[i]};{kin[i]};{F[i]}\n")
+            
+    print(f"Data written to '{csv_file}'.")
+    
+    # copy contents to specimen folder
+    shutil.copy(csv_file, specimen.get_acc_outfile(f"{specimen_name}-load-time.csv"))

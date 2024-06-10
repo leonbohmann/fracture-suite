@@ -61,10 +61,11 @@ def betweenSeconds(chan, start, end):
     if isinstance(chan, tuple):
         time = chan[0]
         data = chan[1]
+        name = ""
     else:
         time = chan.Time.data
         data = chan.data
-
+        name = chan.name
         if chan.isTime and start is not None and end is not None:
             d = chan.data[(chan.data > chan.data[0] + start) & (chan.data < chan.data[0] + end)]
             return d, d
@@ -78,7 +79,7 @@ def betweenSeconds(chan, start, end):
         time = time[mask]
 
         if len(time) == 0:
-            print(f"betweenSeconds: No data between {start} and {end} in channel {chan.name}.")
+            print(f"betweenSeconds: No data between {start} and {end} in channel {name}.")
         data = data[mask]
     
     return time, data

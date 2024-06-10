@@ -1113,7 +1113,7 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annot
         popt, pcov = curve_fit(func, x, y)
     except:
         warning(f"Could not fit curve {func.__name__} to data.")
-        return None, None
+        return np.array([]), np.array([])
 
     y_fit = func(x, *popt)
 
@@ -1124,6 +1124,9 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annot
     x_fit = np.linspace(min(x), max(x), 100)
     y_fit = func(x_fit, *popt)
 
+
+    if axs is None:
+        return y_fit, popt
 
     if annotate_label is None:
         annotate_label = func.__name__

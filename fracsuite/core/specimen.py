@@ -431,8 +431,8 @@ class Specimen(Outputtable):
         # load acceleration
         acc_path = os.path.join(self.path, "fracture", "acceleration")
         self.acc_file = find_file(acc_path, "*.bin")
-        print(f"Loading acceleration data for {self.name}...")
-        print(f"  - {self.acc_file}")
+        # print(f"Loading acceleration data for {self.name}...")
+        # print(f"  - {self.acc_file}")
 
         # scalp requisites
         self.scalp_folder = os.path.join(self.path, "scalp")

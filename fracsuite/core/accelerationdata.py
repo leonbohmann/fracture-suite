@@ -9,7 +9,9 @@ from apread import APReader
 from apread.entries import Channel
 from matplotlib import pyplot as plt
 from scipy.signal import find_peaks, spectrogram
+from scipy.signal import wiener as w2
 
+from fracsuite.core.series import betweenSeconds
 from fracsuite.core.signal import bandstop, highpass, lowpass
 
 # enable this to display debug info and plots when loading any acceleration data
@@ -116,10 +118,11 @@ class AccelerationData:
 
         return original_chan_data, self.drop_channel
 
-    def filter_fallgewicht_noise(self):
+    def filter_fallgewicht_wiener(self):
         """Filter out some more noise from the signal."""
-        self.drop_channel.data = bandstop(self.drop_channel.Time, self.drop_channel.data, 600,2500)
-
+        # self.drop_channel.data = bandstop(self.drop_channel.Time, self.drop_channel.data, 150,2500)
+        self.drop_channel.data = w2(self.drop_channel.data, 17)
+        
     def filter_fallgewicht_highpass(self, f0: float = 1000):
         """Filter out a highpass filter from the signal."""
         original_chan_data = None
@@ -173,7 +176,7 @@ class AccelerationData:
 
         ## EIGENFREQUENCIES FROM FFT (Experiment)
         # (100,130), (2050, 2100),
-        for f in [ (4950,5050), (7200, 7400), (7700, 7850), (9300, 9800)]:
+        for f in [ (2000,2200), (7100, 7300), (7700, 7900), (9200, 9800)]:
             f0, f1 = f
             print(f" > Filtering {f0}-{f1}...")
             self.drop_channel.data = bandstop(
@@ -205,14 +208,14 @@ class AccelerationData:
 
         # when zeroing channels, calculate zeroing
         if zero_channels:
-            print("Zeroing channels...")
+            # print("Zeroing channels...")
             for channel in self.channels:
-                channel.zero(seconds=0.35)
-
-        print("Normalizing time channels...")
-        for channel in self.channels:
-            if not channel.isTime:
-                channel.Time.data = channel.Time.data - channel.Time.data[0]
+                # time channel gets set to the start time
+                if channel.isTime:
+                    channel.data = channel.data - channel.data[0]
+                # all other channels get zeroed in the first 0.35 seconds
+                else:
+                    channel.zero(seconds=0.1)
 
         # preliminary runtime calculations
         _, _, t_c = runtimes()
