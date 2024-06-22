@@ -26,7 +26,7 @@ from fracsuite.core.coloring import get_color, norm_color, rand_col
 from fracsuite.core.image import to_rgb
 from fracsuite.core.imageprocessing import modify_border
 from fracsuite.core.kernels import ImageKerneler, ObjectKerneler
-from fracsuite.core.logging import debug, info, warning
+from fracsuite.core.logging import debug,  warning
 from fracsuite.core.splinter import Splinter
 from fracsuite.general import GeneralSettings
 from fracsuite.state import State, StateOutput
@@ -1113,7 +1113,7 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annot
         popt, pcov = curve_fit(func, x, y)
     except:
         warning(f"Could not fit curve {func.__name__} to data.")
-        return None, None
+        return np.array([]), np.array([])
 
     y_fit = func(x, *popt)
 
@@ -1124,6 +1124,9 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annot
     x_fit = np.linspace(min(x), max(x), 100)
     y_fit = func(x_fit, *popt)
 
+
+    if axs is None:
+        return y_fit, popt
 
     if annotate_label is None:
         annotate_label = func.__name__
@@ -1163,3 +1166,18 @@ def annotate_corner(
     annotation
 ):
     ax.annotate(annotation, xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
+
+
+def plot_series(time, data, name, axs = None):
+    if axs is None:
+        _, ax = plt.subplots()
+    else:
+        ax = axs
+        
+    ax.plot(time, data, label=name)
+    ax.set_xlabel('Time')
+    ax.set_ylabel(name)
+    ax.legend()
+
+    if axs is None:
+        plt.show()

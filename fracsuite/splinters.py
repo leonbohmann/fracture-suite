@@ -1683,8 +1683,8 @@ def nfifty(
     }
     bmarkers ={
         1: 'o',
-        2: 'v',
-        3: 'X',
+        2: 's',
+        3: 'D',
     }
     thicknesses = [4, 8]
 
@@ -1741,9 +1741,9 @@ def nfifty(
 
     id_name = {
         0: "Formänderungsenergie $U$ (J/m²)",
-        1: "Formänderungsenergiedichte $U_d$ (J/m³)",
-        2: "Effektive Formänderungsenergie $U_t$ (J/m²)",
-        3: "Effektive Formänderungsenergiedichte $U_{dt}$ (J/m³)",
+        1: "Formänderungsenergiedichte $U_\mathrm{D}$ (J/m³)",
+        2: "Effektive Formänderungsenergie $U_\mathrm{t}$ (J/m²)",
+        3: "Effektive Formänderungsenergiedichte $U_\mathrm{Dt}$ (J/m³)",
     }
 
     def U4(x):
@@ -1788,7 +1788,7 @@ def nfifty(
             axs.scatter(
                 navid_x,
                 navid_y,
-                marker='o',
+                marker='s',
                 facecolors=f'C{ith}',
                 linewidth=lwscatter,
                 alpha = 0.4
@@ -1811,7 +1811,7 @@ def nfifty(
             axs.scatter(
                 navid_x,
                 navid_y,
-                marker='o',
+                marker='s',
                 facecolors=f'C{it}',
                 linewidth=lwscatter,
                 alpha=0.4,
@@ -1825,9 +1825,11 @@ def nfifty(
         # scatter current thickness leon
         for b in bmarkers:
             mask = (results[:,4] == thick) & (results[:,-2] == b)
-            ms = 's'
+            if np.sum(mask) == 0:
+                continue
+            ms = bmarkers[b]
             axs.scatter(results[mask,-1],results[mask,id],
-                        marker=ms, linewidth=lwscatter, color=clr, edgecolor='k',label=f"{thick}mm",)
+                        marker=ms, linewidth=lwscatter, color=clr, edgecolor='k', label=f"{thick}mm",)
 
         # plot interpolation curves of x and navidx
         if len(y) > 0:

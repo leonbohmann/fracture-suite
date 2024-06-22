@@ -24,7 +24,9 @@ from fracsuite.core.mechanics import U, U2sigs, Ud2sigms
 from fracsuite.core.navid_results import navid_nfifty_ud
 from fracsuite.core.plotting import FigureSize, KernelContourMode, fit_curve, get_fig_width, legend_without_duplicate_labels, plot_kernel_results
 
+from fracsuite.core.seel_prediction_data import get_seel_data
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
+from fracsuite.core.specimenprops import SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import quadrat_count, r_squared_f
@@ -33,6 +35,8 @@ from fracsuite.core.virtualspecimen import VirtualSpecimen, load_virtual_specime
 from fracsuite.general import GeneralSettings
 from fracsuite.splinters import create_filter_function, custom_regex_filter
 from fracsuite.state import State, StateOutput
+
+from scipy.optimize import curve_fit
 
 app = typer.Typer(help=__doc__, callback=main_callback)
 
@@ -272,6 +276,120 @@ def mark_excluded_points(
         specimen.set_setting(Specimen.SET_EXCLUDED_POSITIONS, tuple(excluded_points))
 
 
+@app.command()
+def seel_prediction(
+    only_dicke: str = None ,
+    do3d: bool = False   
+):
+    if only_dicke is not None:
+        if is_number(only_dicke):
+            only_dicke = [float(only_dicke)]
+        elif ',' in only_dicke:
+            only_dicke = [float(e) for e in only_dicke.split(',')]
+        
+    
+    # load all specimens
+    filter = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
+    def filtfilt(s):
+        if only_dicke is not None and not s.thickness in only_dicke:
+            return False
+        return filter(s)
+    specimens = Specimen.get_all_by(filtfilt, load=True)
+
+    # find all n50 values by thickness and sigma
+    nf = []
+    for spec in specimens:
+        nf.append((spec.thickness, -spec.sig_h, spec.calculate_nfifty_count()))
+
+    t_seel, sig_seel, n_seel = get_seel_data()
+
+    for t, sig, n in zip(t_seel, sig_seel, n_seel):
+        nf.append((t, sig, n))
+
+    # create a fitting function for the n50 values
+    def n50fit(x, a, b, c, d, e, f):
+        t = x[0]
+        s = x[1]
+        return a + t * b + s * c + s ** 2 * d + s ** 3 * e + s * t * f
+
+    def n50fit2(x, a, b, c, d, e, f, g, h):
+        t = x[0]        
+        s = x[1]
+        return a + t * b + t ** 2 * g + t**3*h + s * c + s ** 2 * d + s ** 3 * e + s * t * f
+    
+    # prediction function provided by seel
+    def pred_seel(t, sig):
+        return 1281 + t * 18.98 + sig * (-37.29) + sig ** 3 * (-0.0009638) + sig ** 2 * (0.3504) + sig * t * (-0.2149)
+
+    
+    pred_function = n50fit
+    
+    # create a fitting function for n50fit using 2d data
+    x_data = np.array([(t, s) for t, s, _ in nf]).T
+    y_data = np.array([nf_count for _, _, nf_count in nf])
+
+    # filter thickness if passed
+    if only_dicke is not None:
+        print(f"Filtering for thickness {only_dicke}")
+        
+        mask = np.isin(x_data[0], only_dicke)
+        x_data = x_data[:,mask]
+        y_data = y_data[mask]
+        
+        nf = [e for e in nf if e[0] in only_dicke]
+
+    popt, pcov = curve_fit(pred_function, x_data, y_data)
+    print(popt)
+    print(pcov)
+
+    # create data for the plot
+    results = np.zeros((len(nf), 4))
+    for i, e in enumerate(nf):    
+        t, sig, n = e
+        n50_bohm = pred_function((t, sig), *popt)
+        n50_seel = pred_seel(t, sig)
+
+        results[i,0] = n
+        results[i,1] = n50_seel
+        results[i,2] = n50_bohm
+        results[i,3] = sig
+
+    # sort results
+    results = results[results[:,0].argsort()]
+
+
+    if do3d:
+        x1 = np.linspace(min(x_data[0]), max(x_data[0]), 100)
+        x2 = np.linspace(min(x_data[1]), max(x_data[1]), 100)
+        x_grid, y_grid = np.meshgrid(x1, x2)
+
+        # calculate z values for the fitted surface
+        z_fit = pred_function((x_grid, y_grid), *popt)
+        
+        # create the 3D plot
+        fig = plt.figure(figsize=get_fig_width(FigureSize.ROW1))
+        ax = fig.add_subplot(111, projection='3d')
+        # plot the fitted surface
+        ax.plot_surface(x_grid, y_grid, z_fit, alpha=0.5, rstride=100, cstride=100)
+        ax.scatter(x_data[0], x_data[1], y_data, color='red')
+        plt.show()
+        State.output(StateOutput(fig, FigureSize.ROW1), "seel_prediction_3d")
+
+    ms = np.ones(len(results[:,0])) * 10
+    # create the 2d plot
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    axs.scatter(results[:,0], results[:,1], ms, c=results[:,3], marker='d', cmap='turbo', label='Ansatz nach Seel')
+    # axs.scatter(x_seel, y_seel, c='g', marker='D', label='Seel Original')
+    sct = axs.scatter(results[:,0], results[:,2], ms, c=results[:,3], marker='s', cmap='turbo', label='Ansatz nach Bohmann')
+    axs.axline([0,0], [1,1], color='black', linestyle='--', label='1:1')
+    fig.colorbar(sct, ax=axs, label='Sigma [MPa]')
+    axs.set_xlabel('N50 (Messung)')
+    axs.set_ylabel('N50 (Vorhersage)')
+    axs.legend()
+
+    plt.show()
+    
+    State.output(StateOutput(fig, FigureSize.ROW1))
 
 @app.command()
 def export():
@@ -284,9 +402,9 @@ def export():
     """
     import xlsxwriter
 
-    workbook_path = general.get_output_file("summary1.xlsx")
-
-    workbook = xlsxwriter.Workbook(workbook_path)
+    workbook_path = State.get_general_outputfile("summary1.xlsx")
+    print(workbook_path)
+    workbook = xlsxwriter.Workbook(workbook_path, options={'nan_inf_to_errors': False})
 
     # The workbook object is then used to add new
     # worksheet via the add_worksheet() method.
@@ -309,17 +427,39 @@ def export():
     worksheet.write(start_row, 8, "Real pre-stress")
     worksheet.write(start_row, 9, "(std-dev)")
     worksheet.write(start_row, 10, "Mean splinter size")
+    worksheet.write(start_row, 11, "N50")
+    worksheet.write(start_row, 12, "Pred_Seel")
+    worksheet.write(start_row, 13, "Pred_Bohmann")
 
+    def pred_seel(t, sig):
+        return 1281 + t * 18.98 + sig * (-37.29) + sig ** 3 * (-0.0009638) + sig ** 2 * (0.3504) + sig * t * (-0.2149)
+
+
+
+    filter = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
+    specimens = Specimen.get_all_by(filter, load=True)
+
+    # find all n50 values by thickness and sigma
+    nf = []
+    for spec in specimens:
+        nf.append((spec.thickness, spec.measured_thickness, -spec.sig_h, spec.calculate_nfifty_count()))
+
+    # create a fitting function for the n50 values
+    def n50fit(x, a, b, c, d, e, f):
+        t = x[0]
+        s = x[1]
+        return a + t * b + s * c + s ** 2 * d + s ** 3 * e + s * t * f
+
+    # create a fitting function for n50fit using 2d data
+    x_data = np.array([(t, s) for _, t, s, _ in nf]).T
+    y_data = np.array([nf_count for _, _, _, nf_count in nf])
+
+    popt, pcov = curve_fit(n50fit, x_data, y_data)
+    print(popt)
+    print(pcov)
 
     row = start_row + 1
-    for name in track(os.listdir(general.base_path), description="Syncing specimen configs...", transient=False):
-
-        spec_path = os.path.join(general.base_path, name)
-        if not os.path.isdir(spec_path):
-            continue
-
-
-        s = Specimen(spec_path, log_missing=False)
+    for s in track(specimens, description="Writing specimen data...", transient=False):
         # extract data
         worksheet.write(row, 0, s.name)
         worksheet.write(row, 1, s.thickness)
@@ -330,13 +470,14 @@ def export():
         worksheet.write(row, 6, s.settings['break_mode'])
         worksheet.write(row, 7, s.settings['break_pos'])
         if s.has_scalp:
-            worksheet.write(row, 8, s.scalp.sig_h)
-            worksheet.write(row, 9, s.scalp.sig_h_dev)
+            worksheet.write(row, 8, s.scalp.sig_h.value)
+            worksheet.write(row, 9, s.scalp.sig_h.deviation)
         if s.has_splinters:
             worksheet.write(row, 10, np.mean([x.area for x in s.splinters]))
-
-
-
+        worksheet.write(row, 11, s.calculate_nfifty_count())
+        worksheet.write(row, 12, pred_seel(s.measured_thickness, -s.sig_h))
+        # worksheet.write(row, 12, pred_bohmann(s.measured_thickness, s.sig_h))
+        worksheet.write(row, 13, n50fit((s.measured_thickness, -s.sig_h), *popt))
 
         row += 1
         del s
@@ -352,7 +493,7 @@ def export():
 
 @app.command()
 def list_all(setting: str = None, value: str = None):
-    all = Specimen.get_all(load=False)
+    all = Specimen.get_all(load=True)
     print("Name\tSetting\tValue")
     for spec in all:
 
@@ -965,7 +1106,7 @@ def crack_surface_simple(
 
         if len(yt) == 0:
             continue
-        _, popt = fit_curve(axs, xt, yt, squarefit, color=f'C{t//4-1}', pltlabel='Fit',annotate_sz=6, annotate_popt=True)
+        _, popt = fit_curve(axs, xt, yt, squarefit, color=f'C{t//4-1}', pltlabel=None,annotate_sz=6, annotate_popt=True)
         info(f'{t=}:{popt=}')
 
     # approaching hline
@@ -1280,6 +1421,7 @@ def find(evaluation: str):
 
     Evaluated expression looks like this: specimen.[evaluation]
     """
+    t = SpecimenBreakPosition.CENTER
 
     def filterfunc(s: Specimen):
         # s.load()
@@ -1288,7 +1430,10 @@ def find(evaluation: str):
 
         return eval(evalstr)
 
-    _ = Specimen.get_all_by(filterfunc, load=True)
+    specimens = Specimen.get_all_by(filterfunc, load=True)
+    
+    for sp in specimens:
+        print(sp.name)
 
 @app.command()
 def urr(name):

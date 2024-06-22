@@ -61,3 +61,15 @@ def init():
         print(f"Added '{app_path}' to PATH environment variable. You may need to restart the computer.")
     if not app_path in sys.path:
         sys.path.append(app_path)
+        
+        
+    
+@app.command()
+def set_alias(alias: str, path: str):
+    """Set an alias for a path."""
+    general = GeneralSettings.get()
+    general.aliases[alias] = path
+    
+    print(f"Set alias '{alias}' to '{path}'.")
+    
+    general.save()
