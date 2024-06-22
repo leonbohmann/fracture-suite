@@ -122,7 +122,7 @@ class AccelerationData:
         """Filter out some more noise from the signal."""
         # self.drop_channel.data = bandstop(self.drop_channel.Time, self.drop_channel.data, 150,2500)
         self.drop_channel.data = w2(self.drop_channel.data, 17)
-        
+
     def filter_fallgewicht_highpass(self, f0: float = 1000):
         """Filter out a highpass filter from the signal."""
         original_chan_data = None

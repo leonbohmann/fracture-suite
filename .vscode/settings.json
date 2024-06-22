@@ -1,10 +1,7 @@
 {
     "python.analysis.typeCheckingMode": "off",
     "python.analysis.extraPaths": [
-        "c:\\Users\\leon9\\.vscode\\extensions\\continue.continue-0.0.412-win32-x64"
-    ],
-    "python.autoComplete.extraPaths": [
-        "c:\\Users\\leon9\\.vscode\\extensions\\continue.continue-0.0.412-win32-x64"
+        "../APReader"
     ],
     "python.analysis.autoImportCompletions": true
 }
