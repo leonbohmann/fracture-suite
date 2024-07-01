@@ -5,6 +5,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from tqdm import tqdm
+from pylibdmtx.pylibdmtx import encode, decode
 from PIL import Image
 
 __path__ = os.path.dirname(__file__)
@@ -25,31 +26,31 @@ CANVAS_FONT = "F25_Bank_Printer_Bold"
 # CANVAS_FONT = "Consolas"
 CANVAS_FONT_SIZE = 24
 
-BARCODE_HEIGHT_FAC = 0.0
+BARCODE_HEIGHT_FAC = 0.6
 LABEL_HEIGHT_FAC = 1 - BARCODE_HEIGHT_FAC
 
 
-# def create_datamatrix_code(code: str, label: str) -> str:
-#     encoded = encode(code.encode('utf-8'), size='RectAuto')
-#     img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
-#     os.makedirs('.out', exist_ok=True)
-#     name = f'.out/{label}.png'
-#     img.save(name)
+def create_datamatrix_code(code: str, label: str) -> str:
+    encoded = encode(code.encode('utf-8'), size='RectAuto')
+    img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
+    os.makedirs('.out', exist_ok=True)
+    name = f'.out/{label}.png'
+    img.save(name)
 
-#     content = decode(img, max_count=1)
-#     if content[0].data.decode('utf-8') != code:
-#         print(f"Decoded code {content[0].data.decode('utf-8')} does not match original code {code}!")
+    content = decode(img, max_count=1)
+    if content[0].data.decode('utf-8') != code:
+        print(f"Decoded code {content[0].data.decode('utf-8')} does not match original code {code}!")
 
-#     return os.path.abspath(name)
+    return os.path.abspath(name)
 
 def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas):
 
     # save barcode image and get its path
-    # fullname = CREATE_CODE(code, label)
+    fullname = CREATE_CODE(code, label)
 
     canvas.setFont(CANVAS_FONT, CANVAS_FONT_SIZE)
     # draw label and barcode on canvas at provided coordinates
-    # canvas.drawImage(fullname, x*mm , (y + 0.95 * CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)
+    canvas.drawImage(fullname, x*mm , (y + 0.95 * CELL_HEIGHT * LABEL_HEIGHT_FAC)*mm, width = CELL_WIDTH*mm, height = CELL_HEIGHT*mm * BARCODE_HEIGHT_FAC, anchor='n', preserveAspectRatio=ASPECT_RATIO)
     canvas.drawCentredString((x + CELL_WIDTH / 2)*mm, (y + CELL_HEIGHT * LABEL_HEIGHT_FAC / 2)*mm , label, )
     # canvas.rect(x*mm , y*mm, CELL_WIDTH * mm, CELL_HEIGHT * mm, stroke = 1, fill = 0)
 
@@ -79,7 +80,7 @@ def generate_pdf(labels_codes: list, filename: str):
 
 
 if __name__ == "__main__":
-    # CREATE_CODE = create_datamatrix_code
+    CREATE_CODE = create_datamatrix_code
 
     # stretch barcode,datamatrix not stretched!
     ASPECT_RATIO = True
@@ -92,8 +93,8 @@ if __name__ == "__main__":
 
 
     thick = [4,8]
-    sig = {4: [100], 8: [100]}
-    bound = ["B"]
+    sig = {4: [120], 8: [100]}
+    bound = ["Z", "A", "B"]
     lfnr = list(range(1,6))
 
     labels = []

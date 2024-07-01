@@ -4,14 +4,10 @@ Acceleration tools.
 
 import os
 from pstats import StatsProfile
-from pstats import StatsProfile
 import re
 import shutil
 from tracemalloc import start
-import shutil
-from tracemalloc import start
 from typing import Annotated
-from unittest import skip
 from unittest import skip
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
@@ -24,14 +20,7 @@ import typer
 from apread import APReader, Channel # type: ignore
 from fracsuite.core.series import betweenSeconds, untilSeconds, afterSeconds
 from rich import inspect, print
-from apread import APReader, Channel # type: ignore
-from fracsuite.core.series import betweenSeconds, untilSeconds, afterSeconds
-from rich import inspect, print
 from rich.progress import track
-from fracsuite.core.accelerationdata import DEBUG, AccelerationData
-from fracsuite.core.plotting import FigureSize, get_fig_width, plot_series
-from fracsuite.core.signal import bandstop, lowpass, bandpass
-from fracsuite.state import State, StateOutput
 from fracsuite.core.accelerationdata import DEBUG, AccelerationData
 from fracsuite.core.plotting import FigureSize, get_fig_width, plot_series
 from fracsuite.core.signal import bandstop, lowpass, bandpass
@@ -250,60 +239,21 @@ def freq_calc(
 def to_csv(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
 ):
-    specimen = Specimen.get(specimen_name)
+    
+    specimen = Specimen.get(specimen_name, panic=False)
+    
+    if specimen is None:
+        reader = APReader(specimen_name)
+        
+        csv_file = os.path.join(os.path.dirname(specimen_name), f"{os.path.basename(specimen_name)}.csv")
+    else:
+        accdata = specimen.accdata
 
-    accdata = specimen.accdata
-
-    reader = accdata.reader
-
-    groups = reader.Groups
-
-    # perform lowpass filter on Fall_g1 sensor data
-    for group in groups:
-        for chan in group.ChannelsY:
-            if re.match("[Ff]all(_?)g1", chan.Name):
-                chan.data = lowpass(chan.Time.data, chan.data, 4500, 1/(chan.Time.data[1]-chan.Time.data[0]))
-                break
-
-    # create csv file
-    csv_file = specimen.get_acc_outfile("data.csv")
-
-    # write csv
-    with open(csv_file, 'w') as f:
-        # header
-        for group in reader.Groups:
-            f.write(f"{group.ChannelX.Name} [{group.ChannelX.unit}];")
-
-            for chan in group.ChannelsY:
-                f.write(f"{chan.Name} [{chan.unit}];")
-
-        f.write("\n")
-
-        # data
-        max_len = np.max([np.max([len(x.data) for x in group.ChannelsY]) for group in reader.Groups])
-        print(max_len)
-        for i in range(max_len):
-            for group in reader.Groups:
-                if i < len(group.ChannelX.data):
-                    f.write(f"{group.ChannelX.data[i]};")
-                else:
-                    f.write(";")
-                for chan in group.ChannelsY:
-                    if i < len(chan.data):
-                        f.write(f"{chan.data[i]};")
-                    else:
-                        f.write(";")
-            f.write("\n")
-
-@app.command()
-def to_csv(
-    specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
-):
-    specimen = Specimen.get(specimen_name)
-
-    accdata = specimen.accdata
-
-    reader = accdata.reader
+        reader = accdata.reader
+        
+        
+        # create csv file
+        csv_file = specimen.get_acc_outfile("data.csv")
 
     groups = reader.Groups
 
@@ -314,8 +264,6 @@ def to_csv(
                 chan.data = lowpass(chan.Time.data, chan.data, 4500, 1/(chan.Time.data[1]-chan.Time.data[0]))
                 break
 
-    # create csv file
-    csv_file = specimen.get_acc_outfile("data.csv")
 
     # write csv
     with open(csv_file, 'w') as f:
@@ -755,10 +703,10 @@ def ffts(file, channel_names: list[str], seconds: float = None):
     perform_plot_fft(series)
 
 @app.command()
-def fft(file, chan: str = "Fall_g", seconds: float = None, time: tuple[float,float] = (None, None)):
+def fft(file, chan: str = "Fall_g", seconds: float = None, time: tuple[float,float] = (None, None), outdir: str = None):
     """
     Calculates the fft of the given file.
-
+    
     Args:
         file (str): The file to calculate the fft of.
         chan (str, optional): The channel to calculate the fft of. Defaults to "Fall_g".
@@ -770,12 +718,12 @@ def fft(file, chan: str = "Fall_g", seconds: float = None, time: tuple[float,flo
         reader = spec.accdata.reader
     else:
         reader = APReader(file)
-
+    
     reader.printSummary()
 
 
     chan = reader.collectChannelsLike(chan)[0]
-
+    
     # only fft until time
     if time[0] is not None and time[1] is not None:
         time, data = betweenSeconds(chan, time[0], time[1])
@@ -783,24 +731,28 @@ def fft(file, chan: str = "Fall_g", seconds: float = None, time: tuple[float,flo
         time, data = untilSeconds(chan, seconds)
 
     # plot the base series
-    plot_series(time, data, chan.Name)
+    plot_series(time, data, chan.Name)    
     # perform fft
-    perform_plot_fft((time, data, chan.Name))
+    perform_plot_fft((time, data, chan.Name), output_dir=outdir)
 
-def perform_plot_fft(series: list[tuple], time_bounds: tuple[float,float] = (None, None)):
+def perform_plot_fft(series: list[tuple], time_bounds: tuple[float,float] = (None, None), output_dir = None):
     """
     Performs the fft on all series and plot them in a single figure.
-
+    
     Args:
         series (list[tuple]): The series to perform the fft on. [(time, data, name)]
     """
     series = series if isinstance(series, list) else [series]
 
-    fig, axs = plt.subplots(2,len(series),figsize=get_fig_width(FigureSize.ROW1))
+    if output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
+
+
+    fig, axs = plt.subplots(2,len(series),figsize=get_fig_width(FigureSize.ROW1))    
     for i, serie in enumerate(series):
         time, data, name = serie
         # plot the original series on the left in the current row
-        ax = axs[0] if len(series) == 1 else axs[0, i]
+        ax = axs[0] if len(series) == 1 else axs[0, i]        
         time,data = betweenSeconds((time, data), time_bounds[0], time_bounds[1])
         plot_series(time, data, name, axs=ax)
 
@@ -811,6 +763,12 @@ def perform_plot_fft(series: list[tuple], time_bounds: tuple[float,float] = (Non
 
         # find eigenfrequencies
         # peaks, _ = find_peaks(ffts, height=0.1)
+        if output_dir is not None:
+            file = os.path.join(output_dir, f"{name}.csv")
+            with open(file, 'w') as f:
+                f.write("Freq;Ampl\n")
+                for t, d in zip(freq, ffts):
+                    f.write(f"{t};{d}\n")
 
     ax.legend()
     plt.show()
@@ -822,14 +780,14 @@ def test_filter(
     file: str,
     low: float = None,
     high: float = None,
-    bands: bool = False,
+    bands: bool = False,    
     chan_name:str = None,
     fft_range: tuple[float,float] = (None, None),
     wiener: bool = False
 ):
     """
     Tests the filtering algorithm and displays both the unfiltered and filtered signal.
-
+    
     Args:
         file (str): The file to test the filtering on. Can also be the name of a specimen.
     """
@@ -839,13 +797,13 @@ def test_filter(
         accdata = spec.accdata
     elif file in general.aliases:
         file = general.aliases[file]
-
+    
     if not os.path.exists(file) and accdata is None:
         raise FileNotFoundError(f"File '{file}' not found.")
 
     if accdata is None:
         accdata = AccelerationData(file)
-
+        
     if chan_name is None:
         drop_channel = accdata.drop_channel
     else:
@@ -864,7 +822,7 @@ def test_filter(
     if bands:
         accdata.filter_fallgewicht_eigenfrequencies()
         accdata.filter_fallgewicht_wiener()
-
+        
     time = drop_channel.Time.data
 
 
@@ -884,8 +842,6 @@ def test_filter(
 
     perform_plot_fft((time, drop_channel.data, drop_channel.Name + " filtered"), fft_range)
 
-    State.output(StateOutput(fig, figwidth=FigureSize.ROW1))
-
 @app.command()
 def wiener_test(
     file: str,
@@ -903,20 +859,20 @@ def wiener_test(
         accdata = spec.accdata
     elif file in general.aliases:
         file = general.aliases[file]
-
+    
     if not os.path.exists(file) and accdata is None:
         raise FileNotFoundError(f"File '{file}' not found.")
 
     if accdata is None:
         accdata = AccelerationData(file)
-
+        
     if chan_name is None:
         drop_channel = accdata.drop_channel
     else:
         drop_channel = accdata.get_channel_like(chan_name)
 
     original_data = drop_channel.data.copy()
-
+    
     # filter using wiener
     from scipy.signal import wiener as w2
     data_wienered = {}
@@ -924,11 +880,11 @@ def wiener_test(
     wiener_sizes = [1, 3, 5, 7, 9, 11, 13, 15, 17]
 
     for i in wiener_sizes:
-        data_wienered[i] = w2(original_data, i)
-
-    time = drop_channel.Time.data
+        data_wienered[i] = w2(original_data, i)    
+    
+    time = drop_channel.Time.data    
     # fig, axs = plt.subplots(len(wiener_sizes) // 3, 3, figsize=get_fig_width(FigureSize.ROW1), sharex=True, sharey=True)
-
+    
     # for i, (size, data) in enumerate(data_wienered.items()):
     #     row = i // 3
     #     col = i % 3
@@ -937,96 +893,39 @@ def wiener_test(
     #     axs[row,col].plot(time, original_data, label='Original' )
     #     axs[row,col].plot(time, data, label='Wienered')
     #     axs[row,col].legend()
-
+        
     # plt.show()
 
     # fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
     # for size, data in data_wienered.items():
     #     freq, ffts = fft_calc(data, time, plot=False)
     #     axs.plot(freq, ffts, label=f"Wiener size {size}")
-
+        
     # axs.legend()
     # plt.show()
-
+    
     # plot all wieners in one plot
     fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
     axs.plot(time, original_data, label="Original")
     for size, data in data_wienered.items():
         axs.plot(time, data, label=f"{size}")
-
+        
     axs.legend()
     plt.show()
-
-
-    if chan_name is None:
-        drop_channel = accdata.drop_channel
-    else:
-        drop_channel = accdata.get_channel_like(chan_name)
-
-    original_data = drop_channel.data.copy()
-
-    # filter using wiener
-    from scipy.signal import wiener as w2
-    data_wienered = {}
-
-    wiener_sizes = [1, 3, 5, 7, 9, 11, 13, 15, 17]
-
-    for i in wiener_sizes:
-        data_wienered[i] = w2(original_data, i)
-
-    time = drop_channel.Time.data
-    # fig, axs = plt.subplots(len(wiener_sizes) // 3, 3, figsize=get_fig_width(FigureSize.ROW1), sharex=True, sharey=True)
-
-    # for i, (size, data) in enumerate(data_wienered.items()):
-    #     row = i // 3
-    #     col = i % 3
-
-    #     axs[row,col].set_title(f"Wiener filter size {size}")
-    #     axs[row,col].plot(time, original_data, label='Original' )
-    #     axs[row,col].plot(time, data, label='Wienered')
-    #     axs[row,col].legend()
-
-    # plt.show()
-
-    # fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-    # for size, data in data_wienered.items():
-    #     freq, ffts = fft_calc(data, time, plot=False)
-    #     axs.plot(freq, ffts, label=f"Wiener size {size}")
-
-    # axs.legend()
-    # plt.show()
-
-    # plot all wieners in one plot
-    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-    axs.plot(time, original_data, label="Original")
-    for size, data in data_wienered.items():
-        axs.plot(time, data, label=f"{size}")
-
-    axs.legend()
-    plt.show()
-
+        
 
 @app.command()
 def calculate_load_time(
-    specimen_name: str,
+    specimen_name: str,    
     skip_filters: bool = False,
-    add_chan_name: str = None
 ):
-    """
-    Calculate the load-time-diagrams of the given specimen.
-
-    Args:
-        specimen_name (str): Name of the specimen
-        skip_filters (bool, optional): Skips filtering of the main acceleration sensor data. Defaults to False.
-        add_chan_name (str, optional): Plot an additional sensor to the output plot. Defaults to None.
-    """
     if ',' in specimen_name:
         specimen_names = specimen_name.split(',')
         for name in specimen_names:
             calculate_load_time(name, skip_filters)
         return
-
-
+    
+    
     # load data
     specimen = Specimen.get(specimen_name)
     accdata = specimen.accdata
@@ -1035,7 +934,7 @@ def calculate_load_time(
     # if not skip_filters:
         # accdata.filter_fallgewicht_highpass(f0=10)
         # accdata.filter_fallgewicht_eigenfrequencies()
-
+        
     accdata.filter_fallgewicht_lowpass(f0=15000)
     accdata.filter_fallgewicht_wiener()
 
@@ -1044,10 +943,10 @@ def calculate_load_time(
     drop_channel = accdata.drop_channel
     data = drop_channel.data
     time = drop_channel.Time.data
-
+    
     # get the exact time of fall initiation
     ti = 0.5 # this is the trigger time from catmanAP
-
+    
     sfall = specimen.fall_height_m
     tfall = np.sqrt(2*sfall/9.81)
     t0 = ti - tfall
@@ -1079,19 +978,10 @@ def calculate_load_time(
     axs[1].set_ylabel("Velocity [m/s]")
     axs[2].set_ylabel("Distance [m]")
 
-    for ax in axs:
+    for ax in axs:        
         # ax.autoscale()
         ax.legend()
         ax.grid()
-
-    if chan_name is not None:
-        chan = accdata.get_channel_like(chan_name)
-        time = chan.Time.data
-        data = chan.data
-        time,data = betweenSeconds((time, data), t0, t0 + 0.5)
-        time = time - time[0]
-        yaxs = axs[0].twinx()
-        yaxs.plot(time, data, label=chan.Name, color='C1')
 
     plt.show()
 
@@ -1104,8 +994,8 @@ def calculate_load_time(
         f.write("Time [s];Acceleration [m/s²];Velocity[m/s];Distance[m];E_kin[J];F[N]\n")
         for i in range(len(time)):
             f.write(f"{time[i]};{a[i]};{v[i]};{s[i]};{kin[i]};{F[i]}\n")
-
+            
     print(f"Data written to '{csv_file}'.")
-
+    
     # copy contents to specimen folder
     shutil.copy(csv_file, specimen.get_acc_outfile(f"{specimen_name}-load-time.csv"))

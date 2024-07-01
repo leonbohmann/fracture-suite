@@ -540,9 +540,12 @@ class Specimen(Outputtable):
         if label_file is not None:
             return cv2.imread(label_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
-    def get_fracture_image(self, as_rgb = True):
+    def get_fracture_image(self, as_rgb = True, name: str = None):
         """Gets the fracture image. Default is RGB."""
-        transmission_file = find_file(self.fracture_morph_folder, "*transmission*")
+        if name is None:
+            name = "*[Tt]ransmission*"
+        
+        transmission_file = find_file(self.fracture_morph_folder, name)
         if transmission_file is not None:
             return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 

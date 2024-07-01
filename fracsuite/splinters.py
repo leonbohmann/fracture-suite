@@ -56,6 +56,7 @@ from fracsuite.core.plotting import (
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
+from fracsuite.core.specimenprops import SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import similarity
@@ -2509,3 +2510,208 @@ def annotate_impact(
 
 
     State.output(impact_image, spec=specimen, override_name="impact_annotated", figwidth=FigureSize.ROW1)
+
+@app.command()
+def analyze_areas(
+    specimen_name: str
+):
+    specimen = Specimen.get(specimen_name)
+    size = specimen.get_real_size()
+    f_image = specimen.get_fracture_image()
+    
+    f = specimen.calculate_px_per_mm()
+    # define areas
+    w = int(50 * f)
+    h = int(50 * f)
+    center1 = (75*f, 75*f)
+    center2 = (size[0]*f//2, size[1]*f//2)    
+    center3 = (size[0]*f-75*f, size[1]*f-75*f)
+    
+    splinter_images: list[tuple[Any, Any, list[Splinter]]] = []
+    
+    for c in [center1, center2, center3]:
+        x = int(c[0])
+        y = int(c[1])
+        # get image part        
+        
+        
+        # analyze splinters
+        splinters: list[Splinter] = []
+        s_count = 0
+        for s in specimen.splinters:
+            if s.in_rect_px((x-w//2, y-h//2, x+w//2, y+h//2)):
+                s.ID = s_count
+                s_count += 1
+                splinters.append(s)
+        
+        # draw splinter contours
+        for s in splinters:            
+            cv2.drawContours(f_image, [s.contour], -1, (0, 0, 255), 1)
+        
+        
+        img = f_image[y-h//2:y+h//2, x-w//2:x+w//2]
+        #  cv2.ellipse(img, (100,50), (10,10), 0, 0, 360, (255, 0, 0), -1)
+            
+        # resize image to high resolution
+        img = cv2.resize(img, (w*5, h*5))
+                
+        for s in splinters:
+            # calculate position in offset and scaled image
+            c = s.centroid_px
+            c = c - np.array([x-w//2, y-h//2])
+            c = c * 5
+            c = c.astype(int)
+            cv2.circle(img, tuple(c), 5, (0, 255, 0), -1)
+            cv2.putText(img, str(s.ID), tuple(c), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+        
+        # write splinter ids into their center
+        splinter_images.append(((x,y), img, splinters))
+        
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Image, Table, TableStyle, FrameBreak, Paragraph
+    from reportlab.lib.units import mm    
+    from reportlab.platypus.frames import Frame
+    from reportlab.platypus.doctemplate import PageTemplate, BaseDocTemplate
+    from reportlab.lib.styles import getSampleStyleSheet
+    styles = getSampleStyleSheet()
+    H1 = styles['Heading1']
+    H2 = styles['Heading2']
+    
+    class TwoColumnDocTemplate(BaseDocTemplate):
+        def __init__(self, filename, **kwargs):
+            super().__init__(filename, **kwargs)
+            frame1 = Frame(self.leftMargin, self.bottomMargin, self.width/2-6, self.height, id='col1')
+            frame2 = Frame(self.leftMargin+self.width/2+6, self.bottomMargin, self.width/2-6, self.height, id='col2')
+            self.addPageTemplates([PageTemplate(id='TwoCol', frames=[frame1, frame2], onPage=self.add_page_number)])
+
+        def add_page_number(self, canvas, doc):
+            canvas.saveState()
+            canvas.setFont('Helvetica', 9)
+            page_number_text = f"Page {doc.page}"
+            canvas.drawCentredString(self.pagesize[0] / 2, 10*mm, page_number_text)
+            canvas.restoreState()
+        
+    t_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ])
+    
+    count = 0
+    for center, image, splinters in splinter_images:
+        output_filename = State.get_output_file(f"areas_{specimen_name}_{count}.pdf")
+        doc = TwoColumnDocTemplate(output_filename, pagesize=letter)
+        elements = [
+            Paragraph("Splinter Analysis", H1)
+        ]
+
+        # Add image
+        tmp_image = State.get_output_file(f"impact_annotated_{specimen_name}_{count}.jpg")
+        cv2.imwrite(tmp_image, image)
+        img = Image(tmp_image, width=50*mm, height=50*mm)
+        elements.append(Paragraph('Detail-Ansicht', H2))
+        elements.append(img)
+
+        # overview image
+        overview_image = f_image.copy()
+        cv2.rectangle(overview_image, (center[0]-w//2, center[1]-h//2), (center[0]+w//2, center[1]+h//2), (0, 255, 0), -1)
+        # resize image to lower resolt 
+        overview_image = cv2.resize(overview_image, None, fx=0.5, fy=0.5)
+        tmp_image2 = State.get_output_file(f"impact_annotated_{specimen_name}_{count}_overview.jpg")
+        cv2.imwrite(tmp_image2, overview_image)
+        img2 = Image(tmp_image2, width=50*mm, height=50*mm)
+
+        elements.append(Paragraph('Übersicht', H2))
+        elements.append(img2)
+
+        # Create table data
+        data = []
+        data.append(("ID", "Area", "D_x", "D_y", "C_x", "C_y"))
+        p0 = specimen.get_impact_position()
+        for i,s in enumerate(splinters):
+            c = s.centroid_mm
+            v = c - p0
+            data.append([i, f"{s.area:.2f}", f"{v[0]:.2f}", f"{v[1]:.2f}", f"{c[0]:.2f}", f"{c[1]:.2f}"])
+
+        # Create table
+        table = Table(data)
+        table.setStyle(t_style)
+        elements.append(FrameBreak())
+        elements.append(table)
+
+        # Build PDF
+        doc.build(elements)
+        
+        count += 1
+
+@app.command()
+def analyze_stencil(
+    specimen_name: str,
+    stencil_name: str
+):
+    """Analyze the stencil image of a specimen."""
+    specimen = Specimen.get(specimen_name)
+
+    fracture = specimen.get_fracture_image()
+    stencil = specimen.get_fracture_image(name=stencil_name)
+    
+    # calculate the difference
+    diff = cv2.absdiff(fracture, stencil)
+    
+    # close the image
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    dif = cv2.erode(diff,kernel,iterations = 3)    
+    
+    
+    # plot the difference
+    plotImages([
+        ("Fracture", fracture),
+        ("Stencil", stencil),
+        ("Difference", diff),
+    ])
+    
+    # find rectangles in stencil
+    contours, _ = cv2.findContours(to_gray(diff), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    stencil_rects = []
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        stencil_rects.append((x, y, w, h))
+    
+    # draw contours in rgb stencil
+    stencil_rgb = to_rgb(diff)
+    for x, y, w, h in stencil_rects:
+        cv2.rectangle(stencil_rgb, (x, y), (x+w, y+h), (0, 0, 255), 5)    
+    plotImage(stencil_rgb, "Stencil with contours", force=True)
+        
+        
+    # create images from stencils
+    stencil_images = []
+    # px_per_mm
+    f = specimen.calculate_px_per_mm()
+    for x, y, w, h in stencil_rects:
+        # calculate px per mm        
+        stencil_images.append(stencil[y:y+h, x:x+w])
+        
+    # analyze splinters
+    stencil_splinters = []
+    for img in stencil_images:
+        splinters = Splinter.analyze_image(img, px_per_mm=f)
+        stencil_splinters.append(splinters)
+        
+    # plot splinters
+    for i, splinters in enumerate(stencil_splinters):
+        splinter_image = create_splinter_colored_image(splinters, stencil_images[i].shape)
+        plotImage(splinter_image, f"Splinters {i}")
+    
