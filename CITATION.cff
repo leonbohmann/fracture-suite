@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Bohmann"
+    given-names: "Leon"
+doi: 10.5281/zenodo.8369155
+title: "fracsuite"
+version: 0.2.0
+date-released: 2024-02-24
+url: "https://github.com/leonbohmann/fracture-suite"
