@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 dependencies = ["matplotlib", "opencv-python", "numpy",
         "tqdm", "scikit-image", "rich",
-        "scipy", "apread==1.1.2a9", "Pillow", "reportlab",
+        "scipy", "apread", "Pillow", "reportlab",
         "pylibdmtx", "typer", "openpyxl", "xlsxwriter", "scienceplots",
         "deprecated", "spazial==0.1.11", "splintaz==0.1.5",]
 

@@ -65,7 +65,7 @@ def betweenSeconds(chan, start, end):
     else:
         time = chan.Time.data
         data = chan.data
-        name = chan.name
+        name = chan.Name
         if chan.isTime and start is not None and end is not None:
             d = chan.data[(chan.data > chan.data[0] + start) & (chan.data < chan.data[0] + end)]
             return d, d

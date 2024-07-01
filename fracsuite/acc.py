@@ -239,11 +239,21 @@ def freq_calc(
 def to_csv(
     specimen_name: Annotated[str, typer.Argument(help="The name of the specimen to convert.")],
 ):
-    specimen = Specimen.get(specimen_name)
+    
+    specimen = Specimen.get(specimen_name, panic=False)
+    
+    if specimen is None:
+        reader = APReader(specimen_name)
+        
+        csv_file = os.path.join(os.path.dirname(specimen_name), f"{os.path.basename(specimen_name)}.csv")
+    else:
+        accdata = specimen.accdata
 
-    accdata = specimen.accdata
-
-    reader = accdata.reader
+        reader = accdata.reader
+        
+        
+        # create csv file
+        csv_file = specimen.get_acc_outfile("data.csv")
 
     groups = reader.Groups
 
@@ -254,8 +264,6 @@ def to_csv(
                 chan.data = lowpass(chan.Time.data, chan.data, 4500, 1/(chan.Time.data[1]-chan.Time.data[0]))
                 break
 
-    # create csv file
-    csv_file = specimen.get_acc_outfile("data.csv")
 
     # write csv
     with open(csv_file, 'w') as f:
@@ -695,7 +703,7 @@ def ffts(file, channel_names: list[str], seconds: float = None):
     perform_plot_fft(series)
 
 @app.command()
-def fft(file, chan: str = "Fall_g", seconds: float = None, time: tuple[float,float] = (None, None)):
+def fft(file, chan: str = "Fall_g", seconds: float = None, time: tuple[float,float] = (None, None), outdir: str = None):
     """
     Calculates the fft of the given file.
     
@@ -725,9 +733,9 @@ def fft(file, chan: str = "Fall_g", seconds: float = None, time: tuple[float,flo
     # plot the base series
     plot_series(time, data, chan.Name)    
     # perform fft
-    perform_plot_fft((time, data, chan.Name))
+    perform_plot_fft((time, data, chan.Name), output_dir=outdir)
 
-def perform_plot_fft(series: list[tuple], time_bounds: tuple[float,float] = (None, None)):
+def perform_plot_fft(series: list[tuple], time_bounds: tuple[float,float] = (None, None), output_dir = None):
     """
     Performs the fft on all series and plot them in a single figure.
     
@@ -735,6 +743,10 @@ def perform_plot_fft(series: list[tuple], time_bounds: tuple[float,float] = (Non
         series (list[tuple]): The series to perform the fft on. [(time, data, name)]
     """
     series = series if isinstance(series, list) else [series]
+
+    if output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
+
 
     fig, axs = plt.subplots(2,len(series),figsize=get_fig_width(FigureSize.ROW1))    
     for i, serie in enumerate(series):
@@ -751,6 +763,12 @@ def perform_plot_fft(series: list[tuple], time_bounds: tuple[float,float] = (Non
 
         # find eigenfrequencies
         # peaks, _ = find_peaks(ffts, height=0.1)
+        if output_dir is not None:
+            file = os.path.join(output_dir, f"{name}.csv")
+            with open(file, 'w') as f:
+                f.write("Freq;Ampl\n")
+                for t, d in zip(freq, ffts):
+                    f.write(f"{t};{d}\n")
 
     ax.legend()
     plt.show()

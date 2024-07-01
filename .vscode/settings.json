@@ -1,7 +1,7 @@
 {
     "python.analysis.typeCheckingMode": "off",
     "python.analysis.extraPaths": [
-        "../APReader"
+		"..\\APReader"
     ],
     "python.analysis.autoImportCompletions": true
 }
