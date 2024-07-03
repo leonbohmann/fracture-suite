@@ -480,10 +480,20 @@ def import_files(
 def extract_details(
     names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
     region: Annotated[tuple[int, int, int, int], typer.Option(help='Region to extract. X Y W H.')] = (1250, 1250, 200, 200),
-    fontscale: Annotated[str, typer.Option(help='Font scale.')] = FontSize.HUGEXL,
+    fontscale: Annotated[float, typer.Option(help='Font scale.')] = FontSize.HUGEXL,
+    mm: Annotated[bool, typer.Option(help='Use mm instead of px.')] = False,
+    scale_len: Annotated[int, typer.Option(help='Length of scale in mm.')] = 50,
+    line_sz: Annotated[int, typer.Option(help='Thickness of font line.')] = 3,
+    scale_top: Annotated[bool, typer.Option(help='Put scale on top.')] = False,
+    vspace: Annotated[int, typer.Option(help='Vertical space between scale and image.')] = 0,
 ):
-    filterf = create_filter_function(names, needs_splinters=True, needs_scalp=False)
-    specimens: list[Specimen] = Specimen.get_all_by(filterf, load=True)
+    
+    if not any("*" in n for n in names):
+        specimen = Specimen.get(names[0])
+        specimens = [specimen]
+    else:
+        filterf = create_filter_function(names, needs_splinters=False, needs_scalp=False)
+        specimens: list[Specimen] = Specimen.get_all_by(filterf, load=True)
 
     assert region is not None, "Region must be specified."
 
@@ -494,20 +504,28 @@ def extract_details(
         fracture_image = specimen.get_fracture_image()
 
         x, y, w, h = region
+        if mm:
+            px_per_mm = specimen.calculate_px_per_mm()
+            x, y, w, h = x*px_per_mm, y*px_per_mm, w*px_per_mm, h*px_per_mm
+            x = int(x)
+            y = int(y)
+            w = int(w)
+            h = int(h)
+        
         fracture_image = fracture_image[y:y+h, x:x+w]
 
         # calculate real size of region
         px_per_mm = specimen.calculate_px_per_mm()
         w_mm = w * rsz_factor / px_per_mm
         pxpmm = w * rsz_factor / w_mm
-        scale_length_val = 20
+        scale_length_val = scale_len
         scale_length_px = scale_length_val * pxpmm * rsz_factor
 
         # upscale image using rsz_factor
         fracture_image = cv2.resize(fracture_image, (0, 0), fx=rsz_factor, fy=rsz_factor)
 
-        # add text to center of line
-        fracture_image = put_scale(scale_length_val/10,scale_length_px, fracture_image, clr=(0,0,0), sz=FontSize[fontscale.upper()])
+        # add text to center of line, /10 to get cm
+        fracture_image = put_scale(scale_length_val/10,scale_length_px, fracture_image, clr=(0,0,0), sz=fontscale, lsize=line_sz, scale_top=scale_top, vspace=vspace*px_per_mm)
 
         # save image
         State.output(fracture_image, f"extracted_{specimen.name}_{specimen.sig_h:.0f}", spec=specimen, to_additional=True, figwidth=FigureSize.ROW3)
@@ -2715,3 +2733,16 @@ def analyze_stencil(
         splinter_image = create_splinter_colored_image(splinters, stencil_images[i].shape)
         plotImage(splinter_image, f"Splinters {i}")
     
+@app.command()
+def analyze_image(
+    image_path: str
+):
+    
+    image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    
+    splinters = Splinter.analyze_image(image)
+    
+    splinter_image = create_splinter_colored_image(splinters, image.shape)
+    
+    plotImage(splinter_image, "Splinters")
+        

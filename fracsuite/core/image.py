@@ -146,7 +146,7 @@ def put_text(text, img, pt, sz: FontSize = FontSize.MEDIUM, clr = (0,0,0),szf:fl
     # draw text on image
     return cv2.putText(img, text, (text_x, text_y), font, font_scale, clr, thickness, cv2.LINE_AA)
 
-def put_scale(scale, scale_length_px, img, sz, clr, szf=1.0):
+def put_scale(scale, scale_length_px, img, sz, clr, szf=1.0, lsize=2, scale_top=False, vspace = 0):
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = sz * szf
     thickness = int(4 * font_scale // 2.0)
@@ -159,16 +159,23 @@ def put_scale(scale, scale_length_px, img, sz, clr, szf=1.0):
     # create a white background box to fit the text and scale
     box_pad = 20
     box_width = img.shape[1]
-    box_height = 3*box_pad + text_size[1]
+    box_height = int(3*box_pad + text_size[1] + text_size[1] * 0.2)
+    d = text_size[1] * 0.1
     box = np.zeros((box_height, box_width, 3), dtype=np.uint8)
     box.fill(255)
 
     # draw scale
-    cv2.line(box, (5, box_height-box_pad), (int(scale_length_px + 5), box_height-box_pad), clr, thickness)
+    cv2.line(box, (5, box_height-box_pad-5), (int(scale_length_px + 5), box_height-box_pad-5), clr, thickness)
     cv2.line(box, (5, box_height-box_pad-5), (5, box_height-box_pad+5), clr, thickness)
     cv2.line(box, (int(scale_length_px + 5), box_height-box_pad-5), (int(scale_length_px + 5), box_height-box_pad+5), clr, thickness)
     # draw text into x center of box
-    put_text(scale_text, box, (scale_length_px // 2, text_size[1] // 2 + box_pad), sz, clr, szf)
+    put_text(scale_text, box, (scale_length_px // 2, text_size[1] // 2 + int(box_pad + text_size[1] * 0.05)), sz, clr, szf, lsize)
 
-    # vertically stack images
-    return np.vstack((img, box))
+    vspace = np.ones((int(vspace), box_width, 3), dtype=np.uint8) * 255
+
+    if not scale_top:
+        # vertically stack images
+        return np.vstack((np.vstack((img, vspace)), box))
+    else:
+        # vertically stack images
+        return np.vstack((box, np.vstack((vspace, img))))

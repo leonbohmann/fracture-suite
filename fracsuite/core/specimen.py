@@ -543,11 +543,10 @@ class Specimen(Outputtable):
     def get_fracture_image(self, as_rgb = True, name: str = None):
         """Gets the fracture image. Default is RGB."""
         if name is None:
-            name = "*[Tt]ransmission*"
+            name = "*Transmission*"
         
         transmission_file = find_file(self.fracture_morph_folder, name)
-        if transmission_file is not None:
-            return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
+        return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
     def get_transmission_image(self, as_rgb = True):
         transmission_file = find_file(os.path.join(self.path, "anisotropy"), "*transmission*")
@@ -1234,6 +1233,8 @@ class Specimen(Outputtable):
                 value = Specimen.__default_value
 
             specimen = Specimen(spec_path, log_missing=False, load=load)
+
+            print(specimen.name)
 
             if not decider(specimen):
                 return None

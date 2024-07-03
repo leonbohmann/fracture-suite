@@ -748,7 +748,8 @@ def import_files(
     exclude_all_sensors: bool = typer.Option(False, help="Option to exclude all sensors."),
     exclude_impact_radius: float = typer.Option(None, help="Radius to exclude impact."),
     exclude_points: bool = typer.Option(False, help="Shows helper windows to exclude points in the morphology."),
-    fracture_image: str = typer.Option(None, help="Path to the fracture image.")
+    fracture_image: str = typer.Option(None, help="Path to the fracture image."),
+    no_tester_crop: bool = typer.Option(False, help="Option to disable tester crop."),
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -829,7 +830,7 @@ def import_files(
         from fracsuite.tester import threshold
         # calculate a fraction of the specimen region to display
         region = np.asarray((imgsize[0]//2, imgsize[1]//2, imgsize[0]//7, imgsize[1]//7)) / specimen.calculate_px_per_mm()
-        threshold(specimen.name, region=region)
+        threshold(specimen.name, region=region, no_region=no_tester_crop)
 
     print('[yellow]> Marking impact point <')
     mark_impact(specimen.name)
