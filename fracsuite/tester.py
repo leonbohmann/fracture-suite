@@ -19,7 +19,7 @@ from rich.progress import Progress, track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.geometry import ellipse_radius
 from fracsuite.core.image import to_gray, to_rgb
-from fracsuite.core.imageprocessing import preprocess_image
+from fracsuite.core.imageprocessing import crop_perspective, preprocess_image
 from fracsuite.core.preps import PrepMode, PreprocessorConfig
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
@@ -669,6 +669,19 @@ def angle(
     B = np.array((x2,y2))
     theta = angle_between(A,B)
     print(np.rad2deg(theta))
-
+    
+    
+    
+@tester_app.command()
+def crop(name):
+    specimen = Specimen.get(name)
+    
+    img = specimen.get_fracture_image()
+    
+    img1 = crop_perspective(img, (4000,4000), debug=True)
+    
+    plt.imshow(img1)
+    plt.show()
+    
 if __name__ == "__main__":
     typer.run(threshold)

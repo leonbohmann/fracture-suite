@@ -69,6 +69,8 @@ class FigureSize(str, Enum):
     def values(cls):
         return set(item.value for item in cls)
 
+    def __str__(self):
+        return str(self.name)
 
 class KernelContourMode(str, Enum):
     FILLED = 'filled'
@@ -132,7 +134,9 @@ def get_fig_width(w: FigureSize, hf=None, dimf=1.0) -> float:
         h_mm = w * golden_ratio
     elif isinstance(w, tuple):
         w_mm,h_mm = w
-
+    else:
+        w_mm = 110
+        h_mm = 110 * golden_ratio
 
     mm_per_inch = 1 / 25.4
     w_inch = mm_per_inch * w_mm

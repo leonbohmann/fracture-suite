@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 from scipy.signal import find_peaks, spectrogram
 from scipy.signal import wiener as w2
 
+from fracsuite.core.logging import error
 from fracsuite.core.series import betweenSeconds
 from fracsuite.core.signal import bandstop, highpass, lowpass
 
@@ -86,6 +87,11 @@ class AccelerationData:
 
     Created from specimens using their acceleration file.
     """
+    __is_ok: bool
+
+    @property
+    def is_ok(self) -> bool:
+        return self.__is_ok
 
     channels: list[Channel]
     drop_channel: Channel
@@ -200,7 +206,14 @@ class AccelerationData:
         if not any([re.match("Fall_g1", channel.Name) for channel in reader.Channels]):
             print(
                 f"\t> [red]File {os.path.basename(self.file)} does not contain the necessary channels, Fall_g1 not found."
-            )
+            )   
+            self.__is_ok = False
+            return
+
+        
+        if any((x.sampling_frequency < 20000 for x in reader.Channels if 'Fall_g' in x.Name)):
+            error("The sampling rate is too low. The acceleration data can not be considered for calculatations.")
+            self.__is_ok = False
             return
 
         # save channels

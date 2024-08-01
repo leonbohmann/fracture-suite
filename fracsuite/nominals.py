@@ -18,9 +18,6 @@ general = GeneralSettings.get()
 def stress():
     """Compares all nominal stresses with real scalped stresses."""
     def has_stress(specimen: Specimen):
-        if specimen.thickness == 12:
-            return False
-
         return specimen.has_scalp and specimen.nom_stress != 0
     def get_spec(specimen: Specimen) -> Specimen:
         return specimen
@@ -29,7 +26,7 @@ def stress():
 
 
     thicknesses = {
-            4: {}, 8: {}
+            4: {}, 8: {}, 12: {}
         }
 
     for t in thicknesses:
@@ -44,7 +41,7 @@ def stress():
     # axs.scatter(nominal_4, scalped_4, marker='x', color='orange', label="4mm")
     # axs.scatter(nominal_8+5, scalped_8, marker='o', color='blue', label="8mm")
     # axs.scatter(nominal_12+10, scalped_12, marker='v', color='green', label="12mm")
-    lbs = ["4mm", "8mm"]
+    lbs = ["4mm", "8mm", "12mm"]
     bars = []
     for it, nom_thick in enumerate(thicknesses):
         bars.append(None)
@@ -52,12 +49,12 @@ def stress():
             real_sig = thicknesses[nom_thick][nom_sig]
             nom_sig = np.array(nom_sig)
             bar = plt.errorbar(nom_sig-5+it*5, np.mean(real_sig), yerr=np.std(real_sig), fmt='ovx'[it], color='bgm'[it])
-            axs.scatter([nom_sig-5+it*5]*len(real_sig), real_sig, marker='x', color='gray', linewidths=0.5, alpha=0.5)
+            axs.scatter([nom_sig-5+it*5]*len(real_sig), real_sig, marker='x', color='gray', linewidths=0.5, alpha=0.35)
             if bars[it] is None:
                 bars[it] = bar
 
-    axs.set_xlabel("Nenn-Oberflächenvorspannung $\sigma_\\text{S}$ (MPa)")
-    axs.set_ylabel("Gemessene $\sigma_\\text{S,meas}$ (MPa)")
+    axs.set_xlabel("Nominal surface stress $\sigma_\\text{S}$ (MPa)")
+    axs.set_ylabel("Measured $\sigma_\\text{S,meas}$ (MPa)")
 
     axs.axline((0, 0), slope=1, color="black", linestyle="-")
 
@@ -70,10 +67,7 @@ def stress():
 @nominals_app.command()
 def thickness(exclude_names: str = None):
     """Compares all nominal stresses with real scalped stresses."""
-    def has_stress(specimen: Specimen):
-        if specimen.thickness == 12:
-            return False
-
+    def has_stress(specimen: Specimen):        
         if exclude_names is not None:
             if specimen.name.startswith(exclude_names):
                 return False
@@ -86,7 +80,7 @@ def thickness(exclude_names: str = None):
     specimens: list[Specimen] = Specimen.get_all_by(has_stress, get_spec, load=True)
 
     thicknesses = {
-            4: [], 8: []
+            4: [], 8: [], 12: []
         }
 
     for spec in specimens:
@@ -112,7 +106,7 @@ def thickness(exclude_names: str = None):
         # plot hline at thickness
         ax.axvline(x=nom_thick, color='black', linestyle='--')
 
-    fig.supxlabel("Gemessene Glasdicke (mm)")
-    fig.supylabel("Anzahl von Probekörpern")
+    fig.supxlabel("Measured thickness (mm)")
+    fig.supylabel("Amount of specimens of thickness")
     # hide x ranges from 4.5 to 7.5 and 8.5 to 11.5
     State.output(fig, 'thickness_distribution', figwidth=sz)

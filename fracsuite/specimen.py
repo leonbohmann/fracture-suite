@@ -963,6 +963,7 @@ def crack_surface_simple(
     induce: bool = False
 ):
     thicknesses = [4,8]
+    print(name_filter)
     filter_func = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
     def basefilter(s):
         if boundary is not None and s.boundary != boundary:
@@ -1046,9 +1047,9 @@ def crack_surface_simple(
         x.append(ut)
         y.append(crack_area)
 
-    fit_curve(axs, x, y, lnfit, color='black', pltlabel='Fit')
-    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
-    axs.set_ylabel("Rissoberfläche $A_\mathrm{F} = \sum U_\mathrm{S,i} \cdot t$ (mm²)")
+    fit_curve(axs, x, y, squarefit, color='black', pltlabel='Fit')
+    axs.set_xlabel("Total Elastic Strain Energy $U_\mathrm{t}$ (J)")
+    axs.set_ylabel("Fracture surface $A_\mathrm{F} = \sum U_\mathrm{S,i} \cdot t$ (mm²)")
     legend_without_duplicate_labels(axs)
     State.output(StateOutput(fig,sz), f"cracksurface_vs_energy_{boundary}")
 
@@ -1115,7 +1116,7 @@ def crack_surface_simple(
     yasymptote = ms_gpmm(yasymptote_mm)
     axs.axhline(yasymptote, color='black', linestyle='--')
     axs.annotate(f'$A_\mathrm{{S}}={yasymptote_mm:.0f} mm^2$', (45, yasymptote), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
-    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
+    axs.set_xlabel("Total Elastic Strain Energy $U_\mathrm{t}$ (J)")
     axs.set_ylabel("$\\sfrac{m_\mathrm{S}}{t} = A_\mathrm{S}\cdot \\rho$ (g/mm)")
     legend_without_duplicate_labels(axs)
     State.output(StateOutput(fig,sz), f"weightedmass_vs_energy_{boundary}")
@@ -1306,6 +1307,55 @@ def crack_surface(
     State.output(StateOutput(fig,sz), "cracksurface_vs_energy" + ("" if not ud else "_ud"))
 
 @app.command()
+def mean_area_vs_energy(
+    specimen_filter: str = "*.*.[A!B!Z].*",
+):
+    print(specimen_filter)
+    
+    filterfunc = create_filter_function(specimen_filter, needs_splinters=True)
+
+    thicknesses = [4,8]
+
+    def filtfilt(s):
+        if s.thickness not in thicknesses:
+            return False
+
+        return filterfunc(s)
+
+    all_specimens = Specimen.get_all_by(filtfilt, load=True)
+    sz = FigureSize.ROW2
+
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    for t in thicknesses:
+                
+        x = []
+        y = []
+        for spec in tqdm((x for x in all_specimens if x.thickness == t)):
+            if not spec.has_splinters:
+                continue
+
+            clr = t_colors[spec.thickness]
+            marker = b_markers[spec.boundary]
+
+            areas = [s.area for s in spec.splinters]
+            mean_area = np.mean(areas) # spec.calculate_nfifty_count(force_recalc=False) / 2500 # np.mean(areas)
+
+            ut = spec.U
+
+            axs.scatter(ut, mean_area, marker=marker, color=clr, **scatter_args)
+            x.append(ut)
+            y.append(mean_area)
+
+        fit_curve(axs, x, y, squarefit, color=clr, pltlabel=f'{t}mm')
+        
+    axs.set_xlabel("Total Elastic Strain Energy $U_\mathrm{t}$ (J/m²)")
+    # axs.set_ylabel("Mean Splinter Area $A_\mathrm{S}$ (mm²)")
+    axs.set_ylabel("$A_S$ (mm²)")
+    legend_without_duplicate_labels(axs)
+    State.output(StateOutput(fig,sz), "mean_area_vs_energy")
+
+@app.command()
 def energy_release_rate():
     """Calculate the energy release rate for a range of velocities."""
     def G(v: float):
@@ -1450,3 +1500,40 @@ def urr(name):
 
     sig_s = U2sigs(specimen.U*urr, specimen.measured_thickness)
     print(f"sig_s: {sig_s:.2f} MPa")
+    
+    
+    
+@app.command()
+def cmp_barsom():
+    filter_func = create_filter_function("*.*.*.*", needs_splinters=True, needs_scalp=True)
+    specimens = Specimen.get_all_by(filter_func, load=True)
+    
+
+    def ut2(s: Specimen):
+        E = 70e3
+        return 1e5 * 6 * (s.sig_h/2)**2 * s.get_real_size()[0]*1e-3 * s.get_real_size()[1]*1e-3 * s.measured_thickness * 1e-3 / E
+
+    def ut(s: Specimen):
+        if not s.has_scalp:
+            return None
+        sz = s.get_real_size()
+        A = sz[0]*1e-3 * sz[1]*1e-3
+        return s.U*A
+    
+    print("Calculating...")
+    u_ut = np.array([(ut(s),ut2(s)) for s in specimens if s.has_scalp and s.has_splinters])
+    
+    # calculate error percentige
+    
+    print("Plotting...")
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    axs.scatter(u_ut[:,0], u_ut[:,1], **scatter_args)
+    axs.axline((0,0), slope=1, color='black', linestyle='--')
+    axs.set_xlabel("Nielsen (J)")
+    axs.set_ylabel("Barsom (J)")
+    State.output(StateOutput(fig, FigureSize.ROW1), "cmp_barsom")
+    
+        
+        
+        
+                

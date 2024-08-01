@@ -26,6 +26,10 @@ def Ud(sigma_s):
 
 # np.sqrt(ud / 1e6/5 * (1-nue)/E)
 
+def Ub(sigma_s, t0, sz):
+    E = 70e3
+    return 1e6 * 6 * (sigma_s/2)**2 * sz[0]*1e-3 * sz[1]*1e-3 * t0 * 1e-3 / E
+
 def Ud2sigms(ud):
     return np.sqrt((ud * 5 * E) / ((1-nue) * 1e6))
 

@@ -1184,7 +1184,9 @@ def custom_regex_filter(s: Specimen, filter: str) -> bool:
     regex = f"{rt}\.{rsigma}\.{rb}\.{rnbr}"
     # print(regex)
     return re.match(regex, s.name) is not None
-def create_filter_function(name_filter,
+
+
+def create_filter_function(name_filter: str,
                            sigmas=None,
                            sigma_delta=10,
                            energy=None,
@@ -1216,7 +1218,7 @@ def create_filter_function(name_filter,
     def all_names(s, filter) -> bool:
         return True
 
-
+    print(name_filter)
     name_filter_function: Callable[[Specimen, Any], bool] = None
 
     # create name_filter_function based on name_filter
@@ -1233,7 +1235,7 @@ def create_filter_function(name_filter,
         name_filter_function = in_names_list
     elif name_filter is not None and all([c not in "*[]^\\" for c in name_filter]):
         name_filter = [name_filter]
-        print(f"Searching for specimen whose name is in: {name_filter}")
+        print(f"Searching for specimen name: {name_filter}")
         name_filter_function = in_names_list
     elif name_filter is not None and ":" in name_filter:
         name_filter_function = custom_regex_filter
@@ -1246,6 +1248,7 @@ def create_filter_function(name_filter,
         print("[green]All[/green] specimen names included!")
         name_filter_function = all_names
 
+    print(name_filter)
     if sigmas is not None:
         if "-" in sigmas:
             sigmas = [float(s) for s in sigmas.split("-")]
@@ -1683,6 +1686,7 @@ def nfifty(
     unit: Annotated[EnergyUnit, typer.Option(help='Energy unit.')] = EnergyUnit.U,
     recalc: Annotated[bool, typer.Option(help='Recalculate N50.')] = False,
     use_mean: Annotated[bool, typer.Option(help='Use mean splinter size.')] = False,
+    no_navid: Annotated[bool, typer.Option(help='Do not use N."s Data.')] = False,
 ):
     bid = {
         'A': 1,
@@ -1759,8 +1763,8 @@ def nfifty(
     id = idd[unit]
 
     id_name = {
-        0: "Formänderungsenergie $U$ (J/m²)",
-        1: "Formänderungsenergiedichte $U_\mathrm{D}$ (J/m³)",
+        0: "Elastic Strain Energy $U$ (J/m²)",
+        1: "Elastic Strain Energy Density $U_\mathrm{D}$ (J/m³)",
         2: "Effektive Formänderungsenergie $U_\mathrm{t}$ (J/m²)",
         3: "Effektive Formänderungsenergiedichte $U_\mathrm{Dt}$ (J/m³)",
     }
@@ -1794,7 +1798,7 @@ def nfifty(
     cfg_logplot(axs)
 
     # plot navids ud results
-    if unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
+    if (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid:
         navid_n50 = navid_nfifty_ud()
 
         for ith, th in enumerate(thicknesses):
@@ -1822,7 +1826,7 @@ def nfifty(
         y = results[mask,id]
 
         # getting u results from navid depends on thickness
-        if unit == EnergyUnit.U or unit == EnergyUnit.Ut:
+        if (unit == EnergyUnit.U or unit == EnergyUnit.Ut) and not no_navid:
             navid_n50 = navid_nfifty(thick, as_ud=False)
             navid_x = navid_n50[:,0]
             navid_y = navid_n50[:,1]
@@ -1835,7 +1839,7 @@ def nfifty(
                 linewidth=lwscatter,
                 alpha=0.4,
             )
-        elif unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
+        elif (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid:
             navid_r = navid_n50[navid_n50[:,2] == thick]
 
             navid_x = navid_r[:,0] #n50
@@ -1856,9 +1860,10 @@ def nfifty(
             def func(x, a, b):
                 return np.float64(a * x + b)
 
-            x = np.concatenate([x,navid_x])
-            y = np.concatenate([y,navid_y])
-            p = np.column_stack([x,y])
+            if not no_navid:
+                x = np.concatenate([x,navid_x])
+                y = np.concatenate([y,navid_y])
+                p = np.column_stack([x,y])
 
             fit_curve(axs, x, y, func, clr, pltlabel="", annotate_label="")
 
@@ -1907,7 +1912,7 @@ def nfifty(
     #     axs.plot([],[], label=f"{t}mm", color=tcolors[b])
 
     axs.set_ylabel(id_name[id])
-    axs.set_xlabel("Bruchstückdichte $N_\\text{50}$")
+    axs.set_xlabel("Fragment density $N_\\text{50}$")
     # axs.legend(loc='best')
 
     y_max = np.max(results[:,id])

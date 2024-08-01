@@ -18,6 +18,7 @@ from scipy.integrate import cumulative_trapezoid
 import numpy as np
 import typer
 from apread import APReader, Channel # type: ignore
+from fracsuite.core.logging import error
 from fracsuite.core.series import betweenSeconds, untilSeconds, afterSeconds
 from rich import inspect, print
 from rich.progress import track
@@ -523,7 +524,9 @@ def plot_impact(
 
     if file is None:
         specimen = Specimen.get(specimen_name)
-
+        if not specimen.accdata.is_ok:
+            error(f"Specimen '{specimen_name}' has faulty acceleration data.")
+            return
         set_prim_sec_sensors(specimen)
         reader = APReader(specimen.acc_file)
     else:
@@ -537,9 +540,21 @@ def plot_impact(
     # g_channels = reader.collectChannelsLike('shock')
     # drop_channels = reader.collectChannelsLike('Force')
 
+    if any((x.sampling_frequency < 20000 for x in reader.Channels if 'Fall_g' in x.Name)):
+        error("The sampling rate is too low for this analysis. A minimum of 20kHz is required.")
+        return
+
 
     # reader.plotGroup(0)
     reader.plot(sameAxis=True)
+    
+    print("Channels:")
+    for chan in g_channels:
+        print(f"  {chan.Name}")
+        
+    print("Drop channels:")
+    for chan in drop_channels:
+        print(f"  {chan.Name}")
 
     impact_time_i, impact_time = get_impact_time(drop_channels[0])
     drop_time_i, drop_time = get_drop_time(drop_channels[0])
