@@ -80,7 +80,7 @@ def gen(
     all: Annotated[bool, typer.Option(help='Generate splinters for all specimens.')] = False,
     all_exclude: Annotated[str, typer.Option(help='Exclude specimens from all.')] = None,
     all_skip_existing: Annotated[bool, typer.Option(help='Skip specimens that already have splinters.')] = False,
-    from_label: Annotated[bool, typer.Option(help='Generate splinters from labeled image.')] = False,
+    from_label: Annotated[bool, typer.Option(help='Generate splinters from labeled image. For this to work an image with the "label_" prefix has to be present alongside the fracture images that has the same dimensions as the fracture image. The background has to be white, cracks have to be marked using black.')] = False,
     use_default_prep: Annotated[bool, typer.Option(help='Use default prep config.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""

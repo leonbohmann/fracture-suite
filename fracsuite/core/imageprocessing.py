@@ -280,6 +280,7 @@ def crop_perspective(img,
     rect = cv2.minAreaRect(max_contour)
     box = cv2.boxPoints(rect)
     corners = np.int0(box)
+    corners = fourCornersSort(corners)
     pageContour = corners
 
     if debug:
