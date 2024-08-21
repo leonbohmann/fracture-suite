@@ -108,7 +108,10 @@ class AccelerationData:
 
         self.channels: list[Channel] = None
 
-        self.load(zero_channels=zero_channels)
+        if file is not None:
+            self.load(zero_channels=zero_channels)
+        else:
+            self.__is_ok = False
 
     def filter_fallgewicht_lowpass(self, f0: float = 5000):
         original_chan_data = None
@@ -202,7 +205,8 @@ class AccelerationData:
         # create APReader to read the file
         reader = APReader(self.file)
         self.reader = reader
-
+        self.__is_ok = True
+        
         if not any([re.match("Fall_g1", channel.Name) for channel in reader.Channels]):
             print(
                 f"\t> [red]File {os.path.basename(self.file)} does not contain the necessary channels, Fall_g1 not found."
@@ -226,9 +230,9 @@ class AccelerationData:
                 # time channel gets set to the start time
                 if channel.isTime:
                     channel.data = channel.data - channel.data[0]
-                # all other channels get zeroed in the first 0.35 seconds
+                # all other channels get zeroed in the first 0.2 seconds
                 else:
-                    channel.zero(seconds=0.1)
+                    channel.zero(seconds=0.2)
 
         # preliminary runtime calculations
         _, _, t_c = runtimes()
@@ -314,12 +318,15 @@ class AccelerationData:
             if re.match(filter, channel.Name) is not None
         ]
 
-    def get_channel_like(self, filter: str) -> Channel:
+    def get_channel_like(self, filter: str, panic=True) -> Channel:
         for channel in self.channels:
             if re.match(filter, channel.Name) is not None:
                 return channel
 
-        raise ValueError(f"Channel with filter {filter} not found in {self.file}")
+        if panic:
+            raise ValueError(f"Channel with filter {filter} not found in {self.file}")
+        else:
+            return None
 
     def get_channel(self, channel_name: str) -> Channel:
         for channel in self.channels:

@@ -2,6 +2,7 @@
 Organisation module. Contains the Specimen class and some helpful tools to export specimens.
 """
 from __future__ import annotations
+from typing import Annotated
 
 from fracsuite.core.calculate import is_number
 from fracsuite.core.geometry import delta_hcp
@@ -739,17 +740,18 @@ def import_experimental_data(
 
 @app.command('import')
 def import_files(
-    specimen_name: str = typer.Argument(help="Name of the specimen."),
-    imgsize: tuple[int, int] = typer.Option((4000, 4000), help="Size of the image."),
-    realsize: tuple[float, float] = typer.Option((-1, -1), help="Real size of the image. If any value is -1, the real size is not set."),
-    imsize_factor: float = typer.Option(None, help="Image size factor."),
-    no_rotate: bool = typer.Option(False, help="Option to disable rotation."),
-    no_tester: bool = typer.Option(False, help="Option to disable tester."),
-    exclude_all_sensors: bool = typer.Option(False, help="Option to exclude all sensors."),
-    exclude_impact_radius: float = typer.Option(None, help="Radius to exclude impact."),
-    exclude_points: bool = typer.Option(False, help="Shows helper windows to exclude points in the morphology."),
-    fracture_image: str = typer.Option(None, help="Path to the fracture image."),
-    no_tester_crop: bool = typer.Option(False, help="Option to disable tester crop."),
+    specimen_name: Annotated[str, typer.Argument(help="Name of the specimen.")],
+    imgsize: Annotated[tuple[int, int], typer.Option(help="Size of the image.")] = (4000, 4000),
+    realsize: Annotated[tuple[float, float], typer.Option(help="Real size of the image. If any value is -1, the real size is not set.")] = (-1, -1),
+    imsize_factor: Annotated[float, typer.Option(help="Image size factor.")] = None,
+    no_rotate: Annotated[bool, typer.Option(help="Option to disable rotation.")] = False,
+    no_tester: Annotated[bool, typer.Option(help="Option to disable tester.")] = False,
+    from_label: Annotated[bool, typer.Option(help="Option to import from label.")] = False,
+    exclude_all_sensors: Annotated[bool, typer.Option(help="Option to exclude all sensors.")] = False,
+    exclude_impact_radius: Annotated[float, typer.Option(help="Radius to exclude impact.")] = None,
+    exclude_points: Annotated[bool, typer.Option(help="Shows helper windows to exclude points in the morphology.")] = False,
+    fracture_image: Annotated[str, typer.Option(help="Path to the fracture image.")] = None,
+    no_tester_crop: Annotated[bool, typer.Option(help="Option to disable tester crop.")] = False,
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -765,6 +767,10 @@ def import_files(
     There are two ways in which the resulting image size (px) can be set:
         - Use the `--imgsize` option to set the image size directly.
         - Use the `--imsize-factor` option to scale the image size from the real size. In that case, the real size has to be set.
+    
+    #### From Label option
+    
+    
     """
 
     assert not (imsize_factor is not None and imgsize[0] != 4000 and imgsize[1] != 4000), "Cannot set both imsize factor and imgsize!"
@@ -781,7 +787,7 @@ def import_files(
                 debug(f"Specimen '{spec.name}' has no fracture scans! Skipping...")
                 continue
 
-            import_files(spec.name, imgsize, realsize, imsize_factor, no_rotate, no_tester, exclude_all_sensors, exclude_impact_radius, fracture_image)
+            import_files(spec.name, imgsize, realsize, imsize_factor, no_rotate, no_tester, exclude_all_sensors, exclude_impact_radius, fracture_image=None)
 
         return
 
@@ -799,6 +805,7 @@ def import_files(
         img = cv2.imread(fracture_image, cv2.IMREAD_GRAYSCALE)
         specimen.put_fracture_image(img)
     elif specimen is not None and fracture_image is not None:
+        print()
         if specimen.has_fracture_scans:
             raise Exception("Specimen already has fracture scans! Overwrite not allowed! Delete the image at: " + specimen.fracture_morph_folder)
 
@@ -826,7 +833,7 @@ def import_files(
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)
 
     print('[yellow]> Running threshold tester <')
-    if not no_tester:
+    if not no_tester and not from_label:
         from fracsuite.tester import threshold
         # calculate a fraction of the specimen region to display
         region = np.asarray((imgsize[0]//2, imgsize[1]//2, imgsize[0]//7, imgsize[1]//7)) / specimen.calculate_px_per_mm()
@@ -843,7 +850,7 @@ def import_files(
 
     print('[yellow]> Generating splinters <')
     from fracsuite.splinters import gen
-    gen(specimen.name)
+    gen(specimen.name, from_label=from_label)
 
     print('[yellow]> Drawing contours <')
     from fracsuite.splinters import draw_contours
@@ -1339,9 +1346,9 @@ def mean_area_vs_energy(
             marker = b_markers[spec.boundary]
 
             areas = [s.area for s in spec.splinters]
-            mean_area = np.mean(areas) # spec.calculate_nfifty_count(force_recalc=False) / 2500 # np.mean(areas)
+            mean_area = np.sum([s.circumfence for s in spec.splinters]) # np.mean(areas) # spec.calculate_nfifty_count(force_recalc=False) / 2500 # np.mean(areas)
 
-            ut = spec.U
+            ut = spec.U_b
 
             axs.scatter(ut, mean_area, marker=marker, color=clr, **scatter_args)
             x.append(ut)
@@ -1351,7 +1358,8 @@ def mean_area_vs_energy(
         
     axs.set_xlabel("Total Elastic Strain Energy $U_\mathrm{t}$ (J/m²)")
     # axs.set_ylabel("Mean Splinter Area $A_\mathrm{S}$ (mm²)")
-    axs.set_ylabel("$A_S$ (mm²)")
+    axs.set_ylabel("Total circumfence (mm)")
+    axs.set_yscale("log")
     legend_without_duplicate_labels(axs)
     State.output(StateOutput(fig,sz), "mean_area_vs_energy")
 

@@ -279,6 +279,7 @@ class Specimen(Outputtable):
     def accdata(self) -> AccelerationData:
         "Acceleration data."
         assert self.loaded, "Specimen not loaded."
+        
         return self.__acc
 
     @property
@@ -1045,6 +1046,7 @@ class Specimen(Outputtable):
     def load_acc(self):
         """Loads the acceleration data."""
         if self.acc_file is None:
+            self.__acc = AccelerationData(None)
             return
 
         self.__acc = AccelerationData(self.acc_file)

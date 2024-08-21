@@ -216,6 +216,8 @@ def crop_perspective(img,
         """ Sort corners: top-left, bot-left, bot-right, top-right """
         # Difference and sum of x and y value
         # Inspired by http://www.pyimagesearch.com
+        pts = pts.reshape((4,2))           
+        
         diff = np.diff(pts, axis=1)
         summ = pts.sum(axis=1)
 
@@ -276,11 +278,23 @@ def crop_perspective(img,
     if debug:
         plotImage(im0, 'CROP: Detected contours')
 
-    # find min area rect for max_contour
-    rect = cv2.minAreaRect(max_contour)
-    box = cv2.boxPoints(rect)
-    corners = np.int0(box)
-    corners = fourCornersSort(corners)
+    approx = max_contour
+    for i in range(100):        
+        epsilon = (0.01 * i / 2.0) * cv2.arcLength(approx, True)
+        approx = cv2.approxPolyDP(approx, epsilon, True)
+        
+        if len(approx) == 4:
+            corners = fourCornersSort(approx)
+            break
+        
+    if len(approx) != 4:
+        approx = max_contour
+
+        # find min area rect for max_contour
+        rect = cv2.minAreaRect(approx)
+        box = cv2.boxPoints(rect)
+        corners = np.int0(box)
+        corners = fourCornersSort(corners)
     pageContour = corners
 
     if debug:

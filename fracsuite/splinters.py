@@ -1304,7 +1304,7 @@ def log_histograms(
     elif data_mode == DataHistMode.PDF and plot_mode is None:
         plot_mode = DataHistPlotMode.HIST
 
-
+    print(names)
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
     specimens = Specimen.get_all_by(filter, load=True)
 
@@ -1709,7 +1709,7 @@ def nfifty(
         2: 's',
         3: 'D',
     }
-    thicknesses = [4, 8]
+    thicknesses = [4, 8, 12]
 
     def add_filter(specimen: Specimen):
         if specimen.thickness not in thicknesses:
@@ -2661,7 +2661,7 @@ def analyze_areas(
 
         # Create table data
         data = []
-        data.append(("ID", "Area", "D_x", "D_y", "C_x", "C_y"))
+        data.append(("ID", "Area [mm²]", "D_x [mm]", "D_y [mm]", "C_x [mm]", "C_y [mm]"))
         p0 = specimen.get_impact_position()
         for i,s in enumerate(splinters):
             c = s.centroid_mm
@@ -2677,6 +2677,33 @@ def analyze_areas(
         # Build PDF
         doc.build(elements)
         
+        
+        # create csv file with splinter data
+        csv_filename = State.get_output_file(f"areas_{specimen_name}_{count}.csv")
+        with open(csv_filename, 'w') as f:
+            # description
+            f.write("A; Splinter base area\n")
+            f.write("D; The vector from the splinter centroid to the impact position\n")
+            f.write("C; Splinter centroid\n")
+            f.write("U; Circumenfence\n")
+            f.write("\n")
+            
+            # mean values
+            mean_area = np.mean([x.area for x in splinters])
+            std_dev = np.std([x.area for x in splinters])            
+            f.write(f"Mean A;{mean_area};{std_dev}\n")
+            
+            f.write("\n")
+            
+            # splinter values
+            f.write("ID;A [mm²];D_x [mm];D_y [mm];C_x [mm];C_y [mm];U [mm]\n")
+            p0 = specimen.get_impact_position()
+            for i,s in enumerate(splinters):
+                c = s.centroid_mm
+                v = c - p0
+                f.write(f"{i};{s.area};{v[0]};{v[1]};{c[0]};{c[1]};{s.circumfence}\n")
+        
+            
         count += 1
 
 @app.command()

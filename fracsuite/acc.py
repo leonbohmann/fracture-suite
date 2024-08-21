@@ -7,10 +7,13 @@ from pstats import StatsProfile
 import re
 import shutil
 from tracemalloc import start
+from turtle import color
 from typing import Annotated
 from unittest import skip
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 from matplotlib.ticker import FuncFormatter
 
 from scipy.signal import savgol_filter
@@ -18,12 +21,13 @@ from scipy.integrate import cumulative_trapezoid
 import numpy as np
 import typer
 from apread import APReader, Channel # type: ignore
+from fracsuite.core.coloring import get_color, norm_color
 from fracsuite.core.logging import error
 from fracsuite.core.series import betweenSeconds, untilSeconds, afterSeconds
 from rich import inspect, print
 from rich.progress import track
 from fracsuite.core.accelerationdata import DEBUG, AccelerationData
-from fracsuite.core.plotting import FigureSize, get_fig_width, plot_series
+from fracsuite.core.plotting import FigureSize, get_fig_width, legend_without_duplicate_labels, plot_series
 from fracsuite.core.signal import bandstop, lowpass, bandpass
 from fracsuite.state import State, StateOutput
 
@@ -513,7 +517,8 @@ def plot_impact(
     no_legend: Annotated[bool, typer.Option(help="Hide the plot legend.", )] = False,
     show_title: Annotated[bool, typer.Option(help="Show a title in the plot.", )] = False,
     mpss: Annotated[bool, typer.Option(help="Show velocity in m/s.", )] = False,
-    plot_filtered_sep: Annotated[bool, typer.Option('--plot-sep', help="Draw the filtered function seperately.", )] = False
+    plot_filtered_sep: Annotated[bool, typer.Option('--plot-sep', help="Draw the filtered function seperately.", )] = False,
+    sensors: Annotated[str, typer.Option(help="The sensors to plot.", )] = "all",
 ):
     """Plots the impact of the given specimen."""
     time_f, readable_unit = mod_unit(time_unit)
@@ -529,14 +534,24 @@ def plot_impact(
             return
         set_prim_sec_sensors(specimen)
         reader = APReader(specimen.acc_file)
+        accdata = specimen.accdata
     else:
-        reader = APReader(file)
+        accdata = AccelerationData(file)
+        reader = accdata.reader
 
     reader.printSummary()
+    
+    print("filtering data")
+    # accdata.filter_fallgewicht_lowpass(f0=low)
+    # accdata.filter_fallgewicht_highpass(f0=high)
 
+    # accdata.filter_fallgewicht_eigenfrequencies()
+    accdata.filter_fallgewicht_wiener()
+        
+    
     # get the channels
-    g_channels = reader.collectChannelsLike('Acc')
-    drop_channels = reader.collectChannelsLike('Fall_g')
+    g_channels = accdata.get_channels_like('Acc')
+    drop_channels = accdata.get_channels_like('Fall_g')
     # g_channels = reader.collectChannelsLike('shock')
     # drop_channels = reader.collectChannelsLike('Force')
 
@@ -556,14 +571,19 @@ def plot_impact(
     for chan in drop_channels:
         print(f"  {chan.Name}")
 
+    print("Plotting impact...")
     impact_time_i, impact_time = get_impact_time(drop_channels[0])
     drop_time_i, drop_time = get_drop_time(drop_channels[0])
 
     time0 = drop_channels[0].Time.data
 
     g_data = []
+    sensors = sensors.split(",")
     # collect channel data and their times
     for chan in g_channels:
+        if not all or not any([re.match(x, chan.Name) for x in sensors]):
+            continue
+        
         data = chan.data * (g if mpss else 1.0)
         fdata = None
         # apply a filter to chan.data
@@ -616,7 +636,7 @@ def plot_impact(
         # ax.axvline(drop_time - impact_time + drop_dur, color="red", linestyle=drop_ls)
         # ax.text(drop_time  - impact_time + drop_dur, 0.01, 'Impact',rotation=90, va='bottom', transform=ax.get_xaxis_transform())
 
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x*time_f:.2f}"))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x*time_f:.5f}"))
 
     # plot the drop channels
     for chan, time, data in drop_data:
@@ -1014,3 +1034,147 @@ def calculate_load_time(
     
     # copy contents to specimen folder
     shutil.copy(csv_file, specimen.get_acc_outfile(f"{specimen_name}-load-time.csv"))
+    
+    
+    
+@app.command()
+def compare(
+    sensor: str = "[Aa]cc(_?)6",
+    sensor2: str = "",
+            zero_time: bool = False,
+            plt_bounds: bool = False,
+            use_lims: bool = False,
+            no_zero: bool = False,
+            show: bool = False):
+    """Compare the acceleration of the specimens.
+
+    Args:
+        sensor (str, optional): Filter for the sensor to be compared. Defaults to "[Aa]cc(_?)6".
+        zero_time (bool, optional): Use the time to zero instead of greatest peak. Defaults to False.
+        plt_bounds (bool, optional): Plot the boundary condition instead of the stress. Defaults to False.
+    """
+    basefilt = create_filter_function("8.110.B.*", needs_scalp=True)
+    
+    # load all specimens
+    def filt(s: Specimen):
+        if not s.accdata.is_ok:
+            return False
+        
+        return basefilt(s)
+    
+    specimens = Specimen.get_all_by(filt, load=True)
+
+    clrs = {
+        'A': 'C0',
+        'B': 'C1',
+        'Z': 'C2',
+    }
+    
+    def get_acc_sensor(s: Specimen) -> np.ndarray:
+        if s.accdata is None:
+            return None
+        
+        acc6 = s.accdata.get_channel_like(sensor, panic=False)
+        
+        if acc6 is None:
+            return None
+                
+        return acc6.get_filtered()
+
+    max_peak = {}
+    max_peak_time = {}
+
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))    
+    for s in specimens:
+        # get acc_6 sensor data
+        accdata = s.accdata
+        acc1 = accdata.get_channel_like(sensor, panic=False)
+        acc2 = accdata.get_channel_like(sensor2, panic=False) if sensor2 != "" else None
+        
+        accs = [acc1, acc2]
+        
+        for i,acc in enumerate(accs):
+            if acc is None:
+                continue
+            
+            time = acc.Time.data
+            data = acc.get_filtered()
+            
+            # align the time, where the highest peak is found
+            peak = np.argmax(data)
+            if zero_time:
+                time = (time - 0.5) * 1e3
+            elif not no_zero:
+                time = (time - time[peak]) * 1e3
+            
+            max_peak[s] = data[peak]
+            max_peak_time[s] = time[peak]
+            
+            if plt_bounds:
+                clr = clrs[s.boundary.value]
+            else:
+                clr = norm_color(get_color(np.abs(s.sig_h), 40, 160))
+            axs.plot(time, data, ls=['-', '--'][i], alpha=0.3, c=clr, label=f"{s.boundary.value}")
+        
+    if use_lims:
+        axs.set_xlim(-0.00075, 0.00075)
+        axs.set_ylim(-1400, 5200)
+    legend_without_duplicate_labels(axs)
+    axs.set_xlabel("Time [ms]")
+    axs.set_ylabel("Acceleration [m/s²]")
+    axs.set_title(f"Comparison of acceleration {accs[0].Name} and {accs[1].Name if accs[1] is not None else ''}")
+
+    if not plt_bounds:
+        fig.colorbar(ScalarMappable(norm=Normalize(40, 160), cmap='turbo'), ax=axs, label="Sigma_h [MPa]")
+    
+    if show:
+        plt.show()
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), "compare-acc6")
+    
+    
+    print('Calculating max-peak plots')
+    # Auswertung: Maximaler Peak vs Vorspanngrad
+    fig,axs = plt.subplots(1, figsize=get_fig_width(FigureSize.ROW1))
+    t_clr = {4: 'C0', 8: 'C1', 12: 'C2'}
+    for s in specimens:
+        if s.fall_height_m != 0.07:
+            continue
+        
+        clr = t_clr[s.thickness]
+        data = get_acc_sensor(s)
+        if data is None:
+            continue   
+        peak = data[np.argmax(data)]
+        valley = data[np.argmin(data)]
+        maxd = peak
+        x = s.U * 0.25 # np.abs(s.sig_h)
+        axs.scatter(x, maxd, c=clr, label=f"{s.thickness}mm")
+        
+    
+    
+    # x = [np.abs(s.sig_h) for s, _ in max_peak.items()]
+    # y = [p for s, p in max_peak.items()]
+    # axs.scatter(x, y)
+    # axs.set_ylim(0,10)
+    axs.set_xlabel("Strain Energy [J]")
+    axs.set_ylabel("Max Acceleration [m/s²]")
+    legend_without_duplicate_labels(axs)
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), "compare-acc6-maxpeak")
+    
+    
+    
+    # group specimens according to their sigma-level (0-10, 10-20, 20-30, ...)
+    groups = {}
+    for s in specimens:
+        sig = s.sig_h
+        key = (sig // 10) * 10
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(s)
+    
+    
+    
+    
+    # create a single plot
+    fig, axs = plt.subplots(1, figsize=get_fig_width(FigureSize.ROW1), sharex=True, sharey=True)
+    
