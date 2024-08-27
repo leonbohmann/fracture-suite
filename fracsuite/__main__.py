@@ -383,8 +383,6 @@ def test(input: list[str]):
 
 console = Console()
 add_to_windows_path("..\scripts")
-
-
 State.console = console
 console.rule("Fracsuite")
 start("fracsuite", '--debug' in sys.argv)
@@ -436,7 +434,8 @@ if got_statekwargs:
     console.print(State.kwargs)
 
 
-try:
-    app()
-finally:
-    State.checkpoint_save()
+if __name__ == "__main__":
+    try:
+        app()
+    finally:
+        State.checkpoint_save()
