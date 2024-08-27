@@ -33,3 +33,7 @@ class SpecimenBoundary(str, Enum):
     B = "B"
     Z = "Z"
     Unknown = "unknown"
+    
+    def __str__(self):
+        return self.name
+    

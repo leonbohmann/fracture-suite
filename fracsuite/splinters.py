@@ -56,6 +56,7 @@ from fracsuite.core.plotting import (
 from fracsuite.core.preps import PreprocessorConfig, defaultPrepConfig
 from fracsuite.core.progress import get_progress
 from fracsuite.core.specimen import Specimen, SpecimenBoundary
+from fracsuite.core.specimenprops import SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.core.stochastics import similarity
@@ -79,7 +80,7 @@ def gen(
     all: Annotated[bool, typer.Option(help='Generate splinters for all specimens.')] = False,
     all_exclude: Annotated[str, typer.Option(help='Exclude specimens from all.')] = None,
     all_skip_existing: Annotated[bool, typer.Option(help='Skip specimens that already have splinters.')] = False,
-    from_label: Annotated[bool, typer.Option(help='Generate splinters from labeled image.')] = False,
+    from_label: Annotated[bool, typer.Option(help='Generate splinters from labeled image. For this to work an image with the "label_" prefix has to be present alongside the fracture images that has the same dimensions as the fracture image. The background has to be white, cracks have to be marked using black.')] = False,
     use_default_prep: Annotated[bool, typer.Option(help='Use default prep config.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""
@@ -479,10 +480,20 @@ def import_files(
 def extract_details(
     names: Annotated[list[str], typer.Argument(help='Names of specimens to load')],
     region: Annotated[tuple[int, int, int, int], typer.Option(help='Region to extract. X Y W H.')] = (1250, 1250, 200, 200),
-    fontscale: Annotated[str, typer.Option(help='Font scale.')] = FontSize.HUGEXL,
+    fontscale: Annotated[float, typer.Option(help='Font scale.')] = FontSize.HUGEXL,
+    mm: Annotated[bool, typer.Option(help='Use mm instead of px.')] = False,
+    scale_len: Annotated[int, typer.Option(help='Length of scale in mm.')] = 50,
+    line_sz: Annotated[int, typer.Option(help='Thickness of font line.')] = 3,
+    scale_top: Annotated[bool, typer.Option(help='Put scale on top.')] = False,
+    vspace: Annotated[int, typer.Option(help='Vertical space between scale and image.')] = 0,
 ):
-    filterf = create_filter_function(names, needs_splinters=True, needs_scalp=False)
-    specimens: list[Specimen] = Specimen.get_all_by(filterf, load=True)
+    
+    if not any("*" in n for n in names):
+        specimen = Specimen.get(names[0])
+        specimens = [specimen]
+    else:
+        filterf = create_filter_function(names, needs_splinters=False, needs_scalp=False)
+        specimens: list[Specimen] = Specimen.get_all_by(filterf, load=True)
 
     assert region is not None, "Region must be specified."
 
@@ -493,20 +504,28 @@ def extract_details(
         fracture_image = specimen.get_fracture_image()
 
         x, y, w, h = region
+        if mm:
+            px_per_mm = specimen.calculate_px_per_mm()
+            x, y, w, h = x*px_per_mm, y*px_per_mm, w*px_per_mm, h*px_per_mm
+            x = int(x)
+            y = int(y)
+            w = int(w)
+            h = int(h)
+        
         fracture_image = fracture_image[y:y+h, x:x+w]
 
         # calculate real size of region
         px_per_mm = specimen.calculate_px_per_mm()
         w_mm = w * rsz_factor / px_per_mm
         pxpmm = w * rsz_factor / w_mm
-        scale_length_val = 20
+        scale_length_val = scale_len
         scale_length_px = scale_length_val * pxpmm * rsz_factor
 
         # upscale image using rsz_factor
         fracture_image = cv2.resize(fracture_image, (0, 0), fx=rsz_factor, fy=rsz_factor)
 
-        # add text to center of line
-        fracture_image = put_scale(scale_length_val/10,scale_length_px, fracture_image, clr=(0,0,0), sz=FontSize[fontscale.upper()])
+        # add text to center of line, /10 to get cm
+        fracture_image = put_scale(scale_length_val/10,scale_length_px, fracture_image, clr=(0,0,0), sz=fontscale, lsize=line_sz, scale_top=scale_top, vspace=vspace*px_per_mm)
 
         # save image
         State.output(fracture_image, f"extracted_{specimen.name}_{specimen.sig_h:.0f}", spec=specimen, to_additional=True, figwidth=FigureSize.ROW3)
@@ -1165,7 +1184,9 @@ def custom_regex_filter(s: Specimen, filter: str) -> bool:
     regex = f"{rt}\.{rsigma}\.{rb}\.{rnbr}"
     # print(regex)
     return re.match(regex, s.name) is not None
-def create_filter_function(name_filter,
+
+
+def create_filter_function(name_filter: str,
                            sigmas=None,
                            sigma_delta=10,
                            energy=None,
@@ -1197,7 +1218,7 @@ def create_filter_function(name_filter,
     def all_names(s, filter) -> bool:
         return True
 
-
+    print(name_filter)
     name_filter_function: Callable[[Specimen, Any], bool] = None
 
     # create name_filter_function based on name_filter
@@ -1214,7 +1235,7 @@ def create_filter_function(name_filter,
         name_filter_function = in_names_list
     elif name_filter is not None and all([c not in "*[]^\\" for c in name_filter]):
         name_filter = [name_filter]
-        print(f"Searching for specimen whose name is in: {name_filter}")
+        print(f"Searching for specimen name: {name_filter}")
         name_filter_function = in_names_list
     elif name_filter is not None and ":" in name_filter:
         name_filter_function = custom_regex_filter
@@ -1227,6 +1248,7 @@ def create_filter_function(name_filter,
         print("[green]All[/green] specimen names included!")
         name_filter_function = all_names
 
+    print(name_filter)
     if sigmas is not None:
         if "-" in sigmas:
             sigmas = [float(s) for s in sigmas.split("-")]
@@ -1282,7 +1304,7 @@ def log_histograms(
     elif data_mode == DataHistMode.PDF and plot_mode is None:
         plot_mode = DataHistPlotMode.HIST
 
-
+    print(names)
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
     specimens = Specimen.get_all_by(filter, load=True)
 
@@ -1664,6 +1686,7 @@ def nfifty(
     unit: Annotated[EnergyUnit, typer.Option(help='Energy unit.')] = EnergyUnit.U,
     recalc: Annotated[bool, typer.Option(help='Recalculate N50.')] = False,
     use_mean: Annotated[bool, typer.Option(help='Use mean splinter size.')] = False,
+    no_navid: Annotated[bool, typer.Option(help='Do not use N."s Data.')] = False,
 ):
     bid = {
         'A': 1,
@@ -1686,7 +1709,7 @@ def nfifty(
         2: 's',
         3: 'D',
     }
-    thicknesses = [4, 8]
+    thicknesses = [4, 8, 12]
 
     def add_filter(specimen: Specimen):
         if specimen.thickness not in thicknesses:
@@ -1740,8 +1763,8 @@ def nfifty(
     id = idd[unit]
 
     id_name = {
-        0: "Formänderungsenergie $U$ (J/m²)",
-        1: "Formänderungsenergiedichte $U_\mathrm{D}$ (J/m³)",
+        0: "Elastic Strain Energy $U$ (J/m²)",
+        1: "Elastic Strain Energy Density $U_\mathrm{D}$ (J/m³)",
         2: "Effektive Formänderungsenergie $U_\mathrm{t}$ (J/m²)",
         3: "Effektive Formänderungsenergiedichte $U_\mathrm{Dt}$ (J/m³)",
     }
@@ -1775,7 +1798,7 @@ def nfifty(
     cfg_logplot(axs)
 
     # plot navids ud results
-    if unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
+    if (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid:
         navid_n50 = navid_nfifty_ud()
 
         for ith, th in enumerate(thicknesses):
@@ -1803,7 +1826,7 @@ def nfifty(
         y = results[mask,id]
 
         # getting u results from navid depends on thickness
-        if unit == EnergyUnit.U or unit == EnergyUnit.Ut:
+        if (unit == EnergyUnit.U or unit == EnergyUnit.Ut) and not no_navid:
             navid_n50 = navid_nfifty(thick, as_ud=False)
             navid_x = navid_n50[:,0]
             navid_y = navid_n50[:,1]
@@ -1816,7 +1839,7 @@ def nfifty(
                 linewidth=lwscatter,
                 alpha=0.4,
             )
-        elif unit == EnergyUnit.UD or unit == EnergyUnit.UDt:
+        elif (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid:
             navid_r = navid_n50[navid_n50[:,2] == thick]
 
             navid_x = navid_r[:,0] #n50
@@ -1837,9 +1860,10 @@ def nfifty(
             def func(x, a, b):
                 return np.float64(a * x + b)
 
-            x = np.concatenate([x,navid_x])
-            y = np.concatenate([y,navid_y])
-            p = np.column_stack([x,y])
+            if not no_navid:
+                x = np.concatenate([x,navid_x])
+                y = np.concatenate([y,navid_y])
+                p = np.column_stack([x,y])
 
             fit_curve(axs, x, y, func, clr, pltlabel="", annotate_label="")
 
@@ -1888,7 +1912,7 @@ def nfifty(
     #     axs.plot([],[], label=f"{t}mm", color=tcolors[b])
 
     axs.set_ylabel(id_name[id])
-    axs.set_xlabel("Bruchstückdichte $N_\\text{50}$")
+    axs.set_xlabel("Fragment density $N_\\text{50}$")
     # axs.legend(loc='best')
 
     y_max = np.max(results[:,id])
@@ -2509,3 +2533,251 @@ def annotate_impact(
 
 
     State.output(impact_image, spec=specimen, override_name="impact_annotated", figwidth=FigureSize.ROW1)
+
+@app.command()
+def analyze_areas(
+    specimen_name: str
+):
+    """
+    Analyzes splinter areas in a specimen and generates a PDF report and CSV file.
+    """
+    specimen = Specimen.get(specimen_name)
+    size = specimen.get_real_size()
+    f_image = specimen.get_fracture_image()
+    
+    f = specimen.calculate_px_per_mm()
+    # define areas
+    w = int(50 * f)
+    h = int(50 * f)
+    center1 = (75*f, 75*f)
+    center2 = (size[0]*f//2, size[1]*f//2)    
+    center3 = (size[0]*f-75*f, size[1]*f-75*f)
+    
+    splinter_images: list[tuple[Any, Any, list[Splinter]]] = []
+    
+    for c in [center1, center2, center3]:
+        x = int(c[0])
+        y = int(c[1])
+        # get image part        
+        
+        
+        # analyze splinters
+        splinters: list[Splinter] = []
+        s_count = 0
+        for s in specimen.splinters:
+            if s.in_rect_px((x-w//2, y-h//2, x+w//2, y+h//2)):
+                s.ID = s_count
+                s_count += 1
+                splinters.append(s)
+        
+        # draw splinter contours
+        for s in splinters:            
+            cv2.drawContours(f_image, [s.contour], -1, (0, 0, 255), 1)
+        
+        
+        img = f_image[y-h//2:y+h//2, x-w//2:x+w//2]
+        #  cv2.ellipse(img, (100,50), (10,10), 0, 0, 360, (255, 0, 0), -1)
+            
+        # resize image to high resolution
+        img = cv2.resize(img, (w*5, h*5))
+                
+        for s in splinters:
+            # calculate position in offset and scaled image
+            c = s.centroid_px
+            c = c - np.array([x-w//2, y-h//2])
+            c = c * 5
+            c = c.astype(int)
+            cv2.circle(img, tuple(c), 5, (0, 255, 0), -1)
+            cv2.putText(img, str(s.ID), tuple(c), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+        
+        # write splinter ids into their center
+        splinter_images.append(((x,y), img, splinters))
+        
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Image, Table, TableStyle, FrameBreak, Paragraph
+    from reportlab.lib.units import mm    
+    from reportlab.platypus.frames import Frame
+    from reportlab.platypus.doctemplate import PageTemplate, BaseDocTemplate
+    from reportlab.lib.styles import getSampleStyleSheet
+    styles = getSampleStyleSheet()
+    H1 = styles['Heading1']
+    H2 = styles['Heading2']
+    
+    class TwoColumnDocTemplate(BaseDocTemplate):
+        def __init__(self, filename, **kwargs):
+            super().__init__(filename, **kwargs)
+            frame1 = Frame(self.leftMargin, self.bottomMargin, self.width/2-6, self.height, id='col1')
+            frame2 = Frame(self.leftMargin+self.width/2+6, self.bottomMargin, self.width/2-6, self.height, id='col2')
+            self.addPageTemplates([PageTemplate(id='TwoCol', frames=[frame1, frame2], onPage=self.add_page_number)])
+
+        def add_page_number(self, canvas, doc):
+            canvas.saveState()
+            canvas.setFont('Helvetica', 9)
+            page_number_text = f"Page {doc.page}"
+            canvas.drawCentredString(self.pagesize[0] / 2, 10*mm, page_number_text)
+            canvas.restoreState()
+        
+    t_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ])
+    
+    count = 0
+    for center, image, splinters in splinter_images:
+        output_filename = State.get_output_file(f"areas_{specimen_name}_{count}.pdf")
+        doc = TwoColumnDocTemplate(output_filename, pagesize=letter)
+        elements = [
+            Paragraph("Splinter Analysis", H1)
+        ]
+
+        # Add image
+        tmp_image = State.get_output_file(f"impact_annotated_{specimen_name}_{count}.jpg")
+        cv2.imwrite(tmp_image, image)
+        img = Image(tmp_image, width=50*mm, height=50*mm)
+        elements.append(Paragraph('Detail-Ansicht', H2))
+        elements.append(img)
+
+        # overview image
+        overview_image = f_image.copy()
+        cv2.rectangle(overview_image, (center[0]-w//2, center[1]-h//2), (center[0]+w//2, center[1]+h//2), (0, 255, 0), -1)
+        # resize image to lower resolt 
+        overview_image = cv2.resize(overview_image, None, fx=0.5, fy=0.5)
+        tmp_image2 = State.get_output_file(f"impact_annotated_{specimen_name}_{count}_overview.jpg")
+        cv2.imwrite(tmp_image2, overview_image)
+        img2 = Image(tmp_image2, width=50*mm, height=50*mm)
+
+        elements.append(Paragraph('Übersicht', H2))
+        elements.append(img2)
+
+        # Create table data
+        data = []
+        data.append(("ID", "Area [mm²]", "D_x [mm]", "D_y [mm]", "C_x [mm]", "C_y [mm]"))
+        p0 = specimen.get_impact_position()
+        for i,s in enumerate(splinters):
+            c = s.centroid_mm
+            v = c - p0
+            data.append([i, f"{s.area:.2f}", f"{v[0]:.2f}", f"{v[1]:.2f}", f"{c[0]:.2f}", f"{c[1]:.2f}"])
+
+        # Create table
+        table = Table(data)
+        table.setStyle(t_style)
+        elements.append(FrameBreak())
+        elements.append(table)
+
+        # Build PDF
+        doc.build(elements)
+        
+        
+        # create csv file with splinter data
+        csv_filename = State.get_output_file(f"areas_{specimen_name}_{count}.csv")
+        with open(csv_filename, 'w') as f:
+            # description
+            f.write("A; Splinter base area\n")
+            f.write("D; The vector from the splinter centroid to the impact position\n")
+            f.write("C; Splinter centroid\n")
+            f.write("U; Circumenfence\n")
+            f.write("\n")
+            
+            # mean values
+            mean_area = np.mean([x.area for x in splinters])
+            std_dev = np.std([x.area for x in splinters])            
+            f.write(f"Mean A;{mean_area};{std_dev}\n")
+            
+            f.write("\n")
+            
+            # splinter values
+            f.write("ID;A [mm²];D_x [mm];D_y [mm];C_x [mm];C_y [mm];U [mm]\n")
+            p0 = specimen.get_impact_position()
+            for i,s in enumerate(splinters):
+                c = s.centroid_mm
+                v = c - p0
+                f.write(f"{i};{s.area};{v[0]};{v[1]};{c[0]};{c[1]};{s.circumfence}\n")
+        
+            
+        count += 1
+
+@app.command()
+def analyze_stencil(
+    specimen_name: str,
+    stencil_name: str
+):
+    """Analyze the stencil image of a specimen."""
+    specimen = Specimen.get(specimen_name)
+
+    fracture = specimen.get_fracture_image()
+    stencil = specimen.get_fracture_image(name=stencil_name)
+    
+    # calculate the difference
+    diff = cv2.absdiff(fracture, stencil)
+    
+    # close the image
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    dif = cv2.erode(diff,kernel,iterations = 3)    
+    
+    
+    # plot the difference
+    plotImages([
+        ("Fracture", fracture),
+        ("Stencil", stencil),
+        ("Difference", diff),
+    ])
+    
+    # find rectangles in stencil
+    contours, _ = cv2.findContours(to_gray(diff), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    stencil_rects = []
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        stencil_rects.append((x, y, w, h))
+    
+    # draw contours in rgb stencil
+    stencil_rgb = to_rgb(diff)
+    for x, y, w, h in stencil_rects:
+        cv2.rectangle(stencil_rgb, (x, y), (x+w, y+h), (0, 0, 255), 5)    
+    plotImage(stencil_rgb, "Stencil with contours", force=True)
+        
+        
+    # create images from stencils
+    stencil_images = []
+    # px_per_mm
+    f = specimen.calculate_px_per_mm()
+    for x, y, w, h in stencil_rects:
+        # calculate px per mm        
+        stencil_images.append(stencil[y:y+h, x:x+w])
+        
+    # analyze splinters
+    stencil_splinters = []
+    for img in stencil_images:
+        splinters = Splinter.analyze_image(img, px_per_mm=f)
+        stencil_splinters.append(splinters)
+        
+    # plot splinters
+    for i, splinters in enumerate(stencil_splinters):
+        splinter_image = create_splinter_colored_image(splinters, stencil_images[i].shape)
+        plotImage(splinter_image, f"Splinters {i}")
+    
+@app.command()
+def analyze_image(
+    image_path: str
+):
+    
+    image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    
+    splinters = Splinter.analyze_image(image)
+    
+    splinter_image = create_splinter_colored_image(splinters, image.shape)
+    
+    plotImage(splinter_image, "Splinters")
+        

@@ -19,7 +19,7 @@ from rich.progress import Progress, track
 from fracsuite.callbacks import main_callback
 from fracsuite.core.geometry import ellipse_radius
 from fracsuite.core.image import to_gray, to_rgb
-from fracsuite.core.imageprocessing import preprocess_image
+from fracsuite.core.imageprocessing import crop_perspective, preprocess_image
 from fracsuite.core.preps import PrepMode, PreprocessorConfig
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter import Splinter
@@ -247,6 +247,7 @@ def threshold(
     source: Annotated[str, typer.Argument(help='Path to image file.')],
     region: Annotated[tuple[int,int,int,int], typer.Option(help='')] = (-1,-1,-1,-1),
     region_f: Annotated[tuple[float,float], typer.Option(help='Region center in percent.')] = (-1,-1),
+    no_region: bool = typer.Option(False, help='Do not use region.'),
 ):
     if any(x < 0 for x in region):
         region = None
@@ -278,21 +279,22 @@ def threshold(
         px_per_mm = specimen.calculate_px_per_mm()
         print("px/mm: ", px_per_mm)
 
-        # take a small portion of the image
-        if region is None:
-            region = np.array((rsize[0]//2,rsize[1]//2,rsize[0],rsize[1])) * px_per_mm
-        else:
-            region = np.array(region) * px_per_mm
+        if not no_region:
+            # take a small portion of the image
+            if region is None:
+                region = np.array((rsize[0]//2,rsize[1]//2,rsize[0],rsize[1])) * px_per_mm
+            else:
+                region = np.array(region) * px_per_mm
 
-        if region_f is not None:
-            region = img.shape[1] * region_f[0], img.shape[0] * region_f[1], region[2], region[3]
-            region = np.asarray(region)
+            if region_f is not None:
+                region = img.shape[1] * region_f[0], img.shape[0] * region_f[1], region[2], region[3]
+                region = np.asarray(region)
 
-        region = region.astype(np.uint32)
-        # get region cx cy w h from image
-        img = img[region[1]-region[3]//2:region[1]+region[3]//2, region[0]-region[2]//2:region[0]+region[2]//2]
-        print(region)
-        print(img.shape)
+            region = region.astype(np.uint32)
+            # get region cx cy w h from image
+            img = img[region[1]-region[3]//2:region[1]+region[3]//2, region[0]-region[2]//2:region[0]+region[2]//2]
+            print(region)
+            print(img.shape)
 
         # img = img[region[0]-region[2]//2:region[0]+region[2]//2, region[1]-region[3]//2:region[1]-region[3]//2]
         is_specimen = True
@@ -327,7 +329,7 @@ def threshold(
 
 
 
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img_gray = to_gray(img)
 
     # Create Frames
     threshold_frame = Frame(root)
@@ -667,6 +669,19 @@ def angle(
     B = np.array((x2,y2))
     theta = angle_between(A,B)
     print(np.rad2deg(theta))
-
+    
+    
+    
+@tester_app.command()
+def crop(name):
+    specimen = Specimen.get(name)
+    
+    img = specimen.get_fracture_image()
+    
+    img1 = crop_perspective(img, (4000,4000), debug=True)
+    
+    plt.imshow(img1)
+    plt.show()
+    
 if __name__ == "__main__":
     typer.run(threshold)

@@ -216,6 +216,8 @@ def crop_perspective(img,
         """ Sort corners: top-left, bot-left, bot-right, top-right """
         # Difference and sum of x and y value
         # Inspired by http://www.pyimagesearch.com
+        pts = pts.reshape((4,2))           
+        
         diff = np.diff(pts, axis=1)
         summ = pts.sum(axis=1)
 
@@ -271,30 +273,29 @@ def crop_perspective(img,
         return img_original
 
     cv2.drawContours(im0, contours, -1, (0,0,255), 10)
+    cv2.drawContours(im0, [max_contour], -1, (0,255,255), 15)
+    
     if debug:
         plotImage(im0, 'CROP: Detected contours')
 
-    # Simplify contour
-    perimeter = cv2.arcLength(max_contour, True)
-    approx = cv2.approxPolyDP(max_contour, 0.03 * perimeter, True)
+    approx = max_contour
+    for i in range(100):        
+        epsilon = (0.01 * i / 2.0) * cv2.arcLength(approx, True)
+        approx = cv2.approxPolyDP(approx, epsilon, True)
+        
+        if len(approx) == 4:
+            corners = fourCornersSort(approx)
+            break
+        
+    if len(approx) != 4:
+        approx = max_contour
 
-    # Page has 4 corners and it is convex
-    # Page area must be bigger than maxAreaFound
-    if (len(approx) == 4 and
-            cv2.isContourConvex(approx)):
-        pageContour = fourCornersSort(approx[:, 0])
-
-    else:
-        rect = cv2.boundingRect(approx)
-        x, y, w, h = rect
-
-        # Compute the four corners of the rectangle using cv2.boxPoints
-        corners = cv2.boxPoints(((x, y), (w, h), 0))
-
-        # Convert the corners to integer values and print the result
-        corners = corners.astype(int)
-        #raise CropException("Pane boundary could not be found.")
-        pageContour = corners
+        # find min area rect for max_contour
+        rect = cv2.minAreaRect(approx)
+        box = cv2.boxPoints(rect)
+        corners = np.int0(box)
+        corners = fourCornersSort(corners)
+    pageContour = corners
 
     if debug:
         cv2.drawContours(im0, [pageContour],-1, (0,0,255), thickness=im.shape[0]//50)

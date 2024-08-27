@@ -5,6 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Module fracsuite",
+            "type": "python",
+            "request": "launch",
+            "program": ".venv/scripts/python.exe", // This points to the Python interpreter
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "-m", "fracsuite", // Use -m to specify the module name
+                "specimen",
+                "mean-area-vs-energy",
+                "--specimen-filter", "*.*.B.*"
+            ]
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",

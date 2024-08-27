@@ -2,6 +2,8 @@ from scipy import signal
 from scipy.signal import butter, sosfiltfilt, filtfilt
 import numpy as np
 
+from fracsuite.core.logging import error
+
 def smooth_moving_average(x, window_len=11):
     """smooth the data using a moving average window with requested size."""
     assert x.ndim == 1, "smooth only accepts 1 dimension arrays."
@@ -74,6 +76,7 @@ def highpass(t, data, f0):
     :return: Das gefilterte Signal.
     """
     fs = 1/(t[1]-t[0])
+    
     # Erstellt den Hochpassfilter
     sos = butter(4, f0, btype='highpass', analog=False, output='sos', fs=fs)
     # Wendet den Filter an
@@ -91,6 +94,9 @@ def lowpass(t, data, f0):
     :return: Das gefilterte Signal.
     """
     fs = 1/(t[1]-t[0])
+    if f0 > fs / 2:
+        error(f"ERROR: The cutoff frequency {f0} is higher than the Nyquist frequency {fs/2}. This means that the measurement frequency was not set correctly. The data has not been filtered!")
+        return data
     # Erstellt den Tiefpassfilter
     sos = butter(4, f0, btype='lowpass', analog=False, output='sos', fs=fs)
     # Wendet den Filter an

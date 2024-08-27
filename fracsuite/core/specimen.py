@@ -31,11 +31,12 @@ from fracsuite.core.stochastics import khat_xy, lhat_xy, lhatc_xy
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import checkmark, find_file, find_files
 from fracsuite.scalper.scalpSpecimen import ScalpSpecimen, ScalpStress
-from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud
+from fracsuite.core.mechanics import U as calc_U, Ud as calc_Ud, Ub as calc_Ub
 
 from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 from fracsuite.state import State
 
+import signal
 
 general: GeneralSettings = GeneralSettings.get()
 
@@ -223,7 +224,7 @@ class Specimen(Outputtable):
 
     @property
     def measured_thickness(self) -> float:
-        "Measured thickness of the specimen."
+        "Measured thickness of the specimen in mm."
         assert self.loaded, "Specimen not loaded."
         return self.__measured_thickness
 
@@ -238,6 +239,19 @@ class Specimen(Outputtable):
         "Strain Energy of the specimen in J/m²."
         assert self.loaded, "Specimen not loaded."
         return self.__U
+
+    @property
+    def U_b(self) -> float:
+        "Total Strain Energy of the specimen in J, integrated over volume."
+        assert self.loaded, "Specimen not loaded."
+        return calc_Ub(self.sig_h, self.measured_thickness, self.get_real_size())
+    @property
+    def U_t(self) -> float:
+        "Total Strain Energy of the specimen in J, integrated over cylinder."
+        assert self.loaded, "Specimen not loaded."
+        sz = self.get_real_size()
+        return self.U * sz[0] * sz[1] * 1e-6
+
 
     @property
     def crack_surface(self):
@@ -265,6 +279,7 @@ class Specimen(Outputtable):
     def accdata(self) -> AccelerationData:
         "Acceleration data."
         assert self.loaded, "Specimen not loaded."
+        
         return self.__acc
 
     @property
@@ -321,7 +336,7 @@ class Specimen(Outputtable):
 
         print(f"Loaded {name:>15} (Ani: {checkmark(self.anisotropy.available)} , Scalp: {checkmark(self.has_scalp)} , "
                 f"Splinters: {checkmark(self.has_splinters)} ) "
-                    f': t={self.measured_thickness:>5.2f}mm, U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
+                    f': t={self.measured_thickness:>5.2f}mm, Ub={self.U_b:>7.2f}J/m², U={self.U:>7.2f}J/m², U_d={self.U_d:>9.2f}J/m³, σ_s={self.sig_h:>7.2f}MPa')
 
         if 'extensive_specimen_data' in State.kwargs and State.kwargs['extensive_specimen_data'] and self.__scalp is not None:
             print(f"  - {', '.join([f'{x.location_name}: {x.stress[0]=:>4.0f}' for x in self.scalp.measurementlocations])}")
@@ -344,6 +359,7 @@ class Specimen(Outputtable):
         Args:
             path (str): Path of the specimen.
         """
+
 
         self.__splinters: list[Splinter] = None
         self.__allsplinters: list[Splinter] = None
@@ -391,20 +407,7 @@ class Specimen(Outputtable):
             Specimen.SET_EXCLUDED_POSITIONS_RADIUS: 100,
         }
 
-        # load settings from config and overwrite defaults
-        self.__cfg_path = os.path.join(path, "config.json")
-        if not os.path.exists(self.__cfg_path):
-            with open(self.__cfg_path, "w") as f:
-                json.dump(self.__settings, f, indent=4)
-        else:
-            with open(self.__cfg_path, "r") as f:
-                sets = json.load(f)
-                for k,v in sets.items():
-                    if k in self.__settings:
-                        self.__settings[k] = v
-            # update settings file
-            with open(self.__cfg_path, "w") as f:
-                json.dump(self.__settings, f, indent=4)
+        
 
         # get name from path
         self.name = os.path.basename(os.path.normpath(path))
@@ -428,6 +431,34 @@ class Specimen(Outputtable):
                 self.nbr = int(last_sec[0])
                 self.comment = last_sec[1]
 
+
+        # this has to be done to prevent cancellation during IO operations!
+        global SIGNAL_RECEIVED
+        SIGNAL_RECEIVED = False
+        signal.signal(signal.SIGINT, self.__signal_handler)
+        # load settings from config and overwrite defaults
+        self.__cfg_path = os.path.join(path, "config.json")
+        if not os.path.exists(self.__cfg_path):
+            with open(self.__cfg_path, "w") as f:
+                json.dump(self.__settings, f, indent=4)
+        else:
+            try:
+                with open(self.__cfg_path, "r") as f:
+                    sets = json.load(f)
+                    for k,v in sets.items():
+                        if k in self.__settings:
+                            self.__settings[k] = v
+            except Exception as e:
+                warning(f"Could not load settings for {self.name}. Rewriting from scratch.")                
+                # update settings file
+                with open(self.__cfg_path, "w") as f:
+                    json.dump(self.__settings, f, indent=4)
+
+        # reset handler and exit, if cancellation was requested
+        signal.signal(signal.SIGINT, signal.SIG_DFL)        
+        if SIGNAL_RECEIVED:
+            os.kill(os.getpid(), signal.SIGINT)
+            
         # load acceleration
         acc_path = os.path.join(self.path, "fracture", "acceleration")
         self.acc_file = find_file(acc_path, "*.bin")
@@ -473,6 +504,10 @@ class Specimen(Outputtable):
 
         self.layer_region = SpecimenRegion(DEFAULT_RADIUS_DELTA, DEFAULT_ANGLE_DELTA, self.get_impact_position(), self.get_real_size())
 
+    def __signal_handler(self, sig, frame):
+        global SIGNAL_RECEIVED
+        SIGNAL_RECEIVED = True
+
     def set_setting(self, key, value):
         """Set an experimental setting of the specimen. Use Specimen.SET_* constants."""
         self.settings[key] = value
@@ -499,6 +534,9 @@ class Specimen(Outputtable):
             with open(self.simdata_path, "r") as f:
                 backup = f.readlines()
 
+        # this has to be done to prevent cancellation during IO operations!
+        self.set_signalhandler()
+
         try:
             with open(self.simdata_path, "w") as f:
                 json.dump(self.simdata, f, indent=4)
@@ -508,6 +546,19 @@ class Specimen(Outputtable):
                     f.writelines(backup)
 
             raise e
+
+        # reset handler and exit, if cancellation was requested
+        self.reset_signalhandler()
+
+    def set_signalhandler(self):
+        global SIGNAL_RECEIVED
+        SIGNAL_RECEIVED = False
+        signal.signal(signal.SIGINT, self.__signal_handler)
+
+    def reset_signalhandler(self):
+        signal.signal(signal.SIGINT, signal.SIG_DFL)        
+        if SIGNAL_RECEIVED:
+            os.kill(os.getpid(), signal.SIGINT)
 
     def __save_settings(self):
         with open(self.__cfg_path, "r") as f:
@@ -540,11 +591,13 @@ class Specimen(Outputtable):
         if label_file is not None:
             return cv2.imread(label_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
-    def get_fracture_image(self, as_rgb = True):
+    def get_fracture_image(self, as_rgb = True, name: str = None):
         """Gets the fracture image. Default is RGB."""
-        transmission_file = find_file(self.fracture_morph_folder, "*transmission*")
-        if transmission_file is not None:
-            return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
+        if name is None:
+            name = "*Transmission*"
+        
+        transmission_file = find_file(self.fracture_morph_folder, name)
+        return cv2.imread(transmission_file, cv2.IMREAD_GRAYSCALE if not as_rgb else cv2.IMREAD_COLOR)
 
     def get_transmission_image(self, as_rgb = True):
         transmission_file = find_file(os.path.join(self.path, "anisotropy"), "*transmission*")
@@ -993,6 +1046,7 @@ class Specimen(Outputtable):
     def load_acc(self):
         """Loads the acceleration data."""
         if self.acc_file is None:
+            self.__acc = AccelerationData(None)
             return
 
         self.__acc = AccelerationData(self.acc_file)
@@ -1226,11 +1280,15 @@ class Specimen(Outputtable):
             """
             if not os.path.isdir(spec_path):
                 return None
+            if os.path.basename(spec_path).startswith("."):            
+                return None
 
             if value is None:
                 value = Specimen.__default_value
 
             specimen = Specimen(spec_path, log_missing=False, load=load)
+            print(specimen.name)
+
 
             if not decider(specimen):
                 return None

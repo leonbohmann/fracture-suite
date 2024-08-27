@@ -2,6 +2,7 @@
 Organisation module. Contains the Specimen class and some helpful tools to export specimens.
 """
 from __future__ import annotations
+from typing import Annotated
 
 from fracsuite.core.calculate import is_number
 from fracsuite.core.geometry import delta_hcp
@@ -739,16 +740,18 @@ def import_experimental_data(
 
 @app.command('import')
 def import_files(
-    specimen_name: str = typer.Argument(help="Name of the specimen."),
-    imgsize: tuple[int, int] = typer.Option((4000, 4000), help="Size of the image."),
-    realsize: tuple[float, float] = typer.Option((-1, -1), help="Real size of the image. If any value is -1, the real size is not set."),
-    imsize_factor: float = typer.Option(None, help="Image size factor."),
-    no_rotate: bool = typer.Option(False, help="Option to disable rotation."),
-    no_tester: bool = typer.Option(False, help="Option to disable tester."),
-    exclude_all_sensors: bool = typer.Option(False, help="Option to exclude all sensors."),
-    exclude_impact_radius: float = typer.Option(None, help="Radius to exclude impact."),
-    exclude_points: bool = typer.Option(False, help="Shows helper windows to exclude points in the morphology."),
-    fracture_image: str = typer.Option(None, help="Path to the fracture image.")
+    specimen_name: Annotated[str, typer.Argument(help="Name of the specimen.")],
+    imgsize: Annotated[tuple[int, int], typer.Option(help="Size of the image.")] = (4000, 4000),
+    realsize: Annotated[tuple[float, float], typer.Option(help="Real size of the image. If any value is -1, the real size is not set.")] = (-1, -1),
+    imsize_factor: Annotated[float, typer.Option(help="Image size factor.")] = None,
+    no_rotate: Annotated[bool, typer.Option(help="Option to disable rotation.")] = False,
+    no_tester: Annotated[bool, typer.Option(help="Option to disable tester.")] = False,
+    from_label: Annotated[bool, typer.Option(help="Option to import from label.")] = False,
+    exclude_all_sensors: Annotated[bool, typer.Option(help="Option to exclude all sensors.")] = False,
+    exclude_impact_radius: Annotated[float, typer.Option(help="Radius to exclude impact.")] = None,
+    exclude_points: Annotated[bool, typer.Option(help="Shows helper windows to exclude points in the morphology.")] = False,
+    fracture_image: Annotated[str, typer.Option(help="Path to the fracture image.")] = None,
+    no_tester_crop: Annotated[bool, typer.Option(help="Option to disable tester crop.")] = False,
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -764,6 +767,10 @@ def import_files(
     There are two ways in which the resulting image size (px) can be set:
         - Use the `--imgsize` option to set the image size directly.
         - Use the `--imsize-factor` option to scale the image size from the real size. In that case, the real size has to be set.
+    
+    #### From Label option
+    
+    
     """
 
     assert not (imsize_factor is not None and imgsize[0] != 4000 and imgsize[1] != 4000), "Cannot set both imsize factor and imgsize!"
@@ -780,7 +787,7 @@ def import_files(
                 debug(f"Specimen '{spec.name}' has no fracture scans! Skipping...")
                 continue
 
-            import_files(spec.name, imgsize, realsize, imsize_factor, no_rotate, no_tester, exclude_all_sensors, exclude_impact_radius, fracture_image)
+            import_files(spec.name, imgsize, realsize, imsize_factor, no_rotate, no_tester, exclude_all_sensors, exclude_impact_radius, fracture_image=None)
 
         return
 
@@ -798,6 +805,7 @@ def import_files(
         img = cv2.imread(fracture_image, cv2.IMREAD_GRAYSCALE)
         specimen.put_fracture_image(img)
     elif specimen is not None and fracture_image is not None:
+        print()
         if specimen.has_fracture_scans:
             raise Exception("Specimen already has fracture scans! Overwrite not allowed! Delete the image at: " + specimen.fracture_morph_folder)
 
@@ -825,11 +833,11 @@ def import_files(
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)
 
     print('[yellow]> Running threshold tester <')
-    if not no_tester:
+    if not no_tester and not from_label:
         from fracsuite.tester import threshold
         # calculate a fraction of the specimen region to display
         region = np.asarray((imgsize[0]//2, imgsize[1]//2, imgsize[0]//7, imgsize[1]//7)) / specimen.calculate_px_per_mm()
-        threshold(specimen.name, region=region)
+        threshold(specimen.name, region=region, no_region=no_tester_crop)
 
     print('[yellow]> Marking impact point <')
     mark_impact(specimen.name)
@@ -842,7 +850,7 @@ def import_files(
 
     print('[yellow]> Generating splinters <')
     from fracsuite.splinters import gen
-    gen(specimen.name)
+    gen(specimen.name, from_label=from_label)
 
     print('[yellow]> Drawing contours <')
     from fracsuite.splinters import draw_contours
@@ -962,6 +970,7 @@ def crack_surface_simple(
     induce: bool = False
 ):
     thicknesses = [4,8]
+    print(name_filter)
     filter_func = create_filter_function(name_filter, needs_scalp=True, needs_splinters=True)
     def basefilter(s):
         if boundary is not None and s.boundary != boundary:
@@ -1045,9 +1054,9 @@ def crack_surface_simple(
         x.append(ut)
         y.append(crack_area)
 
-    fit_curve(axs, x, y, lnfit, color='black', pltlabel='Fit')
-    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
-    axs.set_ylabel("Rissoberfläche $A_\mathrm{F} = \sum U_\mathrm{S,i} \cdot t$ (mm²)")
+    fit_curve(axs, x, y, squarefit, color='black', pltlabel='Fit')
+    axs.set_xlabel("Total Elastic Strain Energy $U_\mathrm{t}$ (J)")
+    axs.set_ylabel("Fracture surface $A_\mathrm{F} = \sum U_\mathrm{S,i} \cdot t$ (mm²)")
     legend_without_duplicate_labels(axs)
     State.output(StateOutput(fig,sz), f"cracksurface_vs_energy_{boundary}")
 
@@ -1114,7 +1123,7 @@ def crack_surface_simple(
     yasymptote = ms_gpmm(yasymptote_mm)
     axs.axhline(yasymptote, color='black', linestyle='--')
     axs.annotate(f'$A_\mathrm{{S}}={yasymptote_mm:.0f} mm^2$', (45, yasymptote), textcoords="offset points", xytext=(0,6), ha='left', va='top', fontsize=6)
-    axs.set_xlabel("Gesamte Formänderungsenergie $U_\mathrm{t}$ (J)")
+    axs.set_xlabel("Total Elastic Strain Energy $U_\mathrm{t}$ (J)")
     axs.set_ylabel("$\\sfrac{m_\mathrm{S}}{t} = A_\mathrm{S}\cdot \\rho$ (g/mm)")
     legend_without_duplicate_labels(axs)
     State.output(StateOutput(fig,sz), f"weightedmass_vs_energy_{boundary}")
@@ -1305,6 +1314,56 @@ def crack_surface(
     State.output(StateOutput(fig,sz), "cracksurface_vs_energy" + ("" if not ud else "_ud"))
 
 @app.command()
+def mean_area_vs_energy(
+    specimen_filter: str = "*.*.[A!B!Z].*",
+):
+    print(specimen_filter)
+    
+    filterfunc = create_filter_function(specimen_filter, needs_splinters=True)
+
+    thicknesses = [4,8]
+
+    def filtfilt(s):
+        if s.thickness not in thicknesses:
+            return False
+
+        return filterfunc(s)
+
+    all_specimens = Specimen.get_all_by(filtfilt, load=True)
+    sz = FigureSize.ROW2
+
+    fig,axs = plt.subplots(figsize=get_fig_width(sz))
+
+    for t in thicknesses:
+                
+        x = []
+        y = []
+        for spec in tqdm((x for x in all_specimens if x.thickness == t)):
+            if not spec.has_splinters:
+                continue
+
+            clr = t_colors[spec.thickness]
+            marker = b_markers[spec.boundary]
+
+            areas = [s.area for s in spec.splinters]
+            mean_area = np.sum([s.circumfence for s in spec.splinters]) # np.mean(areas) # spec.calculate_nfifty_count(force_recalc=False) / 2500 # np.mean(areas)
+
+            ut = spec.U_b
+
+            axs.scatter(ut, mean_area, marker=marker, color=clr, **scatter_args)
+            x.append(ut)
+            y.append(mean_area)
+
+        fit_curve(axs, x, y, squarefit, color=clr, pltlabel=f'{t}mm')
+        
+    axs.set_xlabel("Total Elastic Strain Energy $U_\mathrm{t}$ (J/m²)")
+    # axs.set_ylabel("Mean Splinter Area $A_\mathrm{S}$ (mm²)")
+    axs.set_ylabel("Total circumfence (mm)")
+    axs.set_yscale("log")
+    legend_without_duplicate_labels(axs)
+    State.output(StateOutput(fig,sz), "mean_area_vs_energy")
+
+@app.command()
 def energy_release_rate():
     """Calculate the energy release rate for a range of velocities."""
     def G(v: float):
@@ -1449,3 +1508,40 @@ def urr(name):
 
     sig_s = U2sigs(specimen.U*urr, specimen.measured_thickness)
     print(f"sig_s: {sig_s:.2f} MPa")
+    
+    
+    
+@app.command()
+def cmp_barsom():
+    filter_func = create_filter_function("*.*.*.*", needs_splinters=True, needs_scalp=True)
+    specimens = Specimen.get_all_by(filter_func, load=True)
+    
+
+    def ut2(s: Specimen):
+        E = 70e3
+        return 1e5 * 6 * (s.sig_h/2)**2 * s.get_real_size()[0]*1e-3 * s.get_real_size()[1]*1e-3 * s.measured_thickness * 1e-3 / E
+
+    def ut(s: Specimen):
+        if not s.has_scalp:
+            return None
+        sz = s.get_real_size()
+        A = sz[0]*1e-3 * sz[1]*1e-3
+        return s.U*A
+    
+    print("Calculating...")
+    u_ut = np.array([(ut(s),ut2(s)) for s in specimens if s.has_scalp and s.has_splinters])
+    
+    # calculate error percentige
+    
+    print("Plotting...")
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    axs.scatter(u_ut[:,0], u_ut[:,1], **scatter_args)
+    axs.axline((0,0), slope=1, color='black', linestyle='--')
+    axs.set_xlabel("Nielsen (J)")
+    axs.set_ylabel("Barsom (J)")
+    State.output(StateOutput(fig, FigureSize.ROW1), "cmp_barsom")
+    
+        
+        
+        
+                

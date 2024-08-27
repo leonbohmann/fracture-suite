@@ -25,22 +25,9 @@ CANVAS_FONT = "F25_Bank_Printer_Bold"
 # CANVAS_FONT = "Consolas"
 CANVAS_FONT_SIZE = 24
 
-BARCODE_HEIGHT_FAC = 0.0
+BARCODE_HEIGHT_FAC = 0.6
 LABEL_HEIGHT_FAC = 1 - BARCODE_HEIGHT_FAC
 
-
-# def create_datamatrix_code(code: str, label: str) -> str:
-#     encoded = encode(code.encode('utf-8'), size='RectAuto')
-#     img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
-#     os.makedirs('.out', exist_ok=True)
-#     name = f'.out/{label}.png'
-#     img.save(name)
-
-#     content = decode(img, max_count=1)
-#     if content[0].data.decode('utf-8') != code:
-#         print(f"Decoded code {content[0].data.decode('utf-8')} does not match original code {code}!")
-
-#     return os.path.abspath(name)
 
 def create_cell(label: str, code: str, x: float, y: float, canvas: canvas.Canvas):
 
@@ -79,7 +66,6 @@ def generate_pdf(labels_codes: list, filename: str):
 
 
 if __name__ == "__main__":
-    # CREATE_CODE = create_datamatrix_code
 
     # stretch barcode,datamatrix not stretched!
     ASPECT_RATIO = True
@@ -91,8 +77,8 @@ if __name__ == "__main__":
         existentLabels = [line.strip() for line in f.readlines()]
 
 
-    thick = [4,8]
-    sig = {4: [100], 8: [100]}
+    thick = [12]
+    sig = {12: [100]}
     bound = ["B"]
     lfnr = list(range(1,6))
 
