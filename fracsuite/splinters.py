@@ -2538,6 +2538,9 @@ def annotate_impact(
 def analyze_areas(
     specimen_name: str
 ):
+    """
+    Analyzes splinter areas in a specimen and generates a PDF report and CSV file.
+    """
     specimen = Specimen.get(specimen_name)
     size = specimen.get_real_size()
     f_image = specimen.get_fracture_image()

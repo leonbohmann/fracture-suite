@@ -1,3 +1,4 @@
+import ctypes
 import os
 import subprocess
 import sys
@@ -45,6 +46,54 @@ custom_theme = Theme({
 })
 
 general = GeneralSettings.get()
+
+
+fracsuite_help =  r"""
+
+# FRACSUITE - Call 'fracsuite help' for an introduction.
+
+"""
+
+fracsuite_introduction = r"""
+
+# fracsuite - Fracture Analysis Suite
+
+## **Basic Structure**
+    Fracsuite is a collection of tools for analyzing fracture data. The tools are divided into groups, each with their own set commands, with options and arguments.
+    
+    To reach a command, one must first specify the group, then the command. For example, to run the `list` command in the `splinters` group, one would write `fracsuite splinters list`.
+    
+    To get additional help on a command, one can use the `--help` flag after the command. For example, `fracsuite splinters list --help`.
+  
+## **Options**
+    Options are flags that can be used to modify the behavior of the command. For example, the `--debug` flag can be used to enable debug mode. Options can be specified before the command or after.
+    For example, `fracsuite --debug splinters list` and `fracsuite splinters list --debug` are equivalent.
+    
+## **Arguments**
+    Arguments are values that are passed to the command. For example, `fracsuite splinters list --path "C:/path/to/folder"` would pass the value "C:/path/to/folder" to the `list` command in the `splinters` group.
+    When specifying arguments, the argument name must be followed by the value. For example, `--path "C:/path/to/folder"` is correct, while `--path"C:/path/to/folder"` is not.
+    
+## **Command output**
+    Each command has its own output directory where it saves its results. The output directory is specified in the configuration file, and can be changed by modifying the `output_path` value or
+    by calling the `config set output_path "C:/path/to/output"` command. The output directory is created if it does not exist. When commands generate an output, for example a plot, a thumbnail image is displayed
+    automatically but not saved. The original plot is saved as a pdf file in the output-path. If the output is specific to a specimen, a copy of the output is also saved to the specimen folder.  
+    
+## **Database**
+    The pseudo-database is a folder that contains all the data for the specimens. The database is specified in the configuration file, and can be changed by modifying the `database_path` value or
+    by calling the `config set database_path "C:/path/to/database"` command. The database folder is created if it does not exist. The database folder contains a folder for each specimen, which in turn contains
+    the data for that specimen. 
+    
+    Each specimen folder contains the following subfolders:
+    - `scalp` - Contains the scalp images
+    - `fracture` - Contains the fracture images
+        - `acceleration` - Contains the acceleration data
+        - `morphology` - Contains the morphology images (post-fracture)
+        - `splinters` - Contains the splinter images
+    - `anisotropy` - Contains the anisotropy images
+    
+    Images are saved as `.bmp` files and must contain 'Transmission' to be recognized correctly. Acceleration data is saved as `.bin` files. The scalp folder contains a pickled stress data file.
+    
+"""
 
 # cmap1 = [
 #     norm_color((38, 70, 83)),
@@ -128,12 +177,15 @@ def end_callback(*args, **kwargs):
     d = time.time() - State.start_time
     print(f"Finished in {d:.2f}s.")
 
+
 app = typer.Typer(
     pretty_exceptions_short=True,
     pretty_exceptions_show_locals=False,
     result_callback=end_callback,
     callback=root_main_callback,
     no_args_is_help=True,
+    help=fracsuite_help,
+    rich_markup_mode="markdown",
 )
 app.add_typer(splinter_app, name="splinters")
 app.add_typer(config_app, name="config")
@@ -149,6 +201,57 @@ app.add_typer(layer_app, name="layer")
 app.add_typer(highspeed_app, name="highspeed")
 app.add_typer(ani_app, name="anisotropy")
 app.add_typer(tools_app, name="tools")
+
+@app.command()
+def help():
+    """
+    Show an introduction to fracsuite.
+    """
+    # open the url
+    url = "https://leonbohmann.github.io/fracsuite-docs"
+    
+    # start the browser
+    os.system(f"start {url}")
+
+def add_to_windows_path(subfolder_name):
+    import winreg
+    
+    # Get the package directory
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Construct the full path to the subfolder
+    subfolder_path = os.path.join(package_dir, subfolder_name)
+    
+    # Check if the subfolder exists
+    if not os.path.isdir(subfolder_path):
+        print(f"Subfolder '{subfolder_name}' does not exist.")
+        return
+
+    # Open the registry key for the user's PATH
+    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_ALL_ACCESS)
+
+    try:
+        # Get the current PATH value
+        path, _ = winreg.QueryValueEx(key, "PATH")
+    except WindowsError:
+        path = ""
+
+    # Check if the subfolder is already in PATH
+    if subfolder_path.lower() in [p.lower() for p in path.split(os.pathsep)]:
+        print(f"Subfolder '{subfolder_name}' is already in PATH.")
+        return
+
+    # Add the subfolder to PATH
+    new_path = f"{path}{os.pathsep}{subfolder_path}" if path else subfolder_path
+    winreg.SetValueEx(key, "PATH", 0, winreg.REG_EXPAND_SZ, new_path)
+    
+    # Close the registry key
+    winreg.CloseKey(key)
+    
+    # Notify Windows of the environment change
+    ctypes.windll.user32.SendMessageW(0xFFFF, 0x1A, 0, "Environment")
+    
+    print(f"Subfolder '{subfolder_name}' has been added to Windows PATH.")
 
 
 # @app.command()
@@ -203,6 +306,13 @@ def replot(
     tex_file: str,
     dry: bool = False
 ):
+    """
+    This will search for %pltcmd: [cmd]  lines in a folder or a single tex file and run the command specified in the line.
+
+    Args:
+        tex_file (str): Path to the tex-file or folder containing tex-files.
+        dry (bool, optional): Dry run, no commands are executed but only displayed. Defaults to False.
+    """
     plot_command = "%pltcmd:"
 
     if os.path.isdir(tex_file) and not tex_file.endswith(".tex"):
@@ -272,11 +382,11 @@ def test(input: list[str]):
     print(input)
 
 console = Console()
+add_to_windows_path("..\scripts")
+
 
 State.console = console
-
 console.rule("Fracsuite")
-
 start("fracsuite", '--debug' in sys.argv)
 
 # initialization stuff

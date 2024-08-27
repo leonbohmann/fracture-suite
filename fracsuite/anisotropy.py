@@ -1,4 +1,7 @@
 
+"""
+Tools for analyzing anisotropy scans.    
+"""
 
 import os
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE
