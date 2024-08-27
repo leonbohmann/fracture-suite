@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 dependencies = ["matplotlib", "opencv-python", "numpy",
         "tqdm", "scikit-image", "rich",
-        "scipy", "apread", "Pillow", "reportlab",
+        "scipy", "apread==1.1.4a3", "Pillow", "reportlab",
         "pylibdmtx", "typer", "openpyxl", "xlsxwriter", "scienceplots",
         "deprecated", "spazial==0.1.11", "splintaz==0.1.5",]
 
 name = "fracsuite"
-version = "1.1.0"
+version = "1.1.1"
 authors = [
   { name="Leon Bohmann", email="mail@leonbohmann.de" },
 ]
