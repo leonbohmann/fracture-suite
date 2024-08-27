@@ -1,6 +1,6 @@
 import re
 import os
-from typing import Tuple
+from typing import Any, Tuple
 
 import numpy as np
 
@@ -95,7 +95,7 @@ class AccelerationData:
 
     channels: list[Channel]
     drop_channel: Channel
-
+    
     def __init__(self, file, zero_channels: bool = True):
         """
         Create a new AccelerationData object from a given file.
@@ -105,7 +105,7 @@ class AccelerationData:
         """
         self.file = file
         self.broken_immediately = False
-
+        
         self.channels: list[Channel] = None
 
         if file is not None:
@@ -303,6 +303,44 @@ class AccelerationData:
             axs.plot(time[peak_ind], drop_data[peak_ind], "x")
             axs.plot(time2[peak_ind2], acc2.data[peak_ind2], "o")
             plt.show()
+
+    def get_impacttime_from_corner(self, edge_sensor_name: str = "Acc(_)?2") -> float:        
+        """
+        Calculate the impact time using the crack front propagation speed and the acceleration peak at the edges.
+        
+        Returns:
+            float: The time of impact.
+        """
+        # find channel
+        edge_sensor = self.get_channel_like(edge_sensor_name)        
+        # find the maximum value of the edge sensor        
+        max_g_index = np.argmax(np.abs(edge_sensor.data))        
+        # get the time of the peak
+        max_g_time = edge_sensor.Time.data[max_g_index]
+        
+        # calculate crack front runtime
+        _, _, t_c = runtimes("corner")
+        
+        return max_g_time - t_c
+
+    def get_impacttime_from_fall(self) -> float:
+        """
+        Calculate the impact time using the drop weight sensor.
+        
+        Returns:
+            float: The time of impact.
+        """
+        g = self.drop_channel.get_filtered()
+        # find first g that is higher than 20
+        hi = np.argwhere(np.abs(g) > 7)
+        if len(hi) == 0:
+            return 0
+        
+        # subtract the time, that it takes for the wave to travel through the fallweight
+        
+        
+        
+        return self.drop_channel.Time.data[hi[0]]
 
     def get_acc_chans(self) -> list[Channel]:
         return [
