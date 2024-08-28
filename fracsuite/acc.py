@@ -1047,37 +1047,41 @@ def calculate_load_time(
     
 @app.command()
 def compare(
-    sensor: str = "[Aa]cc(_?)6",
-    sensor2: str = "",
-            zero_impact: bool = False,
-            zero_crackfront: bool = False,
-            clr_bounds: bool = False,
-            clr_sigma: bool = False,
-            clr_specimen: bool = False,
-            use_lims: bool = False,
-            sigma_range:str = "40-160",
-            no_zero: bool = False,
-            show: bool = False):
-    """Compare the acceleration of the specimens.
-
-    Args:
-        sensor (str, optional): Filter for the sensor to be compared. Defaults to "[Aa]cc(_?)6".
-        zero_time (bool, optional): Use the time to zero instead of greatest peak. Defaults to True.
-        plt_bounds (bool, optional): Plot the boundary condition instead of the stress. Defaults to False.
+    sensor: Annotated[str, typer.Option(help="The first sensor to be compared.")] = "[Aa]cc(_?)6",
+    sensor2: Annotated[str, typer.Option(help="Possible second sensor that is compared. Leave empty if not used.")] = "",
+    zero_impact: Annotated[bool, typer.Option(help="Shift the time channel so that the first impact of the fallweight is at zero.")] = False,
+    zero_crackfront: Annotated[bool, typer.Option(help="Shift the time channel to that the crack initiiation is at zero.")] = False,
+    clr_bounds: Annotated[bool, typer.Option(help="Colorize data according to the specimens boundary condition.")] = False,
+    clr_sigma: Annotated[bool, typer.Option(help="Colorize data according to the specimens pre-stress level.")] = False,
+    clr_specimen: Annotated[bool, typer.Option(help="Colorize per specimen.")] = False,
+    use_lims: Annotated[bool, typer.Option(help="Use predetermined limits in graphs. DEPRECATED!")] = False,
+    sigma_range: Annotated[str, typer.Option(help="Only plot specimens of a given pre-stress range.")] = "40-160",
+    zero_max: Annotated[bool, typer.Option(help="Shift each channel to the time of its maximum acceleration value.")] = False,
+    preview: Annotated[bool, typer.Option(help="Use a high-performance plotting library to preview the plot before actually plotting it. After previewing, only the visible plot limits are used.")] = False,
+    show: Annotated[bool, typer.Option(help="Shows an interactive window of the resulting plot before saving it as pdf.")] = False,
+    hide_delayed_fracture: Annotated[bool, typer.Option(help="Hide specimens that have a delayed fracture.")] = False,
+    fall_height: Annotated[float, typer.Option(help="Fall height to be considered in m.")] = 0.07,
+    all_fall_heights: Annotated[bool, typer.Option(help="Consider all fall-heights.")] = True,
+    smooth: Annotated[bool, typer.Option(help="Hard smooth filter on all data to display qualitative peaks.")] = False,
+    ):
+    """
+    Compare the sensor data of all specimens, where the glass broke immediately after impact.
     """
     
-    assert np.sum([zero_impact, zero_crackfront]) == 1, "One of zero_time or zero_impact must be set."
+    assert np.sum([zero_impact, zero_crackfront, zero_max]) <= 1, "One of zero_time, zero_max or zero_impact must be set."
     assert np.sum([clr_sigma, clr_bounds, clr_specimen]) == 1, "One of the color options must be set."
     
     assert "-" in sigma_range, "Sigma range must be in format '[lower]-[upper]'"
     
-    basefilt = create_filter_function("4.*.*.*", needs_scalp=True)
+    basefilt = create_filter_function("*.*.*.*", needs_scalp=True)
     
     # load all specimens
     def filt(s: Specimen):
         if not s.accdata.is_ok:
             return False
         if s.break_pos != SpecimenBreakPosition.CORNER:
+            return False
+        if s.fall_height_m != fall_height and not all_fall_heights:
             return False
         
         return basefilt(s)
@@ -1107,14 +1111,49 @@ def compare(
     max_peak = {}
     max_peak_time = {}
 
-    impact_crackinit_delta = {}
-
+    impact_crackinit_delta = {} 
+    if preview:
+        import vispy.plot as vp
+        fig0 = vp.Fig()
+        
+        for s in specimens:
+            acc1 = s.accdata.get_channel_like(sensor, panic=False)
+            acc2 = s.accdata.get_channel_like(sensor2, panic=False) if sensor2 != "" else None
+            
+            accs: list[Channel] = [acc1, acc2]
+            
+            for i,acc in enumerate(accs):
+                if acc is None: continue
+                
+                time = acc.Time.data * 1e3
+                data = acc.get_filtered()
+                
+                data0 = [(x,y) for x,y in zip(time, data)]
+                fig0[0,0].plot(data0, marker_size=0)                                
+                
+        fig0[0,0].xlabel = "Time [ms]"
+        fig0[0,0].ylabel = "Acceleration [g]"
+        fig0.app.run()       
+                
+        bounds: RECT = fig0[0,0].view.camera.rect
+        bl_ms = bounds.left
+        br_ms = bounds.right
+        bt = bounds.top
+        bb = bounds.bottom
+        bl = None
+        br = None
+        print(bounds.left, bounds.right)
+        
     fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))    
     for ss, s in enumerate(specimens):
         # get acc_6 sensor data
         accdata = s.accdata
         acc1 = accdata.get_channel_like(sensor, panic=False)
         acc2 = accdata.get_channel_like(sensor2, panic=False) if sensor2 != "" else None
+        
+        
+        sname = acc1.Name if acc1 is not None else "None"
+        sname2 = acc2.Name if acc2 is not None else "None"
         
         accs: list[Channel] = [acc1, acc2]
         
@@ -1125,24 +1164,33 @@ def compare(
             time = acc.Time.data
             data = acc.get_filtered()
             
+            
+
             impact_time_corner = accdata.get_impacttime_from_corner()
             
             delta_ms = np.abs(impact_time_corner - 0.5) * 1e3                        
             impact_crackinit_delta[s] = delta_ms
-            if delta_ms > 0.5:
+            if delta_ms > 0.5 and hide_delayed_fracture:
                 continue            
             
             
             
             # align the time, where the highest peak is found
             peak = np.argmax(data)
+            shift = 0
             if zero_impact:
-                time = time - accdata.get_impacttime_from_fall()        
+                shift = accdata.get_impacttime_from_fall()        
             elif zero_crackfront:
-                time = time - impact_time_corner
-            elif not no_zero:
-                time = time - time[peak]
+                shift = impact_time_corner
+            elif zero_max:
+                shift = time[peak]
             
+            time = time - shift
+                    
+            if preview and bl is None:
+                bl = bl_ms - shift * 1e3
+                br = br_ms - shift * 1e3
+                        
             max_peak[s] = data[peak]
             max_peak_time[s] = time[peak]
             
@@ -1152,45 +1200,73 @@ def compare(
                 clr = f"C{ss}"
             else:
                 clr = norm_color(get_color(np.abs(s.sig_h), 40, 160))
-                
+            
             # * 1e3 to convert to ms
-            axs.plot(time * 1e3, data, ls=['-', '--'][i], alpha=0.3, c=clr, label=f"{s.boundary.value}")
+            axs.plot(time*1e3, data, ls=['-', '--'][i], alpha=0.3, c=clr, label=f"{s.boundary.value}")
+    
+            if smooth:                
+                data = savgol_filter(data, 30, 3)
+                axs.plot(time*1e3, data, ls=['-', '--'][i], alpha=1, lw=1, c=clr, label=f"{s.boundary.value}")
+                        
+
+    if preview:        
+        axs.set_xlim(bl, br)
+        axs.set_ylim(bb, bt)
         
     if use_lims:
         axs.set_xlim(-0.00075, 0.00075)
         axs.set_ylim(-1400, 5200)
+        
     legend_without_duplicate_labels(axs)
     axs.set_xlabel("Time [ms]")
     axs.set_ylabel("Acceleration [m/s²]")
     axs.set_title(f"Comparison of acceleration {accs[0].Name} and {accs[1].Name if accs[1] is not None else ''}")
 
     if not clr_bounds:
-        fig.colorbar(ScalarMappable(norm=Normalize(40, 160), cmap='turbo'), ax=axs, label="Sigma_h [MPa]")
+        fig.colorbar(ScalarMappable(norm=Normalize(sig0, sig1), cmap='turbo'), ax=axs, label="Sigma_h [MPa]")
     
     if show:
         plt.show()
-    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), "compare-acc6")
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), f"compare-{sname}-{sname2}")
     
-    
+    ###########################################################
     print('Plotting delta between impact and crack initiation')
     fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
-    x = [s.sig_h for s in specimens]
-    y = [impact_crackinit_delta[s] for s in specimens]
-    axs.scatter(x, y)
+    x = [s.sig_h for s in impact_crackinit_delta.keys()]
+    y = [impact_crackinit_delta[s] for s in impact_crackinit_delta.keys()]
+    if not clr_bounds:
+        c = [get_color(np.abs(s.sig_h), 40, 160) for s in impact_crackinit_delta.keys()]
+    else:
+        c = [clrs[s.boundary.value] for s in impact_crackinit_delta.keys()]
+    axs.scatter(x, y, c=c)
     axs.set_xlabel("Sigma_h [MPa]")
     axs.set_ylabel("Delta between impact and crack initiation [ms]")
-    plt.show()
+    if show: plt.show()
     State.output(StateOutput(fig, figwidth=FigureSize.ROW1), "compare-impact-crackinit-delta")
     
+    ###########################################################
+    print('Plotting delta between impact and crack initiation (per boundary)')
+    fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
+    x = [s.boundary for s in impact_crackinit_delta.keys()]
+    y = [impact_crackinit_delta[s] for s in impact_crackinit_delta.keys()]
+    c = [clrs[s.boundary.value] for s in impact_crackinit_delta.keys()]
+    axs.scatter(x, y, c=c)
+    axs.set_xlabel("Boundary condition")
+    axs.set_ylabel("Delta between impact and crack initiation [ms]")
+    if show: plt.show()
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), "compare-impact-crackinit-delta-boundary")
+    
+    ###########################################################
     print('Calculating max-peak plots')
     # Auswertung: Maximaler Peak vs Vorspanngrad
     fig,axs = plt.subplots(1, figsize=get_fig_width(FigureSize.ROW1))
     t_clr = {4: 'C0', 8: 'C1', 12: 'C2'}
+    b_clr = {'A': 'C0', 'B': 'C1', 'Z': 'C2'}
     for s in specimens:
-        if s.fall_height_m != 0.07:
-            continue
-        
-        clr = t_clr[s.thickness]
+        if clr_bounds:
+            clr = b_clr[s.boundary.value]
+        else:
+            clr = t_clr[s.thickness]
         data = get_acc_sensor(s)
         if data is None:
             continue   
@@ -1198,36 +1274,37 @@ def compare(
         valley = data[np.argmin(data)]
         maxd = peak
         x = s.U * 0.25 # np.abs(s.sig_h)
-        axs.scatter(x, maxd, c=clr, label=f"{s.thickness}mm")
-        
-    
-    
-    # x = [np.abs(s.sig_h) for s, _ in max_peak.items()]
-    # y = [p for s, p in max_peak.items()]
-    # axs.scatter(x, y)
-    # axs.set_ylim(0,10)
+        axs.scatter(x, maxd, c=clr, label=f"{s.thickness if not clr_bounds else s.boundary.value}")        
     axs.set_xlabel("Strain Energy [J]")
     axs.set_ylabel("Max Acceleration [m/s²]")
     legend_without_duplicate_labels(axs)
-    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), "compare-acc6-maxpeak")
-    
-    
-    
-    # group specimens according to their sigma-level (0-10, 10-20, 20-30, ...)
-    groups = {}
+    if show:
+        plt.show()
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), f"compare-{sname}-{sname2}-maxpeak")   
+     ###########################################################
+    print('Calculating max-peak plots')
+    # Auswertung: Maximaler Peak vs Vorspanngrad
+    fig,axs = plt.subplots(1, figsize=get_fig_width(FigureSize.ROW1))
     for s in specimens:
-        sig = s.sig_h
-        key = (sig // 10) * 10
-        if key not in groups:
-            groups[key] = []
-        groups[key].append(s)
-    
-    
-    
-    
-    # create a single plot
-    fig, axs = plt.subplots(1, figsize=get_fig_width(FigureSize.ROW1), sharex=True, sharey=True)
-    
+        if clr_bounds:
+            clr = b_clr[s.boundary.value]
+        else:
+            clr = t_clr[s.thickness]
+        
+        data = get_acc_sensor(s)
+        if data is None:
+            continue   
+        
+        peak = data[np.argmax(data)]        
+        x = s.fall_height_m #s.U * 0.25 # np.abs(s.sig_h)
+        axs.scatter(x, peak, c=clr, label=f"{s.thickness if not clr_bounds else s.boundary.value}")        
+        
+    axs.set_xlabel("Strain Energy [J]")
+    axs.set_ylabel("Max Acceleration [m/s²]")
+    legend_without_duplicate_labels(axs)
+    if show:
+        plt.show()
+    State.output(StateOutput(fig, figwidth=FigureSize.ROW1), f"compare-{sname}-{sname2}-maxpeak-fallheight")  
     
 @app.command()
 def dbg_compare_sensors(
