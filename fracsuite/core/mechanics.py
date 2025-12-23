@@ -34,4 +34,4 @@ def Ud2sigms(ud):
     return np.sqrt((ud * 5 * E) / ((1-nue) * 1e6))
 
 def U2sigs(u, t):
-    return np.sqrt((u * 5 * E) / ((1-nue) * 1e6 * t))
+    return np.sqrt((u * 5 * E) / ((1-nue) * 1e6 * t * 1e-3))

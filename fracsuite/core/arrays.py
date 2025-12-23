@@ -90,5 +90,10 @@ def fill_nan(Z: np.ndarray):
     # horizontally interpolate missing values (nan)
     nans = np.isnan(Z)
     non_nans = ~nans
-    interpolated_Z = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), Z[non_nans])
+    
+    try:
+        interpolated_Z = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), Z[non_nans])
+    except ValueError:
+        interpolated_Z = np.zeros(np.count_nonzero(nans))
+        
     Z[nans] = interpolated_Z

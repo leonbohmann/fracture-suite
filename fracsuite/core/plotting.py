@@ -638,11 +638,12 @@ def datahist_plot(
     ncols:int = 1,
     nrows:int = 1,
     xlim: tuple[float,float] = None,
-    x_label: str = 'Bruchstückflächeninhalt $A_S$ (mm²)',
+    x_label: str = 'Fragment base area $A_S$ (mm²)',
     y_format: str = "{0:.2f}",
     y_label: str = None,
     data_mode : DataHistMode = DataHistMode.PDF,
     figwidth = FigureSize.ROW1,
+    annotate_log_conversion: bool = True
 ) -> tuple[Figure, list[Axes]]:
     """Create a figure and axes for a data histogram."""
     figsize = get_fig_width(figwidth)
@@ -673,12 +674,13 @@ def datahist_plot(
             ax.set_ylabel(y_label)
         else:
             if data_mode == DataHistMode.PDF:
-                ax.set_ylabel('Wahrscheinlichkeitsdichte $f(A_S)$')
+                ax.set_ylabel('Probability density function $f(A_S)$')
             elif data_mode == DataHistMode.CDF:
-                ax.set_ylabel('Kumulative Verteilungs Fkt. $F(A_S)$')
+                ax.set_ylabel('Cumulative distr. function $F(A_S)$')
         ax.grid(True, which='major', axis='both')
-
-        ax.annotate("x-Werte nach $10^x$", xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
+        
+        if annotate_log_conversion:
+            ax.annotate("x-Values after $10^x$", xy=(0.98, 0.02), color='black', xycoords="axes fraction", ha="right", va="bottom", fontsize=7)
 
     return fig, axs
 
@@ -1013,15 +1015,16 @@ def annotate_images(
     return to_img(fig)
 
 
-def cfg_logplot(axs: Axes):
+def cfg_logplot(axs: Axes, is_log=True):
     # activate grid
     axs.grid(True, which='both', axis='both')
     # make the grid lines solid
     axs.grid(which='major', linestyle='-', linewidth='0.3', color='gray')
     axs.grid(which='minor', linestyle='-', linewidth='0.1', color='gray')
 
-    axs.set_xscale('log')
-    axs.set_yscale('log')
+    if is_log:
+        axs.set_xscale('log')
+        axs.set_yscale('log')
 
 
 def transparent_line(img, pt1, pt2, color, thickness, transparency: float):
@@ -1115,6 +1118,7 @@ def fit_curve(axs, x, y, func, color='k', ls='--', lw=1, pltlabel = 'Fit', annot
     pcov = None
     try:
         popt, pcov = curve_fit(func, x, y)
+        print('Fitted curve with popt: ', popt)        
     except:
         warning(f"Could not fit curve {func.__name__} to data.")
         return np.array([]), np.array([])

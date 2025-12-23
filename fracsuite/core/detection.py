@@ -508,7 +508,8 @@ def get_splinter_surface_area(args):
     Returns:
         None. This function modifies the splinter object.
     """
-    splinter, image, t = args
+    splinter: Splinter
+    splinter, image, t, origin = args
 
     # contour is always closed!
     crack_area = 0
@@ -566,7 +567,7 @@ def get_splinter_surface_area(args):
                 lstar2 = np.linalg.norm(p2 - p0)
             else:
                 break
-        #
+        
         lstar = lstar1 + lstar2
 
         # maximum possible length
@@ -576,6 +577,8 @@ def get_splinter_surface_area(args):
 
         crack_area += (Lm+Ld)/2 * dc_norm * 0.5 # 0.5 because the crack is divided to the adjacent splinter!
 
+    if origin is not None:
+        return (crack_area, np.linalg.norm(splinter.centroid_mm - origin))
     return crack_area
 
 # methods for crack surface calculation
@@ -593,15 +596,98 @@ def get_crack_surface(splinters: list, image, t):
     total_crack_area = 0
 
     # create args
-    args = [(s, image, t) for s in splinters]
+    args = [(s, image, t, None) for s in splinters]
 
     with Pool() as pool:
-        for crack_area in tqdm(pool.imap_unordered(get_splinter_surface_area, args), total=len(splinters)):
-            total_crack_area += crack_area
+        for (crack_area,dist) in tqdm(pool.imap_unordered(get_splinter_surface_area, args), total=len(splinters)):
+            total_crack_area += (crack_area, dist)
 
 
     return total_crack_area
 
+def process_chunk(args):
+    """Process a chunk of the image in parallel"""
+    global image
+    chunk_coords, image, origin_px, bands = args
+    chunk_results = np.zeros((len(bands), 2))
+    
+    for i, j in chunk_coords:
+        dist = np.linalg.norm((j,i) - origin_px)
+        for idx, band in enumerate(bands):
+            if band[0] <= dist < band[1]:
+                chunk_results[idx][0 if image[i,j] == 0 else 1] += 1
+                break
+    
+    return chunk_results
+
+def get_crack_width_wrt_distance(origin_px, splinters: list, image, t) -> list[tuple[float,float,float,float]]:
+    """
+    Parallelized function to sum crack width with respect to distance to origin.
+    """
+    from itertools import product
+    # Create radial bands
+    radial_bands = [(s, np.linalg.norm(s.centroid_px - origin_px)) for s in splinters]
+    radial_bands.sort(key=lambda x: x[1])
+
+    
+    # Create n distinct radial bands
+    n = 50
+    bands = chunk_len(len(radial_bands), n)
+    band_bounds = [(band[0], band[1]) for band in bands]
+    
+    # Divide image into chunks for parallel processing
+    chunk_size = 100  # Adjust based on image size and available memory
+    h, w = image.shape
+    chunks = []
+    
+    for i in range(0, h, chunk_size):
+        for j in range(0, w, chunk_size):
+            chunk_coords = list(product(
+                range(i, min(i + chunk_size, h)),
+                range(j, min(j + chunk_size, w))
+            ))
+            chunks.append((chunk_coords, image, origin_px, band_bounds))
+    
+    # Process chunks in parallel
+    with Pool() as pool:
+        results = []
+        for result in tqdm(pool.imap_unordered(process_chunk, chunks)):
+            results.append(result)
+    
+    # Aggregate results
+    final_results = np.sum(results, axis=0)
+    
+    # Convert to final format
+    band_results = []
+    for (start, end), (blacks, whites) in zip(band_bounds, final_results):
+        whites = max(whites, 1)  # Prevent division by zero
+        band_results.append((start, end, blacks, whites))
+    
+    return band_results
+
+
+def get_crack_surface_wrt_R(origin, splinters: list, image, t):
+    """
+    Functions checks for every splinter contour the thickness of lines in the original image.
+
+    Args:
+        origin: fracture origin
+        splinters (List[Splinter]): Splinter list.
+        image (img): Original image.
+
+    Returns:
+        None. This function modifies the splinter objects.
+    """
+    total_crack_area = []
+
+    # create args
+    args = [(s, image, t, origin) for s in splinters]
+
+    with Pool() as pool:
+        for (crack_area,dist) in tqdm(pool.imap_unordered(get_splinter_surface_area, args), total=len(splinters)):
+            total_crack_area.append((crack_area, dist))
+
+    return total_crack_area
 
 def get_crack_surface_r(splinters, image, t, pxpmm):
     """

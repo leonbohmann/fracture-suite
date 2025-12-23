@@ -673,13 +673,13 @@ class Splinter:
             image = to_rgb(image)
             thresh = to_gray(image)
 
-        plotImage(thresh, "WS: Preprocessed Image")
+        plotImage(thresh, "Step3: WS: Preprocessed Image")
 
         # noise removal
         kernel = np.ones((3,3),np.uint8)
         opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
 
-        plotImage(opening, "WS: Opened Image")
+        plotImage(opening, "Step4: WS: Opened Image")
 
         # sure background: white is splinter, black is crack
         # sure_bg = cv2.dilate(opening,kernel,iterations=1)
@@ -691,7 +691,7 @@ class Splinter:
         ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
         sure_fg = erodeImg(sure_fg, it=1)
 
-        plotImages([("WS: Distance Transform", dist_transform),("WS: Sure Foreground", sure_fg)])
+        plotImages([("Step5: WS: Distance Transform", dist_transform),("Step5: WS: Sure Foreground", sure_fg)])
 
         # Finding unknown region
         sure_fg = np.uint8(sure_fg)
@@ -706,9 +706,9 @@ class Splinter:
 
         plotImages([
                 # ("WS: Sure Background", sure_bg),
-                ("WS: Sure Foreground", sure_fg),
+                ("Step6: WS: Sure Foreground", sure_fg),
                 # ("WS: Back - Foreground", unknown),
-                ("WS: Markers", np.abs(markers).astype(np.uint8)),
+                ("Step6: WS: Markers", np.abs(markers).astype(np.uint8)),
             ])
 
         markers = cv2.watershed(np.zeros_like(image),markers)
@@ -816,23 +816,23 @@ class Splinter:
 
 
     splinter_prop_labels = {
-        SplinterProp.AREA: ("Flächeninhalt", "$A_S$ (mm²)"),
-        SplinterProp.ORIENTATION: ("Orientierung", "$\Delta$"),
-        SplinterProp.IMPACT_DEPENDENCY: ("Anschlagabhängigkeit", "$\Psi$"),
-        SplinterProp.ROUNDNESS: ("Rundheit", "$\lambda_c$"),
-        SplinterProp.ROUGHNESS: ("Rauheit", "$\lambda_r$"),
-        SplinterProp.ASP: ("Gewichtetes Seitenverhältnis", "$L/L_p$"),
-        SplinterProp.ASP0: ("Seitenverhältnis", "$L_1/L_2$"),
-        SplinterProp.L1: ("Höhe", "$L_1$ (mm)"),
-        SplinterProp.L2: ("Breite", "$L_2$ (mm)"),
-        SplinterProp.L1_WEIGHTED: ("Gewichtete Höhe", "$\Delta \cdot L_1$ (mm)"),
-        SplinterProp.CIRCUMFENCE: ("Umfang", "Circumference (mm)"),
+        SplinterProp.AREA: ("Base area", "$A_S$ (mm²)"),
+        SplinterProp.ORIENTATION: ("Orientation", "$\Delta$"),
+        SplinterProp.IMPACT_DEPENDENCY: ("Imp. Dependency", "$\Psi$"),
+        SplinterProp.ROUNDNESS: ("Roundness", "$\lambda_c$"),
+        SplinterProp.ROUGHNESS: ("Roughness", "$\lambda_r$"),
+        SplinterProp.ASP: ("Weighted aspect ratio", "$L/L_p$"),
+        SplinterProp.ASP0: ("Aspect Ratio", "$L_1/L_2$"),
+        SplinterProp.L1: ("Height", "$L_1$ (mm)"),
+        SplinterProp.L2: ("Width", "$L_2$ (mm)"),
+        SplinterProp.L1_WEIGHTED: ("Weighted Height", "$\Delta \cdot L_1$ (mm)"),
+        SplinterProp.CIRCUMFENCE: ("Circumference", "C (mm)"),
         SplinterProp.ANGLE: ("", "Angle (°)"),
         SplinterProp.ANGLE0: ("", "$Angle^0$ (°)"),
-        SplinterProp.INTENSITY: ("Bruchintensität", "$\Lambda$ (1/mm²)"),
+        SplinterProp.INTENSITY: ("Fracture Intensity", "$\Lambda$ (1/mm²)"),
         SplinterProp.RHC: ("Hard-Core Radius", "$r_\mathrm{HC}$ (mm)"),
         SplinterProp.ACCEPTANCE: ("", "Acceptance"),
-        SplinterProp.NFIFTY: ("Bruchstückdichte", "$N_\mathrm{50}$"),
+        SplinterProp.NFIFTY: ("Fracture Density", "$N_\mathrm{50}$"),
         SplinterProp.COUNT: ("", "$N$"),
     }
 

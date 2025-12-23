@@ -262,8 +262,7 @@ def create(
 
         import gc
         props = prop.split(',')
-        for p in (t := tracker(props, title='Calculating properties')):
-            t.progress.set_description(f"Calculating '{p}'...")
+        for p in (t := tracker(props, title='Calculating properties')):            
             info(f"Calculating property '{p}'...")
             p = SplinterProp(p)
             create(p, break_pos, break_mode, ignore_nan_u, thickness, exclude_names, exclude_name_filter, normalize, name_filter, sz, no_save, with_std)
@@ -981,11 +980,11 @@ def plot(
     print('R:', R)
     print('U:', U)
 
-    xlabel = 'Abstand $R$ zum Anschlagpunkt (mm)'
-    ylabel = 'Formänderungsenergie $U$ (J/m²)'
+    xlabel = 'Distance $R$ to fracture origin (mm)'
+    ylabel = 'Elastic strain energy $U$ (J/m²)'
 
     if figwidth == FigureSize.ROW3:
-        xlabel = 'Abstand $R$ (mm)'
+        xlabel = 'Distance $R$ (mm)'
         ylabel = '$U$ (J/m²)'
 
     clabel = Splinter.get_property_label(mode)

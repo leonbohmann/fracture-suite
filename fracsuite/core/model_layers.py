@@ -13,7 +13,7 @@ from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_cb
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.general import GeneralSettings
 from scipy.interpolate import interp2d, griddata, bisplrep, LinearNDInterpolator
-from fracsuite.core.specimenprops import SpecimenBreakPosition, SpecimenBoundary
+from fracsuite.core.specimenprops import SpecimenBreakMode, SpecimenBreakPosition, SpecimenBoundary
 from fracsuite.state import State
 
 general = GeneralSettings.get()
@@ -35,7 +35,8 @@ class ModelLayer(str, Enum):
         is_stddev: bool
     ):
         stddev = "-stddev" if is_stddev else ""
-        return f'{layer_name}{stddev}_{thickness:.0f}_{boundary}_{mode}_{break_pos}.npy'
+        
+        return f'{layer_name}{stddev}_{thickness:.0f}_{boundary.value if isinstance(boundary,SpecimenBoundary) else boundary}_{mode.value if isinstance(mode, SplinterProp) else mode}_{break_pos.value if isinstance(break_pos, SpecimenBreakPosition) else break_pos}.npy'
 
 
 

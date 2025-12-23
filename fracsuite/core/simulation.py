@@ -91,6 +91,14 @@ class Simulation:
         return os.path.join(self.path, path)
 
     @property
+    def U(self):
+        return U(self.nom_stress, self.thickness)
+    
+    @property
+    def Ud(self):
+        return Ud(self.nom_stress)
+
+    @property
     def splinter_file(self):
         return self.get_file("splinters.pkl")
 

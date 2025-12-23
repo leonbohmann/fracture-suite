@@ -239,7 +239,7 @@ def navid_nfifty(thickness: int, as_ud: bool = False) -> np.ndarray:
 
     if thickness == 4:
         data = nfifty_u_4mm.copy()
-        data[:, 1] = data[:, 1] / (8e-3 if as_ud else 1)
+        data[:, 1] = data[:, 1] / (4e-3 if as_ud else 1)
     elif thickness == 8:
         data = nfifty_u_8mm.copy()
         data[:, 1] = data[:, 1] / (8e-3 if as_ud else 1)

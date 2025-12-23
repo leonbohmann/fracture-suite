@@ -158,7 +158,7 @@ def preprocess_image(
                         (int(image.shape[1]/rsz_fac), int(image.shape[0]/rsz_fac)))
 
     if interest_region is not None:
-        plotImage(image, 'PREP: GaussianBlur -> Resize', region=interest_region)
+        plotImage(image, 'Step1: PREP: GaussianBlur -> Resize', region=interest_region)
 
 
     if prep.mode == PrepMode.ADAPTIVE:
@@ -179,7 +179,7 @@ def preprocess_image(
             cv2.THRESH_BINARY)[1]
 
     if interest_region is not None or State.debug:
-        plotImage(image, 'PREP: ... -> Adaptive Thresh', region=interest_region)
+        plotImage(image, 'Step2: PREP: ... -> Adaptive Thresh', region=interest_region)
 
     # # remove noise
     # image = cv2.GaussianBlur(image, (5,5), 3)

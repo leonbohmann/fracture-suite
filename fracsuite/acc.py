@@ -1055,8 +1055,9 @@ def compare(
     clr_sigma: Annotated[bool, typer.Option(help="Colorize data according to the specimens pre-stress level.")] = False,
     clr_specimen: Annotated[bool, typer.Option(help="Colorize per specimen.")] = False,
     use_lims: Annotated[bool, typer.Option(help="Use predetermined limits in graphs. DEPRECATED!")] = False,
-    sigma_range: Annotated[str, typer.Option(help="Only plot specimens of a given pre-stress range.")] = "40-160",
+    sigma_range: Annotated[str, typer.Option(help="Only plot specimens of a given pre-stress range.")] = "90-160",
     zero_max: Annotated[bool, typer.Option(help="Shift each channel to the time of its maximum acceleration value.")] = False,
+    zero_first_peak: Annotated[bool, typer.Option(help="Shift each channel to the time of its first peak over 20g.")] = False,
     preview: Annotated[bool, typer.Option(help="Use a high-performance plotting library to preview the plot before actually plotting it. After previewing, only the visible plot limits are used.")] = False,
     show: Annotated[bool, typer.Option(help="Shows an interactive window of the resulting plot before saving it as pdf.")] = False,
     hide_delayed_fracture: Annotated[bool, typer.Option(help="Hide specimens that have a delayed fracture.")] = False,
@@ -1068,11 +1069,14 @@ def compare(
     Compare the sensor data of all specimens, where the glass broke immediately after impact.
     """
     
-    assert np.sum([zero_impact, zero_crackfront, zero_max]) <= 1, "One of zero_time, zero_max or zero_impact must be set."
+    assert np.sum([zero_impact, zero_crackfront, zero_max, zero_first_peak]) <= 1, "One of zero_time, zero_max, zero_first_peak or zero_impact must be set."
     assert np.sum([clr_sigma, clr_bounds, clr_specimen]) == 1, "One of the color options must be set."
     
     assert "-" in sigma_range, "Sigma range must be in format '[lower]-[upper]'"
     
+    sig0 = int(sigma_range.split('-')[0])
+    sig1 = int(sigma_range.split('-')[1])
+
     basefilt = create_filter_function("*.*.*.*", needs_scalp=True)
     
     # load all specimens
@@ -1082,6 +1086,8 @@ def compare(
         if s.break_pos != SpecimenBreakPosition.CORNER:
             return False
         if s.fall_height_m != fall_height and not all_fall_heights:
+            return False
+        if np.abs(s.sig_h) < sig0 or np.abs(s.sig_h) > sig1:
             return False
         
         return basefilt(s)
@@ -1104,9 +1110,6 @@ def compare(
             return None
                 
         return acc6.get_filtered()
-
-    sig0 = int(sigma_range.split('-')[0])
-    sig1 = int(sigma_range.split('-')[1])
 
     max_peak = {}
     max_peak_time = {}
@@ -1184,6 +1187,14 @@ def compare(
                 shift = impact_time_corner
             elif zero_max:
                 shift = time[peak]
+            elif zero_first_peak:
+                from scipy.signal import find_peaks
+                f1 = 20
+                # find peaks
+                peaks = find_peaks(data, height=f1)[0]
+                peak = np.argwhere(np.abs(data) > f1)[0]
+                shift = time[peaks[0]]
+                
             
             time = time - shift
                     

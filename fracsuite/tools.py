@@ -1,10 +1,14 @@
 from collections import defaultdict
 from glob import glob
 import os
+from typing import Annotated
 from matplotlib import pyplot as plt
+from fracsuite.core.splinter_props import SplinterProp
+from fracsuite.scalp import T
 import numpy as np
 
 from spazial import csstraussproc2
+from sqlalchemy import true
 from tqdm import tqdm
 
 import typer
@@ -23,7 +27,7 @@ from fracsuite.state import State, StateOutput
 from rich import print
 
 tools_app = typer.Typer(help=__doc__, callback=main_callback)
-
+    
 
 @tools_app.command()
 def crop_images(
@@ -86,6 +90,7 @@ def latex_img(
 
 @tools_app.command()
 def geometry():
+    """Draws the geometry of a random splinter including the fitted ellipse and the minarea rect."""
     # choose any specimen and load a single splinter
     from fracsuite.core.specimen import Specimen
     from fracsuite.core.splinter import Splinter
@@ -205,6 +210,7 @@ def group_layer_props(layer_props):
 
 @tools_app.command()
 def layers_to_tex(base_path: str = ""):
+    """Exports ALFA layers to a latex file."""
     layer_folder = get_layer_folder()
     layer_folder = os.path.join(layer_folder, "create")
 
@@ -748,3 +754,177 @@ def test_bohmann_params(load_data: bool = False):
         pickle.dump(results_lam, f)
 
     return results_lam
+
+
+
+@tools_app.command()
+def test_ust(ust_file: str):
+    # read the ust file
+    with open(ust_file, "r") as f:
+        lines = f.readlines()
+        
+    # extract data, when a line start with y the end of the line is the current y-axis
+    data = np.zeros((len(lines), 3))
+    lineindex = 0
+    y = 0
+    
+    while lineindex < len(lines):
+        line = lines[lineindex]
+        if line.startswith("y"):
+            y = float(line.split()[-1].replace(",","."))
+            lineindex = lineindex + 2
+        else:
+            data[lineindex,0] = float(line.split()[0].replace(",","."))
+            data[lineindex,1] = y
+            data[lineindex,2] = float(line.split()[1].replace(",","."))
+
+            lineindex = lineindex + 1
+            
+    # each line at y with x,z pairs should be transformed, such that the result is the difference between the acutal z value and a linear regression line
+    # for each y value
+    for y in np.unique(data[:,1]):
+        # get the data for this y value
+        ydata = data[data[:,1] == y]
+        # get the linear regression line
+        m,b = np.polyfit(ydata[:,0], ydata[:,2], 1)
+        # calculate the difference
+        ydata[:,2] = ydata[:,2] - (m*ydata[:,0] + b)
+        # write the data back into the array
+        data[data[:,1] == y] = ydata
+            
+    # plot the data in a contour plot
+    fig,axs = plt.subplots()
+    axs.tricontourf(data[:,0], data[:,1], data[:,2], levels=100)
+    State.output(StateOutput(fig, FigureSize.ROW1), "ust_contour", open=True)
+    
+    
+    
+@tools_app.command()    
+def anas1(
+    specimen_names: Annotated[list[str], typer.Argument(..., help="List of specimen names to export")],
+    output_dir: Annotated[str, typer.Option("--output", help="Output directory")],
+):
+    """
+    Create the preliminary export for anas.
+    
+    Bundles the fracture images, anisotropy scans and the scalp results into a single folder.
+    Each folder gets copied to a specified output directory.
+    
+    """
+    from fracsuite.splinters import create_filter_function
+    from fracsuite.core.specimen import Specimen
+    from shutil import copyfile
+    
+    filters = []
+    if specimen_names is not None and specimen_names[0].startswith("set"):
+        setname = specimen_names[0].replace("set.","")
+        from fracsuite.spec_sets import sets
+        specimen_names = sets[setname]
+    
+    for name in specimen_names:
+        filter_function = create_filter_function(name, needs_scalp=True, needs_splinters=True)
+        filters.append(filter_function)
+        
+    def filter(specimen):
+        if specimen.nbr <= 5:
+            return False
+        
+        for f in filters:
+            if f(specimen):
+                return True
+            
+        return False
+    
+    # get all specimens
+    specimens = Specimen.get_all_by(filter, load=True)
+    
+    
+    
+    
+    # create the output directory
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    def fil_all(s):
+        return create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)(s)
+    
+    print("Calculating N50...")
+    # n50 = [(s.thickness, s.sig_h, s.calculate_nfifty_count([(400,400)])) for s in Specimen.get_all_by(fil_all, load=True)]
+    n50 = [(s.thickness, np.abs(s.sig_h), s.calculate_nfifty_in_windows(force_recalc=False)) for s in specimens]
+    n50_kde = [(s.thickness, np.abs(s.sig_h), s.calculate_nfifty_kde(force_recalc=False)) for s in specimens]
+    n50_std = [(s.thickness, np.abs(s.sig_h), s.calculate_ne(force_recalc=False)) for s in specimens]
+    circ = [(s.thickness, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in specimens]
+    
+    print("Printing N50...")
+    for i,t in enumerate([4,8]):
+        fig,ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
+        ax.set_xlabel("$N_50$ (mm)")
+        ax.set_ylabel("Pre-Stress (MPa)")
+        # ax.scatter([x[2] for x in n50 if x[0] == t], [x[1] for x in n50 if x[0] == t], s=1, label="N50 (fixed window)", c="r", marker="xD"[i])
+        ax.scatter([x[2] for x in n50 if x[0] == t], [x[1] for x in n50 if x[0] == t], s=2, label="N50 (kde)", c="b", marker="xD"[i])
+        
+        # create square fit
+        x = np.array([x[2] for x in n50 if x[0] == t])
+        y = np.array([x[1] for x in n50 if x[0] == t])
+        p = np.polyfit(x, y, 2)
+        x = np.linspace(np.min(x), np.max(x), 100)
+        y = np.polyval(p, x)
+        ax.plot(x, y, c="b", label="Fit (kde)")    
+        ax.legend()
+        State.output(StateOutput(fig, FigureSize.ROW2), f"n50_t{t}", open=True)
+    
+    print("Writing N50...")
+    with open(os.path.join(output_dir, "n50.txt"), "w") as f:
+        f.write('# N50 is calculated as a mean count-value from windows 50x50mm at centers: [425,75], [75,425], [425,425], [75,200]\n')
+        f.write('# Thickness, Sigma_s, N50\n')
+        for t,s,n in n50:
+            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+    
+    with open(os.path.join(output_dir, "n50_kde.txt"), "w") as f:
+        f.write('# N50 based on the mean value of the intensity calculated as a KDE and multiplied by A=2500mm²\n')
+        f.write('# Thickness, Sigma_s, N50\n')
+        for t,s,n in n50_kde:
+            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+    
+    with open(os.path.join(output_dir, "n50_standard.txt"), "w") as f:
+        f.write('# N50 by counting once at the location of least intensity (according to the standard)\n')
+        f.write('# Thickness, Sigma_s, N50\n')    
+        for t,s,n in n50_std:
+            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+
+    with open(os.path.join(output_dir, "circumference.txt"), "w") as f:
+        f.write('# Thickness, Sigma_s, Circumference\n')
+        for t,s,n in circ:
+            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+            
+    print("Copy specimen...")
+            
+    for specimen in tqdm(specimens):
+        # create a folder for the specimen
+        specimen_folder = os.path.join(output_dir, specimen.name)
+        os.makedirs(specimen_folder, exist_ok=True)
+        
+        # copy the fracture image
+        fracture_image = specimen.get_fracture_image()
+        cv2.imwrite(os.path.join(specimen_folder, "fracture_image.png"), fracture_image)
+        
+        # copy the scalp results
+        scalp_folder = os.path.join(specimen_folder, "stress")
+        os.makedirs(scalp_folder, exist_ok=True)
+        for scalp_file in os.listdir(specimen.scalp_folder):
+            copyfile(os.path.join(specimen.scalp_folder, scalp_file), os.path.join(scalp_folder, scalp_file))
+        
+        # copy the anisotropy scans
+        anisotropy_folder = os.path.join(specimen_folder, "anisotropy")
+        os.makedirs(anisotropy_folder, exist_ok=True)
+        for scan in specimen.anisotropy.all_paths:
+            if scan is not None and os.path.exists(scan):
+                copyfile(scan, os.path.join(anisotropy_folder, os.path.basename(scan)))
+            
+        # create a text-file with the specimen properties
+        with open(os.path.join(specimen_folder, "properties.txt"), "w") as f:
+            f.write(f"Name: {specimen.name}\n")            
+            f.write(f"Thickness (measured): {specimen.measured_thickness:.2f} mm\n")
+            f.write(f"Pre-Stress (measured): {specimen.sig_h:.2f} MPa\n")
+            f.write(f"N50: {specimen.calculate_nfifty_in_windows(force_recalc=True):.0f}\n\tThis value was measured in the lower left corner. Window 50x50mm, Center at 400x400mm from the top right.\n")
+            f.write(f"Mean Area: {specimen.mean_splinter_area:.2f} mm²\n\tMeasured on the whole plate.\n")

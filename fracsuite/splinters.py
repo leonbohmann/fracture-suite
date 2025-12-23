@@ -1,7 +1,6 @@
 """
 Splinter analyzation tools.
 """
-
 from enum import Enum
 from fracsuite.core.logging import debug, info
 import multiprocessing.shared_memory as sm
@@ -11,7 +10,7 @@ import re
 import shutil
 import sys
 from itertools import groupby
-from typing import Annotated, Any, Callable
+from typing import Annotated, Any, Callable, Tuple
 
 import cv2
 from matplotlib.axes import Axes
@@ -31,6 +30,7 @@ from fracsuite.core.image import FontSize, put_scale, put_text, to_gray, to_rgb
 from fracsuite.core.imageplotting import plotImage, plotImages
 from fracsuite.core.imageprocessing import crop_matrix, crop_perspective
 from fracsuite.core.kernels import ObjectKerneler
+from fracsuite.core.mechanics import U, U2sigs, Ud
 from fracsuite.core.navid_results import navid_nfifty_ud, navid_nfifty
 from fracsuite.core.plotting import (
     AxLabels,
@@ -63,6 +63,7 @@ from fracsuite.core.stochastics import similarity
 from fracsuite.core.vectors import alignment_cossim
 from fracsuite.general import GeneralSettings
 from fracsuite.helpers import bin_data, find_file, find_files
+from fracsuite.nominals import stress
 from fracsuite.state import State, StateOutput
 
 from scipy.optimize import curve_fit
@@ -90,9 +91,14 @@ def gen(
     specimens: list[Specimen]
 
     if not all:
-        filter = create_filter_function(specimen_name, needs_splinters=False, needs_scalp=False)
+        if isinstance(specimen_name, Specimen):
+            specimens = [specimen_name]        
+        elif isinstance(specimen_name, str) and "*" not in specimen_name:
+            specimens = [Specimen.get(specimen_name, load=True)]
+        else:
+            filter = create_filter_function(specimen_name, needs_splinters=False, needs_scalp=False)
 
-        specimens = Specimen.get_all_by(filter, load=True)
+            specimens = Specimen.get_all_by(filter, load=True)
     else:
         def exclude(specimen: Specimen):
             if not specimen.has_fracture_scans:
@@ -284,6 +290,38 @@ def plot_adjacent(
     State.output(fig, 'adjacent_pdf', spec=specimen, to_additional=True, figwidth=FigureSize.ROW1)
 
 @app.command()
+def plot_adjacent2(
+    specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
+):
+    specimen = Specimen.get(specimen_name)
+    assert specimen.has_splinters, "Specimen has no splinters."
+    splinters = specimen.splinters
+
+    lens = specimen.find_adjacents()
+    fig, axs = datahist_plot(
+        x_label='Kantenanzahl $N_\\text{e}$',
+        y_label='Wahrscheinlichkeitsdichte $f(N_\\text{e})$',
+        figwidth=FigureSize.ROW1,
+        annotate_log_conversion=False
+    )
+
+    br = np.linspace(np.min(lens)-0.5, np.max(lens)+0.5, np.max(lens)-np.min(lens)+2)
+    datahist_to_ax(
+        axs[0],
+        lens,
+        binrange=br,
+        data_mode=DataHistMode.PDF,
+        plot_mode=DataHistPlotMode.HIST,
+        alpha = 1.0,
+        unit = "",
+        as_log=False,
+        mean_format=".0f",
+    )
+    axs[0].autoscale()
+
+    State.output(fig, 'adjacent_pdf', spec=specimen, to_additional=True, figwidth=FigureSize.ROW1)
+
+@app.command()
 def plot_adjacent_detail(
     specimen_name: Annotated[str, typer.Argument(help='Name of specimen to load')],
     n: Annotated[int, typer.Option(help='Splinter to analyze.')] = 5,
@@ -354,7 +392,7 @@ def nielsen_n50(
     for i, specimen in enumerate(specimens):
         sig_s = np.abs(specimen.sig_h)
 
-        real_n50 = specimen.calculate_nfifty_count()
+        real_n50 = specimen.calculate_nfifty_in_windows()
         nielsen_spec_n50 = n50(sig_s)
 
         x[i] = sig_s
@@ -410,6 +448,16 @@ def draw_contours(
             cv2.drawContours(out_img, [splinter.contour], 0, clr, ls if not fill else -1)
 
             progress.advance()
+
+    specimen.simplify_contours(1)
+
+    clr = (0,0,255)
+    with get_progress(total=len(splinters), title='Drawing contours') as progress:
+        for splinter in splinters:            
+            cv2.drawContours(out_img, [splinter.contour], 0, clr, ls - 1 if not fill else -1)
+
+            progress.advance()
+
 
     State.output(out_img, 'contours', spec=specimen, to_additional=True)
 
@@ -554,7 +602,7 @@ def count_splinters_in_norm_region(
     specimen = Specimen.get(specimen_name)
     assert specimen is not None, "Specimen not found."
 
-    s_count, splinters_in_region = specimen.calculate_esg_norm(norm_region_center, norm_region_size)
+    s_count, splinters_in_region = specimen.count_splinters(norm_region_center, norm_region_size)
 
     print(f'Splinters in norm region: {s_count}')
 
@@ -1213,14 +1261,20 @@ def create_filter_function(name_filter: str,
         return re.match(filter, s.name) is not None
 
     def in_names_list(s: Specimen, filter: list[str]) -> bool:
-        return s.name in filter
+        for f in filter:
+            print(f)
+            func = create_filter_function(f)
+            if func(s):
+                return True
+        
+        return False        
 
     def all_names(s, filter) -> bool:
         return True
 
     print(name_filter)
     name_filter_function: Callable[[Specimen, Any], bool] = None
-
+    
     # create name_filter_function based on name_filter
     if name_filter is not None and "," in name_filter:
         name_filter = name_filter.split(",")
@@ -1228,19 +1282,19 @@ def create_filter_function(name_filter: str,
         name_filter_function = in_names_list
     elif name_filter is not None and " " in name_filter:
         name_filter = name_filter.split(" ")
-        print(f"Searching for specimen whose name is in: {name_filter}")
+        print(f"MULTIPLE: Searching for specimen whose name is in: {name_filter}")
         name_filter_function = in_names_list
     elif isinstance(name_filter, list):
-        print(f"Searching for specimen whose name is in: {name_filter}")
+        print(f"LIST: Searching for specimen whose name is in: {name_filter}")
         name_filter_function = in_names_list
     elif name_filter is not None and all([c not in "*[]^\\" for c in name_filter]):
-        name_filter = [name_filter]
-        print(f"Searching for specimen name: {name_filter}")
+        name_filter = name_filter
+        print(f"SINGLE: Searching for specimen name: {name_filter}")
         name_filter_function = in_names_list
     elif name_filter is not None and ":" in name_filter:
         name_filter_function = custom_regex_filter
     elif name_filter is not None and any([c in "*[]^\\" for c in name_filter]):
-        print(f"Searching for specimen whose name matches: {name_filter}")
+        print(f"WILD: Searching for specimen whose name matches: {name_filter}")
         name_filter = name_filter.replace(".", "\.").replace("*", ".*").replace('!', '|')
         name_filter_function = in_names_wildcard
     elif name_filter is None:
@@ -1297,13 +1351,17 @@ def log_histograms(
     figwidth: Annotated[FigureSize, typer.Option(help='Width of the figure.')] = FigureSize.ROW2,
 ):
     """Plot logaritmic histograms of splinter sizes for specimens."""
-
+    from fracsuite.spec_sets import sets
+    
     if data_mode == DataHistMode.CDF and plot_mode is not None:
         # print info that plot_mode is ignored
         print("[cyan]Plot mode is ignored when using CDF mode.[/cyan]")
     elif data_mode == DataHistMode.PDF and plot_mode is None:
         plot_mode = DataHistPlotMode.HIST
 
+    if names.startswith("set"):
+        setname = names.replace("set.", "")
+        names = sets[setname]
     print(names)
     filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
     specimens = Specimen.get_all_by(filter, load=True)
@@ -1355,7 +1413,101 @@ def log_histograms(
 
     disp_mean_sizes(specimens)
 
+@app.command()
+def log_histograms_compareloc(
+    names: Annotated[str, typer.Argument(help='Names of specimens to load')],
+    sigmas: Annotated[str, typer.Argument(help='Stress range. Either a single value or a range separated by a dash (i.e. "100-110" or "120").')] = None,
+    n_bins: Annotated[int, typer.Option(help='Number of bins for histogram.')] = general.hist_bins,
+    plot_mean: Annotated[bool, typer.Option('--plot-mean', help='Plot mean splinter size.')] = False,
+    data_mode: Annotated[DataHistMode, typer.Option(help='Mode for histogram. Either pdf or cdf.')] = 'pdf',
+    plot_mode: Annotated[DataHistPlotMode, typer.Option(help='Histograms or KDE Estimation, only applies to data_mode=pdf. If not specified and PDF-Mode, plot_mode is HIST.')] = DataHistPlotMode.HIST,
+    legend: Annotated[str, typer.Option(help='Legend style (0: Name, 1: Sigma, 2: Dicke, 3: Mean-Size).')] = None,
+    xlim: Annotated[tuple[float, float], typer.Option(help='X-Limits for plot')] = (0, 2),
+    figwidth: Annotated[FigureSize, typer.Option(help='Width of the figure.')] = FigureSize.ROW2,
+):
+    """Plot logaritmic histograms of splinter sizes for specimens."""
+    from fracsuite.spec_sets import sets
+    
+    if data_mode == DataHistMode.CDF and plot_mode is not None:
+        # print info that plot_mode is ignored
+        print("[cyan]Plot mode is ignored when using CDF mode.[/cyan]")
+    elif data_mode == DataHistMode.PDF and plot_mode is None:
+        plot_mode = DataHistPlotMode.HIST
 
+    if names.startswith("set"):
+        setname = names.replace("set.", "")
+        names = sets[setname]
+    print(names)
+    filter = create_filter_function(names, sigmas, needs_scalp=False, needs_splinters=True)
+    specimens = Specimen.get_all_by(filter, load=True)
+
+    if len(specimens) == 0:
+        print("[red]No specimens loaded.[/red]")
+        return
+
+    if legend is not None:
+        def legend_by_string(x: Specimen):
+            return legend.format(x.name, x.sig_h, x.thickness, np.mean([x.area for x in x.splinters]))
+
+        legend_f = legend_by_string
+    else:
+        def legend_f(x):
+            return ''
+
+    fig, axs = datahist_plot(figwidth=figwidth, data_mode=data_mode)
+
+    a = 0.7
+
+
+    clrs = {
+        SpecimenBreakPosition.CENTER: 'r',
+        SpecimenBreakPosition.CORNER: 'g',
+    }
+    centers = 0
+    corners = 0
+    
+    # br is created once, so that the bin-ranges match for all specimens
+    br = None
+    for specimen in specimens:             
+        pos = specimen.break_pos
+        
+        
+        areas = [x.area for x in specimen.splinters]
+    
+        if pos.value.lower() == "center":
+            centers+=1
+        elif  pos.value.lower() == "corner":
+            corners+=1
+        else:
+            print(f"Unknown break position: {pos}")
+            
+        _, br0, _ = datahist_to_ax(
+            axs[0],
+            areas,
+            alpha=a,
+            color=clrs[pos],
+            n_bins=n_bins,
+            binrange=br,
+            plot_mean=plot_mean,
+            label=legend_f(specimen),
+            data_mode=data_mode,
+            plot_mode=plot_mode
+        )
+        if br is None:
+            br = br0
+
+    print(f"Corner impacts: {corners}")
+    print(f"Center impacts: {centers}")
+    if legend is not None and len(specimens) > 1:
+        fig.legend(loc='upper left', bbox_to_anchor=(1.05, 1), bbox_transform=axs[0].transAxes)
+
+    output = StateOutput(fig, figwidth)
+    if len(specimens) == 1:
+        State.output(output, 'loghist', spec=specimens[0], to_additional=True, mods=[data_mode])
+    else:
+        State.output(output, to_additional=True, mods=[data_mode])
+
+    disp_mean_sizes(specimens)
 def disp_mean_sizes(specimens: list[Specimen]):
     """Displays mean splinter sizes.
 
@@ -1596,6 +1748,8 @@ class EnergyUnit(str,Enum):
     "Tensile Strain Energy [J/m²]"
     UDt = "Udt"
     "Tensile Strain Energy Density [J/m³]"
+    s = "s"
+    "Stress, no energy"
 
 
 @app.command()
@@ -1682,11 +1836,20 @@ def test_navid_nfifty():
 @app.command()
 def nfifty(
     bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
-    break_pos: Annotated[str, typer.Option(help='Break position.')] = 'corner',
+    names: Annotated[str, typer.Option(help='Specimen filtering.')] = None,
     unit: Annotated[EnergyUnit, typer.Option(help='Energy unit.')] = EnergyUnit.U,
     recalc: Annotated[bool, typer.Option(help='Recalculate N50.')] = False,
-    use_mean: Annotated[bool, typer.Option(help='Use mean splinter size.')] = False,
+    use_mean: Annotated[bool, typer.Option(help='Use mean splinter size.')] = True,
     no_navid: Annotated[bool, typer.Option(help='Do not use N."s Data.')] = False,
+    additional_data_file: Annotated[str, typer.Option(help='Additional data file.')] = None,
+    x_property: Annotated[SplinterProp, typer.Option(help='Property for x-axis.')] = None,
+    lin: Annotated[bool, typer.Option(help='Use linear scale.')] = False,
+    only_center: Annotated[bool, typer.Option(help='Only use center impacts.')] = False,
+    only_corner: Annotated[bool, typer.Option(help='Only use corner impacts.')] = False,
+    normed: Annotated[bool, typer.Option(help='Calculate nfifty according to the norm by counting at the lowest intensity.')] = False,
+    compare_normed: Annotated[bool, typer.Option(help='Plot NE Values in the n50 plots.')] = False,
+    scale_x_t: Annotated[bool, typer.Option(help='Scale the x-property with the thickness.')] = False,
+    x_lim: Annotated[Tuple[int,int], typer.Option(help='Scale the x-property with the thickness.')] = None,    
 ):
     bid = {
         'A': 1,
@@ -1694,6 +1857,12 @@ def nfifty(
         'Z': 3,
     }
 
+
+    ttcolors = {
+        6: 'C3',
+        8: 'C1',
+        12: 'C2',
+    }
     tcolors = {
         1: 'C0',
         2: 'C1',
@@ -1709,65 +1878,136 @@ def nfifty(
         2: 's',
         3: 'D',
     }
-    thicknesses = [4, 8, 12]
+    thicknesses = [4,8,0]
 
+    anas = np.array([
+        [103.01940, 91.50],
+        [112.59765, 145.50],
+        [122.60160, 188.0 ],
+        [143.88660, 262.50],
+        [155.16765, 293.50]
+    ])
+    
+
+    basfilter = None
+    
+    if names is not None and names.startswith("set"):
+        setname = names.replace("set.","")
+        from fracsuite.spec_sets import sets
+        names = sets[setname]
+        basfilter = create_filter_function(names)
+    elif "*" in names:
+        basfilter = create_filter_function(names)
+        
     def add_filter(specimen: Specimen):
         if specimen.thickness not in thicknesses:
             return False
 
-        if break_pos is not None and specimen.break_pos != break_pos:
+        if only_center and specimen.break_pos != SpecimenBreakPosition.CENTER:
             return False
+        elif only_corner and specimen.break_pos != SpecimenBreakPosition.CORNER:
+            return False
+
+        # if break_pos is not None and specimen.break_pos != break_pos:
+        #     return False
         if specimen.boundary == SpecimenBoundary.Unknown:
             return False
 
         if not specimen.has_splinters:
             return False
 
-        if bound is not None and specimen.boundary != bound:
-            return False
+        # if bound is not None and specimen.boundary != bound:
+        #     return False
         if specimen.U_d is None or not np.isfinite(specimen.U_d):
             return False
+
+        if basfilter is not None:
+            return basfilter(specimen)
 
         return True
 
     specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=True)
 
     centers = [
-        [450,50],
-        [50,450],
-        [450,450],
-        [200,200],
-        [50,200]
+        [425,75],
+        [75,425],
+        [425,425],
+        [75,200]
     ]
 
-    results = np.zeros((len(specimens), 7), dtype=np.float64)
-    with get_progress(title='Working on specimens...') as progress:
-        for i, specimen in enumerate(specimens):
-            if not use_mean:
-                nfifty = specimen.calculate_nfifty_count(centers, (50,50), force_recalc=recalc)
-            else:
-                nfifty = specimen.calculate_intensity(force_recalc=recalc, D_mm=50)
-                nfifty = nfifty * 2500 # n50 is intensity on 50x50mm area
-            results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_energy(), specimen.calculate_energy_density() , specimen.thickness, bid[specimen.boundary], nfifty)
+    sz = FigureSize.ROW2 if 'override_figwidth' not in State.kwargs else State.kwargs['override_figwidth']
 
-            progress.advance()
-
-
+    axs: Axes
+    fig, axs = plt.subplots(figsize=get_fig_width(sz))
+    cfg_logplot(axs, not lin)
     idd = {
         EnergyUnit.U: 0,
         EnergyUnit.UD: 1,
         EnergyUnit.Ut: 2,
         EnergyUnit.UDt: 3,
+        EnergyUnit.s: 4,
     }
 
     id = idd[unit]
-
+    
     id_name = {
         0: "Elastic Strain Energy $U$ (J/m²)",
         1: "Elastic Strain Energy Density $U_\mathrm{D}$ (J/m³)",
         2: "Effektive Formänderungsenergie $U_\mathrm{t}$ (J/m²)",
         3: "Effektive Formänderungsenergiedichte $U_\mathrm{Dt}$ (J/m³)",
+        4: "Surface compressive stress $\sigma_\mathrm{S}$ (MPa)",
     }
+
+    if unit == EnergyUnit.s:    
+        anas[:,0] = U2sigs(anas[:,0], 3.878)
+    elif unit == EnergyUnit.UD:
+        anas[:,0] = anas[:,0] / (3.878e-3)
+        
+    
+    sigmas =  []
+    
+        
+    lwscatter = 0.3 # line width for scatter plots
+    lwlines = 1.4
+    if sz == FigureSize.ROW3:
+        for idn in id_name:
+            id_name[idn] = " ".join(id_name[idn].split(" ")[-2:])
+
+    results = np.zeros((len(specimens), 9), dtype=np.float64)
+    nes = np.zeros((len(specimens)), dtype=np.float64)
+    
+    with get_progress(title='Working on specimens...') as progress:
+        for i, specimen in enumerate(specimens):
+            progress.set_description(specimen.name)
+            
+            nfifty2 = specimen.calculate_ne(force_recalc=recalc)
+            
+            if normed:
+                nfifty = specimen.calculate_ne(force_recalc=recalc)
+            elif not use_mean:
+                nfifty = specimen.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+            elif x_property is None:
+                nfifty = specimen.calculate_intensity(force_recalc=recalc, D_mm=50)
+                nfifty = nfifty * 2500 # n50 is intensity on 50x50mm area
+            elif x_property is not None:
+                nfifty = specimen.calculate_mean(x_property)
+                
+                
+            nfifty = nfifty * (specimen.measured_thickness if scale_x_t else 1.0)
+            
+            results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_energy(), specimen.calculate_energy_density(), np.abs(specimen.sig_h), nfifty2, specimen.thickness, bid[specimen.boundary], nfifty)
+            
+            progress.advance()
+            
+            if specimen.break_pos == SpecimenBreakPosition.CENTER and not (only_center or only_corner):
+                axs.scatter(nfifty, results[i,id], edgecolors='coral', facecolors='none', s=25, linewidths=0.5, label='Center impact')
+                
+            identifier = f'{specimen.thickness}.{specimen.nom_stress:.0f}'
+            
+            if identifier not in sigmas:
+                sigmas.append(identifier)
+
+    
 
     def U4(x):
         return 0.58 *x + 49.47
@@ -1781,24 +2021,16 @@ def nfifty(
     def UD(x):
         return 0.255 * x ** 2 + 109.28 * x + 5603.2
 
-
-    sz = FigureSize.ROW3 if 'override_figwidth' not in State.kwargs else State.kwargs['override_figwidth']
-    lwscatter = 0.3 # line width for scatter plots
-    lwlines = 1.4
-    if sz == FigureSize.ROW3:
-        for idn in id_name:
-            id_name[idn] = " ".join(id_name[idn].split(" ")[-2:])
+    def n50S(x):
+        return x/2.655+148.9/2.655
 
     # hard coded n50 range
     min_N50 = 0
-    max_N50 = 400
+    max_N50 = np.max(results[:,-1])
 
-    axs: Axes
-    fig, axs = plt.subplots(figsize=get_fig_width(sz))
-    cfg_logplot(axs)
 
     # plot navids ud results
-    if (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid:
+    if (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid and x_property is None:
         navid_n50 = navid_nfifty_ud()
 
         for ith, th in enumerate(thicknesses):
@@ -1819,17 +2051,22 @@ def nfifty(
 
     # plot fitting curves for navids results as well as own results
     for it, thick in enumerate(thicknesses):
+     
         clr = tcolors[it+1]
-        mask = results[:,4] == thick
+        mask = results[:,-3] == thick
         # create a fitting curve
         x = results[mask,-1]
         y = results[mask,id]
 
         # getting u results from navid depends on thickness
-        if (unit == EnergyUnit.U or unit == EnergyUnit.Ut) and not no_navid:
-            navid_n50 = navid_nfifty(thick, as_ud=False)
+        if (unit == EnergyUnit.U or unit == EnergyUnit.Ut or unit == EnergyUnit.s) and not no_navid and x_property is None and thick != 0:
+            navid_n50 = navid_nfifty(thick, as_ud=False)                        
             navid_x = navid_n50[:,0]
+            
             navid_y = navid_n50[:,1]
+            if unit == EnergyUnit.s:
+                navid_y = U2sigs(navid_y, thick)
+            
             # navids points
             axs.scatter(
                 navid_x,
@@ -1839,7 +2076,7 @@ def nfifty(
                 linewidth=lwscatter,
                 alpha=0.4,
             )
-        elif (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid:
+        elif (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid and x_property is None and thick != 0:
             navid_r = navid_n50[navid_n50[:,2] == thick]
 
             navid_x = navid_r[:,0] #n50
@@ -1847,20 +2084,29 @@ def nfifty(
 
         # scatter current thickness leon
         for b in bmarkers:
-            mask = (results[:,4] == thick) & (results[:,-2] == b)
+            mask = (results[:,-3] == thick) & (results[:,-2] == b)
             if np.sum(mask) == 0:
+                print(f"Nothing to plot for thickness {thick}")
                 continue
             ms = bmarkers[b]
             axs.scatter(results[mask,-1],results[mask,id],
-                        marker=ms, linewidth=lwscatter, color=clr, edgecolor='k', label=f"{thick}mm",)
+                        marker=ms, linewidth=lwscatter, color=clr, edgecolor='k', label=f"{thick}mm",)                    
+            
+            if compare_normed:
+                # normed values
+                axs.scatter(results[mask,-4],results[mask,id],
+                        marker=ms, linewidth=lwscatter * 1.2, color=clr, edgecolors=clr, label=f"{thick}mm (standard mode)", facecolors='none')
+            
+            
+            
 
         # plot interpolation curves of x and navidx
         if len(y) > 0:
             # fit a curve
-            def func(x, a, b):
-                return np.float64(a * x + b)
+            def func(x, a, b, c):
+                return np.float64(a * (x ** -b) + c)
 
-            if not no_navid:
+            if not no_navid and x_property is None:
                 x = np.concatenate([x,navid_x])
                 y = np.concatenate([y,navid_y])
                 p = np.column_stack([x,y])
@@ -1890,14 +2136,46 @@ def nfifty(
             # r_squared = 1 - (ss_res / ss_tot)
             # info(f'{thick}mm r^2:', r_squared)
 
+    if additional_data_file is not None:
+        data = np.genfromtxt(additional_data_file, delimiter=';', comments='#')
+        # format: n50, sigma_h, area, thickness
+        # 1. calculate ud or U
+        add_U = U(data[:,1], data[:,3])
+        add_UD = Ud(data[:,1])
+        
+        if unit == EnergyUnit.U:
+            add_data = add_U
+        elif unit == EnergyUnit.UD:
+            add_data = add_UD
+            
+            
+        thickness = data[:,3]
+                
+        # create color for each row depending on thickness, matrix
+        clr = [ttcolors[t] for t in thickness]
+            
+        thicknesses2 = thicknesses.copy()
+        thicknesses2.append(6.0)
+        # 2. plot the data
+        for thickness in thicknesses2:
+            mask = data[:,3] == thickness
+            if np.sum(mask) == 0:
+                continue
+            clr = ttcolors[data[mask,3].astype(int)[0]]
+            
+            axs.scatter(data[mask,0], add_data[mask], c=clr, marker='d', linewidth=lwscatter, label=f'{thickness:.0f}mm', alpha=0.4)
+
+
+
     ux = np.linspace(min_N50, max_N50, 100)
     u4y = U4(ux)
     u8y = U8(ux)
     u12y = U12(ux)
     udy = UD(ux)
-
+    us = n50S(ux)
+    
     # plot navid u curves
-    if id == 0:
+    if id == 0 and x_property is None:
         if 4 in thicknesses:
             axs.plot(ux, u4y, linestyle='--', color=tcolors[1], alpha=0.4)
         if 8 in thicknesses:
@@ -1905,18 +2183,221 @@ def nfifty(
         if 12 in thicknesses:
             axs.plot(ux, u12y, linestyle='--', color=tcolors[3], alpha=0.4)
     # plots the ud curve from literatur
-    elif id == 1:
+    elif id == 1 and x_property is None:
         axs.plot(ux, udy, linestyle='--', color='k', alpha=0.4)
 
+    if x_property is None:
+        axs.plot(ux, us, linestyle='--', color='k', alpha=0.4)
     # for b,t in zip(bid.values(), thicknesses):
     #     axs.plot([],[], label=f"{t}mm", color=tcolors[b])
+        axs.scatter(anas[:,1]*(3.878 if scale_x_t else 1.0), anas[:,0], edgecolors='red', facecolors='none', s=15, linewidths=1, label='Simulations')
 
     axs.set_ylabel(id_name[id])
-    axs.set_xlabel("Fragment density $N_\\text{50}$")
+    
+    if normed and x_property is None:        
+        lab = "Fragment count $N_\\text{E} (-)$"
+    elif x_property is None:
+        lab = "Fragment density $N_\\text{50} (1/\\text{mm}^2)$"
+    else:
+        lab = Splinter.get_property_label(x_property)
+    
+    axs.set_xlabel(lab + ("$\cdot t$" if scale_x_t else ""))
+    
+    if x_lim is not None:
+        axs.set_xlim(x_lim)
     # axs.legend(loc='best')
 
     y_max = np.max(results[:,id])
-    y_max = 10 ** np.ceil(np.log10(y_max))
+    if not lin:
+        y_max = 10 ** np.ceil(np.log10(y_max))
+        # Anpassen der Y-Achsen-Grenzen
+        axs.set_ylim(bottom=axs.get_ylim()[0], top=y_max)
+        
+    
+
+    legend_without_duplicate_labels(axs, compact=False)
+
+    name = 'nfifty' if not use_mean else 'nperwindow'
+    if bound is None:
+        bound = 'all'
+    State.output(StateOutput(fig, sz), f'{name}_{"n50" if not normed else "ne"}_{bound}_{"lin" if lin else "log"}_all_{unit}', to_additional=True)
+
+    if State.debug:
+        for i in range(len(specimens)):
+            res = results[i,:]
+            print(specimens[i].name, "U:", res[0], "U_d:", res[1], "U_t", res[2], "Ud_t", res[3] , "Thickness:", res[4], "Boundary:", res[3], "N50:", res[4])
+
+    for s in sigmas:
+        print(s)
+
+@app.command()
+def nfifty_compbreak(
+    names: Annotated[str, typer.Argument(help='Names of specimens to load')],
+    bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = SpecimenBoundary.B,    
+    unit: Annotated[EnergyUnit, typer.Option(help='Energy unit.')] = EnergyUnit.U,
+    recalc: Annotated[bool, typer.Option(help='Recalculate N50.')] = False,
+    use_mean: Annotated[bool, typer.Option(help='Use mean splinter size.')] = False,
+    x_property: Annotated[SplinterProp, typer.Option(help='Property for x-axis.')] = None,
+    lin: Annotated[bool, typer.Option(help='Use linear scale.')] = False,
+):
+    """Compare different break positions."""
+    from fracsuite.spec_sets import sets
+    
+    #############################
+    ### Get specimen
+    if names.startswith("set"):
+        setname = names.replace("set.", "")
+        names = sets[setname]               
+    filter = create_filter_function(names, needs_scalp=False, needs_splinters=True)
+    def add_filter(specimen: Specimen):
+        if specimen.boundary == SpecimenBoundary.Unknown:
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        if bound is not None and specimen.boundary != bound:
+            return False
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+        
+        return filter(specimen)
+ 
+    print(names)
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=True)
+
+    thicknesses = []
+    for s in specimens:
+        if s.thickness not in thicknesses:
+            thicknesses.append(s.thickness)
+    #############################
+        
+    # for calculating intensity
+    centers = [
+        [450,50],
+        [50,450],
+        [450,450],
+        [200,200],
+        [50,200]
+    ]
+
+    #############################
+    # figure setup
+    sz = FigureSize.ROW3 if 'override_figwidth' not in State.kwargs else State.kwargs['override_figwidth']
+    axs: Axes
+    fig, axs = plt.subplots(figsize=get_fig_width(sz))
+    cfg_logplot(axs, not lin)
+    idd = {
+        EnergyUnit.U: 0,
+        EnergyUnit.UD: 1,
+        EnergyUnit.Ut: 2,
+        EnergyUnit.UDt: 3,
+    }
+
+    id = idd[unit]
+
+    id_name = {
+        0: "Elastic Strain Energy $U$ (J/m²)",
+        1: "Elastic Strain Energy Density $U_\mathrm{D}$ (J/m³)",
+        2: "Effektive Formänderungsenergie $U_\mathrm{t}$ (J/m²)",
+        3: "Effektive Formänderungsenergiedichte $U_\mathrm{Dt}$ (J/m³)",
+    }
+    lwscatter = 0.3 # line width for scatter plots
+    lwlines = 1.4
+    if sz == FigureSize.ROW3:
+        for idn in id_name:
+            id_name[idn] = " ".join(id_name[idn].split(" ")[-2:])
+            
+    axs.set_ylabel(id_name[id])
+    if x_property is not None:        
+        axs.set_xlabel(Splinter.get_property_label(x_property))
+    else:
+        axs.set_xlabel("Fragment density $N_{50}$")
+    
+    y_max = 0
+    axs.set_xlim((0,500))
+    #############################
+            
+            
+    clrs = {
+        4: "C0",
+        8: "C1",
+        12: "C2"
+    }
+    ms = {
+        SpecimenBreakPosition.CENTER: "s",
+        SpecimenBreakPosition.CORNER: "x",
+        SpecimenBreakPosition.NAVID: "o",
+    }
+            
+            
+    with get_progress(title='Working on specimens...') as progress:
+        for i, specimen in enumerate(specimens):
+            progress.set_description(specimen.name)
+            if x_property is not None:
+                nfifty = specimen.calculate_mean(x_property)
+            
+            if not use_mean:
+                nfifty = specimen.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+            else:
+                nfifty = specimen.calculate_intensity(force_recalc=recalc, D_mm=50)
+                nfifty = nfifty * 2500 # n50 is intensity on 50x50mm area
+            
+            if unit == EnergyUnit.U:
+                y = specimen.U
+            elif unit == EnergyUnit.UD:
+                y = specimen.U_d
+            elif unit == EnergyUnit.Ut:
+                y = specimen.calculate_tensile_energy()
+            elif unit == EnergyUnit.UDt:
+                y = specimen.calculate_tensile_energy_density()
+            
+            axs.scatter(y, nfifty, c=clrs[specimen.thickness], marker=ms[specimen.break_pos], label=specimen.break_pos.value, facecolor='none',)
+
+            progress.advance()
+            y_max = max(y_max, y)
+
+    tcolors = {
+        1: 'C0',
+        2: 'C1',
+        3: 'C2',
+    }
+    
+
+    def U4(x):
+        return 0.58 *x + 49.47
+
+    def U8(x):
+        return 1.14 * x + 49.51
+
+    def U12(x):
+        return 1.92 * x + 48.24
+
+    def UD(x):
+        return 0.255 * x ** 2 + 109.28 * x + 5603.2
+
+
+    ux = np.linspace(0, 400, 100)
+    u4y = U4(ux)
+    u8y = U8(ux)
+    u12y = U12(ux)
+    udy = UD(ux)
+
+    # plot navid u curves
+    if id == 0 and x_property is None:
+        if 4 in thicknesses:
+            axs.plot(ux, u4y, linestyle='--', color=clrs[4], alpha=0.4)
+        if 8 in thicknesses:
+            axs.plot(ux, u8y, linestyle='--', color=clrs[8], alpha=0.4)
+        if 12 in thicknesses:
+            axs.plot(ux, u12y, linestyle='--', color=clrs[12], alpha=0.4)
+    # plots the ud curve from literatur
+    elif id == 1 and x_property is None:
+        axs.plot(ux, udy, linestyle='--', color='k', alpha=0.4)
+
+    if not lin:
+        y_max = 10 ** np.ceil(np.log10(y_max))
+        
     # Anpassen der Y-Achsen-Grenzen
     axs.set_ylim(bottom=axs.get_ylim()[0], top=y_max)
 
@@ -1925,12 +2406,7 @@ def nfifty(
     name = 'nfifty' if not use_mean else 'nperwindow'
     if bound is None:
         bound = 'all'
-    State.output(StateOutput(fig, sz), f'{name}_{bound}_{break_pos}_{unit}', to_additional=True)
-
-    if State.debug:
-        for i in range(len(specimens)):
-            res = results[i,:]
-            print(specimens[i].name, "U:", res[0], "U_d:", res[1], "U_t", res[2], "Ud_t", res[3] , "Thickness:", res[4], "Boundary:", res[3], "N50:", res[4])
+    State.output(StateOutput(fig, sz), f'break_compare_{name}_{bound}__{unit}', to_additional=True)
 
 @app.command()
 def fracture_intensity_img(
@@ -2780,4 +3256,17 @@ def analyze_image(
     splinter_image = create_splinter_colored_image(splinters, image.shape)
     
     plotImage(splinter_image, "Splinters")
+        
+        
+@app.command()
+def export_all():
+    """Export all splinter images."""
+    specimens = Specimen.get_all()
+        
+    with open(State.get_output_file("splinter_export.csv"), 'w') as f:
+        f.write("Specimen;Splinter ID)")
+        for spec in specimens:
+            if not spec.has_fracture_scans or not spec.has_splinters:
+                continue
+            # write to csv
         

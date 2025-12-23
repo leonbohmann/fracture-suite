@@ -1,5 +1,5 @@
 """
-Commands for simulating and analyzing fracture morphologies.
+ALFA: Commands for simulating and analyzing fracture morphologies.
 """
 import json
 import shutil
@@ -298,7 +298,9 @@ def alfa(
 
     if impact_position[0] == -1 or impact_position[1] == -1:
         impact_position = None
-
+    else:
+        impact_position = np.array(impact_position)
+    
     # this will create the simulation
     sim = Simulation.create(thickness, sigma_s, boundary, None)
 
@@ -533,7 +535,7 @@ def alfa(
             ## modify the point using the major axis
             markers = cv2.ellipse(
                     markers,
-                    (int(p[1]*size_f), int(p[0]*size_f)), # location
+                    (int(p[0]*size_f), int(p[1]*size_f)), # location
                     # (int(2), int(2)), # axes lengths
                     # (int(2), int(l_major * size_f)), # axes lengths
                     (int(l_minor * size_f), int(l_major * size_f)), # axes lengths
@@ -546,7 +548,7 @@ def alfa(
 
             markers = cv2.ellipse(
                     markers,
-                    (int(p[1]*size_f), int(p[0]*size_f)), # location
+                    (int(p[0]*size_f), int(p[1]*size_f)), # location
                     # (int(2), int(2)), # axes lengths
                     # (int(2), int(l_major * size_f)), # axes lengths
                     (int(l_minor * size_f), int(l_major * size_f)), # axes lengths
@@ -633,7 +635,10 @@ def alfa(
     info(f'Simulation created: {sim.name}_{sim.nbr}')
 
     sim_areas = [s.area for s in splinters]
-    spec_areas = [s.area for s in Specimen.get(reference).splinters]
+    if reference is not None:
+        spec_areas = [s.area for s in Specimen.get(reference).splinters]
+    else:
+        spec_areas = sim_areas.copy()
     # sim_vs_spec = calculate_chi2(sim_areas, spec_areas)
     sim_vs_spec = data_mse(spec_areas, sim_areas)
     # sim_vs_spec_chi2 = data_chi2(sim_areas, spec_areas)
@@ -663,12 +668,11 @@ def alfa(
     if 'output_to' in State.kwargs:
         shutil.copytree(sim.get_file(""), os.path.join(general.to_base_path, State.kwargs['output_to'], sim.name), dirs_exist_ok=True)
 
-
     return sim
 
 def cropimg(region, size_f, markers):
     x_min, x_max, y_min, y_max = region
-    markers_clipped = markers[int(x_min*size_f):int(x_max*size_f), int(y_min*size_f):int(y_max*size_f)]
+    markers_clipped = markers[ int(y_min*size_f):int(y_max*size_f), int(x_min*size_f):int(x_max*size_f)]
     return markers_clipped
 
 @sim_app.command()
@@ -870,7 +874,7 @@ def create_validation_plots(
         ax.annotate(f'$MAE_\mathrm{{BREAK}}$: {mse_vor:.2f}', xy=(0.98, 0.90), xycoords='axes fraction', ha='right', va='top', fontsize=6)
 
     def mklegend(ax):
-        ax.plot([], [], label=f'Referenz ({mpvs[0]:.1f}mm²)', color='C0')
+        ax.plot([], [], label=f'Reference ({mpvs[0]:.1f}mm²)', color='C0')
         ax.plot([], [], label=f'ALFA ({mpvs[1]:.1f}mm²)', color='C1')
         ax.plot([], [], label=f'BREAK ({mpvs[2]:.1f}mm²)', color='C2')
 
@@ -914,7 +918,7 @@ def compare(
     # create histogram of specimen
     spec_splinters = specimen.splinters
 
-    plotmode = 'hist'
+    plotmode = 'steps'
     sim_areas = [s.area for s in sim_splinters]
     spec_areas = [s.area for s in spec_splinters]
     binrange = get_log_range(spec_areas, 30)
@@ -942,8 +946,8 @@ def compare(
         fig,axs = datahist_plot(figwidth=FigureSize.ROW2, data_mode=mode)
         if vor_areas is not None:
             datahist_to_ax(axs, vor_areas, binrange=binrange, label='BREAK', color="C2", data_mode=mode, plot_mode=plotmode)
-        datahist_to_ax(axs, spec_areas, binrange=binrange, label='Probekörper', color="C0", data_mode=mode, plot_mode=plotmode)
-        datahist_to_ax(axs, sim_areas, binrange=binrange, label='ALFA', color="C1", data_mode=mode, plot_mode=plotmode)
+        datahist_to_ax(axs, spec_areas, binrange=binrange, label='Reference', color="C0", data_mode=mode, plot_mode=plotmode, plot_mean=False)
+        datahist_to_ax(axs, sim_areas, binrange=binrange, label='ALFA', color="C1", data_mode=mode, plot_mode=plotmode, plot_mean=False)
 
         # axs[0].annotate(lbr_compare, xy=(0.95, 0.95), xycoords='axes fraction', ha='right', va='top', fontsize=6)
         # axs[0].annotate(vor_compare, xy=(0.95, 0.90), xycoords='axes fraction', ha='right', va='top', fontsize=6)
@@ -953,6 +957,9 @@ def compare(
 
 
         fig.savefig(sim.get_file(f'comparison_{mode}.pdf'))
+        svgfile = sim.get_file(f'comparison_{mode}.svg')
+        fig.savefig(svgfile)
+        print(f'Saved comparison figure to {svgfile}')
 
     info('Specimen: ', len(spec_splinters), ' Splinters')
     info('Simulation: ', len(sim_splinters), ' Splinters')
@@ -976,11 +983,14 @@ def compare(
 @sim_app.command()
 def compare_polar(
     prop: SplinterProp,
-    simulation_name: str,
+    simulation_name: str = None,
     specimen_name: str = None,
-    sz: FigureSize = FigureSize.ROW3
+    sz: FigureSize = FigureSize.ROW3,
+    no_simdata: bool = False
 ):
-    simulation = Simulation.get(simulation_name)
+    assert simulation_name is not None or specimen_name is not None, 'Please provide a simulation or specimen name.'
+    if not no_simdata:
+        simulation = Simulation.get(simulation_name)
 
 
     if specimen_name is None and (specimen := simulation.reference) is not None:
@@ -993,16 +1003,20 @@ def compare_polar(
 
     r_range_mm, t_range_deg = arrange_regions(break_pos=SpecimenBreakPosition.CORNER)
     # get splinters of both simulation
-    r,_,simZ,_ = simulation.calculate_2d_polar(prop, r_range_mm,t_range_deg)
-    _,_,specZ,_ = specimen.calculate_2d_polar(prop, r_range_mm,t_range_deg)
-    r = r.flatten()
-    simZ = simZ.flatten()
+    r,_,specZ,_ = specimen.calculate_2d_polar(prop, r_range_mm,t_range_deg)
     specZ = specZ.flatten()
-
+    
+    if not no_simdata:
+        r,_,simZ,_ = simulation.calculate_2d_polar(prop, r_range_mm,t_range_deg)        
+        simZ = simZ.flatten()
+        
+    r = r.flatten()
+    
     # plot in the same fig
     fig,axs = plt.subplots(figsize=get_fig_width(sz))
-    axs.plot(r, specZ, label='Referenz')
-    axs.plot(r, simZ, label='ALFA')
+    if not no_simdata:
+        axs.plot(r, simZ, label='ALFA' if not no_simdata else None)
+    axs.plot(r, specZ, label='Referenz' if not no_simdata else None)
     axs.set_xlabel('R (mm)')
     axs.set_ylabel(Splinter.get_property_label(prop, row3=sz==FigureSize.ROW3))
     axs.legend()#
@@ -1165,3 +1179,34 @@ def alfa_validate(
         datahist_to_ax(axs, vor_areas, binrange=binrange, label="Voronoi", color='C2', data_mode=mode, plot_mode=dmode)
         datahist_to_ax(axs, 10**sim_areas_all_mean, binrange=binrange, label="Simulation", color='C1', data_mode=mode, plot_mode=dmode)
         State.output(fig, f'validation_{specimen.name}_mean_{dmode}', figwidth=FigureSize.ROW2)
+        
+        
+@sim_app.command()
+def alfa_regression():
+    sigmas = range(90,120,5)
+    thicknesses = [4,8,12]
+    
+    U = []
+    As = []
+    
+    for sigma in sigmas:
+        for t in thicknesses:
+            info(f'Simulation for sigma_s={sigma}, thickness={t}')
+            simulation = alfa(sigma, t)
+            
+            Ui = simulation.U
+            Asi = np.mean([s.area for s in simulation.splinters])
+            
+            U.append(Ui)
+            As.append(Asi)
+            
+            
+            simulation = None
+            plt.close('all')
+            
+            
+    fig,axs = plt.subplots()
+    axs.plot(U, As, 'o')
+    axs.set_xlabel('U')
+    axs.set_ylabel('As')
+    plt.show()

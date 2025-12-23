@@ -273,7 +273,9 @@ class ObjectKerneler():
     ):
         self.region = region
         self.data_objects = data_objects
-
+        self.max = (0,0,-1e30)
+        self.min = (0,0,1e30)        
+        
         if len(args) > 0 or len(kwargs) > 0:
             debug(f'Additional arguments passed to kerneler: "{args}, {[k for k in kwargs]}". Consider removing them.')
 
@@ -363,7 +365,7 @@ class ObjectKerneler():
                             continue
                         if not (y0 <= y < y1):
                             continue
-
+                        
                         # add the splinter to each group it fits in
                         spl_groups[j][i].append(s)
                         progress.advance()
@@ -404,12 +406,20 @@ class ObjectKerneler():
                         )
                     progress.advance()
 
+        d_max = (2*25**2)**0.5
         def put_result(result):
             i, j, r_c, t_c, mean_value, stddev = result
             Z[j,i] = mean_value
             Zstd[j,i] = stddev
             X[i] = r_c
             Y[j] = t_c
+            
+            d = ((r_c - ip_mm[0])**2 + (t_c - ip_mm[1])**2)**0.5
+            
+            if mean_value > self.max[2] and d > d_max :
+                self.max = (r_c, t_c, mean_value)
+            if mean_value < self.min[2] and d > d_max:
+                self.min = (r_c, t_c, mean_value)
 
         # this might raise an error
         result = process_window(args[0])

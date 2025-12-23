@@ -21,3 +21,4 @@ class SplinterProp(str,Enum):
     ACCEPTANCE = 'acceptance'
     NFIFTY = 'nfifty'
     COUNT = 'count'
+    

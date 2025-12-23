@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+
+from tqdm import tqdm
 from fracsuite.core.logging import debug, warning
 import os
 import pickle
@@ -85,7 +87,9 @@ class Specimen(Outputtable):
     "Key for the crack surface in the simdata file."
     DAT_BROKEN_IMMEDIATELY: str = "broken_immediately"
     "Key for the broken immediately flag in the simdata file."
-
+    DAT_NE: str = "n_esg_norm"
+    "Key for the amount of counted splinters according to the standard."
+    
     SET_BREAKMODE: str = "break_mode"
     "Break mode of the specimen (PUNCH, LASER, DRILL)."
     SET_BREAKPOS: str = "break_pos"
@@ -158,7 +162,12 @@ class Specimen(Outputtable):
     def break_pos(self) -> SpecimenBreakPosition:
         "Break position of the specimen."
         assert "break_pos" in self.settings, "break_pos not in settings."
-        return SpecimenBreakPosition(self.settings["break_pos"])
+        if self.nbr > 5:
+            return SpecimenBreakPosition.CENTER
+        else:
+            return SpecimenBreakPosition.CORNER
+            
+        # return SpecimenBreakPosition(self.settings["break_pos"])
 
     @property
     def break_mode(self) -> SpecimenBreakMode:
@@ -394,7 +403,7 @@ class Specimen(Outputtable):
         # set default settings (overwritten in the next step)
         self.__settings = {
             Specimen.SET_BREAKMODE: "punch",
-            Specimen.SET_BREAKPOS: "corner",
+            Specimen.SET_BREAKPOS: "corner" if self.nbr < 6 else "center",
             Specimen.SET_ACTUALBREAKPOS: None,
             Specimen.SET_CBREAKPOSEXCL: 20,
             Specimen.SET_EDGEEXCL: 10,
@@ -471,6 +480,7 @@ class Specimen(Outputtable):
         self.has_scalp = self.__scalp_file is not None
 
         # splinters requisites
+        self.fracture_folder = os.path.join(self.path, "fracture")
         self.fracture_morph_folder = os.path.join(self.path, "fracture", "morphology")
         self.__has_fracture_scans = os.path.exists(self.fracture_morph_folder) \
             and find_file(self.fracture_morph_folder, "*.bmp") is not None
@@ -486,6 +496,7 @@ class Specimen(Outputtable):
 
 
         self.anisotropy_folder = os.path.join(self.path, "anisotropy")
+        os.makedirs(self.anisotropy_folder, exist_ok=True)
         "Path to anisotropy scans."
         self.anisotropy = AnisotropyImages(self.anisotropy_folder)
 
@@ -860,19 +871,49 @@ class Specimen(Outputtable):
         """
         intensity = self.calculate_intensity(force_recalc, D)
         return intensity * D**2
+        
+    def simplify_contours(self, distance_threshold: float = 1.0) -> None:
+        """
+        Optimized contour simplification using spatial indexing.
+        Uses cKDTree for efficient nearest neighbor search.
+        Ensures OpenCV compatibility for drawing.
+        
+        Args:
+            distance_threshold: Maximum distance between points to be considered the same
+        """
+        from fracsuite.core.simplifier import simplify_contours
+        
+        simplify_contours(self, distance_threshold)
+            
+    def find_adjacents(self):
+        """
+        Visualize splinters colored by number of adjacent splinters.
+        
+        Args:
+            adjacency_counts: Dictionary mapping splinter ID to number of adjacent splinters
+            output_path: Path to save the visualization
+        """        
+        from fracsuite.core.adjacency import find_adjacent_splinters
+     
+        return find_adjacent_splinters(self, 1)
 
-    def calculate_nfifty_count(self, centers = [], size = (50,50), force_recalc=False, simple = False):
-
-
-        if centers == [] or simple:
-            centers = [(400,400)]
+    def calculate_nfifty_in_windows(self, centers = [], size = (50,50), force_recalc=False, simple = False):
+        
 
         nfifty = self.simdata.get(Specimen.DAT_NFIFTY, None)
         if nfifty is None or force_recalc:
+            if centers == [] or simple:
+                centers = [
+                    [425,75],
+                    [75,425],
+                    [425,425],
+                    [75,200]
+                ]
+                
             # area = float(size[0] * size[1])
             nfifty = 0.0
             for center in centers:
-                nfiftyi = self.calculate_esg_norm(center, size)[0]
+                nfiftyi = self.count_splinters(center, size)[0]
                 nfifty += nfiftyi
 
             nfifty = nfifty / len(centers)
@@ -881,7 +922,42 @@ class Specimen(Outputtable):
         else:
             return nfifty
 
-    def calculate_esg_norm(
+
+    def calculate_ne(
+        self: Specimen,    
+        force_recalc: bool = False
+    ) -> float:
+        """
+        Find the location with lowest intensity and count splinters there.
+        This is the test according to DIN EN12150-1.
+        """
+        
+        ne = self.simdata.get(Specimen.DAT_NE, None)
+        if ne is None or force_recalc:        
+            kerneler = self.calculate_2d(SplinterProp.INTENSITY, 50, 25, return_kerneler=True)
+            
+            # location of lowest intensity
+            x0 = kerneler.min[0]
+            y0 = kerneler.min[1]
+            
+            ne, _ = self.count_splinters((x0,y0))
+            self.set_data(Specimen.DAT_NE, ne)
+    
+            print(f"Minimum location: ({x0:.2f},{y0:.2f})")
+            f = self.calculate_px_per_mm()
+            sz = 50*f
+            
+            fimg = self.get_fracture_image()
+            fimg = cv2.rectangle(fimg, (int(x0*f-sz/2), int(y0*f-sz/2)),(int(x0*f+sz/2), int(y0*f+sz/2)), (255,0,0), 5)
+            cv2.imwrite(os.path.join(self.fracture_folder, 'esg_norm_rectangle.png'), fimg)
+            
+            
+            
+        print(f"N50={ne:.1f}     vs.    N50={self.calculate_nfifty_in_windows():.1f}")
+        
+        return ne        
+        
+    def count_splinters(
         self: Specimen,
         norm_region_center: tuple[int, int] = (400, 400),
         norm_region_size: tuple[int, int] = (50, 50),
@@ -959,7 +1035,8 @@ class Specimen(Outputtable):
         kw: int = 50,
         n_points: int = 25,
         quadrat_count: bool = False,
-        include_all_splinters: bool = False
+        include_all_splinters: bool = False,
+        return_kerneler: bool = False,
     ):
         """
         Calculate a value in 2D.
@@ -994,8 +1071,11 @@ class Specimen(Outputtable):
             kw,
             n_points,
             impact_position,
-            self.calculate_px_per_mm()
+            self.calculate_px_per_mm(),
         )
+
+        if return_kerneler:
+            return kerneler
 
         return X,Y,Z,Zstd
 
@@ -1004,7 +1084,7 @@ class Specimen(Outputtable):
         prop: SplinterProp,
         r_range_mm = None,
         t_range_deg = None,
-        return_data = False
+        return_data = False        
     ) -> tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray, KernelerData]:
         """
         Calculate a value in polar 2D.
@@ -1114,6 +1194,16 @@ class Specimen(Outputtable):
         if State.debug:
             print(f"Loaded {len(self.__allsplinters)} splinters.")
             print(f" > Filtered {len(self.__allsplinters) - len(self.__splinters)}")
+
+    def calculate_mean(
+        self,
+        prop: SplinterProp,
+    ):
+        """Calculates the mean of a property."""        
+        pxpmm = self.calculate_px_per_mm()
+        return np.mean(
+            [s.get_splinter_data(prop, px_p_mm=pxpmm) for s in self.splinters]
+        )
 
     def transform_fracture_images(
         self,

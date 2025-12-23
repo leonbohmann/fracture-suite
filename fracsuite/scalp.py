@@ -188,7 +188,11 @@ def transform(
 
     # copy all folder in the output_directory to the correct folders in the database
     for specimen in specimens:
-        spec = Specimen.get(specimen.name, printout=False, load=False)
+        spec = Specimen.get(specimen.name, printout=False, load=False, panic=False)
+        
+        if spec is None:
+            spec = Specimen.create(specimen.name)
+        
         debug(f'Loaded {specimen.name}')
 
         # copy all folder contents to spec

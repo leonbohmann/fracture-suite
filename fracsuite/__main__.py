@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 import time
-
+import warnings
 import typer
 from matplotlib import pyplot as plt
 from rich import print
@@ -38,6 +38,9 @@ import fracsuite.core.logging
 
 import scienceplots
 _ = scienceplots.isdir # dummy usage to avoid removing on isort
+
+warnings.filterwarnings("ignore")
+
 
 custom_theme = Theme({
     "info": "dim cyan",
