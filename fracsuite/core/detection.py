@@ -607,65 +607,57 @@ def get_crack_surface(splinters: list, image, t):
 
     return total_crack_area
 
-def process_chunk(args):
-    """Process a chunk of the image in parallel"""
-    global image
-    chunk_coords, image, origin_px, bands = args
-    chunk_results = np.zeros((len(bands), 2))
-    
-    for i, j in chunk_coords:
-        dist = np.linalg.norm((j,i) - origin_px)
-        for idx, band in enumerate(bands):
-            if band[0] <= dist < band[1]:
-                chunk_results[idx][0 if image[i,j] == 0 else 1] += 1
-                break
-    
-    return chunk_results
-
 def get_crack_width_wrt_distance(origin_px, splinters: list, image, t) -> list[tuple[float,float,float,float]]:
     """
-    Parallelized function to sum crack width with respect to distance to origin.
+    Optimized vectorized function to sum crack width with respect to distance to origin.
+
+    This uses NumPy vectorization instead of multiprocessing for much better performance.
+    Creates radial bands and counts black vs white pixels in each band based on distance from origin.
+
+    Args:
+        origin_px: Origin point in pixel coordinates (x, y)
+        splinters: List of splinter objects
+        image: Binary image array (0 = black/crack, non-0 = white)
+        t: Thickness (unused in current implementation)
+
+    Returns:
+        List of tuples (band_start, band_end, black_count, white_count) for each radial band
     """
-    from itertools import product
-    # Create radial bands
+    # Create radial bands based on splinter centroids
     radial_bands = [(s, np.linalg.norm(s.centroid_px - origin_px)) for s in splinters]
     radial_bands.sort(key=lambda x: x[1])
 
-    
     # Create n distinct radial bands
     n = 50
     bands = chunk_len(len(radial_bands), n)
-    band_bounds = [(band[0], band[1]) for band in bands]
-    
-    # Divide image into chunks for parallel processing
+
+    # Extract band boundaries for distance calculations
+    band_edges = np.array([band[1] for band in bands])
+
+    # Create distance map for entire image (vectorized - much faster than per-pixel)
     h, w = image.shape
-    chunk_size = h // os.cpu_count()  # Adjust based on image size and available memory
-    chunks = []
-    
-    for i in range(0, h, chunk_size):
-        for j in range(0, w, chunk_size):
-            # this computes a list of all pixel coordinates in the chunk
-            chunk_coords = list(product(
-                range(i, min(i + chunk_size, h)),
-                range(j, min(j + chunk_size, w))
-            ))
-            chunks.append((chunk_coords, image, origin_px, band_bounds))
-    
-    # Process chunks in parallel
-    with Pool() as pool:
-        results = []
-        for result in tqdm(pool.imap_unordered(process_chunk, chunks)):
-            results.append(result)
-    
-    # Aggregate results
-    final_results = np.sum(results, axis=0)
-    
-    # Convert to final format
+    y, x = np.ogrid[:h, :w]
+    distances = np.sqrt((x - origin_px[0])**2 + (y - origin_px[1])**2)
+
+    # Assign each pixel to a band using digitize
+    # digitize returns indices [1, n+1], so we subtract 1 to get [0, n]
+    band_idx = np.digitize(distances, band_edges)
+    band_idx = np.clip(band_idx - 1, 0, n - 1)  # Ensure valid indices
+
+    # Separate black (crack) and white (non-crack) pixels
+    is_black = (image == 0)
+
+    # Count pixels per band using bincount (extremely fast C-level operation)
+    blacks_per_band = np.bincount(band_idx[is_black].ravel(), minlength=n)[:n]
+    whites_per_band = np.bincount(band_idx[~is_black].ravel(), minlength=n)[:n]
+
+    # Build results in expected format
     band_results = []
-    for (start, end), (blacks, whites) in zip(band_bounds, final_results):
-        whites = max(whites, 1)  # Prevent division by zero
-        band_results.append((start, end, blacks, whites))
-    
+    for idx, band in enumerate(bands):
+        whites = max(int(whites_per_band[idx]), 1)  # Prevent division by zero
+        blacks = int(blacks_per_band[idx])
+        band_results.append((band[0], band[1], blacks, whites))
+
     return band_results
 
 
