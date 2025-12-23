@@ -37,7 +37,7 @@ from rich.console import Console
 import fracsuite.core.logging
 
 import scienceplots
-_ = scienceplots.isdir # dummy usage to avoid removing on isort
+_ = scienceplots # dummy usage to avoid removing on isort
 
 warnings.filterwarnings("ignore")
 
