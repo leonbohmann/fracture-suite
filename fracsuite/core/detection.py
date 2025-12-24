@@ -1,6 +1,8 @@
+import math
 import multiprocessing
 import multiprocessing.shared_memory as sm
 from multiprocessing import Pool
+import os
 
 import cv2
 import numpy as np
@@ -636,12 +638,13 @@ def get_crack_width_wrt_distance(origin_px, splinters: list, image, t) -> list[t
     band_bounds = [(band[0], band[1]) for band in bands]
     
     # Divide image into chunks for parallel processing
-    chunk_size = 100  # Adjust based on image size and available memory
     h, w = image.shape
+    chunk_size = h // os.cpu_count()  # Adjust based on image size and available memory
     chunks = []
     
     for i in range(0, h, chunk_size):
         for j in range(0, w, chunk_size):
+            # this computes a list of all pixel coordinates in the chunk
             chunk_coords = list(product(
                 range(i, min(i + chunk_size, h)),
                 range(j, min(j + chunk_size, w))
