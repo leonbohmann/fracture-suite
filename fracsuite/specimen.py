@@ -1233,13 +1233,10 @@ def visible_crack_width():
         # Calculate crack width vs distance (vectorized - very fast!)
         pixel_bands = get_crack_width_wrt_distance(spec.get_impact_position(), splinters, frac_img, thickness)
 
-        pxpmm = spec.calculate_px_per_mm()
 
         # Extract distance midpoints and black/white ratios
-        distance[spec.name] = [((x[0]+x[1])/2.0)/pxpmm for x in pixel_bands]
+        distance[spec.name] = [((x[0]+x[1])/2.0)/factor for x in pixel_bands]
         black_to_white_ratio[spec.name] = [x[2]/x[3] for x in pixel_bands]
-
-    factor = specimens[0].calculate_px_per_mm() if specimens else 1.0
 
     norm = plt.Normalize(vmin=min(spec.sig_h for spec in specimens),
                     vmax=max(spec.sig_h for spec in specimens))
@@ -1275,9 +1272,9 @@ def visible_crack_width():
     plt.colorbar(sm, ax=axs, label='Sigma (MPa)')
     
     axs.set_xlim([0, maxD * 0.85])
-    axs.set_ylim([0,4])
+    axs.set_ylim([0,3])
     
-    axs.set_xlabel("Distance from center (mm)")
+    axs.set_xlabel("Distance from Impact Position (mm)")
     axs.set_ylabel("Black Pixels / White Pixels (px/px)")
     legend_without_duplicate_labels(axs, compact=True)
     State.output(StateOutput(fig, FigureSize.ROW1), "cracksurface_wrt_R")
