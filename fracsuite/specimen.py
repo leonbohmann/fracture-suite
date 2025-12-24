@@ -1204,63 +1204,40 @@ def crack_surface_simple(
     State.output(StateOutput(fig,sz), f"circumfence_vs_energy_{boundary}")
 
 
-def _process_specimen_crack_width(spec_data):
-    """Process a single specimen's crack width data in parallel"""
-    name, impact_pos, splinters, frac_img, prepconf, thickness = spec_data
-
-    # preprocess frac_img
-    frac_img = preprocess_image(frac_img, prepconf)
-
-    # Calculate crack width vs distance (now vectorized, no internal multiprocessing)
-    pixel_bands = get_crack_width_wrt_distance(impact_pos, splinters, frac_img, thickness)
-
-    # pixel_bands: band[0] band[1] blacks whites
-    dist = [(x[0]+x[1])/2.0 for x in pixel_bands]
-    bwr = [x[2]/x[3] for x in pixel_bands]
-
-    return name, dist, bwr
-
-
 @app.command()
 def visible_crack_width():
-    from concurrent.futures import ProcessPoolExecutor
-    import os
-
     # filter_func = create_filter_function("(4|8).*.B.*", needs_scalp=True, needs_splinters=True)
     filter_func = create_filter_function("(4|8).*.B.*", needs_scalp=True, needs_splinters=True)
 
     specimens = Specimen.get_all_by(filter_func, load=True)
 
-    # Prepare data for parallel processing
-    spec_data_list = [
-        (
-            spec.name,
-            spec.get_impact_position(),
-            spec.splinters,
-            spec.get_fracture_image(),
-            spec.get_prepconf(warn=False),
-            spec.measured_thickness
-        )
-        for spec in specimens
-    ]
-
-    ############################
-    # Process specimens in parallel
-    # Now safe because get_crack_width_wrt_distance is vectorized (no nested parallelization)
     distance = {}
     black_to_white_ratio = {}
+    factor = 1.0
 
-    with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-        results = list(tqdm(
-            executor.map(_process_specimen_crack_width, spec_data_list),
-            total=len(spec_data_list),
-            desc="Processing specimens"
-        ))
+    ############################
+    # Process specimens sequentially with vectorized operation
+    # The vectorized get_crack_width_wrt_distance is 10-100x faster than the old chunked approach,
+    # so sequential processing is still very fast and avoids Windows multiprocessing resource issues
+    for spec in tqdm(specimens, desc="Processing specimens"):
+        factor = spec.calculate_px_per_mm()
 
-    # Collect results
-    for name, dist, bwr in results:
-        distance[name] = dist
-        black_to_white_ratio[name] = bwr
+        # Get specimen data
+        splinters = spec.splinters
+        frac_img = spec.get_fracture_image()
+        thickness = spec.measured_thickness
+
+        # Preprocess image
+        frac_img = preprocess_image(frac_img, spec.get_prepconf(warn=False))
+
+        # Calculate crack width vs distance (vectorized - very fast!)
+        pixel_bands = get_crack_width_wrt_distance(spec.get_impact_position(), splinters, frac_img, thickness)
+
+        pxpmm = spec.calculate_px_per_mm()
+
+        # Extract distance midpoints and black/white ratios
+        distance[spec.name] = [((x[0]+x[1])/2.0)/pxpmm for x in pixel_bands]
+        black_to_white_ratio[spec.name] = [x[2]/x[3] for x in pixel_bands]
 
     factor = specimens[0].calculate_px_per_mm() if specimens else 1.0
 
@@ -1278,6 +1255,9 @@ def visible_crack_width():
     p.dump(distance)
     pw.dump(black_to_white_ratio)
 
+
+    maxD = 0
+
     fig,axs = plt.subplots(figsize=get_fig_width(FigureSize.ROW1))
     for spec in tqdm(specimens, desc="Plotting"):
         # sort both arrays by distance
@@ -1286,16 +1266,17 @@ def visible_crack_width():
 
         # adjust line style
 
+        maxD = max(maxD, np.max(dist))
 
         axs.plot(dist, bwr, label=spec.thickness,
              color=cmap(norm(spec.sig_h)), linestyle=linestyles[spec.thickness])
 
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     plt.colorbar(sm, ax=axs, label='Sigma (MPa)')
-    maxD = np.max([np.sqrt(s.get_image_size()[0]**2+s.get_image_size()[1]**2) for s in specimens])
-    axs.set_xlim([0, 450]) #450 mm
+    
+    axs.set_xlim([0, maxD * 0.85])
     axs.set_ylim([0,4])
-    xtickformatter = plt.FuncFormatter(lambda x, pos: f"{x/factor:.0f}")
+    
     axs.set_xlabel("Distance from center (mm)")
     axs.set_ylabel("Black Pixels / White Pixels (px/px)")
     legend_without_duplicate_labels(axs, compact=True)

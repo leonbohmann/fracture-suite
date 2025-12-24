@@ -627,12 +627,26 @@ def get_crack_width_wrt_distance(origin_px, splinters: list, image, t) -> list[t
     radial_bands = [(s, np.linalg.norm(s.centroid_px - origin_px)) for s in splinters]
     radial_bands.sort(key=lambda x: x[1])
 
-    # Create n distinct radial bands
-    n = 50
+    # Create n distinct radial bands (but not more than we have splinters)
+    n = min(50, len(radial_bands))
+    if n == 0:
+        # No splinters, return empty results
+        return []
+
     bands = chunk_len(len(radial_bands), n)
 
-    # Extract band boundaries for distance calculations
-    band_edges = np.array([band[1] for band in bands])
+    # CRITICAL FIX: Extract actual pixel distances from sorted radial_bands, not indices
+    # bands contains index ranges like [(0,2), (2,4), ...], we need the actual distances
+    band_edges = np.array([
+        radial_bands[min(band[1]-1, len(radial_bands)-1)][1]
+        for band in bands
+    ])
+
+    # Ensure band_edges are strictly monotonically increasing (required by np.digitize)
+    # Add small epsilon to duplicates to maintain order
+    for i in range(1, len(band_edges)):
+        if band_edges[i] <= band_edges[i-1]:
+            band_edges[i] = band_edges[i-1] + 0.001
 
     # Create distance map for entire image (vectorized - much faster than per-pixel)
     h, w = image.shape
@@ -652,11 +666,18 @@ def get_crack_width_wrt_distance(origin_px, splinters: list, image, t) -> list[t
     whites_per_band = np.bincount(band_idx[~is_black].ravel(), minlength=n)[:n]
 
     # Build results in expected format
+    # Return actual distances (not indices) for the band boundaries
     band_results = []
     for idx, band in enumerate(bands):
         whites = max(int(whites_per_band[idx]), 1)  # Prevent division by zero
         blacks = int(blacks_per_band[idx])
-        band_results.append((band[0], band[1], blacks, whites))
+
+        # Get the actual distance boundaries for this band
+        # band[0] is the start index, band[1]-1 is the last included index
+        start_dist = radial_bands[band[0]][1] if band[0] < len(radial_bands) else 0
+        end_dist = radial_bands[min(band[1]-1, len(radial_bands)-1)][1]
+
+        band_results.append((start_dist, end_dist, blacks, whites))
 
     return band_results
 
