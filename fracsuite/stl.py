@@ -10,15 +10,16 @@ from __future__ import annotations
 import gc
 import math
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-import panel as pn
 import pyvista as pv
 import typer
+from scipy.spatial import KDTree
 
 from fracsuite.callbacks import main_callback
 
@@ -36,12 +37,8 @@ class Point3D:
     y: float
     z: float
 
-    def to_dict(self) -> dict:
-        return {'x': self.x, 'y': self.y, 'z': self.z}
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Point3D:
-        return cls(x=d['x'], y=d['y'], z=d['z'])
+    def to_array(self) -> np.ndarray:
+        return np.array([self.x, self.y, self.z])
 
     @classmethod
     def from_array(cls, arr: np.ndarray) -> Point3D:
@@ -59,16 +56,23 @@ class BodyAnalysisResult:
     area_slice1: float
     area_slice2: float
     volume_theoretical: float
-    ratio_of_volume: float
-    area_mantel_calc: float
-    area_mantel: float
-    area_theoretical_old: float
-    area_theoretical_new: float
-    fsr_old: float
-    fsr_new: float
+    fracture_surface_area: float  # directly measured from mesh clipping (excluding caps)
+    area_theoretical: float  # theoretical fracture surface area (smooth prism)
+    fsr_a: float  # fracture surface roughness (area-based): A_real / A_theoretical
+    fsr_v: float  # fracture surface roughness (volume-based): V_real / V_theoretical
     thickness: float
     distance_between_slices: float
     max_distance_z: float
+
+
+@dataclass
+class SpecimenData:
+    """Data retrieved from the specimen database."""
+    t_measured: Optional[float] = None  # measured thickness from scalp [mm]
+    sig_h: Optional[float] = None  # pre-stress [MPa]
+    U: Optional[float] = None  # strain energy [J/m²]
+    U_d: Optional[float] = None  # strain energy density [J/m³]
+    N50: Optional[float] = None  # fragment count
 
 
 @dataclass
@@ -78,6 +82,28 @@ class STLAnalysisResult:
     input_file: Path
     output_folder: Path
     body_results: list[BodyAnalysisResult] = field(default_factory=list)
+    specimen_data: Optional[SpecimenData] = None  # Data from specimen database
+
+    @property
+    def mean_thickness(self) -> Optional[float]:
+        """Mean calculated thickness across all bodies."""
+        if not self.body_results:
+            return None
+        return np.mean([b.thickness for b in self.body_results])
+
+    @property
+    def mean_fsr_a(self) -> Optional[float]:
+        """Mean FSR (area-based) across all bodies."""
+        if not self.body_results:
+            return None
+        return np.mean([b.fsr_a for b in self.body_results])
+
+    @property
+    def mean_fsr_v(self) -> Optional[float]:
+        """Mean FSR (volume-based) across all bodies."""
+        if not self.body_results:
+            return None
+        return np.mean([b.fsr_v for b in self.body_results])
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert results to a pandas DataFrame."""
@@ -86,142 +112,147 @@ class STLAnalysisResult:
             data.append({
                 'Specimen': self.specimen_name,
                 'Body': r.body_index,
-                'Volume_total_fragment': r.volume_total,
-                'Area_total_fragment': r.area_total,
-                'Perimeter1': r.perimeter_slice1,
-                'Perimeter2': r.perimeter_slice2,
-                'Area_slice1': r.area_slice1,
-                'Area_slice2': r.area_slice2,
-                'Volume_theoretical': r.volume_theoretical,
-                'ratio_of_volume': r.ratio_of_volume,
-                'Calculated Area Mantel': r.area_mantel_calc,
-                'Area Mantel': r.area_mantel,
-                'Area_theoretical_old': r.area_theoretical_old,
-                'Area_theoretical_new': r.area_theoretical_new,
-                'Fracture Surface Roughness old': r.fsr_old,
-                'Fracture Surface Roughness new': r.fsr_new,
-                'thickness (vector)': r.thickness,
-                'distance between slices': r.distance_between_slices,
-                'distance highest - lowest point': r.max_distance_z,
+                'Volume_total [mm³]': r.volume_total,
+                'Volume_theoretical [mm³]': r.volume_theoretical,
+                'Area_total [mm²]': r.area_total,
+                'Perimeter1 [mm]': r.perimeter_slice1,
+                'Perimeter2 [mm]': r.perimeter_slice2,
+                'Area_slice1 [mm²]': r.area_slice1,
+                'Area_slice2 [mm²]': r.area_slice2,
+                'Fracture_surface_area [mm²]': r.fracture_surface_area,
+                'Area_theoretical [mm²]': r.area_theoretical,
+                'FSR_A': r.fsr_a,
+                'FSR_V': r.fsr_v,
+                'Thickness [mm]': r.thickness,
+                'Slice_distance [mm]': r.distance_between_slices,
+                'Max_Z_distance [mm]': r.max_distance_z,
             })
         return pd.DataFrame(data)
 
 
 # =============================================================================
-# Utility Functions
+# Optimized Utility Functions (using numpy arrays)
 # =============================================================================
 
-def distance_3d(p1: dict | Point3D, p2: dict | Point3D) -> float:
-    """Calculate the Euclidean distance between two 3D points.
+def sort_points_by_nearest_neighbor_fast(points: np.ndarray) -> np.ndarray:
+    """Sort points by nearest neighbor traversal using KDTree.
+
+    This is O(n log n) instead of O(n²) for the naive approach.
 
     Args:
-        p1: First point (dict with x, y, z keys or Point3D).
-        p2: Second point (dict with x, y, z keys or Point3D).
+        points: Nx3 numpy array of points.
 
     Returns:
-        The distance between the two points, or infinity if either is None.
+        Sorted Nx3 numpy array of points.
     """
-    if p1 is None or p2 is None:
-        return float('inf')
-
-    if isinstance(p1, Point3D):
-        p1 = p1.to_dict()
-    if isinstance(p2, Point3D):
-        p2 = p2.to_dict()
-
-    return math.sqrt(
-        (p1['x'] - p2['x']) ** 2 +
-        (p1['y'] - p2['y']) ** 2 +
-        (p1['z'] - p2['z']) ** 2
-    )
-
-
-def compute_center_point(points: list[dict]) -> dict:
-    """Compute the center point (centroid) of a polygon.
-
-    Args:
-        points: List of points, each a dict with 'x', 'y', 'z' keys.
-
-    Returns:
-        A dict with the center point coordinates.
-
-    Raises:
-        ValueError: If any point is missing required coordinates.
-    """
-    if any('x' not in point or 'y' not in point or 'z' not in point for point in points):
-        raise ValueError("Points should have 'x', 'y' and 'z' coordinates")
+    if len(points) < 2:
+        return points
 
     n = len(points)
-    center_x = sum(point['x'] for point in points) / n
-    center_y = sum(point['y'] for point in points) / n
-    center_z = sum(point['z'] for point in points) / n
-    return {'x': center_x, 'y': center_y, 'z': center_z}
+
+    # Build KDTree for fast nearest neighbor queries
+    tree = KDTree(points)
+
+    # Start from the point closest to centroid
+    centroid = points.mean(axis=0)
+    _, start_idx = tree.query(centroid)
+
+    visited = np.zeros(n, dtype=bool)
+    sorted_indices = np.empty(n, dtype=int)
+    sorted_indices[0] = start_idx
+    visited[start_idx] = True
+
+    current_idx = start_idx
+    for i in range(1, n):
+        # Query k nearest neighbors (need k > 1 to skip visited)
+        # Start with small k and increase if needed
+        k = min(10, n)
+        found = False
+
+        while not found and k <= n:
+            distances, indices = tree.query(points[current_idx], k=k)
+
+            for idx in indices:
+                if not visited[idx]:
+                    sorted_indices[i] = idx
+                    visited[idx] = True
+                    current_idx = idx
+                    found = True
+                    break
+
+            if not found:
+                k = min(k * 2, n)
+
+        if not found:
+            # Fallback: find any unvisited point
+            for idx in range(n):
+                if not visited[idx]:
+                    sorted_indices[i] = idx
+                    visited[idx] = True
+                    current_idx = idx
+                    break
+
+    return points[sorted_indices]
 
 
-def find_k_nearest_neighbors(point: dict, points: list[dict], k: int) -> list[dict]:
-    """Find the k nearest neighbors of a point.
+def calculate_perimeter_fast(points: np.ndarray) -> float:
+    """Calculate the perimeter of a polygon from sorted points using numpy.
 
     Args:
-        point: The reference point.
-        points: List of candidate points.
-        k: Number of neighbors to find.
+        points: Nx3 numpy array of points sorted in order around the polygon.
 
     Returns:
-        List of the k nearest points.
+        The perimeter length.
     """
-    distances = [(distance_3d(point, p), p) for p in points]
-    distances.sort(key=lambda x: x[0])
-    return [p for _, p in distances[:k]]
+    if len(points) < 2:
+        return 0.0
+
+    # Calculate distances between consecutive points
+    diffs = np.diff(points, axis=0)
+    distances = np.linalg.norm(diffs, axis=1)
+
+    # Add distance from last to first point to close the loop
+    closing_distance = np.linalg.norm(points[-1] - points[0])
+
+    return float(distances.sum() + closing_distance)
 
 
-def polygon_area_xy(points: list[dict]) -> float:
+def polygon_area_xy_fast(points: np.ndarray) -> float:
     """Calculate the area of a polygon in the XY plane using the shoelace formula.
 
-    Note: The polygon is assumed to be in the XY plane (Z coordinate ignored).
-
     Args:
-        points: List of points defining the polygon vertices.
+        points: Nx3 numpy array of points defining the polygon vertices.
 
     Returns:
         The area of the polygon.
     """
-    n = len(points)
-    area = 0.0
-    for i in range(n):
-        j = (i + 1) % n
-        area += points[i]['x'] * points[j]['y']
-        area -= points[j]['x'] * points[i]['y']
-    return abs(area) / 2.0
+    if len(points) < 3:
+        return 0.0
+
+    x = points[:, 0]
+    y = points[:, 1]
+
+    # Shoelace formula vectorized
+    area = 0.5 * np.abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+    return float(area)
 
 
-def slice_mesh_at_z(mesh: pv.PolyData, z_values: list[float]) -> list[pv.PolyData]:
-    """Create slices of a mesh at specific Z values.
+def cut_and_calculate_fracture_surface_area(
+    mesh: pv.PolyData,
+    z_values: list[float],
+) -> float:
+    """Cut a mesh between two Z planes and calculate the fracture surface area.
 
-    Args:
-        mesh: The PyVista mesh to slice.
-        z_values: List of Z coordinates where slices should be created.
-
-    Returns:
-        List of sliced meshes.
-    """
-    slices = []
-    for z in z_values:
-        slice_mesh = mesh.slice(normal='z', origin=(0, 0, z))
-        if not slice_mesh.is_all_triangles:
-            slice_mesh = slice_mesh.triangulate()
-        slices.append(slice_mesh)
-    return slices
-
-
-def cut_and_calculate_surface_area(mesh: pv.PolyData, z_values: list[float]) -> float:
-    """Cut a mesh between two Z planes and calculate the surface area.
+    The mesh is clipped between the two Z planes. PyVista's clip() does NOT
+    add cap faces at the clipping planes, so the resulting area is directly
+    the fracture surface (the "mantel" or lateral surface).
 
     Args:
         mesh: The PyVista mesh to cut.
         z_values: Two Z values defining the cutting planes [z_lower, z_upper].
 
     Returns:
-        The surface area of the clipped mesh.
+        The fracture surface area (lateral surface between the two Z planes).
     """
     clipped_mesh = mesh.clip(normal='z', origin=(0, 0, z_values[0]), invert=False)
     clipped_mesh = clipped_mesh.clip(normal='z', origin=(0, 0, z_values[1]), invert=True)
@@ -229,72 +260,76 @@ def cut_and_calculate_surface_area(mesh: pv.PolyData, z_values: list[float]) -> 
     if not clipped_mesh.is_all_triangles:
         clipped_mesh = clipped_mesh.triangulate()
 
+    # PyVista clip() does not add cap faces, so area is directly the fracture surface
     return clipped_mesh.area
 
 
-def sort_points_by_nearest_neighbor(points_list: list[dict]) -> list[dict]:
-    """Sort points by nearest neighbor traversal starting from center.
+# =============================================================================
+# Specimen Name Extraction
+# =============================================================================
+
+def extract_specimen_name(filename: str) -> Optional[str]:
+    """Extract specimen name from STL filename.
+
+    Expects filenames like "8.100.B.04.stl" or "8.100.B.04_something.stl".
+    The specimen name pattern is: thickness.stress.boundary.number
 
     Args:
-        points_list: List of points to sort.
+        filename: The STL filename (with or without path).
 
     Returns:
-        Sorted list of points.
+        The specimen name (e.g., "8.100.B.04") or None if not found.
     """
-    if not points_list:
-        return []
+    import re
 
-    center_point = compute_center_point(points_list)
-    sorted_points = []
-    remaining_points = points_list.copy()
+    # Get just the filename without path
+    name = Path(filename).stem
 
-    start_point = min(remaining_points, key=lambda p: distance_3d(p, center_point))
-    sorted_points.append(start_point)
-    remaining_points.remove(start_point)
+    # Pattern: digit(s).digit(s).letter.digit(s) optionally followed by more stuff
+    # Examples: 8.100.B.04, 12.120.A.01, 4.80.Z.03
+    pattern = r'^(\d+\.\d+\.[A-Z]\.\d+)'
+    match = re.match(pattern, name, re.IGNORECASE)
 
-    while remaining_points:
-        nearest_neighbors = find_k_nearest_neighbors(sorted_points[-1], remaining_points, 1)
-        if nearest_neighbors:
-            nearest_neighbor = nearest_neighbors[0]
-            sorted_points.append(nearest_neighbor)
-            remaining_points.remove(nearest_neighbor)
-        else:
-            break
+    if match:
+        return match.group(1)
 
-    return sorted_points
+    return None
 
 
-def calculate_perimeter(sorted_points: list[dict]) -> float:
-    """Calculate the perimeter of a polygon from sorted points.
+def fetch_specimen_data(specimen_name: str) -> Optional[SpecimenData]:
+    """Fetch specimen data from the database.
 
     Args:
-        sorted_points: List of points sorted in order around the polygon.
+        specimen_name: Name of the specimen (e.g., "8.100.B.04").
 
     Returns:
-        The perimeter length.
+        SpecimenData object or None if specimen not found.
     """
-    if len(sorted_points) < 2:
-        return 0.0
+    try:
+        from fracsuite.core.specimen import Specimen
 
-    perimeter = sum(
-        distance_3d(sorted_points[i], sorted_points[i + 1])
-        for i in range(len(sorted_points) - 1)
-    )
-    perimeter += distance_3d(sorted_points[-1], sorted_points[0])
-    return perimeter
+        spec = Specimen.get(specimen_name, load=True, panic=False, printout=False)
+        if spec is None:
+            return None
 
+        data = SpecimenData(
+            t_measured=spec.measured_thickness,
+            sig_h=float(spec.sig_h) if hasattr(spec.sig_h, '__float__') else spec.sig_h,
+            U=spec.U,
+            U_d=spec.U_d,
+        )
 
-def polydata_to_point_list(polydata: pv.PolyData) -> list[dict]:
-    """Convert PyVista PolyData points to a list of dicts.
+        # Try to get N50
+        try:
+            data.N50 = spec.calculate_nfifty_in_windows()
+        except Exception:
+            data.N50 = None
 
-    Args:
-        polydata: PyVista PolyData object.
+        return data
 
-    Returns:
-        List of point dicts with 'x', 'y', 'z' keys.
-    """
-    points = polydata.points
-    return [{'x': p[0], 'y': p[1], 'z': p[2]} for p in points]
+    except Exception as e:
+        print(f"Warning: Could not load specimen '{specimen_name}': {e}")
+        return None
 
 
 # =============================================================================
@@ -347,7 +382,7 @@ def analyze_body(
         body = body.triangulate()
 
     # Clean and prepare mesh
-    body = body.extract_surface().triangulate().clean()
+    body = body.extract_surface().triangulate() #.clean()
 
     # Calculate total volume
     volume_total = body.volume
@@ -387,9 +422,6 @@ def analyze_body(
     # Theoretical thickness (distance between slices)
     t_theo = abs(z2 - z1)
 
-    # Calculate fracture surface area
-    surface_area_cutted = cut_and_calculate_surface_area(body, z_values)
-
     # Create slices
     single_slice1 = body.slice(normal=[0, 0, 1], origin=[0, 0, z1])
     single_slice2 = body.slice(normal=[0, 0, 1], origin=[0, 0, z2])
@@ -399,29 +431,36 @@ def analyze_body(
     max_z = np.max(body.points[:, 2])
     max_distance_z = max_z - min_z
 
-    # Convert slices to point lists and sort
-    points_list1 = polydata_to_point_list(pv.PolyData(single_slice1))
-    points_list2 = polydata_to_point_list(pv.PolyData(single_slice2))
+    # Get points as numpy arrays directly (much faster than dict conversion)
+    points1 = np.asarray(single_slice1.points)
+    points2 = np.asarray(single_slice2.points)
 
-    sorted_points1 = sort_points_by_nearest_neighbor(points_list1)
-    sorted_points2 = sort_points_by_nearest_neighbor(points_list2)
+    # Sort points using fast KDTree-based method
+    sorted_points1 = sort_points_by_nearest_neighbor_fast(points1) if len(points1) > 0 else points1
+    sorted_points2 = sort_points_by_nearest_neighbor_fast(points2) if len(points2) > 0 else points2
 
-    # Calculate perimeters
-    perimeter1 = calculate_perimeter(sorted_points1)
-    perimeter2 = calculate_perimeter(sorted_points2)
+    # Calculate perimeters using vectorized numpy operations
+    perimeter1 = calculate_perimeter_fast(sorted_points1)
+    perimeter2 = calculate_perimeter_fast(sorted_points2)
 
-    # Calculate slice areas
-    area_slice1 = polygon_area_xy(sorted_points1) if sorted_points1 else 0.0
-    area_slice2 = polygon_area_xy(sorted_points2) if sorted_points2 else 0.0
+    # Calculate slice areas using vectorized shoelace formula
+    area_slice1 = polygon_area_xy_fast(sorted_points1) if len(sorted_points1) > 0 else 0.0
+    area_slice2 = polygon_area_xy_fast(sorted_points2) if len(sorted_points2) > 0 else 0.0
 
-    # Characteristic values
-    v_theo = ((area_slice1 + area_slice2) / 2) * thickness
-    ratio_of_volume = volume_total / v_theo if v_theo > 0 else 0.0
-    area_mantel_calc = area_total - (area_slice1 + area_slice2)
-    area_theo_old = ((perimeter1 + perimeter2) / 2) * thickness
-    area_theo_new = ((perimeter1 + perimeter2) / 2) * t_theo
-    fsr_old = area_mantel_calc / area_theo_old if area_theo_old > 0 else 0.0
-    fsr_new = surface_area_cutted / area_theo_new if area_theo_new > 0 else 0.0
+    # Calculate fracture surface area (lateral surface between slices)
+    fracture_surface_area = cut_and_calculate_fracture_surface_area(body, z_values)
+
+    # Theoretical values for an ideal smooth prism
+    v_theo = ((area_slice1 + area_slice2) / 2) * t_theo  # volume of ideal prism
+    area_theoretical = ((perimeter1 + perimeter2) / 2) * t_theo  # lateral surface of ideal prism
+
+    # FSR_A: Area-based fracture surface roughness
+    # Ratio of actual fracture surface area to theoretical smooth surface area
+    fsr_a = fracture_surface_area / area_theoretical if area_theoretical > 0 else 0.0
+
+    # FSR_V: Volume-based fracture surface roughness
+    # Ratio of actual volume to theoretical prism volume
+    fsr_v = volume_total / v_theo if v_theo > 0 else 0.0
 
     result = BodyAnalysisResult(
         body_index=body_index,
@@ -432,13 +471,10 @@ def analyze_body(
         area_slice1=area_slice1,
         area_slice2=area_slice2,
         volume_theoretical=v_theo,
-        ratio_of_volume=ratio_of_volume,
-        area_mantel_calc=area_mantel_calc,
-        area_mantel=surface_area_cutted,
-        area_theoretical_old=area_theo_old,
-        area_theoretical_new=area_theo_new,
-        fsr_old=fsr_old,
-        fsr_new=fsr_new,
+        fracture_surface_area=fracture_surface_area,
+        area_theoretical=area_theoretical,
+        fsr_a=fsr_a,
+        fsr_v=fsr_v,
         thickness=thickness,
         distance_between_slices=t_theo,
         max_distance_z=max_distance_z,
@@ -466,6 +502,7 @@ def analyze_stl_file(
     z_offset_lower: float = 0.1,
     z_offset_upper: float = 0.05,
     min_volume: float = 1.0,
+    data_only: bool = False,
 ) -> STLAnalysisResult:
     """Analyze an STL file containing multiple bodies/fragments.
 
@@ -479,6 +516,7 @@ def analyze_stl_file(
         z_offset_lower: Offset from lower intersection point for slicing (mm).
         z_offset_upper: Offset from upper intersection point for slicing (mm).
         min_volume: Minimum volume threshold to process (mm³).
+        data_only: If True, skip all visualization (fastest mode).
 
     Returns:
         STLAnalysisResult containing all body analysis results.
@@ -491,7 +529,9 @@ def analyze_stl_file(
     else:
         output_dir = Path(output_dir)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Only create output dir if we're saving something
+    if save_plots or save_html or save_excel:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     # Read mesh and split into bodies
     mesh = pv.read(str(input_file))
@@ -503,9 +543,13 @@ def analyze_stl_file(
         output_folder=output_dir,
     )
 
-    # Plotters for combined visualizations
-    tp3D = pv.Plotter(off_screen=off_screen)
-    tpslice = pv.Plotter(off_screen=off_screen)
+    # Skip visualization setup if data_only mode
+    if data_only:
+        save_plots = False
+        save_html = False
+
+    # Collect visualization data for batch plotting
+    vis_data_list = []
 
     for i, body in enumerate(bodies, start=1):
         body_result = analyze_body(
@@ -522,12 +566,67 @@ def analyze_stl_file(
         analysis, vis_data = body_result
         result.body_results.append(analysis)
 
-        color = DEFAULT_COLOR_MAP.get(i, 'grey')
+        if not data_only:
+            vis_data_list.append((i, analysis, vis_data))
 
+    # Batch visualization (only if needed)
+    if not data_only and (save_plots or save_html):
+        _create_visualizations(
+            specimen_name=specimen_name,
+            vis_data_list=vis_data_list,
+            output_dir=output_dir,
+            save_plots=save_plots,
+            save_html=save_html,
+            off_screen=off_screen,
+        )
+
+    # Save Excel
+    if save_excel and result.body_results:
+        df = result.to_dataframe()
+        excel_path = output_dir / f'{specimen_name}_body_data.xlsx'
+        df.to_excel(str(excel_path), index=False)
+
+    print(f'Analysis of specimen {specimen_name} is finished ({len(result.body_results)} bodies)')
+
+    return result
+
+
+def _create_visualizations(
+    specimen_name: str,
+    vis_data_list: list[tuple[int, BodyAnalysisResult, dict]],
+    output_dir: Path,
+    save_plots: bool,
+    save_html: bool,
+    off_screen: bool = True,
+) -> None:
+    """Create all visualizations in a batch (more efficient than one-by-one).
+
+    Args:
+        specimen_name: Name of the specimen.
+        vis_data_list: List of (body_index, analysis, vis_data) tuples.
+        output_dir: Directory to save outputs.
+        save_plots: Whether to save PNG plots.
+        save_html: Whether to save HTML visualization.
+        off_screen: Whether to run off-screen.
+    """
+    if not vis_data_list:
+        return
+
+    # Combined 3D plotter
+    tp3D = pv.Plotter(off_screen=off_screen)
+    tpslice = pv.Plotter(off_screen=off_screen)
+
+    for body_index, analysis, vis_data in vis_data_list:
+        color = DEFAULT_COLOR_MAP.get(body_index, 'grey')
+        body = vis_data['body']
+        slice1 = vis_data['slice1']
+        slice2 = vis_data['slice2']
+
+        # Save individual body plots
         if save_plots:
-            _save_body_plots(
+            _save_body_plots_fast(
                 specimen_name=specimen_name,
-                body_index=i,
+                body_index=body_index,
                 analysis=analysis,
                 vis_data=vis_data,
                 color=color,
@@ -537,30 +636,23 @@ def analyze_stl_file(
 
         # Add to combined plotters
         tp3D.add_mesh(
-            vis_data['body'],
+            body,
             color=color,
-            label=f'Body {i} (Volume: {analysis.volume_total:.2f})'
+            label=f'Body {body_index} (Volume: {analysis.volume_total:.2f})'
         )
         tp3D.add_point_labels(
             vis_data['intersection_points'][1:2],
-            [f'{i}'],
+            [f'{body_index}'],
             font_size=20,
             point_color='red',
             text_color='black'
         )
-        tp3D.add_mesh(vis_data['slice1'])
-        tp3D.add_mesh(vis_data['slice2'])
+        tp3D.add_mesh(slice1)
+        tp3D.add_mesh(slice2)
 
-        tpslice.add_mesh(
-            vis_data['body'],
-            color=color,
-            opacity=0.01,
-            label=f'Body {i} (Volume: {analysis.volume_total:.2f})'
-        )
-        tpslice.add_mesh(vis_data['slice1'], color="red")
-        tpslice.add_mesh(vis_data['slice2'], color="blue")
-
-        print(f'Body {i} is finished')
+        tpslice.add_mesh(body, color=color, opacity=0.01)
+        tpslice.add_mesh(slice1, color="red")
+        tpslice.add_mesh(slice2, color="blue")
 
     # Finalize combined 3D plot
     tp3D.add_legend()
@@ -571,15 +663,18 @@ def analyze_stl_file(
     tp3D.enable_parallel_projection()
 
     if save_plots:
-        screenshot_path = output_dir / f"{specimen_name}_Body_total.png"
-        tp3D.screenshot(str(screenshot_path))
+        tp3D.screenshot(str(output_dir / f"{specimen_name}_Body_total.png"))
 
     if save_html:
-        pane = pn.pane.VTK(tp3D.ren_win, width=1000, height=750)
-        html_path = output_dir / f"{specimen_name}_Body_total.html"
-        pn.panel(pane).save(str(html_path))
+        try:
+            import panel as pn
+            pane = pn.pane.VTK(tp3D.ren_win, width=1000, height=750)
+            html_path = output_dir / f"{specimen_name}_Body_total.html"
+            pn.panel(pane).save(str(html_path))
+        except ImportError:
+            print("Panel not available, skipping HTML export")
 
-    tp3D.show()
+    tp3D.close()
 
     # Finalize slice plot
     tpslice.camera_position = 'xy'
@@ -588,23 +683,12 @@ def analyze_stl_file(
     tpslice.add_text(specimen_name, position='upper_left', font_size=20)
 
     if save_plots:
-        screenshot_path = output_dir / f"{specimen_name}_Total_DifferenceSlices.png"
-        tpslice.screenshot(str(screenshot_path))
+        tpslice.screenshot(str(output_dir / f"{specimen_name}_Total_DifferenceSlices.png"))
 
-    tpslice.show()
-
-    # Save Excel
-    if save_excel:
-        df = result.to_dataframe()
-        excel_path = output_dir / f'{specimen_name}_body_data.xlsx'
-        df.to_excel(str(excel_path), index=False)
-
-    print(f'Analysis of specimen {specimen_name} is finished')
-
-    return result
+    tpslice.close()
 
 
-def _save_body_plots(
+def _save_body_plots_fast(
     specimen_name: str,
     body_index: int,
     analysis: BodyAnalysisResult,
@@ -613,23 +697,16 @@ def _save_body_plots(
     output_dir: Path,
     off_screen: bool = True,
 ) -> None:
-    """Save individual body visualization plots.
+    """Save individual body visualization plots efficiently.
 
-    Args:
-        specimen_name: Name of the specimen.
-        body_index: Index of the body.
-        analysis: Analysis results for this body.
-        vis_data: Visualization data dict from analyze_body.
-        color: Color for this body.
-        output_dir: Directory to save plots.
-        off_screen: Whether to run off-screen.
+    Uses a single plotter instance reused across plots where possible.
     """
     body = vis_data['body']
     slice1 = vis_data['slice1']
     slice2 = vis_data['slice2']
     vector_thickness = vis_data['vector_thickness']
 
-    # Plot 1: Difference of slices
+    # Plot 1: Difference of slices (top view)
     p = pv.Plotter(off_screen=off_screen)
     p.add_mesh(body.outline(), color="k")
     p.add_mesh(slice1, color="red")
@@ -637,8 +714,8 @@ def _save_body_plots(
     p.add_text(f'{specimen_name}_Body{body_index}_Slices', position='upper_left', font_size=15)
     p.camera_position = 'xy'
     p.enable_parallel_projection()
-    p.show()
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_DifferenceSlices.png"))
+    p.close()
 
     # Plot 2: Vector thickness
     p = pv.Plotter(off_screen=off_screen)
@@ -647,6 +724,7 @@ def _save_body_plots(
     p.add_text(f'{specimen_name}_Body{body_index}_t={analysis.thickness:.2f}', position='upper_left', font_size=15)
     p.show_grid()
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorThickness.png"))
+    p.close()
 
     # Plot 3: Vector and slice (lateral view)
     p = pv.Plotter(off_screen=off_screen)
@@ -659,6 +737,7 @@ def _save_body_plots(
     p.enable_parallel_projection()
     p.show_grid()
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorandSlice.png"))
+    p.close()
 
     # Plot 4: Colored body
     p = pv.Plotter(off_screen=off_screen)
@@ -666,6 +745,38 @@ def _save_body_plots(
     p.add_mesh(slice1)
     p.add_mesh(slice2)
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_coloured.png"))
+    p.close()
+
+
+def _analyze_stl_file_worker(args: tuple) -> Optional[STLAnalysisResult]:
+    """Worker function for parallel processing."""
+    (
+        stl_file,
+        output_dir,
+        save_plots,
+        save_html,
+        z_offset_lower,
+        z_offset_upper,
+        min_volume,
+        data_only,
+    ) = args
+
+    try:
+        return analyze_stl_file(
+            input_file=stl_file,
+            output_dir=output_dir,
+            save_plots=save_plots,
+            save_html=save_html,
+            save_excel=True,
+            off_screen=True,
+            z_offset_lower=z_offset_lower,
+            z_offset_upper=z_offset_upper,
+            min_volume=min_volume,
+            data_only=data_only,
+        )
+    except Exception as e:
+        print(f"Error analyzing {stl_file}: {e}")
+        return None
 
 
 def analyze_folder(
@@ -678,6 +789,10 @@ def analyze_folder(
     z_offset_lower: float = 0.1,
     z_offset_upper: float = 0.05,
     min_volume: float = 1.0,
+    data_only: bool = False,
+    parallel: bool = False,
+    max_workers: Optional[int] = None,
+    fetch_specimens: bool = True,
 ) -> list[STLAnalysisResult]:
     """Analyze all STL files in a folder.
 
@@ -691,6 +806,10 @@ def analyze_folder(
         z_offset_lower: Offset from lower intersection point for slicing (mm).
         z_offset_upper: Offset from upper intersection point for slicing (mm).
         min_volume: Minimum volume threshold to process (mm³).
+        data_only: If True, skip all visualization (fastest mode).
+        parallel: If True, process files in parallel (best with data_only=True).
+        max_workers: Maximum number of parallel workers. Defaults to CPU count.
+        fetch_specimens: If True, fetch specimen data from database (default).
 
     Returns:
         List of STLAnalysisResult for each analyzed file.
@@ -707,40 +826,230 @@ def analyze_folder(
         print(f"No STL files found in {input_dir}")
         return []
 
+    print(f"Found {len(stl_files)} STL files to analyze")
+
     results = []
     all_dataframes = []
 
-    for stl_file in stl_files:
-        print(f"\nAnalyzing: {stl_file.name}")
-        try:
-            result = analyze_stl_file(
-                input_file=stl_file,
-                output_dir=output_dir / f"{stl_file.stem}_output",
-                save_plots=save_plots,
-                save_html=save_html,
-                save_excel=True,
-                off_screen=off_screen,
-                z_offset_lower=z_offset_lower,
-                z_offset_upper=z_offset_upper,
-                min_volume=min_volume,
+    if parallel and len(stl_files) > 1:
+        # Parallel processing (best for data_only mode)
+        if not data_only:
+            print("Warning: Parallel mode with visualization may cause issues. Consider using --data-only.")
+
+        # Prepare arguments for worker function
+        worker_args = [
+            (
+                stl_file,
+                output_dir / f"{stl_file.stem}_output",
+                save_plots and not data_only,
+                save_html and not data_only,
+                z_offset_lower,
+                z_offset_upper,
+                min_volume,
+                data_only,
             )
-            results.append(result)
-            all_dataframes.append(result.to_dataframe())
-        except Exception as e:
-            print(f"Error analyzing {stl_file.name}: {e}")
-            continue
+            for stl_file in stl_files
+        ]
 
-        gc.collect()
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_analyze_stl_file_worker, args): args[0] for args in worker_args}
 
-    # Save combined Excel
+            for future in as_completed(futures):
+                stl_file = futures[future]
+                try:
+                    result = future.result()
+                    if result is not None:
+                        results.append(result)
+                        all_dataframes.append(result.to_dataframe())
+                except Exception as e:
+                    print(f"Error processing {stl_file}: {e}")
+    else:
+        # Sequential processing
+        for stl_file in stl_files:
+            print(f"\nAnalyzing: {stl_file.name}")
+            try:
+                result = analyze_stl_file(
+                    input_file=stl_file,
+                    output_dir=output_dir / f"{stl_file.stem}_output",
+                    save_plots=save_plots and not data_only,
+                    save_html=save_html and not data_only,
+                    save_excel=True,
+                    off_screen=off_screen,
+                    z_offset_lower=z_offset_lower,
+                    z_offset_upper=z_offset_upper,
+                    min_volume=min_volume,
+                    data_only=data_only,
+                )
+                results.append(result)
+                all_dataframes.append(result.to_dataframe())
+            except Exception as e:
+                print(f"Error analyzing {stl_file.name}: {e}")
+                continue
+
+            gc.collect()
+
+    # Fetch specimen data for each result
+    if fetch_specimens:
+        print("\nFetching specimen data...")
+        for result in results:
+            specimen_name = extract_specimen_name(result.input_file.name)
+            if specimen_name:
+                result.specimen_data = fetch_specimen_data(specimen_name)
+                if result.specimen_data:
+                    print(f"  {specimen_name}: t_m={result.specimen_data.t_measured:.2f}mm, σ_h={result.specimen_data.sig_h:.1f}MPa")
+                else:
+                    print(f"  {specimen_name}: not found in database")
+
+    # Save combined Excel (detailed per-body data)
     if save_combined_excel and all_dataframes:
         combined_df = pd.concat(all_dataframes, ignore_index=True)
         excel_dir = output_dir / f"{input_dir.name}_excel"
         excel_dir.mkdir(parents=True, exist_ok=True)
         combined_df.to_excel(str(excel_dir / "combined_results.xlsx"), index=False)
 
-    print('\nAnalysis of folder is finished')
+        # Save the summary table (one row per specimen)
+        summary_df = create_specimen_summary_table(results)
+        summary_df.to_excel(str(excel_dir / "specimen_summary.xlsx"), index=False)
+
+        # Save the raw body table (one row per body with specimen data)
+        raw_body_df = create_raw_body_table(results)
+        raw_body_df.to_excel(str(excel_dir / "raw_body_data.xlsx"), index=False)
+
+        print(f"\nExcel files saved to: {excel_dir}")
+        print(f"  - combined_results.xlsx (detailed STL analysis per body)")
+        print(f"  - specimen_summary.xlsx (one row per specimen)")
+        print(f"  - raw_body_data.xlsx (one row per body with specimen data)")
+
+    total_bodies = sum(len(r.body_results) for r in results)
+    print(f'\nAnalysis complete: {len(results)} files, {total_bodies} bodies')
     return results
+
+
+def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFrame:
+    """Create a summary table with one row per specimen.
+
+    Creates a table with:
+    - Specimen identification
+    - Measured thickness (t_m) from SCALP
+    - Calculated thickness (t_calc) from STL analysis
+    - Pre-stress (sig_h), strain energy (U, U_d), fragment count (N50)
+    - Individual FSR values for each body found in the STL file
+
+    Args:
+        results: List of STLAnalysisResult objects.
+
+    Returns:
+        DataFrame with one row per specimen.
+    """
+    if not results:
+        return pd.DataFrame()
+
+    # Find max number of bodies across all specimens
+    max_bodies = max((len(r.body_results) for r in results), default=0)
+
+    rows = []
+    for r in results:
+        # Extract specimen name
+        specimen_name = extract_specimen_name(r.input_file.name)
+        if not specimen_name:
+            specimen_name = r.specimen_name
+
+        row = {
+            'Specimen': specimen_name,
+            'STL_File': r.input_file.name,
+        }
+
+        # Specimen data (from database)
+        if r.specimen_data:
+            row['t_m [mm]'] = r.specimen_data.t_measured
+            row['sig_h [MPa]'] = r.specimen_data.sig_h
+            row['U [J/m²]'] = r.specimen_data.U
+            row['U_d [J/m³]'] = r.specimen_data.U_d
+            row['N50'] = r.specimen_data.N50
+        else:
+            row['t_m [mm]'] = None
+            row['sig_h [MPa]'] = None
+            row['U [J/m²]'] = None
+            row['U_d [J/m³]'] = None
+            row['N50'] = None
+
+        # STL analysis data
+        row['t_calc [mm]'] = r.mean_thickness
+        row['Num_Bodies'] = len(r.body_results)
+
+        # Mean values across bodies
+        if r.body_results:
+            row['Mean_Volume [mm³]'] = np.mean([b.volume_total for b in r.body_results])
+            row['Mean_Area [mm²]'] = np.mean([b.area_total for b in r.body_results])
+            row['Mean_FSR_A'] = np.mean([b.fsr_a for b in r.body_results])
+            row['Mean_FSR_V'] = np.mean([b.fsr_v for b in r.body_results])
+        else:
+            row['Mean_Volume [mm³]'] = None
+            row['Mean_Area [mm²]'] = None
+            row['Mean_FSR_A'] = None
+            row['Mean_FSR_V'] = None
+
+        # Add individual body FSR columns (both A and V)
+        for i in range(max_bodies):
+            col_name_a = f'FSR_A_Body_{i+1}'
+            col_name_v = f'FSR_V_Body_{i+1}'
+            if i < len(r.body_results):
+                row[col_name_a] = r.body_results[i].fsr_a
+                row[col_name_v] = r.body_results[i].fsr_v
+            else:
+                row[col_name_a] = None
+                row[col_name_v] = None
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def create_raw_body_table(results: list[STLAnalysisResult]) -> pd.DataFrame:
+    """Create a raw data table with one row per body.
+
+    Creates a table with columns:
+    Specimen, Body_ID, t, sig_h, U, U_d, N50, t_calc, FSR_A, FSR_V
+
+    Args:
+        results: List of STLAnalysisResult objects.
+
+    Returns:
+        DataFrame with one row per body across all specimens.
+    """
+    if not results:
+        return pd.DataFrame()
+
+    rows = []
+    for r in results:
+        # Extract specimen name
+        specimen_name = extract_specimen_name(r.input_file.name)
+        if not specimen_name:
+            specimen_name = r.specimen_name
+
+        # Get specimen data
+        t_measured = r.specimen_data.t_measured if r.specimen_data else None
+        sig_h = r.specimen_data.sig_h if r.specimen_data else None
+        U = r.specimen_data.U if r.specimen_data else None
+        U_d = r.specimen_data.U_d if r.specimen_data else None
+        N50 = r.specimen_data.N50 if r.specimen_data else None
+
+        # Create one row per body
+        for body in r.body_results:
+            rows.append({
+                'Specimen': specimen_name,
+                'Body_ID': body.body_index,
+                't [mm]': t_measured,
+                'sig_h [MPa]': sig_h,
+                'U [J/m²]': U,
+                'U_d [J/m³]': U_d,
+                'N50': N50,
+                't_calc [mm]': body.thickness,
+                'FSR_A': body.fsr_a,
+                'FSR_V': body.fsr_v,
+            })
+
+    return pd.DataFrame(rows)
 
 
 # =============================================================================
@@ -754,6 +1063,7 @@ def cmd_analyze_file(
     no_plots: bool = typer.Option(False, "--no-plots", help="Skip saving PNG plots."),
     no_html: bool = typer.Option(False, "--no-html", help="Skip saving HTML visualization."),
     no_excel: bool = typer.Option(False, "--no-excel", help="Skip saving Excel results."),
+    data_only: bool = typer.Option(False, "--data-only", "-d", help="Data only mode (skip all visualization, fastest)."),
     z_offset_lower: float = typer.Option(0.1, "--z-lower", help="Z offset from lower intersection (mm)."),
     z_offset_upper: float = typer.Option(0.05, "--z-upper", help="Z offset from upper intersection (mm)."),
     min_volume: float = typer.Option(1.0, "--min-volume", help="Minimum volume threshold (mm³)."),
@@ -769,6 +1079,7 @@ def cmd_analyze_file(
         z_offset_lower=z_offset_lower,
         z_offset_upper=z_offset_upper,
         min_volume=min_volume,
+        data_only=data_only,
     )
     print(f"\nAnalyzed {len(result.body_results)} bodies.")
 
@@ -780,11 +1091,23 @@ def cmd_analyze_folder(
     no_plots: bool = typer.Option(False, "--no-plots", help="Skip saving PNG plots."),
     no_html: bool = typer.Option(False, "--no-html", help="Skip saving HTML visualizations."),
     no_combined_excel: bool = typer.Option(False, "--no-combined-excel", help="Skip combined Excel file."),
+    data_only: bool = typer.Option(False, "--data-only", "-d", help="Data only mode (skip all visualization, fastest)."),
+    parallel: bool = typer.Option(False, "--parallel", "-p", help="Process files in parallel (best with --data-only)."),
+    max_workers: Optional[int] = typer.Option(None, "--workers", "-w", help="Max parallel workers (default: CPU count)."),
+    no_specimens: bool = typer.Option(False, "--no-specimens", help="Skip fetching specimen data from database."),
     z_offset_lower: float = typer.Option(0.1, "--z-lower", help="Z offset from lower intersection (mm)."),
     z_offset_upper: float = typer.Option(0.05, "--z-upper", help="Z offset from upper intersection (mm)."),
     min_volume: float = typer.Option(1.0, "--min-volume", help="Minimum volume threshold (mm³)."),
 ) -> None:
-    """Analyze all STL files in a folder."""
+    """Analyze all STL files in a folder.
+
+    Extracts specimen names from filenames (e.g., '8.100.B.04.stl') and fetches
+    corresponding specimen data (t_m, sig_h, U, U_d, N50) from the database.
+
+    Creates two Excel files:
+    - combined_results.xlsx: Detailed per-body data
+    - specimen_summary.xlsx: One row per specimen with t_m, t_calc, sig_h, U, U_d, N50, and FSR for each body
+    """
     results = analyze_folder(
         input_dir=input_dir,
         output_dir=output_dir,
@@ -795,9 +1118,105 @@ def cmd_analyze_folder(
         z_offset_lower=z_offset_lower,
         z_offset_upper=z_offset_upper,
         min_volume=min_volume,
+        data_only=data_only,
+        parallel=parallel,
+        max_workers=max_workers,
+        fetch_specimens=not no_specimens,
     )
     total_bodies = sum(len(r.body_results) for r in results)
     print(f"\nAnalyzed {len(results)} files with {total_bodies} total bodies.")
+
+    # Print summary table
+    if results and any(r.specimen_data for r in results):
+        print("\nSpecimen Summary:")
+        print("-" * 80)
+        print(f"{'Specimen':<15} {'t_m [mm]':>10} {'t_calc [mm]':>12} {'sig_h [MPa]':>12} {'N50':>8} {'Bodies':>8}")
+        print("-" * 80)
+        for r in results:
+            spec_name = extract_specimen_name(r.input_file.name) or r.specimen_name
+            t_m = f"{r.specimen_data.t_measured:.2f}" if r.specimen_data and r.specimen_data.t_measured else "N/A"
+            t_calc = f"{r.mean_thickness:.2f}" if r.mean_thickness else "N/A"
+            sig_h = f"{r.specimen_data.sig_h:.1f}" if r.specimen_data and r.specimen_data.sig_h else "N/A"
+            n50 = f"{r.specimen_data.N50:.0f}" if r.specimen_data and r.specimen_data.N50 else "N/A"
+            print(f"{spec_name:<15} {t_m:>10} {t_calc:>12} {sig_h:>12} {n50:>8} {len(r.body_results):>8}")
+
+
+@stl_app.command("test-clip-caps")
+def cmd_test_clip_caps() -> None:
+    """Test whether PyVista adds cap faces when clipping meshes.
+
+    Creates a 1x1x1 cube and a 2x1x1 box clipped in half.
+    If PyVista adds caps, both should have the same surface area (6.0).
+    """
+    print("Testing PyVista clip behavior...")
+    print("=" * 60)
+
+    # Test 1: Create a unit cube (1x1x1)
+    cube = pv.Box(bounds=(0, 1, 0, 1, 0, 1))
+    cube_area = cube.area
+    cube_volume = cube.volume
+    print(f"\n1. Unit Cube (1x1x1):")
+    print(f"   Surface area: {cube_area:.6f} (expected: 6.0)")
+    print(f"   Volume:       {cube_volume:.6f} (expected: 1.0)")
+
+    # Test 2: Create a 2x1x1 box and clip it in the middle along X
+    box_2x1x1 = pv.Box(bounds=(0, 2, 0, 1, 0, 1))
+    print(f"\n2. Box (2x1x1) before clipping:")
+    print(f"   Surface area: {box_2x1x1.area:.6f} (expected: 10.0)")
+    print(f"   Volume:       {box_2x1x1.volume:.6f} (expected: 2.0)")
+
+    # Clip at x=1 (middle of the box)
+    clipped_box = box_2x1x1.clip(normal='x', origin=(1, 0, 0), invert=False)
+    clipped_area = clipped_box.area
+    clipped_volume = clipped_box.volume
+    print(f"\n3. Box (2x1x1) clipped at x=1:")
+    print(f"   Surface area: {clipped_area:.6f}")
+    print(f"   Volume:       {clipped_volume:.6f} (expected: 1.0)")
+
+    # Test 3: Clip in Z direction (more similar to actual usage)
+    box_z = pv.Box(bounds=(0, 1, 0, 1, 0, 2))
+    print(f"\n4. Box (1x1x2) before clipping:")
+    print(f"   Surface area: {box_z.area:.6f} (expected: 10.0)")
+    print(f"   Volume:       {box_z.volume:.6f} (expected: 2.0)")
+
+    clipped_z = box_z.clip(normal='z', origin=(0, 0, 1), invert=False)
+    print(f"\n5. Box (1x1x2) clipped at z=1 (invert=False, keeping z>1):")
+    print(f"   Surface area: {clipped_z.area:.6f}")
+    print(f"   Volume:       {clipped_z.volume:.6f}")
+
+    clipped_z_inv = box_z.clip(normal='z', origin=(0, 0, 1), invert=True)
+    print(f"\n6. Box (1x1x2) clipped at z=1 (invert=True, keeping z<1):")
+    print(f"   Surface area: {clipped_z_inv.area:.6f}")
+    print(f"   Volume:       {clipped_z_inv.volume:.6f}")
+
+    # Test 4: Double clip (like in our actual code)
+    box_double = pv.Box(bounds=(0, 1, 0, 1, 0, 3))
+    print(f"\n7. Box (1x1x3) before clipping:")
+    print(f"   Surface area: {box_double.area:.6f} (expected: 14.0)")
+    print(f"   Volume:       {box_double.volume:.6f} (expected: 3.0)")
+
+    # Clip between z=1 and z=2 (keeping middle section)
+    double_clipped = box_double.clip(normal='z', origin=(0, 0, 1), invert=False)
+    double_clipped = double_clipped.clip(normal='z', origin=(0, 0, 2), invert=True)
+    print(f"\n8. Box (1x1x3) clipped between z=1 and z=2:")
+    print(f"   Surface area: {double_clipped.area:.6f}")
+    print(f"   Volume:       {double_clipped.volume:.6f} (expected: 1.0)")
+    print(f"   Expected if caps added: 6.0 (4 sides + 2 caps)")
+    print(f"   Expected if no caps:    4.0 (4 sides only)")
+
+    # Conclusion
+    print("\n" + "=" * 60)
+    print("CONCLUSION:")
+    caps_added = abs(clipped_area - cube_area) < 0.001
+    if caps_added:
+        print("  PyVista DOES add cap faces when clipping.")
+        print("  -> Clipped mesh area includes caps (would need subtraction).")
+    else:
+        print("  PyVista does NOT add cap faces when clipping.")
+        print(f"  Clipped area ({clipped_area:.2f}) != Cube area ({cube_area:.2f})")
+        print("  -> Clipped mesh area IS the fracture surface directly.")
+
+    print("\n  Current implementation: Using clipped area directly (no subtraction).")
 
 
 if __name__ == "__main__":
