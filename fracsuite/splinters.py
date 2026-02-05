@@ -2,6 +2,8 @@
 Splinter analyzation tools.
 """
 from enum import Enum
+
+from click import pause
 from fracsuite.core.logging import debug, info
 import multiprocessing.shared_memory as sm
 import os
@@ -1881,13 +1883,23 @@ def nfifty(
     thicknesses = [4,8,0]
 
     anas = np.array([
-        [103.01940, 91.50],
-        [112.59765, 145.50],
-        [122.60160, 188.0 ],
-        [143.88660, 262.50],
-        [155.16765, 293.50]
+        # [103.01940, 91.50],
+        # [112.59765, 145.50],
+        # [122.60160, 188.0 ],
+        # [143.88660, 262.50],
+        # [155.16765, 293.50]
     ])
     
+    sim_names = ["sim_4_103",
+            "sim_4_112",
+            "sim_4_122",
+            "sim_4_143",
+            "sim_4_155",
+            "sim_8_157",
+            "sim_8_192",
+            "sim_8_230",
+            "sim_8_271",
+            "sim_8_316"]
 
     basfilter = None
     
@@ -1926,20 +1938,49 @@ def nfifty(
 
         return True
 
-    specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=True)
-
     centers = [
         [425,75],
         [75,425],
         [425,425],
         [75,200]
     ]
+    
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=True)
+    simulations: list[Specimen] = []
+    for sim_name in sim_names:
+        sim = Specimen.get(sim_name, load=True)
+        
+        simulations.append(sim)
+
+    simdata = np.zeros((len(simulations), 9), dtype=np.float64)
+    for i, sim in enumerate(simulations):
+        nfifty = nfifty2 = len(sim.splinters) # sim.calculate_ne(force_recalc=recalc, d0_mm=20, d1_mm=15)
+            
+            
+        if normed:
+            nfifty = sim.calculate_ne(force_recalc=recalc)
+        elif not use_mean:
+            nfifty = sim.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+        elif x_property is SplinterProp.NFIFTY:
+            pass
+            #nfifty = sim.calculate_nfifty_in_windows([[25,25]], (50,50), force_recalc=recalc)
+        elif x_property is None:
+            nfifty = sim.calculate_intensity(force_recalc=recalc, D_mm=50)
+            nfifty = nfifty * 2500 # n50 is intensity on 50x50mm area
+        elif x_property is not None:
+            nfifty = sim.calculate_mean(x_property)
+            
+            
+        nfifty = nfifty * (sim.measured_thickness if scale_x_t else 1.0)
+        simdata[i,:] = (sim.U, sim.U_d, 0, 0, np.abs(sim.sig_h), nfifty2, sim.thickness, bid[SpecimenBoundary.B], nfifty)
+            
+    
 
     sz = FigureSize.ROW2 if 'override_figwidth' not in State.kwargs else State.kwargs['override_figwidth']
 
     axs: Axes
     fig, axs = plt.subplots(figsize=get_fig_width(sz))
-    cfg_logplot(axs, not lin)
+    cfg_logplot(axs, not lin, is_grid=False)
     idd = {
         EnergyUnit.U: 0,
         EnergyUnit.UD: 1,
@@ -1980,11 +2021,14 @@ def nfifty(
         for i, specimen in enumerate(specimens):
             progress.set_description(specimen.name)
             
-            nfifty2 = specimen.calculate_ne(force_recalc=recalc)
+            # only default, will be overwritten afterwards
+            nfifty = nfifty2 = 0 # specimen.calculate_ne(force_recalc=recalc)
             
             if normed:
                 nfifty = specimen.calculate_ne(force_recalc=recalc)
             elif not use_mean:
+                nfifty = specimen.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+            elif x_property is SplinterProp.NFIFTY:
                 nfifty = specimen.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
             elif x_property is None:
                 nfifty = specimen.calculate_intensity(force_recalc=recalc, D_mm=50)
@@ -1999,8 +2043,8 @@ def nfifty(
             
             progress.advance()
             
-            if specimen.break_pos == SpecimenBreakPosition.CENTER and not (only_center or only_corner):
-                axs.scatter(nfifty, results[i,id], edgecolors='coral', facecolors='none', s=25, linewidths=0.5, label='Center impact')
+            #if specimen.break_pos == SpecimenBreakPosition.CENTER and not (only_center or only_corner):
+            #    axs.scatter(nfifty, results[i,id], edgecolors='coral', facecolors='none', s=25, linewidths=0.5, label='Center impact')
                 
             identifier = f'{specimen.thickness}.{specimen.nom_stress:.0f}'
             
@@ -2058,6 +2102,43 @@ def nfifty(
         x = results[mask,-1]
         y = results[mask,id]
 
+        # plot in       terpolation curves of x and navidx
+        if len(y) > 0:
+            # fit a curve
+            def func(x, a, b, c):
+                return np.float64(a * (x ** -b) + c)
+
+            if not no_navid and x_property is None:
+                x = np.concatenate([x,navid_x])
+                y = np.concatenate([y,navid_y])
+                p = np.column_stack([x,y])
+
+            y_fit, popt = fit_curve(axs, x, y, func, clr, pltlabel="", annotate_label="")
+            print(f"Fitting parameters for {thick}mm: {popt}, Function: a*x^b + c")
+            
+
+            # debug(p.shape)
+            # debug(p[0])
+            # # sort for x
+            # p = p[p[:,0].argsort()]
+
+            # x = p[:,0]
+            # y = p[:,1]
+            # popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
+            # info(f'{thick}mm Fitting cov:', pcov)
+
+            # # plot the curve
+            # x = np.linspace(np.min(x), np.max(x), 100)
+            # y = func(x, *popt)
+            # axs.plot(x, y, linestyle=(0,(1,1)), color=clr, linewidth=lwlines)
+
+            # # calculate r^2
+            # residuals = y - func(x, *popt)
+            # ss_res = np.sum(residuals**2)
+            # ss_tot = np.sum((y-np.mean(y))**2)
+            # r_squared = 1 - (ss_res / ss_tot)
+            # info(f'{thick}mm r^2:', r_squared)
+
         # getting u results from navid depends on thickness
         if (unit == EnergyUnit.U or unit == EnergyUnit.Ut or unit == EnergyUnit.s) and not no_navid and x_property is None and thick != 0:
             navid_n50 = navid_nfifty(thick, as_ud=False)                        
@@ -2100,41 +2181,21 @@ def nfifty(
             
             
 
-        # plot interpolation curves of x and navidx
-        if len(y) > 0:
-            # fit a curve
-            def func(x, a, b, c):
-                return np.float64(a * (x ** -b) + c)
+        
 
-            if not no_navid and x_property is None:
-                x = np.concatenate([x,navid_x])
-                y = np.concatenate([y,navid_y])
-                p = np.column_stack([x,y])
-
-            fit_curve(axs, x, y, func, clr, pltlabel="", annotate_label="")
-
-
-            # debug(p.shape)
-            # debug(p[0])
-            # # sort for x
-            # p = p[p[:,0].argsort()]
-
-            # x = p[:,0]
-            # y = p[:,1]
-            # popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
-            # info(f'{thick}mm Fitting cov:', pcov)
-
-            # # plot the curve
-            # x = np.linspace(np.min(x), np.max(x), 100)
-            # y = func(x, *popt)
-            # axs.plot(x, y, linestyle=(0,(1,1)), color=clr, linewidth=lwlines)
-
-            # # calculate r^2
-            # residuals = y - func(x, *popt)
-            # ss_res = np.sum(residuals**2)
-            # ss_tot = np.sum((y-np.mean(y))**2)
-            # r_squared = 1 - (ss_res / ss_tot)
-            # info(f'{thick}mm r^2:', r_squared)
+    # plot simdata
+    if simulations is not None and len(simulations) > 0:
+        for it, thick in enumerate(thicknesses):
+            clr = tcolors[it+1]
+            mask = simdata[:,-3] == thick
+            if np.sum(mask) == 0:
+                continue
+            # debug output
+            print(f"Simulation {thick}mm:")
+            print(simdata[mask,:])
+            
+            
+            axs.scatter(simdata[mask,-1], simdata[mask,id], marker='X', linewidth=lwscatter*1.5, color=clr, edgecolor='k', label=f"Simulation {thick}mm")
 
     if additional_data_file is not None:
         data = np.genfromtxt(additional_data_file, delimiter=';', comments='#')
@@ -2190,7 +2251,7 @@ def nfifty(
         axs.plot(ux, us, linestyle='--', color='k', alpha=0.4)
     # for b,t in zip(bid.values(), thicknesses):
     #     axs.plot([],[], label=f"{t}mm", color=tcolors[b])
-        axs.scatter(anas[:,1]*(3.878 if scale_x_t else 1.0), anas[:,0], edgecolors='red', facecolors='none', s=15, linewidths=1, label='Simulations')
+        # axs.scatter(anas[:,1]*(3.878 if scale_x_t else 1.0), anas[:,0], edgecolors='red', facecolors='none', s=15, linewidths=1, label='Simulations')
 
     axs.set_ylabel(id_name[id])
     
@@ -2229,6 +2290,472 @@ def nfifty(
 
     for s in sigmas:
         print(s)
+
+
+@app.command()
+def nfifty2(
+    bound: Annotated[str, typer.Option(help='Boundary of the specimen.')] = None,
+    names: Annotated[str, typer.Option(help='Specimen filtering.')] = None,
+    unit: Annotated[EnergyUnit, typer.Option(help='Energy unit.')] = EnergyUnit.U,
+    recalc: Annotated[bool, typer.Option(help='Recalculate N50.')] = False,
+    use_mean: Annotated[bool, typer.Option(help='Use mean splinter size.')] = True,
+    no_navid: Annotated[bool, typer.Option(help='Do not use N."s Data.')] = False,
+    additional_data_file: Annotated[str, typer.Option(help='Additional data file.')] = None,
+    x_property: Annotated[SplinterProp, typer.Option(help='Property for x-axis.')] = None,
+    lin: Annotated[bool, typer.Option(help='Use linear scale.')] = False,
+    only_center: Annotated[bool, typer.Option(help='Only use center impacts.')] = False,
+    only_corner: Annotated[bool, typer.Option(help='Only use corner impacts.')] = False,
+    normed: Annotated[bool, typer.Option(help='Calculate nfifty according to the norm by counting at the lowest intensity.')] = False,
+    compare_normed: Annotated[bool, typer.Option(help='Plot NE Values in the n50 plots.')] = False,
+    scale_x_t: Annotated[bool, typer.Option(help='Scale the x-property with the thickness.')] = False,
+    x_lim: Annotated[Tuple[int,int], typer.Option(help='Scale the x-property with the thickness.')] = None,    
+):
+    bid = {
+        'A': 1,
+        'B': 2,
+        'Z': 3,
+    }
+
+
+    ttcolors = {
+        6: 'C3',
+        8: 'C1',
+        12: 'C2',
+    }
+    tcolors = {
+        1: 'r',
+        2: 'b',
+        3: 'g',
+    }
+    bname = {
+        1: 'A',
+        2: 'B',
+        3: 'Z',
+    }
+    bmarkers ={
+        1: 'o',
+        2: 's',
+        3: 'D',
+    }
+    thicknesses = [4,8,0]
+
+    anas = np.array([
+        # [103.01940, 91.50],
+        # [112.59765, 145.50],
+        # [122.60160, 188.0 ],
+        # [143.88660, 262.50],
+        # [155.16765, 293.50]
+    ])
+    
+    sim_names = ["sim_4_103",
+            "sim_4_112",
+            "sim_4_122",
+            "sim_4_143",
+            "sim_4_155",
+            "sim_8_157",
+            "sim_8_192",
+            "sim_8_230",
+            "sim_8_271",
+            "sim_8_316"]
+
+    basfilter = None
+    
+    if names is not None and names.startswith("set"):
+        setname = names.replace("set.","")
+        from fracsuite.spec_sets import sets
+        names = sets[setname]
+        basfilter = create_filter_function(names)
+    elif "*" in names:
+        basfilter = create_filter_function(names)
+        
+    def add_filter(specimen: Specimen):
+        if specimen.thickness not in thicknesses:
+            return False
+        if specimen.nom_stress < 80:
+            return False
+        
+        if only_center and specimen.break_pos != SpecimenBreakPosition.CENTER:
+            return False
+        elif only_corner and specimen.break_pos != SpecimenBreakPosition.CORNER:
+            return False
+
+        # if break_pos is not None and specimen.break_pos != break_pos:
+        #     return False
+        if specimen.boundary == SpecimenBoundary.Unknown:
+            return False
+
+        if not specimen.has_splinters:
+            return False
+
+        # if bound is not None and specimen.boundary != bound:
+        #     return False
+        if specimen.U_d is None or not np.isfinite(specimen.U_d):
+            return False
+
+        if basfilter is not None:
+            return basfilter(specimen)
+
+        return True
+
+    centers = [
+        [425,75],
+        [75,425],
+        [425,425],
+        [75,200]
+    ]
+    
+    specimens: list[Specimen] = Specimen.get_all_by(add_filter , load=True)
+    simulations: list[Specimen] = []
+    for sim_name in sim_names:
+        sim = Specimen.get(sim_name, load=True)
+        
+        simulations.append(sim)
+
+    simdata = np.zeros((len(simulations), 9), dtype=np.float64)
+    for i, sim in enumerate(simulations):
+        nfifty = nfifty2 = len(sim.splinters) # sim.calculate_ne(force_recalc=recalc, d0_mm=20, d1_mm=15)
+            
+        # nfifty = sim.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+
+            
+        if normed:
+            nfifty = sim.calculate_ne(force_recalc=recalc)
+        elif not use_mean:
+            nfifty = sim.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+        elif x_property is SplinterProp.NFIFTY:
+            pass
+            #nfifty = sim.calculate_nfifty_in_windows([[25,25]], (50,50), force_recalc=recalc)
+        elif x_property is None:
+            nfifty = sim.calculate_intensity(force_recalc=recalc, D_mm=50)
+            nfifty = nfifty * 2500 # n50 is intensity on 50x50mm area
+        elif x_property is not None:
+            nfifty = sim.calculate_mean(x_property)
+            
+            
+        nfifty = nfifty * (sim.measured_thickness if scale_x_t else 1.0)
+        simdata[i,:] = (sim.U, sim.U_d, 0, 0, np.abs(sim.sig_h), nfifty2, sim.thickness, bid[SpecimenBoundary.B], nfifty)
+            
+    
+
+    sz = FigureSize.ROW2 if 'override_figwidth' not in State.kwargs else State.kwargs['override_figwidth']
+
+    axs: Axes
+    fig, axs = plt.subplots(figsize=get_fig_width(sz))
+    cfg_logplot(axs, not lin, is_grid=False)
+    idd = {
+        EnergyUnit.U: 0,
+        EnergyUnit.UD: 1,
+        EnergyUnit.Ut: 2,
+        EnergyUnit.UDt: 3,
+        EnergyUnit.s: 4,
+    }
+
+    id = idd[unit]
+    
+    id_name = {
+        0: "Elastic Strain Energy $U$ (J/m²)",
+        1: "Elastic Strain Energy Density $U_\mathrm{D}$ (J/m³)",
+        2: "Effektive Formänderungsenergie $U_\mathrm{t}$ (J/m²)",
+        3: "Effektive Formänderungsenergiedichte $U_\mathrm{Dt}$ (J/m³)",
+        4: "Surface compressive stress $\sigma_\mathrm{S}$ (MPa)",
+    }
+
+    if unit == EnergyUnit.s:    
+        anas[:,0] = U2sigs(anas[:,0], 3.878)
+    elif unit == EnergyUnit.UD:
+        anas[:,0] = anas[:,0] / (3.878e-3)
+        
+    
+    sigmas =  []
+    
+        
+    lwscatter = 0.3 # line width for scatter plots
+    lwlines = 1.4
+    if sz == FigureSize.ROW3:
+        for idn in id_name:
+            id_name[idn] = " ".join(id_name[idn].split(" ")[-2:])
+
+    results = np.zeros((len(specimens), 9), dtype=np.float64)
+    nes = np.zeros((len(specimens)), dtype=np.float64)
+    
+    with get_progress(title='Working on specimens...') as progress:
+        for i, specimen in enumerate(specimens):
+            progress.set_description(specimen.name)
+            
+            # only default, will be overwritten afterwards
+            nfifty = nfifty2 = 0 # specimen.calculate_ne(force_recalc=recalc)
+            
+            nfifty = specimen.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+
+            
+            if normed:
+                nfifty = specimen.calculate_ne(force_recalc=recalc)
+            elif not use_mean:
+                nfifty = specimen.calculate_nfifty_in_windows(centers, (50,50), force_recalc=recalc)
+            elif x_property is None:
+                nfifty = specimen.calculate_intensity(force_recalc=recalc, D_mm=50)
+                nfifty = nfifty * 2500 # n50 is intensity on 50x50mm area
+            elif x_property is not None:
+                nfifty = specimen.calculate_mean(x_property)
+                
+            nfifty = nfifty * (specimen.measured_thickness if scale_x_t else 1.0)
+            print(f"Specimen {specimen.name}: nfifty = {nfifty}")
+            
+            results[i,:] = (specimen.U, specimen.U_d, specimen.calculate_energy(), specimen.calculate_energy_density(), np.abs(specimen.sig_h), nfifty2, specimen.thickness, bid[specimen.boundary], nfifty)
+            
+            progress.advance()
+            
+            #if specimen.break_pos == SpecimenBreakPosition.CENTER and not (only_center or only_corner):
+            #    axs.scatter(nfifty, results[i,id], edgecolors='coral', facecolors='none', s=25, linewidths=0.5, label='Center impact')
+                
+            identifier = f'{specimen.thickness}.{specimen.nom_stress:.0f}'
+            
+            if identifier not in sigmas:
+                sigmas.append(identifier)
+
+    
+
+    def U4(x):
+        return 0.58 *x + 49.47
+
+    def U8(x):
+        return 1.14 * x + 49.51
+
+    def U12(x):
+        return 1.92 * x + 48.24
+
+    def UD(x):
+        return 0.255 * x ** 2 + 109.28 * x + 5603.2
+
+    def n50S(x):
+        return x/2.655+148.9/2.655
+
+    # hard coded n50 range
+    min_N50 = 0
+    max_N50 = np.max(results[:,-1])
+
+
+    # plot navids ud results
+    if (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid and x_property is None:
+        navid_n50 = navid_nfifty_ud()
+
+        for ith, th in enumerate(thicknesses):
+            navid_r = navid_n50[navid_n50[:,2] == th]
+
+            navid_x = navid_r[:,0] #n50
+            navid_y = navid_r[:,1] #u|ud
+
+            # navids points
+            axs.scatter(
+                navid_x,
+                navid_y,
+                marker='s',
+                facecolors=f'C{ith}',
+                linewidth=lwscatter,
+                alpha = 0.4
+            )
+
+    # plot fitting curves for navids results as well as own results
+    for it, thick in enumerate(thicknesses):
+     
+        clr = tcolors[it+1]
+        mask = results[:,-3] == thick
+        # create a fitting curve
+        x = results[mask,-1]
+        y = results[mask,id]
+
+        # plot in       terpolation curves of x and navidx
+        if len(y) > 0:
+            # fit a curve
+            f = 1.0
+            if x_property is not None: f = -1.0
+            
+            def func(x, a, b, c):
+                return np.float64(a * (x ** f*b) + c)
+
+            if not no_navid and x_property is None:
+                x = np.concatenate([x,navid_x])
+                y = np.concatenate([y,navid_y])
+                p = np.column_stack([x,y])
+
+            y_fit, popt = fit_curve(axs, x, y, func, clr, pltlabel="", annotate_label="")
+            print(f"Fitting parameters for {thick}mm: {popt}, Function: a*x^b + c")
+            
+
+            # debug(p.shape)
+            # debug(p[0])
+            # # sort for x
+            # p = p[p[:,0].argsort()]
+
+            # x = p[:,0]
+            # y = p[:,1]
+            # popt, pcov = curve_fit(func, x.astype(np.float64), y.astype(np.float64), p0=(1, 1))
+            # info(f'{thick}mm Fitting cov:', pcov)
+
+            # # plot the curve
+            # x = np.linspace(np.min(x), np.max(x), 100)
+            # y = func(x, *popt)
+            # axs.plot(x, y, linestyle=(0,(1,1)), color=clr, linewidth=lwlines)
+
+            # # calculate r^2
+            # residuals = y - func(x, *popt)
+            # ss_res = np.sum(residuals**2)
+            # ss_tot = np.sum((y-np.mean(y))**2)
+            # r_squared = 1 - (ss_res / ss_tot)
+            # info(f'{thick}mm r^2:', r_squared)
+
+        # getting u results from navid depends on thickness
+        if (unit == EnergyUnit.U or unit == EnergyUnit.Ut or unit == EnergyUnit.s) and not no_navid and x_property is None and thick != 0:
+            navid_n50 = navid_nfifty(thick, as_ud=False)                        
+            navid_x = navid_n50[:,0]
+            
+            navid_y = navid_n50[:,1]
+            if unit == EnergyUnit.s:
+                navid_y = U2sigs(navid_y, thick)
+            
+            # navids points
+            axs.scatter(
+                navid_x,
+                navid_y,
+                marker='s',
+                facecolors=f'C{it}',
+                linewidth=lwscatter,
+                alpha=0.4,
+            )
+        elif (unit == EnergyUnit.UD or unit == EnergyUnit.UDt) and not no_navid and x_property is None and thick != 0:
+            navid_r = navid_n50[navid_n50[:,2] == thick]
+
+            navid_x = navid_r[:,0] #n50
+            navid_y = navid_r[:,1] #ud
+
+        # scatter current thickness leon
+        for b in bmarkers:
+            mask = (results[:,-3] == thick) & (results[:,-2] == b)
+            if np.sum(mask) == 0:
+                print(f"Nothing to plot for thickness {thick}")
+                continue
+            ms = bmarkers[b]
+            axs.scatter(results[mask,-1],results[mask,id],
+                        marker=ms, linewidth=lwscatter*2.0, color=clr, edgecolor=clr, s=10, label=f"{thick}mm", facecolors='none')                    
+            
+            if compare_normed:
+                # normed values
+                axs.scatter(results[mask,-4],results[mask,id],
+                        marker='s', linewidth=lwscatter * 1.2, color=clr, edgecolors=clr, label=f"{thick}mm (standard mode)", facecolors='none')
+            
+            
+            
+
+        
+
+    # plot simdata
+    if simulations is not None and len(simulations) > 0:
+        for it, thick in enumerate(thicknesses):
+            clr = tcolors[it+1]
+            mask = simdata[:,-3] == thick
+            if np.sum(mask) == 0:
+                continue
+            # debug output
+            print(f"Simulation {thick}mm:")
+            print(simdata[mask,:])
+            
+            
+            axs.scatter(simdata[mask,-1], simdata[mask,id], marker='od'[it], linewidth=lwscatter*2.0, s=10, edgecolor=clr, facecolors=clr, label=f"Simulation {thick}mm")
+
+    if additional_data_file is not None:
+        data = np.genfromtxt(additional_data_file, delimiter=';', comments='#')
+        # format: n50, sigma_h, area, thickness
+        # 1. calculate ud or U
+        add_U = U(data[:,1], data[:,3])
+        add_UD = Ud(data[:,1])
+        
+        if unit == EnergyUnit.U:
+            add_data = add_U
+        elif unit == EnergyUnit.UD:
+            add_data = add_UD
+            
+            
+        thickness = data[:,3]
+                
+        # create color for each row depending on thickness, matrix
+        clr = [ttcolors[t] for t in thickness]
+            
+        thicknesses2 = thicknesses.copy()
+        thicknesses2.append(6.0)
+        # 2. plot the data
+        for thickness in thicknesses2:
+            mask = data[:,3] == thickness
+            if np.sum(mask) == 0:
+                continue
+            clr = ttcolors[data[mask,3].astype(int)[0]]
+            
+            axs.scatter(data[mask,0], add_data[mask], c=clr, marker='d', linewidth=lwscatter, label=f'{thickness:.0f}mm', alpha=0.4)
+
+
+
+    ux = np.linspace(min_N50, max_N50, 100)
+    u4y = U4(ux)
+    u8y = U8(ux)
+    u12y = U12(ux)
+    udy = UD(ux)
+    us = n50S(ux)
+    
+    # plot navid u curves
+    if id == 0 and x_property is None:
+        if 4 in thicknesses:
+            axs.plot(ux, u4y, linestyle='--', color=tcolors[1], alpha=0.4)
+        if 8 in thicknesses:
+            axs.plot(ux, u8y, linestyle='--', color=tcolors[2], alpha=0.4)
+        if 12 in thicknesses:
+            axs.plot(ux, u12y, linestyle='--', color=tcolors[3], alpha=0.4)
+    # plots the ud curve from literatur
+    elif id == 1 and x_property is None:
+        axs.plot(ux, udy, linestyle='--', color='k', alpha=0.4)
+
+    if x_property is None:
+        axs.plot(ux, us, linestyle='--', color='k', alpha=0.4)
+    # for b,t in zip(bid.values(), thicknesses):
+    #     axs.plot([],[], label=f"{t}mm", color=tcolors[b])
+        # axs.scatter(anas[:,1]*(3.878 if scale_x_t else 1.0), anas[:,0], edgecolors='red', facecolors='none', s=15, linewidths=1, label='Simulations')
+
+    axs.set_ylabel(id_name[id])
+    
+    if normed and x_property is None:        
+        lab = "Fragment count $N_\\text{E} (-)$"
+    elif x_property is None:
+        lab = "Fragment density $N_\\text{50} (1/\\text{mm}^2)$"
+    else:
+        lab = Splinter.get_property_label(x_property)
+    
+    axs.set_xlabel(lab + ("$\cdot t$" if scale_x_t else ""))
+    
+    if x_lim is not None:
+        axs.set_xlim(x_lim)
+    # axs.legend(loc='best')
+
+    y_max = np.max(results[:,id])
+    if not lin:
+        y_max = 10 ** np.ceil(np.log10(y_max))
+        # Anpassen der Y-Achsen-Grenzen
+        axs.set_ylim(bottom=axs.get_ylim()[0], top=y_max)
+        
+    
+
+    legend_without_duplicate_labels(axs, compact=False)
+
+    name = 'nfifty' if not use_mean else 'nperwindow'
+    if bound is None:
+        bound = 'all'
+    State.output(StateOutput(fig, sz), f'{name}_{"n50" if not normed else "ne"}_{bound}_{"lin" if lin else "log"}_all_{unit}', to_additional=True)
+
+    if State.debug:
+        for i in range(len(specimens)):
+            res = results[i,:]
+            print(specimens[i].name, "U:", res[0], "U_d:", res[1], "U_t", res[2], "Ud_t", res[3] , "Thickness:", res[4], "Boundary:", res[3], "N50:", res[4])
+
+    for s in sigmas:
+        print(s)
+
 
 @app.command()
 def nfifty_compbreak(

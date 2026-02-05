@@ -1015,13 +1015,17 @@ def annotate_images(
     return to_img(fig)
 
 
-def cfg_logplot(axs: Axes, is_log=True):
+def cfg_logplot(axs: Axes, is_log=True, is_grid=True):
+    #
     # activate grid
-    axs.grid(True, which='both', axis='both')
-    # make the grid lines solid
-    axs.grid(which='major', linestyle='-', linewidth='0.3', color='gray')
-    axs.grid(which='minor', linestyle='-', linewidth='0.1', color='gray')
-
+    if is_grid:
+        axs.grid(True, which='both', axis='both')
+        # make the grid lines solid
+        axs.grid(which='major', linestyle='-', linewidth='0.3', color='gray')
+        axs.grid(which='minor', linestyle='-', linewidth='0.1', color='gray')
+    else:
+        axs.grid(False)
+        
     if is_log:
         axs.set_xscale('log')
         axs.set_yscale('log')

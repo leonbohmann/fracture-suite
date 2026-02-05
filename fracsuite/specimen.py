@@ -755,6 +755,8 @@ def import_files(
     exclude_points: Annotated[bool, typer.Option(help="Shows helper windows to exclude points in the morphology.")] = False,
     fracture_image: Annotated[str, typer.Option(help="Path to the fracture image.")] = None,
     no_tester_crop: Annotated[bool, typer.Option(help="Option to disable tester crop.")] = False,
+    edge_delta: Annotated[int, typer.Option(help="Edge delta for splinter removal.")] = 10,
+    impact_delta: Annotated[int, typer.Option(help="Impact delta for splinter removal.")] = 20,
 ):
     """
     Imports fracture images and generates splinters of a specific specimen.
@@ -833,6 +835,9 @@ def import_files(
         specimen.set_setting(Specimen.SET_CBREAKPOSEXCL, exclude_impact_radius)
     if realsize[0] != -1 and realsize[1] != -1:
         specimen.set_setting(Specimen.SET_REALSIZE, realsize)
+
+    specimen.set_setting(Specimen.SET_EDGEEXCL, edge_delta)
+    specimen.set_setting(Specimen.SET_CBREAKPOSEXCL, impact_delta)
 
     print('[yellow]> Transforming fracture images <')
     img0path, img0 = specimen.transform_fracture_images(size_px=imgsize, rotate=not no_rotate)

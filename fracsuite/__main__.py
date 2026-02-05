@@ -35,6 +35,7 @@ from fracsuite.tools import tools_app
 from spazial import initialize as spazial_initialize
 from rich.console import Console
 import fracsuite.core.logging
+from fracsuite.stl import stl_app
 
 import scienceplots
 _ = scienceplots.isdir # dummy usage to avoid removing on isort
@@ -204,6 +205,7 @@ app.add_typer(layer_app, name="layer")
 app.add_typer(highspeed_app, name="highspeed")
 app.add_typer(ani_app, name="anisotropy")
 app.add_typer(tools_app, name="tools")
+app.add_typer(stl_app, name="stl")
 
 @app.command()
 def help():

@@ -1,6 +1,7 @@
 from collections import defaultdict
 from glob import glob
 import os
+import shutil
 from typing import Annotated
 from matplotlib import pyplot as plt
 from fracsuite.core.splinter_props import SplinterProp
@@ -822,13 +823,12 @@ def anas1(
         specimen_names = sets[setname]
     
     for name in specimen_names:
-        filter_function = create_filter_function(name, needs_scalp=True, needs_splinters=True)
+        filter_function = create_filter_function(name)
         filters.append(filter_function)
         
     def filter(specimen):
-        if specimen.nbr <= 5:
+        if specimen.nom_stress < 75:
             return False
-        
         for f in filters:
             if f(specimen):
                 return True
@@ -837,7 +837,27 @@ def anas1(
     
     # get all specimens
     specimens = Specimen.get_all_by(filter, load=True)
+    sim_names = ["sim_4_103",
+            "sim_4_112",
+            "sim_4_122",
+            "sim_4_143",
+            "sim_4_155",
+            "sim_8_157",
+            "sim_8_192",
+            "sim_8_230",
+            "sim_8_271",
+            "sim_8_316"]
+    simulations: list[Specimen] = []
+    for sim_name in sim_names:
+        sim = Specimen.get(sim_name, load=True)
+        
+        simulations.append(sim)
+
+    n50_sim  = [(s.thickness, s.U, np.abs(s.sig_h), len(s.splinters)) for s in simulations]
+    circ_sim  = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in simulations]
+ 
     
+
     
     
     
@@ -850,13 +870,13 @@ def anas1(
     
     print("Calculating N50...")
     # n50 = [(s.thickness, s.sig_h, s.calculate_nfifty_count([(400,400)])) for s in Specimen.get_all_by(fil_all, load=True)]
-    n50 = [(s.thickness, np.abs(s.sig_h), s.calculate_nfifty_in_windows(force_recalc=False)) for s in specimens]
-    n50_kde = [(s.thickness, np.abs(s.sig_h), s.calculate_nfifty_kde(force_recalc=False)) for s in specimens]
-    n50_std = [(s.thickness, np.abs(s.sig_h), s.calculate_ne(force_recalc=False)) for s in specimens]
-    circ = [(s.thickness, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in specimens]
+    n50 = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_nfifty_in_windows(force_recalc=False)) for s in specimens]
+    n50_kde = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_nfifty_kde(force_recalc=False)) for s in specimens]
+    n50_std = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_ne(force_recalc=False)) for s in specimens]
+    circ = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in specimens]
     
     print("Printing N50...")
-    for i,t in enumerate([4,8]):
+    for i,t in []: #enumerate([4,8]):
         fig,ax = plt.subplots(figsize=get_fig_width(FigureSize.ROW2))
         ax.set_xlabel("$N_50$ (mm)")
         ax.set_ylabel("Pre-Stress (MPa)")
@@ -876,30 +896,46 @@ def anas1(
     print("Writing N50...")
     with open(os.path.join(output_dir, "n50.txt"), "w") as f:
         f.write('# N50 is calculated as a mean count-value from windows 50x50mm at centers: [425,75], [75,425], [425,425], [75,200]\n')
-        f.write('# Thickness, Sigma_s, N50\n')
-        for t,s,n in n50:
-            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+        f.write('# N50 is calculated as a mean count-value from windows 50x50mm at centers: [425,75], [75,425], [425,425], [75,200]\n')
+        f.write('# Thickness, U, Sigma_s, N50\n')
+        for t,u,s,n in n50:
+            f.write(f"{t:.2f}\t{u:.2f}\t{s:.2f}\t{n:.1f}\n")
+    
+    print("Writing N50 Simulations...")
+    with open(os.path.join(output_dir, "n50_sim.txt"), "w") as f:
+        f.write('# N50 is simply the amount of splinters in the window, as the window already has the right size\n')
+        f.write('# Thickness, U, Sigma_s, N50\n')
+        for t,u,s,n in n50_sim:
+            f.write(f"{t:.2f}\t{u:.2f}\t{s:.2f}\t{n:.1f}\n")
+    
+    
+    print("Writing Circ Simulation...")
+    with open(os.path.join(output_dir, "circ_sim.txt"), "w") as f:
+        f.write('# Circumference is simply the mean circumference of all splinters in the window\n')
+        f.write('# Thickness, U, Sigma_s, Circumference (mm)\n')
+        for t,u,s,n in circ_sim:
+            f.write(f"{t:.2f}\t{u:.2f}\t{s:.2f}\t{n:.1f}\n")
     
     with open(os.path.join(output_dir, "n50_kde.txt"), "w") as f:
         f.write('# N50 based on the mean value of the intensity calculated as a KDE and multiplied by A=2500mm²\n')
-        f.write('# Thickness, Sigma_s, N50\n')
-        for t,s,n in n50_kde:
-            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+        f.write('# Thickness, U, Sigma_s, N50\n')
+        for t,u,s,n in n50_kde:
+            f.write(f"{t:.2f}\t{u:.2f}\t{s:.2f}\t{n:.1f}\n")
     
     with open(os.path.join(output_dir, "n50_standard.txt"), "w") as f:
         f.write('# N50 by counting once at the location of least intensity (according to the standard)\n')
-        f.write('# Thickness, Sigma_s, N50\n')    
-        for t,s,n in n50_std:
-            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+        f.write('# Thickness, U, Sigma_s, N50\n')    
+        for t,u,s,n in n50_std:
+            f.write(f"{t:.2f}\t{u:.2f}\t{s:.2f}\t{n:.1f}\n")
 
     with open(os.path.join(output_dir, "circumference.txt"), "w") as f:
-        f.write('# Thickness, Sigma_s, Circumference\n')
-        for t,s,n in circ:
-            f.write(f"{t:.2f}\t{s:.2f}\t{n:.1f}\n")
+        f.write('# Thickness, U, Sigma_s, Circumference\n')
+        for t,u,s,n in circ:
+            f.write(f"{t:.2f}\t{u:.2f}\t{s:.2f}\t{n:.1f}\n")
             
     print("Copy specimen...")
             
-    for specimen in tqdm(specimens):
+    for specimen in []: #tqdm(specimens):
         # create a folder for the specimen
         specimen_folder = os.path.join(output_dir, specimen.name)
         os.makedirs(specimen_folder, exist_ok=True)
@@ -928,3 +964,60 @@ def anas1(
             f.write(f"Pre-Stress (measured): {specimen.sig_h:.2f} MPa\n")
             f.write(f"N50: {specimen.calculate_nfifty_in_windows(force_recalc=True):.0f}\n\tThis value was measured in the lower left corner. Window 50x50mm, Center at 400x400mm from the top right.\n")
             f.write(f"Mean Area: {specimen.mean_splinter_area:.2f} mm²\n\tMeasured on the whole plate.\n")
+            
+            
+            
+
+@tools_app.command()    
+def export(
+    specimen_names: Annotated[list[str], typer.Argument(..., help="List of specimen names to export")],
+    output_dir: Annotated[str, typer.Option("--output", help="Output directory")],
+):
+    """
+    Create the preliminary export for anas.
+    
+    Bundles the fracture images, anisotropy scans and the scalp results into a single folder.
+    Each folder gets copied to a specified output directory.
+    
+    """
+    from fracsuite.splinters import create_filter_function
+    from fracsuite.core.specimen import Specimen
+    from shutil import copyfile, copytree
+    
+    filters = []
+    if specimen_names is not None and specimen_names[0].startswith("set"):
+        setname = specimen_names[0].replace("set.","")
+        from fracsuite.spec_sets import sets
+        specimen_names = sets[setname]
+    
+    for name in specimen_names:
+        filter_function = create_filter_function(name, needs_scalp=True, needs_splinters=True)
+        filters.append(filter_function)
+        
+    def filter(specimen):
+        for f in filters:
+            if f(specimen):
+                return True
+            
+        return False
+    
+    # get all specimens
+    specimens = Specimen.get_all_by(filter, load=True)
+    
+    
+    
+    
+    # create the output directory
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    print("Copy specimen...")
+            
+    for specimen in tqdm(specimens):
+        # create a folder for the specimen
+        specimen_folder = os.path.join(output_dir, specimen.name)
+        os.makedirs(specimen_folder, exist_ok=True)
+        
+        # copy contents to target folder
+        
+        shutil.copytree(specimen.path, specimen_folder, dirs_exist_ok=True)        

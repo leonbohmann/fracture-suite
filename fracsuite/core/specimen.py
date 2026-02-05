@@ -114,7 +114,13 @@ class Specimen(Outputtable):
     "Excluded positions. This setting is a list of tuples (x,y) giving the position in mm."
     SET_EXCLUDED_POSITIONS_RADIUS: float = "excluded_positions_radius"
     "Radius in mm to exclude from the excluded positions."
-
+    SET_SIGH: str = "sig_h"
+    "Pre-stress of the specimen in MPa. If no scalp file is present, this value is used."
+    SET_UTOTAL: str = "u_total"
+    "Total strain energy of the specimen in J/m²."
+    SET_THICKNESS: str = "thickness_mm"
+    "Thickness of the specimen in mm."
+    
     SPLINTER_FILE_NAME = "splinters_v2.pkl"
     SCALP_DATA_FILENAME = "scalp_data.pkl"
 
@@ -333,6 +339,18 @@ class Specimen(Outputtable):
 
         if self.has_scalp:
             self.load_scalp()
+        elif self.get_setting(Specimen.SET_UTOTAL, -1) != -1 and self.get_setting(Specimen.SET_THICKNESS, -1) != -1:
+            self.__U = self.get_setting(Specimen.SET_UTOTAL, -1)
+            self.__measured_thickness = self.get_setting(Specimen.SET_THICKNESS, -1)
+            self.thickness = int(round(self.__measured_thickness))
+            
+            from fracsuite.core.mechanics import U2sigs
+            self.__sigma_h = U2sigs(self.__U, self.__measured_thickness)
+            self.__U_d = calc_Ud(self.__sigma_h)
+        
+        elif self.get_setting(Specimen.SET_SIGH, False) is not False: 
+            self.sig_h = self.get_setting(Specimen.SET_SIGH, 0)
+
         elif log_missing_data:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
@@ -414,6 +432,9 @@ class Specimen(Outputtable):
             Specimen.SET_EXCLUDE_ALL_SENSORS: False,
             Specimen.SET_EXCLUDED_POSITIONS: [],
             Specimen.SET_EXCLUDED_POSITIONS_RADIUS: 100,
+            Specimen.SET_SIGH: None,
+            Specimen.SET_UTOTAL: None,
+            Specimen.SET_THICKNESS: None,
         }
 
         
@@ -925,7 +946,9 @@ class Specimen(Outputtable):
 
     def calculate_ne(
         self: Specimen,    
-        force_recalc: bool = False
+        force_recalc: bool = False,
+        d0_mm: float = 50,
+        d1_mm: float = 25,
     ) -> float:
         """
         Find the location with lowest intensity and count splinters there.
@@ -934,7 +957,7 @@ class Specimen(Outputtable):
         
         ne = self.simdata.get(Specimen.DAT_NE, None)
         if ne is None or force_recalc:        
-            kerneler = self.calculate_2d(SplinterProp.INTENSITY, 50, 25, return_kerneler=True)
+            kerneler = self.calculate_2d(SplinterProp.INTENSITY, d0_mm, d1_mm, return_kerneler=True)
             
             # location of lowest intensity
             x0 = kerneler.min[0]
@@ -1163,14 +1186,17 @@ class Specimen(Outputtable):
         realsz = self.get_real_size()
         # remove all splinters whose centroid is closer than 1 cm to the edge
         delta_edge = self.get_setting(Specimen.SET_EDGEEXCL, 10)
-        self.__allsplinters = self.__splinters
-        self.__splinters = [s for s in self.__allsplinters
+        
+        if delta_edge > 0:
+            self.__allsplinters = self.__splinters
+            self.__splinters = [s for s in self.__allsplinters
                             if  delta_edge < s.centroid_mm[0] < realsz[0] - delta_edge
                             and delta_edge < s.centroid_mm[1] < realsz[1] - delta_edge]
 
         # or within a 2cm radius to the impact point
         delta_impact = self.get_setting(Specimen.SET_CBREAKPOSEXCL, 20)
-        self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
+        if delta_impact > 0:
+            self.__splinters = [s for s in self.__splinters if np.linalg.norm(np.array(s.centroid_mm) - np.array(self.get_impact_position())) > delta_impact]
 
         # remove all splinters within 1cm of sensor positions
         excl_sensor_positions = self.settings.get(Specimen.SET_EXCLUDED_SENSOR_POSITIONS, [])
