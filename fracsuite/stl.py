@@ -19,12 +19,14 @@ import numpy as np
 import pandas as pd
 import pyvista as pv
 import typer
-from scipy.spatial import KDTree
+from scipy.spatial import ConvexHull, KDTree
 
 from fracsuite.callbacks import main_callback
 
 stl_app = typer.Typer(help=__doc__, callback=main_callback)
 
+SLICE_COUNT = 40
+THEORETICAL_PERIMETER_SLICES = 5  # Number of slices for mean perimeter calculation
 
 # =============================================================================
 # Data Classes
@@ -60,6 +62,10 @@ class BodyAnalysisResult:
     area_theoretical: float  # theoretical fracture surface area (smooth prism)
     fsr_a: float  # fracture surface roughness (area-based): A_real / A_theoretical
     fsr_v: float  # fracture surface roughness (volume-based): V_real / V_theoretical
+    pr: float  # perimeter ratio: actual perimeter / convex hull perimeter (multi-slice average)
+    rad: float  # Ra deviation: arithmetic mean radial deviation from smooth reference [mm]
+    rf: float  # roughness factor: mean deviation from linearly interpolated ideal [mm]
+    rsd: float  # radial std deviation: mean std dev of radial distances (surface bumpiness) [mm]
     thickness: float
     distance_between_slices: float
     max_distance_z: float
@@ -123,6 +129,10 @@ class STLAnalysisResult:
                 'Area_theoretical [mm²]': r.area_theoretical,
                 'FSR_A': r.fsr_a,
                 'FSR_V': r.fsr_v,
+                'PR': r.pr,
+                'RAD [mm]': r.rad,
+                'RF [mm]': r.rf,
+                'RSD [mm]': r.rsd,
                 'Thickness [mm]': r.thickness,
                 'Slice_distance [mm]': r.distance_between_slices,
                 'Max_Z_distance [mm]': r.max_distance_z,
@@ -235,6 +245,247 @@ def polygon_area_xy_fast(points: np.ndarray) -> float:
     # Shoelace formula vectorized
     area = 0.5 * np.abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
     return float(area)
+
+
+def calculate_perimeter_ratio(
+    body: pv.PolyData,
+    z_lower: float,
+    z_upper: float,
+    n_slices: int = SLICE_COUNT,
+) -> float:
+    """Calculate perimeter ratio (PR) across multiple horizontal slices.
+
+    PR measures how jagged/rough the perimeter is by comparing the actual
+    perimeter length to the convex hull perimeter at each Z-level.
+
+    Args:
+        body: The PyVista mesh of the body.
+        z_lower: Lower Z bound for slicing.
+        z_upper: Upper Z bound for slicing.
+        n_slices: Number of horizontal slices to take.
+
+    Returns:
+        Mean ratio of actual perimeter / convex hull perimeter.
+        Values > 1.0 indicate rougher perimeters.
+    """
+    z_levels = np.linspace(z_lower, z_upper, n_slices)
+    ratios = []
+
+    for z in z_levels:
+        try:
+            slice_mesh = body.slice(normal='z', origin=(0, 0, z))
+            if slice_mesh.n_cells < 1 or slice_mesh.n_points < 4:
+                continue
+
+            # Calculate perimeter directly from edge lengths (no sorting needed)
+            actual_perimeter = slice_mesh.compute_cell_sizes(length=True)['Length'].sum()
+
+            if actual_perimeter <= 0:
+                continue
+
+            # Convex hull perimeter (in 2D, ConvexHull.area is the perimeter)
+            points_2d = slice_mesh.points[:, :2]
+            try:
+                hull = ConvexHull(points_2d)
+                hull_perimeter = hull.area  # In 2D, 'area' is actually perimeter
+            except Exception:
+                continue
+
+            if hull_perimeter > 0:
+                ratios.append(actual_perimeter / hull_perimeter)
+        except Exception:
+            continue
+
+    return float(np.mean(ratios)) if ratios else 1.0
+
+
+def calculate_ra_deviation(
+    body: pv.PolyData,
+    z_lower: float,
+    z_upper: float,
+    n_slices: int = SLICE_COUNT,
+) -> float:
+    """Calculate Ra (arithmetic average) deviation of the lateral surface.
+
+    Ra measures how much points on the lateral surface deviate from a smooth
+    reference surface. For each Z-level slice, we calculate the centroid and
+    mean radius, then measure how much each point deviates from this mean radius.
+
+    Args:
+        body: The PyVista mesh of the body.
+        z_lower: Lower Z bound for analysis.
+        z_upper: Upper Z bound for analysis.
+        n_slices: Number of horizontal slices to sample.
+
+    Returns:
+        Arithmetic mean of radial deviations in mm.
+        Higher values indicate rougher surfaces.
+    """
+    z_levels = np.linspace(z_lower, z_upper, n_slices)
+    all_deviations = []
+
+    for z in z_levels:
+        try:
+            slice_mesh = body.slice(normal='z', origin=(0, 0, z))
+            if slice_mesh.n_points < 3:
+                continue
+
+            points_2d = slice_mesh.points[:, :2]  # X, Y only
+
+            # Calculate centroid
+            centroid = points_2d.mean(axis=0)
+
+            # Calculate distances from centroid
+            distances = np.linalg.norm(points_2d - centroid, axis=1)
+
+            # Mean radius is the "smooth" reference
+            mean_radius = distances.mean()
+
+            # Deviation from mean radius
+            deviations = np.abs(distances - mean_radius)
+            all_deviations.extend(deviations)
+        except Exception:
+            continue
+
+    return float(np.mean(all_deviations)) if all_deviations else 0.0
+
+
+def calculate_radial_std_deviation(
+    body: pv.PolyData,
+    z_lower: float,
+    z_upper: float,
+    n_slices: int = SLICE_COUNT,
+) -> float:
+    """Calculate mean standard deviation of radial distances (RSD).
+
+    RSD measures how irregular/bumpy the perimeter is at each slice by computing
+    the standard deviation of radial distances from the centroid. A perfectly
+    smooth circular slice would have RSD=0. Bumps and irregularities increase RSD.
+
+    This metric is more sensitive to local surface roughness than RAD because
+    std dev captures the spread of deviations, not just their average magnitude.
+
+    Args:
+        body: The PyVista mesh of the body.
+        z_lower: Lower Z bound for analysis.
+        z_upper: Upper Z bound for analysis.
+        n_slices: Number of horizontal slices to sample.
+
+    Returns:
+        Mean standard deviation of radial distances across all slices in mm.
+        Higher values indicate bumpier/more irregular perimeters.
+    """
+    z_levels = np.linspace(z_lower, z_upper, n_slices)
+    slice_stds = []
+
+    for z in z_levels:
+        try:
+            slice_mesh = body.slice(normal='z', origin=(0, 0, z))
+            if slice_mesh.n_points < 3:
+                continue
+
+            points_2d = slice_mesh.points[:, :2]
+
+            # Calculate centroid and radial distances
+            centroid = points_2d.mean(axis=0)
+            distances = np.linalg.norm(points_2d - centroid, axis=1)
+
+            # Standard deviation of radial distances for this slice
+            slice_stds.append(distances.std())
+
+        except Exception:
+            continue
+
+    return float(np.mean(slice_stds)) if slice_stds else 0.0
+
+
+def calculate_roughness_factor(
+    body: pv.PolyData,
+    z_lower: float,
+    z_upper: float,
+    n_slices: int = SLICE_COUNT,
+) -> float:
+    """Calculate Roughness Factor (RF) based on deviation from linearly interpolated ideal.
+
+    RF measures the mean absolute deviation of each slice's mean radius from
+    the linearly interpolated ideal radius (between top and bottom slices).
+    This captures how much the fragment "bulges" or "necks" compared to a
+    smooth linear transition.
+
+    The result is normalized by the number of slices, making it independent
+    of n_slices and directly comparable across different analyses.
+
+    Args:
+        body: The PyVista mesh of the body.
+        z_lower: Lower Z bound for analysis (bottom slice).
+        z_upper: Upper Z bound for analysis (top slice).
+        n_slices: Number of horizontal slices to sample.
+
+    Returns:
+        Mean absolute deviation from ideal radius in mm.
+        Higher values indicate rougher/more irregular perimeters.
+    """
+    # Get reference slices (bottom and top)
+    try:
+        bottom_slice = body.slice(normal='z', origin=(0, 0, z_lower))
+        top_slice = body.slice(normal='z', origin=(0, 0, z_upper))
+
+        if bottom_slice.n_points < 3 or top_slice.n_points < 3:
+            return 0.0
+
+        # Calculate reference properties for bottom and top slices
+        bottom_2d = bottom_slice.points[:, :2]
+        top_2d = top_slice.points[:, :2]
+
+        bottom_centroid = bottom_2d.mean(axis=0)
+        top_centroid = top_2d.mean(axis=0)
+
+        # Mean radius for each reference slice
+        bottom_radii = np.linalg.norm(bottom_2d - bottom_centroid, axis=1)
+        top_radii = np.linalg.norm(top_2d - top_centroid, axis=1)
+
+        bottom_mean_radius = bottom_radii.mean()
+        top_mean_radius = top_radii.mean()
+
+    except Exception:
+        return 0.0
+
+    # Calculate total height for interpolation
+    total_height = z_upper - z_lower
+    if total_height <= 0:
+        return 0.0
+
+    # Sample intermediate slices and collect per-slice deviations
+    z_levels = np.linspace(z_lower, z_upper, n_slices)
+    slice_deviations = []
+
+    for z in z_levels:
+        try:
+            slice_mesh = body.slice(normal='z', origin=(0, 0, z))
+            if slice_mesh.n_points < 3:
+                continue
+
+            points_2d = slice_mesh.points[:, :2]
+
+            # Interpolation factor (0 at bottom, 1 at top)
+            t = (z - z_lower) / total_height
+
+            # Interpolated ideal centroid and radius
+            ideal_centroid = (1 - t) * bottom_centroid + t * top_centroid
+            ideal_radius = (1 - t) * bottom_mean_radius + t * top_mean_radius
+
+            # Calculate actual mean radius from interpolated centroid
+            actual_radii = np.linalg.norm(points_2d - ideal_centroid, axis=1)
+            actual_mean_radius = actual_radii.mean()
+
+            # Deviation of this slice's mean radius from ideal
+            slice_deviations.append(abs(actual_mean_radius - ideal_radius))
+
+        except Exception:
+            continue
+
+    # Return mean deviation across all slices (normalized)
+    return float(np.mean(slice_deviations)) if slice_deviations else 0.0
 
 
 def cut_and_calculate_fracture_surface_area(
@@ -431,17 +682,15 @@ def analyze_body(
     max_z = np.max(body.points[:, 2])
     max_distance_z = max_z - min_z
 
-    # Get points as numpy arrays directly (much faster than dict conversion)
+    # Calculate perimeters directly from slice edge lengths (faster than sorting)
+    perimeter1 = single_slice1.compute_cell_sizes(length=True)['Length'].sum() if single_slice1.n_cells > 0 else 0.0
+    perimeter2 = single_slice2.compute_cell_sizes(length=True)['Length'].sum() if single_slice2.n_cells > 0 else 0.0
+
+    # Sort points for area calculation (shoelace formula requires ordered points)
     points1 = np.asarray(single_slice1.points)
     points2 = np.asarray(single_slice2.points)
-
-    # Sort points using fast KDTree-based method
     sorted_points1 = sort_points_by_nearest_neighbor_fast(points1) if len(points1) > 0 else points1
     sorted_points2 = sort_points_by_nearest_neighbor_fast(points2) if len(points2) > 0 else points2
-
-    # Calculate perimeters using vectorized numpy operations
-    perimeter1 = calculate_perimeter_fast(sorted_points1)
-    perimeter2 = calculate_perimeter_fast(sorted_points2)
 
     # Calculate slice areas using vectorized shoelace formula
     area_slice1 = polygon_area_xy_fast(sorted_points1) if len(sorted_points1) > 0 else 0.0
@@ -450,9 +699,25 @@ def analyze_body(
     # Calculate fracture surface area (lateral surface between slices)
     fracture_surface_area = cut_and_calculate_fracture_surface_area(body, z_values)
 
+    # Calculate mean perimeter using multiple slices for better theoretical estimate
+    z_levels = np.linspace(z1, z2, THEORETICAL_PERIMETER_SLICES)
+    perimeters = []
+    for z in z_levels:
+        try:
+            slice_mesh = body.slice(normal='z', origin=(0, 0, z))
+            if slice_mesh.n_cells < 1:
+                continue
+            # Compute perimeter directly from edge lengths (no sorting needed)
+            perimeter = slice_mesh.compute_cell_sizes(length=True)['Length'].sum()
+            perimeters.append(perimeter)
+        except Exception:
+            continue
+
+    mean_perimeter = np.mean(perimeters) if perimeters else (perimeter1 + perimeter2) / 2
+
     # Theoretical values for an ideal smooth prism
     v_theo = ((area_slice1 + area_slice2) / 2) * t_theo  # volume of ideal prism
-    area_theoretical = ((perimeter1 + perimeter2) / 2) * t_theo  # lateral surface of ideal prism
+    area_theoretical = mean_perimeter * t_theo  # lateral surface using mean perimeter
 
     # FSR_A: Area-based fracture surface roughness
     # Ratio of actual fracture surface area to theoretical smooth surface area
@@ -461,6 +726,18 @@ def analyze_body(
     # FSR_V: Volume-based fracture surface roughness
     # Ratio of actual volume to theoretical prism volume
     fsr_v = volume_total / v_theo if v_theo > 0 else 0.0
+
+    # PR: Perimeter Ratio - measures perimeter jaggedness across multiple slices
+    pr = calculate_perimeter_ratio(body, z1, z2, n_slices=SLICE_COUNT)
+
+    # RAD: Ra Deviation - arithmetic mean radial deviation from smooth reference
+    rad = calculate_ra_deviation(body, z1, z2, n_slices=SLICE_COUNT)
+
+    # RF: Roughness Factor - mean deviation from linearly interpolated ideal
+    rf = calculate_roughness_factor(body, z1, z2, n_slices=SLICE_COUNT)
+
+    # RSD: Radial Standard Deviation - measures surface bumpiness
+    rsd = calculate_radial_std_deviation(body, z1, z2, n_slices=SLICE_COUNT)
 
     result = BodyAnalysisResult(
         body_index=body_index,
@@ -475,6 +752,10 @@ def analyze_body(
         area_theoretical=area_theoretical,
         fsr_a=fsr_a,
         fsr_v=fsr_v,
+        pr=pr,
+        rad=rad,
+        rf=rf,
+        rsd=rsd,
         thickness=thickness,
         distance_between_slices=t_theo,
         max_distance_z=max_distance_z,
@@ -580,11 +861,11 @@ def analyze_stl_file(
             off_screen=off_screen,
         )
 
-    # Save Excel
+    # Save CSV
     if save_excel and result.body_results:
         df = result.to_dataframe()
-        excel_path = output_dir / f'{specimen_name}_body_data.xlsx'
-        df.to_excel(str(excel_path), index=False)
+        csv_path = output_dir / f'{specimen_name}_body_data.csv'
+        df.to_csv(csv_path, index=False)
 
     print(f'Analysis of specimen {specimen_name} is finished ({len(result.body_results)} bodies)')
 
@@ -900,25 +1181,40 @@ def analyze_folder(
                 else:
                     print(f"  {specimen_name}: not found in database")
 
-    # Save combined Excel (detailed per-body data)
+    # Save combined CSV files (detailed per-body data)
     if save_combined_excel and all_dataframes:
         combined_df = pd.concat(all_dataframes, ignore_index=True)
-        excel_dir = output_dir / f"{input_dir.name}_excel"
-        excel_dir.mkdir(parents=True, exist_ok=True)
-        combined_df.to_excel(str(excel_dir / "combined_results.xlsx"), index=False)
+        csv_dir = output_dir / f"{input_dir.name}_csv"
+        csv_dir.mkdir(parents=True, exist_ok=True)
+        combined_df.to_csv(csv_dir / "combined_results.csv", index=False)
 
         # Save the summary table (one row per specimen)
         summary_df = create_specimen_summary_table(results)
-        summary_df.to_excel(str(excel_dir / "specimen_summary.xlsx"), index=False)
+        summary_df.to_csv(csv_dir / "specimen_summary.csv", index=False)
 
         # Save the raw body table (one row per body with specimen data)
         raw_body_df = create_raw_body_table(results)
-        raw_body_df.to_excel(str(excel_dir / "raw_body_data.xlsx"), index=False)
+        raw_body_df.to_csv(csv_dir / "raw_body_data.csv", index=False)
 
-        print(f"\nExcel files saved to: {excel_dir}")
-        print(f"  - combined_results.xlsx (detailed STL analysis per body)")
-        print(f"  - specimen_summary.xlsx (one row per specimen)")
-        print(f"  - raw_body_data.xlsx (one row per body with specimen data)")
+        # Save per-thickness CSV files (bodies-4mm.csv, bodies-8mm.csv, etc.)
+        print(f"\nPer-thickness CSV files:")
+        create_per_thickness_tables(results, csv_dir)
+
+        # Save per-thickness-position CSV files (bodies-8mm-b.csv, etc.)
+        print(f"\nPer-thickness-position CSV files:")
+        create_per_thickness_position_tables(results, csv_dir)
+
+        # Save per-specimen CSV files
+        print(f"\nPer-specimen CSV files:")
+        create_per_specimen_csvs(results, csv_dir)
+
+        print(f"\nCSV files saved to: {csv_dir}")
+        print(f"  - combined_results.csv (detailed STL analysis per body)")
+        print(f"  - specimen_summary.csv (one row per specimen)")
+        print(f"  - raw_body_data.csv (one row per body with specimen data)")
+        print(f"  - bodies-Xmm.csv (grouped by thickness)")
+        print(f"  - bodies-Xmm-Y.csv (grouped by thickness + position)")
+        print(f"  - specimens/<specimen_name>.csv (per-specimen body data)")
 
     total_bodies = sum(len(r.body_results) for r in results)
     print(f'\nAnalysis complete: {len(results)} files, {total_bodies} bodies')
@@ -983,22 +1279,42 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
             row['Mean_Area [mm²]'] = np.mean([b.area_total for b in r.body_results])
             row['Mean_FSR_A'] = np.mean([b.fsr_a for b in r.body_results])
             row['Mean_FSR_V'] = np.mean([b.fsr_v for b in r.body_results])
+            row['Mean_PR'] = np.mean([b.pr for b in r.body_results])
+            row['Mean_RAD [mm]'] = np.mean([b.rad for b in r.body_results])
+            row['Mean_RF [mm]'] = np.mean([b.rf for b in r.body_results])
+            row['Mean_RSD [mm]'] = np.mean([b.rsd for b in r.body_results])
         else:
             row['Mean_Volume [mm³]'] = None
             row['Mean_Area [mm²]'] = None
             row['Mean_FSR_A'] = None
             row['Mean_FSR_V'] = None
+            row['Mean_PR'] = None
+            row['Mean_RAD [mm]'] = None
+            row['Mean_RF [mm]'] = None
+            row['Mean_RSD [mm]'] = None
 
-        # Add individual body FSR columns (both A and V)
+        # Add individual body columns (FSR_A, FSR_V, PR, RAD, RF, RSD)
         for i in range(max_bodies):
             col_name_a = f'FSR_A_Body_{i+1}'
             col_name_v = f'FSR_V_Body_{i+1}'
+            col_name_pr = f'PR_Body_{i+1}'
+            col_name_rad = f'RAD_Body_{i+1}'
+            col_name_rf = f'RF_Body_{i+1}'
+            col_name_rsd = f'RSD_Body_{i+1}'
             if i < len(r.body_results):
                 row[col_name_a] = r.body_results[i].fsr_a
                 row[col_name_v] = r.body_results[i].fsr_v
+                row[col_name_pr] = r.body_results[i].pr
+                row[col_name_rad] = r.body_results[i].rad
+                row[col_name_rf] = r.body_results[i].rf
+                row[col_name_rsd] = r.body_results[i].rsd
             else:
                 row[col_name_a] = None
                 row[col_name_v] = None
+                row[col_name_pr] = None
+                row[col_name_rad] = None
+                row[col_name_rf] = None
+                row[col_name_rsd] = None
 
         rows.append(row)
 
@@ -1008,8 +1324,8 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
 def create_raw_body_table(results: list[STLAnalysisResult]) -> pd.DataFrame:
     """Create a raw data table with one row per body.
 
-    Creates a table with columns:
-    Specimen, Body_ID, t, sig_h, U, U_d, N50, t_calc, FSR_A, FSR_V
+    Creates a comprehensive table with all body analysis data including
+    specimen info, geometric properties, and roughness metrics.
 
     Args:
         results: List of STLAnalysisResult objects.
@@ -1045,11 +1361,302 @@ def create_raw_body_table(results: list[STLAnalysisResult]) -> pd.DataFrame:
                 'U_d [J/m³]': U_d,
                 'N50': N50,
                 't_calc [mm]': body.thickness,
+                'Volume_total [mm³]': body.volume_total,
+                'Volume_theoretical [mm³]': body.volume_theoretical,
+                'Area_total [mm²]': body.area_total,
+                'Area_slice1 [mm²]': body.area_slice1,
+                'Area_slice2 [mm²]': body.area_slice2,
+                'Perimeter1 [mm]': body.perimeter_slice1,
+                'Perimeter2 [mm]': body.perimeter_slice2,
+                'Fracture_surface_area [mm²]': body.fracture_surface_area,
+                'Area_theoretical [mm²]': body.area_theoretical,
                 'FSR_A': body.fsr_a,
                 'FSR_V': body.fsr_v,
+                'PR': body.pr,
+                'RAD [mm]': body.rad,
+                'RF [mm]': body.rf,
+                'RSD [mm]': body.rsd,
+                'Slice_distance [mm]': body.distance_between_slices,
+                'Max_Z_distance [mm]': body.max_distance_z,
             })
 
     return pd.DataFrame(rows)
+
+
+def create_per_thickness_tables(
+    results: list[STLAnalysisResult],
+    output_dir: Path,
+) -> dict[str, pd.DataFrame]:
+    """Create separate CSV files for each glass thickness.
+
+    Groups bodies by their nominal thickness (extracted from specimen name)
+    and creates one CSV file per thickness with all body data.
+
+    Args:
+        results: List of STLAnalysisResult objects.
+        output_dir: Directory to save the CSV files.
+
+    Returns:
+        Dictionary mapping thickness strings to DataFrames.
+    """
+    if not results:
+        return {}
+
+    # Group results by thickness (first number in specimen name like "8.100.B.04")
+    thickness_groups: dict[str, list[dict]] = {}
+
+    for r in results:
+        specimen_name = extract_specimen_name(r.input_file.name)
+        if not specimen_name:
+            specimen_name = r.specimen_name
+
+        # Extract nominal thickness from specimen name (e.g., "8" from "8.100.B.04")
+        parts = specimen_name.split('.') if specimen_name else []
+        if parts and parts[0].isdigit():
+            thickness_key = f"{parts[0]}mm"
+        else:
+            thickness_key = "unknown"
+
+        if thickness_key not in thickness_groups:
+            thickness_groups[thickness_key] = []
+
+        # Get specimen data
+        t_measured = r.specimen_data.t_measured if r.specimen_data else None
+        sig_h = r.specimen_data.sig_h if r.specimen_data else None
+        U = r.specimen_data.U if r.specimen_data else None
+        U_d = r.specimen_data.U_d if r.specimen_data else None
+        N50 = r.specimen_data.N50 if r.specimen_data else None
+
+        # Add each body as a row
+        for body in r.body_results:
+            thickness_groups[thickness_key].append({
+                'Specimen': specimen_name,
+                'Body_ID': body.body_index,
+                't [mm]': t_measured,
+                'sig_h [MPa]': sig_h,
+                'U [J/m²]': U,
+                'U_d [J/m³]': U_d,
+                'N50': N50,
+                't_calc [mm]': body.thickness,
+                'Volume_total [mm³]': body.volume_total,
+                'Volume_theoretical [mm³]': body.volume_theoretical,
+                'Area_total [mm²]': body.area_total,
+                'Area_slice1 [mm²]': body.area_slice1,
+                'Area_slice2 [mm²]': body.area_slice2,
+                'Perimeter1 [mm]': body.perimeter_slice1,
+                'Perimeter2 [mm]': body.perimeter_slice2,
+                'Fracture_surface_area [mm²]': body.fracture_surface_area,
+                'Area_theoretical [mm²]': body.area_theoretical,
+                'FSR_A': body.fsr_a,
+                'FSR_V': body.fsr_v,
+                'PR': body.pr,
+                'RAD [mm]': body.rad,
+                'RF [mm]': body.rf,
+                'RSD [mm]': body.rsd,
+                'Slice_distance [mm]': body.distance_between_slices,
+                'Max_Z_distance [mm]': body.max_distance_z,
+            })
+
+    # Create DataFrames and save CSV files
+    dataframes = {}
+    for thickness_key, rows in thickness_groups.items():
+        df = pd.DataFrame(rows)
+        dataframes[thickness_key] = df
+
+        # Save CSV file
+        csv_path = output_dir / f"bodies-{thickness_key}.csv"
+        df.to_csv(csv_path, index=False)
+        print(f"  - bodies-{thickness_key}.csv ({len(rows)} bodies)")
+
+    return dataframes
+
+
+def extract_position_from_filename(filename: str) -> Optional[str]:
+    """Extract position code from STL filename.
+
+    Expects filenames ending with _[position].stl where position is m, ol, or ur.
+    Examples: "8.100.B.04_m.stl" -> "m", "8.100.B.04_ol.stl" -> "ol"
+
+    Args:
+        filename: The STL filename.
+
+    Returns:
+        Position code (m, ol, ur) or None if not found.
+    """
+    import re
+    name = Path(filename).stem
+    # Match _position at the end (m, ol, ur)
+    match = re.search(r'_([a-z]+)$', name, re.IGNORECASE)
+    if match:
+        return match.group(1).lower()
+    return None
+
+
+def create_per_thickness_position_tables(
+    results: list[STLAnalysisResult],
+    output_dir: Path,
+) -> dict[str, pd.DataFrame]:
+    """Create separate CSV files grouped by thickness and position.
+
+    Groups bodies by their nominal thickness (from specimen name) and position
+    (from filename suffix like _m, _ol, _ur).
+
+    Creates files like bodies-8mm-m.csv, bodies-8mm-ol.csv
+
+    Args:
+        results: List of STLAnalysisResult objects.
+        output_dir: Directory to save the CSV files.
+
+    Returns:
+        Dictionary mapping group keys to DataFrames.
+    """
+    if not results:
+        return {}
+
+    # Group results by thickness + position
+    groups: dict[str, list[dict]] = {}
+
+    for r in results:
+        specimen_name = extract_specimen_name(r.input_file.name)
+        if not specimen_name:
+            specimen_name = r.specimen_name
+
+        # Extract thickness from specimen name (e.g., "8" from "8.100.B.04")
+        parts = specimen_name.split('.') if specimen_name else []
+        thickness = parts[0] if parts and parts[0].isdigit() else "unknown"
+
+        # Extract position from filename suffix (e.g., "m" from "8.100.B.04_m.stl")
+        position = extract_position_from_filename(r.input_file.name)
+        if position:
+            group_key = f"{thickness}mm-{position}"
+        else:
+            group_key = f"{thickness}mm-unknown"
+
+        if group_key not in groups:
+            groups[group_key] = []
+
+        # Get specimen data
+        t_measured = r.specimen_data.t_measured if r.specimen_data else None
+        sig_h = r.specimen_data.sig_h if r.specimen_data else None
+        U = r.specimen_data.U if r.specimen_data else None
+        U_d = r.specimen_data.U_d if r.specimen_data else None
+        N50 = r.specimen_data.N50 if r.specimen_data else None
+
+        # Add each body as a row
+        for body in r.body_results:
+            groups[group_key].append({
+                'Specimen': specimen_name,
+                'Body_ID': body.body_index,
+                't [mm]': t_measured,
+                'sig_h [MPa]': sig_h,
+                'U [J/m²]': U,
+                'U_d [J/m³]': U_d,
+                'N50': N50,
+                't_calc [mm]': body.thickness,
+                'Volume_total [mm³]': body.volume_total,
+                'Volume_theoretical [mm³]': body.volume_theoretical,
+                'Area_total [mm²]': body.area_total,
+                'Area_slice1 [mm²]': body.area_slice1,
+                'Area_slice2 [mm²]': body.area_slice2,
+                'Perimeter1 [mm]': body.perimeter_slice1,
+                'Perimeter2 [mm]': body.perimeter_slice2,
+                'Fracture_surface_area [mm²]': body.fracture_surface_area,
+                'Area_theoretical [mm²]': body.area_theoretical,
+                'FSR_A': body.fsr_a,
+                'FSR_V': body.fsr_v,
+                'PR': body.pr,
+                'RAD [mm]': body.rad,
+                'RF [mm]': body.rf,
+                'RSD [mm]': body.rsd,
+                'Slice_distance [mm]': body.distance_between_slices,
+                'Max_Z_distance [mm]': body.max_distance_z,
+            })
+
+    # Create DataFrames and save CSV files
+    dataframes = {}
+    for group_key, rows in sorted(groups.items()):
+        df = pd.DataFrame(rows)
+        dataframes[group_key] = df
+
+        # Save CSV file
+        csv_path = output_dir / f"bodies-{group_key}.csv"
+        df.to_csv(csv_path, index=False)
+        print(f"  - bodies-{group_key}.csv ({len(rows)} bodies)")
+
+    return dataframes
+
+
+def create_per_specimen_csvs(
+    results: list[STLAnalysisResult],
+    output_dir: Path,
+) -> None:
+    """Create individual CSV files for each specimen.
+
+    Each specimen gets its own CSV file with all body data, using the same
+    format as raw_body_data but grouped by specimen.
+
+    Args:
+        results: List of STLAnalysisResult objects.
+        output_dir: Directory to save the CSV files.
+    """
+    if not results:
+        return
+
+    # Create specimens subdirectory
+    specimens_dir = output_dir / "specimens"
+    specimens_dir.mkdir(parents=True, exist_ok=True)
+
+    for r in results:
+        # Extract specimen name
+        specimen_name = extract_specimen_name(r.input_file.name)
+        if not specimen_name:
+            specimen_name = r.specimen_name
+
+        if not r.body_results:
+            continue
+
+        # Get specimen data
+        t_measured = r.specimen_data.t_measured if r.specimen_data else None
+        sig_h = r.specimen_data.sig_h if r.specimen_data else None
+        U = r.specimen_data.U if r.specimen_data else None
+        U_d = r.specimen_data.U_d if r.specimen_data else None
+        N50 = r.specimen_data.N50 if r.specimen_data else None
+
+        rows = []
+        for body in r.body_results:
+            rows.append({
+                'Specimen': specimen_name,
+                'Body_ID': body.body_index,
+                't [mm]': t_measured,
+                'sig_h [MPa]': sig_h,
+                'U [J/m²]': U,
+                'U_d [J/m³]': U_d,
+                'N50': N50,
+                't_calc [mm]': body.thickness,
+                'Volume_total [mm³]': body.volume_total,
+                'Volume_theoretical [mm³]': body.volume_theoretical,
+                'Area_total [mm²]': body.area_total,
+                'Area_slice1 [mm²]': body.area_slice1,
+                'Area_slice2 [mm²]': body.area_slice2,
+                'Perimeter1 [mm]': body.perimeter_slice1,
+                'Perimeter2 [mm]': body.perimeter_slice2,
+                'Fracture_surface_area [mm²]': body.fracture_surface_area,
+                'Area_theoretical [mm²]': body.area_theoretical,
+                'FSR_A': body.fsr_a,
+                'FSR_V': body.fsr_v,
+                'PR': body.pr,
+                'RAD [mm]': body.rad,
+                'RF [mm]': body.rf,
+                'RSD [mm]': body.rsd,
+                'Slice_distance [mm]': body.distance_between_slices,
+                'Max_Z_distance [mm]': body.max_distance_z,
+            })
+
+        df = pd.DataFrame(rows)
+        csv_path = specimens_dir / f"{specimen_name}.csv"
+        df.to_csv(csv_path, index=False)
+
+    print(f"  - specimens/ ({len(results)} specimen files)")
 
 
 # =============================================================================
@@ -1062,7 +1669,7 @@ def cmd_analyze_file(
     output_dir: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory."),
     no_plots: bool = typer.Option(False, "--no-plots", help="Skip saving PNG plots."),
     no_html: bool = typer.Option(False, "--no-html", help="Skip saving HTML visualization."),
-    no_excel: bool = typer.Option(False, "--no-excel", help="Skip saving Excel results."),
+    no_csv: bool = typer.Option(False, "--no-csv", help="Skip saving CSV results."),
     data_only: bool = typer.Option(False, "--data-only", "-d", help="Data only mode (skip all visualization, fastest)."),
     z_offset_lower: float = typer.Option(0.1, "--z-lower", help="Z offset from lower intersection (mm)."),
     z_offset_upper: float = typer.Option(0.05, "--z-upper", help="Z offset from upper intersection (mm)."),
@@ -1074,7 +1681,7 @@ def cmd_analyze_file(
         output_dir=output_dir,
         save_plots=not no_plots,
         save_html=not no_html,
-        save_excel=not no_excel,
+        save_excel=not no_csv,
         off_screen=True,
         z_offset_lower=z_offset_lower,
         z_offset_upper=z_offset_upper,
@@ -1090,7 +1697,7 @@ def cmd_analyze_folder(
     output_dir: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory."),
     no_plots: bool = typer.Option(False, "--no-plots", help="Skip saving PNG plots."),
     no_html: bool = typer.Option(False, "--no-html", help="Skip saving HTML visualizations."),
-    no_combined_excel: bool = typer.Option(False, "--no-combined-excel", help="Skip combined Excel file."),
+    no_combined_excel: bool = typer.Option(False, "--no-csv", help="Skip combined CSV files."),
     data_only: bool = typer.Option(False, "--data-only", "-d", help="Data only mode (skip all visualization, fastest)."),
     parallel: bool = typer.Option(False, "--parallel", "-p", help="Process files in parallel (best with --data-only)."),
     max_workers: Optional[int] = typer.Option(None, "--workers", "-w", help="Max parallel workers (default: CPU count)."),
@@ -1104,9 +1711,11 @@ def cmd_analyze_folder(
     Extracts specimen names from filenames (e.g., '8.100.B.04.stl') and fetches
     corresponding specimen data (t_m, sig_h, U, U_d, N50) from the database.
 
-    Creates two Excel files:
-    - combined_results.xlsx: Detailed per-body data
-    - specimen_summary.xlsx: One row per specimen with t_m, t_calc, sig_h, U, U_d, N50, and FSR for each body
+    Creates CSV files:
+    - combined_results.csv: Detailed per-body data
+    - specimen_summary.csv: One row per specimen with t_m, t_calc, sig_h, U, U_d, N50, FSR, PR, RAD
+    - raw_body_data.csv: One row per body with all data
+    - bodies-Xmm.csv: Per-thickness files (e.g., bodies-4mm.csv, bodies-8mm.csv)
     """
     results = analyze_folder(
         input_dir=input_dir,
