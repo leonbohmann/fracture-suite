@@ -38,7 +38,7 @@ import fracsuite.core.logging
 from fracsuite.stl import stl_app
 
 import scienceplots
-_ = scienceplots.isdir # dummy usage to avoid removing on isort
+_ = scienceplots.__name__ # dummy usage to avoid removing on isort
 
 warnings.filterwarnings("ignore")
 
