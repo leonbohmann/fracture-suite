@@ -853,8 +853,8 @@ def anas1(
         
         simulations.append(sim)
 
-    n50_sim  = [(s.thickness, s.U, np.abs(s.sig_h), len(s.splinters)) for s in simulations]
-    circ_sim  = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in simulations]
+    n50_sim  = [(s.measured_thickness, s.U, np.abs(s.sig_h), len(s.splinters)) for s in simulations]
+    circ_sim  = [(s.measured_thickness, s.U, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in simulations]
  
     
 
@@ -870,10 +870,10 @@ def anas1(
     
     print("Calculating N50...")
     # n50 = [(s.thickness, s.sig_h, s.calculate_nfifty_count([(400,400)])) for s in Specimen.get_all_by(fil_all, load=True)]
-    n50 = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_nfifty_in_windows(force_recalc=False)) for s in specimens]
-    n50_kde = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_nfifty_kde(force_recalc=False)) for s in specimens]
-    n50_std = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_ne(force_recalc=False)) for s in specimens]
-    circ = [(s.thickness, s.U, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in specimens]
+    n50 = [(s.measured_thickness, s.U, np.abs(s.sig_h), s.calculate_nfifty_in_windows(force_recalc=False)) for s in specimens]
+    n50_kde = [(s.measured_thickness, s.U, np.abs(s.sig_h), s.calculate_nfifty_kde(force_recalc=False)) for s in specimens]
+    n50_std = [(s.measured_thickness, s.U, np.abs(s.sig_h), s.calculate_ne(force_recalc=False)) for s in specimens]
+    circ = [(s.measured_thickness, s.U, np.abs(s.sig_h), s.calculate_mean(SplinterProp.CIRCUMFENCE)) for s in specimens]
     
     print("Printing N50...")
     for i,t in []: #enumerate([4,8]):
