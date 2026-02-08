@@ -28,6 +28,18 @@ stl_app = typer.Typer(help=__doc__, callback=main_callback)
 SLICE_COUNT = 40
 THEORETICAL_PERIMETER_SLICES = 5  # Number of slices for mean perimeter calculation
 
+# Outlier filtering parameters
+THICKNESS_FILTER_ENABLED = True   # If True, filter out bodies with thickness deviation > threshold
+THICKNESS_FILTER_THRESHOLD = 0.10  # Maximum allowed deviation from expected thickness (30%)
+
+# Box-counting fractal dimension parameters
+FRACTAL_MIN_POINTS = 4      # Minimum data points for regression
+FRACTAL_MAX_POINTS = 20     # Maximum box size iterations (only used if FRACTAL_FIXED_STEPS is None)
+FRACTAL_SIZE_FACTOR = 1.5   # Box size reduction factor
+FRACTAL_LMIN_DIVISOR = 16.0 # L_min = edge_length / FRACTAL_LMIN_DIVISOR (only used if FRACTAL_FIXED_STEPS is None)
+FRACTAL_LMIN_USE_MIN = True  # If True, use min edge length for L_min; if False, use mean edge length
+FRACTAL_FIXED_STEPS = None  # If set (e.g., 15), use exactly this many steps; overrides L_min-based stopping
+
 # =============================================================================
 # Data Classes
 # =============================================================================
@@ -66,9 +78,12 @@ class BodyAnalysisResult:
     rad: float  # Ra deviation: arithmetic mean radial deviation from smooth reference [mm]
     rf: float  # roughness factor: mean deviation from linearly interpolated ideal [mm]
     rsd: float  # radial std deviation: mean std dev of radial distances (surface bumpiness) [mm]
+    fractal_dim: float  # box-counting fractal dimension (2.0=smooth, >2.0=rough)
     thickness: float
     distance_between_slices: float
     max_distance_z: float
+    z_lower: float = 0.0  # lower z bound used for fracture surface extraction
+    z_upper: float = 0.0  # upper z bound used for fracture surface extraction
 
 
 @dataclass
@@ -133,6 +148,7 @@ class STLAnalysisResult:
                 'RAD [mm]': r.rad,
                 'RF [mm]': r.rf,
                 'RSD [mm]': r.rsd,
+                'Fractal_Dim': r.fractal_dim,
                 'Thickness [mm]': r.thickness,
                 'Slice_distance [mm]': r.distance_between_slices,
                 'Max_Z_distance [mm]': r.max_distance_z,
@@ -508,11 +524,636 @@ def cut_and_calculate_fracture_surface_area(
     clipped_mesh = mesh.clip(normal='z', origin=(0, 0, z_values[0]), invert=False)
     clipped_mesh = clipped_mesh.clip(normal='z', origin=(0, 0, z_values[1]), invert=True)
 
-    if not clipped_mesh.is_all_triangles:
+    # Handle case where clip returns UnstructuredGrid instead of PolyData
+    if hasattr(clipped_mesh, 'extract_surface'):
+        clipped_mesh = clipped_mesh.extract_surface()
+
+    if hasattr(clipped_mesh, 'is_all_triangles') and not clipped_mesh.is_all_triangles:
         clipped_mesh = clipped_mesh.triangulate()
 
     # PyVista clip() does not add cap faces, so area is directly the fracture surface
     return clipped_mesh.area
+
+
+def clip_fracture_surface(
+    mesh: pv.PolyData,
+    z_lower: float,
+    z_upper: float,
+) -> pv.PolyData:
+    """Extract the fracture surface (lateral surface) between two Z planes.
+
+    Clips the mesh between z_lower and z_upper to isolate only the fracture
+    surface (excluding the top and bottom glass faces).
+
+    Args:
+        mesh: The PyVista mesh of the body.
+        z_lower: Lower Z bound for clipping.
+        z_upper: Upper Z bound for clipping.
+
+    Returns:
+        The clipped mesh containing only the fracture surface.
+    """
+    clipped = mesh.clip(normal='z', origin=(0, 0, z_lower), invert=False)
+    clipped = clipped.clip(normal='z', origin=(0, 0, z_upper), invert=True)
+
+    # Handle case where clip returns UnstructuredGrid instead of PolyData
+    if hasattr(clipped, 'extract_surface'):
+        clipped = clipped.extract_surface()
+
+    if hasattr(clipped, 'is_all_triangles') and not clipped.is_all_triangles:
+        clipped = clipped.triangulate()
+
+    return clipped
+
+
+def count_occupied_boxes(
+    points: np.ndarray,
+    bounds: tuple[float, float, float, float, float, float],
+    box_size: float,
+) -> int:
+    """Count boxes of a given size containing at least one point.
+
+    Uses vertex-based counting: for each mesh vertex, determine which box
+    it falls into, then count the total number of unique occupied boxes.
+
+    Args:
+        points: Nx3 numpy array of point coordinates.
+        bounds: Bounding box as (xmin, xmax, ymin, ymax, zmin, zmax).
+        box_size: Size of each cubic box.
+
+    Returns:
+        Number of occupied boxes.
+    """
+    occupied = get_occupied_box_indices(points, bounds, box_size)
+
+    return len(occupied)
+
+
+def get_occupied_box_indices(
+    points: np.ndarray,
+    bounds: tuple[float, float, float, float, float, float],
+    box_size: float,
+) -> set[tuple[int, int, int]]:
+    """Get the set of occupied box indices (vectorized).
+
+    Args:
+        points: Nx3 numpy array of point coordinates.
+        bounds: Bounding box as (xmin, xmax, ymin, ymax, zmin, zmax).
+        box_size: Size of each cubic box.
+
+    Returns:
+        Set of (ix, iy, iz) tuples for occupied boxes.
+    """
+    xmin, _, ymin, _, zmin, _ = bounds
+
+    # Vectorized: compute all box indices at once
+    origin = np.array([xmin, ymin, zmin])
+    indices = ((points - origin) / box_size).astype(np.int32)
+
+    # Get unique box indices efficiently
+    unique_indices = np.unique(indices, axis=0)
+
+    # Convert to set of tuples for compatibility with existing code
+    return set(map(tuple, unique_indices))
+
+
+def create_box_mesh(
+    box_indices: set[tuple[int, int, int]],
+    bounds: tuple[float, float, float, float, float, float],
+    box_size: float,
+) -> pv.PolyData:
+    """Create a PyVista mesh of the occupied boxes for visualization.
+
+    Args:
+        box_indices: Set of (ix, iy, iz) tuples for occupied boxes.
+        bounds: Bounding box as (xmin, xmax, ymin, ymax, zmin, zmax).
+        box_size: Size of each cubic box.
+
+    Returns:
+        PyVista mesh containing all occupied boxes as wireframe cubes.
+    """
+    xmin, ymin, zmin = bounds[0], bounds[2], bounds[4]
+
+    boxes = []
+    for ix, iy, iz in box_indices:
+        # Calculate box corner
+        x0 = xmin + ix * box_size
+        y0 = ymin + iy * box_size
+        z0 = zmin + iz * box_size
+
+        # Create box
+        box = pv.Box(bounds=(x0, x0 + box_size, y0, y0 + box_size, z0, z0 + box_size))
+        boxes.append(box)
+
+    if boxes:
+        return pv.MultiBlock(boxes).combine()
+    else:
+        return pv.PolyData()
+
+
+@dataclass
+class EdgeStats:
+    """Edge length statistics for a mesh."""
+    mean: float
+    min: float
+    max: float
+    L_min: float  # Computed L_min based on edge stats
+
+
+def _compute_edge_stats(fracture_mesh: pv.PolyData, L_max: float) -> EdgeStats:
+    """Compute edge length statistics and L_min for box-counting.
+
+    Args:
+        fracture_mesh: The fracture surface mesh.
+        L_max: Maximum dimension of the bounding box.
+
+    Returns:
+        EdgeStats with mean, min, max edge lengths and computed L_min.
+    """
+    try:
+        edge_lengths = fracture_mesh.compute_cell_sizes(length=True)['Length']
+        if len(edge_lengths) > 0:
+            mean_edge = edge_lengths.mean()
+            min_edge = edge_lengths.min()
+            max_edge = edge_lengths.max()
+            if FRACTAL_LMIN_USE_MIN:
+                # L_min = min_edge / SIZE_FACTOR so that box counting includes
+                # a step at approximately min_edge (the mesh resolution limit)
+                L_min = min_edge / FRACTAL_SIZE_FACTOR
+            else:
+                L_min = mean_edge / FRACTAL_LMIN_DIVISOR
+        else:
+            mean_edge = min_edge = max_edge = 0
+            L_min = L_max / 100
+    except Exception:
+        mean_edge = min_edge = max_edge = 0
+        L_min = L_max / 100
+
+    # Ensure L_min is valid
+    if L_min <= 0 or L_min >= L_max:
+        L_min = L_max / 100
+
+    return EdgeStats(mean=mean_edge, min=min_edge, max=max_edge, L_min=L_min)
+
+
+def _generate_box_sizes(L_max: float, L_min: float) -> list[float]:
+    """Generate box sizes for box-counting algorithm.
+
+    Args:
+        L_max: Starting box size (largest dimension).
+        L_min: Minimum box size (only used if FRACTAL_FIXED_STEPS is None).
+
+    Returns:
+        List of box sizes in decreasing order.
+    """
+    box_sizes = []
+    L = L_max
+
+    if FRACTAL_FIXED_STEPS is not None and FRACTAL_FIXED_STEPS > 0:
+        # Use fixed number of steps
+        for _ in range(FRACTAL_FIXED_STEPS):
+            box_sizes.append(L)
+            L = L / FRACTAL_SIZE_FACTOR
+    else:
+        # Use L_min-based stopping
+        while len(box_sizes) < FRACTAL_MAX_POINTS:
+            box_sizes.append(L)
+            if L < L_min:
+                break  # Include this step, then stop
+            L = L / FRACTAL_SIZE_FACTOR
+
+    return box_sizes
+
+
+def _perform_fractal_regression(
+    n_l_data: list[tuple[float, int]]
+) -> tuple[float, float, float, float]:
+    """Perform linear regression on log-log data for fractal dimension.
+
+    Args:
+        n_l_data: List of (L, N) pairs from box counting.
+
+    Returns:
+        Tuple of (D, D_raw, c, r_squared) where:
+        - D: clamped fractal dimension [2.0, 3.0]
+        - D_raw: raw (unclamped) slope from regression
+        - c: intercept
+        - r_squared: coefficient of determination
+        Returns (2.0, 2.0, 0.0, 0.0) on failure.
+    """
+    if len(n_l_data) < FRACTAL_MIN_POINTS:
+        return 2.0, 2.0, 0.0, 0.0
+
+    log_inv_L = np.array([np.log(1.0 / L) for L, N in n_l_data])
+    log_N = np.array([np.log(N) for L, N in n_l_data])
+
+    try:
+        D_raw, c = np.polyfit(log_inv_L, log_N, 1)
+
+        # Calculate R² value
+        y_pred = D_raw * log_inv_L + c
+        ss_res = np.sum((log_N - y_pred) ** 2)
+        ss_tot = np.sum((log_N - np.mean(log_N)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+
+        # Clamp D to physically meaningful range [2.0, 3.0]
+        D = max(2.0, min(3.0, D_raw))
+
+        return float(D), float(D_raw), float(c), float(r_squared)
+    except Exception:
+        return 2.0, 2.0, 0.0, 0.0
+
+
+def compute_fractal_dimension(
+    body: pv.PolyData,
+    z_lower: float,
+    z_upper: float,
+) -> tuple[float, list[tuple[float, int]]]:
+    """Compute box-counting fractal dimension of the fracture surface.
+
+    The fractal dimension D is computed using the box-counting method:
+    D = lim(L→0) [log(N(L)) / log(1/L)]
+
+    In practice, we cover the surface with boxes of decreasing sizes and
+    fit a line to log(N) vs log(1/L). The slope is the fractal dimension.
+
+    - D = 2.0 for a perfectly smooth 2D surface
+    - D > 2.0 for rough/fractal surfaces (up to 3.0 for volume-filling)
+    - Higher energy fractures produce rougher surfaces with higher D
+
+    Args:
+        body: The PyVista mesh of the body.
+        z_lower: Lower Z bound for fracture surface extraction.
+        z_upper: Upper Z bound for fracture surface extraction.
+
+    Returns:
+        Tuple of (D, n_l_data) where:
+        - D: fractal dimension (2.0 = smooth, >2.0 = rough)
+        - n_l_data: list of (L, N) pairs for plotting/diagnostics
+    """
+    # 1. Extract fracture surface (clip between z planes)
+    try:
+        fracture_mesh = clip_fracture_surface(body, z_lower, z_upper)
+    except Exception:
+        return 2.0, []
+
+    if fracture_mesh.n_points < 10:
+        return 2.0, []
+
+    # 2. Get bounding box of fracture surface
+    bounds = fracture_mesh.bounds
+    xmin, xmax, ymin, ymax, zmin, zmax = bounds
+    L_max = max(xmax - xmin, ymax - ymin, zmax - zmin)
+
+    if L_max <= 0:
+        return 2.0, []
+
+    # 3. Compute edge stats and generate box sizes
+    edge_stats = _compute_edge_stats(fracture_mesh, L_max)
+    box_sizes = _generate_box_sizes(L_max, edge_stats.L_min)
+
+    if len(box_sizes) < FRACTAL_MIN_POINTS:
+        return 2.0, []
+
+    # 4. Count occupied boxes for each L
+    points = fracture_mesh.points
+    n_l_data = []
+    for L in box_sizes:
+        N = count_occupied_boxes(points, bounds, L)
+        if N > 0:  # Only include valid counts
+            n_l_data.append((L, N))
+
+    # 5. Perform regression
+    D, _, _, _ = _perform_fractal_regression(n_l_data)
+
+    return D, n_l_data
+
+
+def compute_fractal_dimension_with_debug(
+    body: pv.PolyData,
+    z_lower: float,
+    z_upper: float,
+    debug_dir: Path,
+    body_name: str = "body",
+) -> tuple[float, list[tuple[float, int]]]:
+    """Compute fractal dimension with comprehensive debug output.
+
+    Creates debug output including:
+    - CSV file with raw L, N, log(1/L), log(N) data
+    - Log-log plot with regression line and R² value
+    - 3D visualizations of boxes at different scales
+    - Fracture surface mesh visualization
+
+    Args:
+        body: The PyVista mesh of the body.
+        z_lower: Lower Z bound for fracture surface extraction.
+        z_upper: Upper Z bound for fracture surface extraction.
+        debug_dir: Directory to save debug output.
+        body_name: Name prefix for debug files.
+
+    Returns:
+        Tuple of (D, n_l_data) same as compute_fractal_dimension.
+    """
+    import matplotlib
+    matplotlib.use('Agg')  # Non-interactive backend
+    import matplotlib.pyplot as plt
+
+    debug_dir = Path(debug_dir)
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    # Helper to save body render on error
+    def save_error_body_render(error_msg: str):
+        with open(debug_dir / f"{body_name}_error.txt", 'w') as f:
+            f.write(f"{error_msg}\n")
+            f.write(f"\nBody info:\n")
+            f.write(f"  z_lower: {z_lower}\n")
+            f.write(f"  z_upper: {z_upper}\n")
+            f.write(f"  n_points: {body.n_points}\n")
+            f.write(f"  n_cells: {body.n_cells}\n")
+            f.write(f"  bounds: {body.bounds}\n")
+        try:
+            p = pv.Plotter(off_screen=True, window_size=[1200, 1000])
+            p.add_mesh(body, color='lightblue', show_edges=True, edge_color='gray', opacity=0.8)
+            p.add_mesh(body.outline(), color='black', line_width=2)
+            # Add z-plane indicators
+            bounds = body.bounds
+            z_plane_lower = pv.Plane(center=(0, 0, z_lower), direction=(0, 0, 1),
+                                     i_size=bounds[1]-bounds[0]+2, j_size=bounds[3]-bounds[2]+2)
+            z_plane_upper = pv.Plane(center=(0, 0, z_upper), direction=(0, 0, 1),
+                                     i_size=bounds[1]-bounds[0]+2, j_size=bounds[3]-bounds[2]+2)
+            p.add_mesh(z_plane_lower, color='red', opacity=0.3)
+            p.add_mesh(z_plane_upper, color='green', opacity=0.3)
+            p.camera_position = 'iso'
+            p.add_axes()
+            p.camera.zoom(0.8)
+            p.screenshot(str(debug_dir / f"{body_name}_error_body.png"))
+            p.close()
+        except Exception as render_e:
+            with open(debug_dir / f"{body_name}_error.txt", 'a') as f:
+                f.write(f"\nCould not render body: {render_e}\n")
+
+    # 1. Extract fracture surface
+    try:
+        fracture_mesh = clip_fracture_surface(body, z_lower, z_upper)
+    except Exception as e:
+        save_error_body_render(f"Error clipping fracture surface: {e}")
+        return 2.0, []
+
+    if fracture_mesh.n_points < 10:
+        save_error_body_render(f"Too few points in fracture mesh: {fracture_mesh.n_points}")
+        return 2.0, []
+
+    # Get mesh info and compute edge stats
+    bounds = fracture_mesh.bounds
+    xmin, xmax, ymin, ymax, zmin, zmax = bounds
+    L_max = max(xmax - xmin, ymax - ymin, zmax - zmin)
+
+    edge_stats = _compute_edge_stats(fracture_mesh, L_max)
+
+    # Save mesh info to text file
+    with open(debug_dir / f"{body_name}_mesh_info.txt", 'w') as f:
+        f.write(f"Fracture Surface Mesh Information\n")
+        f.write(f"=" * 50 + "\n\n")
+        f.write(f"Number of points: {fracture_mesh.n_points}\n")
+        f.write(f"Number of cells: {fracture_mesh.n_cells}\n")
+        f.write(f"Surface area: {fracture_mesh.area:.4f} mm²\n\n")
+        f.write(f"Bounding Box:\n")
+        f.write(f"  X: [{xmin:.4f}, {xmax:.4f}] (range: {xmax-xmin:.4f})\n")
+        f.write(f"  Y: [{ymin:.4f}, {ymax:.4f}] (range: {ymax-ymin:.4f})\n")
+        f.write(f"  Z: [{zmin:.4f}, {zmax:.4f}] (range: {zmax-zmin:.4f})\n\n")
+        f.write(f"L_max (largest dimension): {L_max:.4f}\n")
+        if FRACTAL_LMIN_USE_MIN:
+            f.write(f"L_min (min_edge / {FRACTAL_SIZE_FACTOR}): {edge_stats.L_min:.4f}\n")
+            f.write(f"  -> Ensures last box size min_edge (mesh resolution limit)\n\n")
+        else:
+            f.write(f"L_min (mean_edge / {FRACTAL_LMIN_DIVISOR}): {edge_stats.L_min:.4f}\n\n")
+        f.write(f"Edge Length Statistics:\n")
+        f.write(f"  Mean: {edge_stats.mean:.4f}\n")
+        f.write(f"  Min: {edge_stats.min:.4f}\n")
+        f.write(f"  Max: {edge_stats.max:.4f}\n\n")
+        f.write(f"Box-Counting Parameters:\n")
+        f.write(f"  FRACTAL_SIZE_FACTOR: {FRACTAL_SIZE_FACTOR}\n")
+        f.write(f"  FRACTAL_LMIN_USE_MIN: {FRACTAL_LMIN_USE_MIN}\n")
+        f.write(f"  FRACTAL_FIXED_STEPS: {FRACTAL_FIXED_STEPS}\n")
+        if FRACTAL_FIXED_STEPS is not None and FRACTAL_FIXED_STEPS > 0:
+            f.write(f"  Mode: Fixed {FRACTAL_FIXED_STEPS} steps\n")
+        else:
+            f.write(f"  Mode: L_min-based (stop when L < {edge_stats.L_min:.4f})\n")
+
+    # Save fracture mesh visualization
+    try:
+        p = pv.Plotter(off_screen=True)
+        p.add_mesh(fracture_mesh, color='lightblue', show_edges=True, edge_color='gray', opacity=0.8)
+        p.add_mesh(fracture_mesh.outline(), color='black', line_width=2)
+        p.camera_position = 'iso'
+        p.add_axes()
+        p.screenshot(str(debug_dir / f"{body_name}_fracture_surface.png"))
+        p.close()
+    except Exception as e:
+        print(f"Warning: Could not save fracture surface image: {e}")
+
+    # Generate box sizes
+    box_sizes = _generate_box_sizes(L_max, edge_stats.L_min)
+
+    if len(box_sizes) < FRACTAL_MIN_POINTS:
+        with open(debug_dir / f"{body_name}_error.txt", 'w') as f:
+            f.write(f"Too few box sizes: {len(box_sizes)} (need {FRACTAL_MIN_POINTS})\n")
+        return 2.0, []
+
+    # Count boxes and collect debug data
+    points = fracture_mesh.points
+    n_l_data = []
+    debug_rows = []
+
+    # Calculate expected box counts at L_max for each dimension
+    nx_max = math.ceil((xmax - xmin) / L_max)
+    ny_max = math.ceil((ymax - ymin) / L_max)
+    nz_max = math.ceil((zmax - zmin) / L_max)
+
+    # Append expected counts info to mesh_info.txt
+    with open(debug_dir / f"{body_name}_mesh_info.txt", 'a') as f:
+        f.write(f"\nExpected Box Counts at L_max={L_max:.4f}:\n")
+        f.write(f"  X direction: ceil({xmax-xmin:.4f}/{L_max:.4f}) = {nx_max}\n")
+        f.write(f"  Y direction: ceil({ymax-ymin:.4f}/{L_max:.4f}) = {ny_max}\n")
+        f.write(f"  Z direction: ceil({zmax-zmin:.4f}/{L_max:.4f}) = {nz_max}\n")
+        f.write(f"  Max possible boxes: {nx_max * ny_max * nz_max}\n")
+        f.write(f"\nNote: At large L, few boxes are expected. This is correct.\n")
+        f.write(f"The fractal dimension is computed from how N scales as L decreases.\n")
+
+    for i, L in enumerate(box_sizes):
+        occupied_indices = get_occupied_box_indices(points, bounds, L)
+        N = len(occupied_indices)
+
+        if N > 0:
+            n_l_data.append((L, N))
+            log_inv_L = np.log(1.0 / L)
+            log_N = np.log(N)
+            debug_rows.append({
+                'step': i + 1,
+                'L': L,
+                'N': N,
+                'log(1/L)': log_inv_L,
+                'log(N)': log_N,
+            })
+
+            # Save box visualization for ALL scales
+            try:
+                box_mesh = create_box_mesh(occupied_indices, bounds, L)
+                p = pv.Plotter(off_screen=True)
+                p.add_mesh(fracture_mesh, color='lightblue', opacity=0.3)
+                if box_mesh.n_points > 0:
+                    p.add_mesh(box_mesh, style='wireframe', color='red', line_width=1)
+                p.camera_position = 'iso'
+                p.add_axes()
+                p.screenshot(str(debug_dir / f"{body_name}_boxes_step{i+1:02d}_L{L:.4f}.png"))
+
+                # 2D cross-section view for small box sizes (last 3 steps)
+                if i >= len(box_sizes) - 3:
+                    try:
+                        # Slice mesh at Y=center to get cross-section
+                        y_center = (ymin + ymax) / 2
+                        slice_mesh = fracture_mesh.slice(normal='y', origin=(0, y_center, 0))
+
+                        if slice_mesh.n_points > 0:
+                            # Get slice points (X, Z coordinates)
+                            slice_points = slice_mesh.points
+
+                            # Create 2D plot
+                            fig, ax = plt.subplots(figsize=(12, 8))
+
+                            # Plot the cross-section contour
+                            ax.scatter(slice_points[:, 0], slice_points[:, 2],
+                                      s=1, c='blue', label='Fracture surface')
+
+                            # Draw boxes that intersect this Y-slice
+                            for ix, iy, iz in occupied_indices:
+                                box_x0 = xmin + ix * L
+                                box_y0 = ymin + iy * L
+                                box_z0 = zmin + iz * L
+
+                                # Check if box intersects the Y-slice
+                                if box_y0 <= y_center < box_y0 + L:
+                                    rect = plt.Rectangle((box_x0, box_z0), L, L,
+                                                        fill=False, edgecolor='red', linewidth=1)
+                                    ax.add_patch(rect)
+
+                            ax.set_xlabel('X (mm)', fontsize=12)
+                            ax.set_ylabel('Z (mm)', fontsize=12)
+                            ax.set_aspect('equal')
+                            ax.grid(True, alpha=0.3)
+
+                            plt.tight_layout()
+                            plt.savefig(debug_dir / f"{body_name}_boxes_step{i+1:02d}_L{L:.4f}_section.png", dpi=150)
+                            plt.close()
+                    except Exception as e:
+                        print(f"Warning: Could not create cross-section for L={L}: {e}")
+
+                p.close()
+            except Exception as e:
+                print(f"Warning: Could not save box visualization for L={L}: {e}")
+
+    # Save raw data to CSV
+    if debug_rows:
+        df = pd.DataFrame(debug_rows)
+        df.to_csv(debug_dir / f"{body_name}_box_counting_data.csv", index=False)
+
+    # Perform regression using helper
+    D, D_raw, c, r_squared = _perform_fractal_regression(n_l_data)
+
+    if len(n_l_data) < FRACTAL_MIN_POINTS:
+        with open(debug_dir / f"{body_name}_error.txt", 'a') as f:
+            f.write(f"Too few valid data points: {len(n_l_data)}\n")
+        return 2.0, n_l_data
+
+    # Compute log arrays for plotting
+    log_inv_L_arr = np.array([np.log(1.0 / L) for L, N in n_l_data])
+    log_N_arr = np.array([np.log(N) for L, N in n_l_data])
+
+    # Save regression results
+    with open(debug_dir / f"{body_name}_results.txt", 'w') as f:
+        f.write(f"Box-Counting Fractal Dimension Results\n")
+        f.write(f"=" * 50 + "\n\n")
+        f.write(f"Raw slope (D_raw): {D_raw:.6f}\n")
+        f.write(f"Clamped D [2.0, 3.0]: {D:.6f}\n")
+        f.write(f"Intercept (c): {c:.6f}\n")
+        f.write(f"R² value: {r_squared:.6f}\n\n")
+        f.write(f"Number of data points: {len(n_l_data)}\n")
+        f.write(f"L range: [{n_l_data[-1][0]:.4f}, {n_l_data[0][0]:.4f}]\n")
+        f.write(f"N range: [{n_l_data[0][1]}, {n_l_data[-1][1]}]\n\n")
+        f.write(f"Interpretation:\n")
+        f.write(f"  D = 2.0: Perfectly smooth 2D surface\n")
+        f.write(f"  D > 2.0: Rough/fractal surface\n")
+        f.write(f"  D = 3.0: Volume-filling surface\n")
+
+    # Create log-log plot
+    try:
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        # Plot data points
+        ax.scatter(log_inv_L_arr, log_N_arr, s=100, c='blue', marker='o', label='Data points', zorder=5)
+
+        # Plot regression line
+        x_line = np.linspace(log_inv_L_arr.min() - 0.1, log_inv_L_arr.max() + 0.1, 100)
+        y_line = D_raw * x_line + c
+        ax.plot(x_line, y_line, 'r-', linewidth=2, label='Linear fit')
+
+        # Add reference lines for D=2 and D=3
+        y_d2 = 2.0 * x_line + (log_N_arr[0] - 2.0 * log_inv_L_arr[0])
+        y_d3 = 3.0 * x_line + (log_N_arr[0] - 3.0 * log_inv_L_arr[0])
+        ax.plot(x_line, y_d2, 'g--', alpha=0.5, label='D=2 (smooth)')
+        ax.plot(x_line, y_d3, 'm--', alpha=0.5, label='D=3 (volume-filling)')
+
+        # Add vertical lines for mesh size limits
+        if edge_stats.min > 0:
+            log_inv_min_edge = np.log(1.0 / edge_stats.min)
+            ax.axvline(x=log_inv_min_edge, color='orange', linestyle=':', linewidth=2,
+                       label='min edge')
+        log_inv_L_min = np.log(1.0 / edge_stats.L_min)
+        ax.axvline(x=log_inv_L_min, color='brown', linestyle='--', linewidth=2,
+                   label='L_min')
+
+        ax.set_xlabel('log(1/L)', fontsize=12)
+        ax.set_ylabel('log(N)', fontsize=12)
+        ax.legend(loc='upper left', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.set_title(f"Fractal Dimension Fit: D={D:.4f}, R²={r_squared:.4f}", fontsize=14)
+
+        plt.tight_layout()
+        plt.savefig(debug_dir / f"{body_name}_loglog_plot.png", dpi=150)
+        plt.close()
+    except Exception as e:
+        print(f"Warning: Could not create log-log plot: {e}")
+
+    # Create summary plot with multiple views
+    try:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+        # Left: N vs L (linear scale)
+        L_vals = [L for L, N in n_l_data]
+        N_vals = [N for L, N in n_l_data]
+        axes[0].plot(L_vals, N_vals, 'bo-', markersize=8)
+        axes[0].set_xlabel('Box size L', fontsize=12)
+        axes[0].set_ylabel('Number of occupied boxes N', fontsize=12)
+        axes[0].grid(True, alpha=0.3)
+        axes[0].invert_xaxis()  # Larger L on left
+
+        # Right: N vs L (log-log scale)
+        axes[1].loglog(L_vals, N_vals, 'bo-', markersize=8)
+        axes[1].set_xlabel('Box size L (log scale)', fontsize=12)
+        axes[1].set_ylabel('Number of boxes N (log scale)', fontsize=12)
+        axes[1].grid(True, alpha=0.3, which='both')
+        axes[1].invert_xaxis()
+
+        plt.tight_layout()
+        plt.savefig(debug_dir / f"{body_name}_scaling_plots.png", dpi=150)
+        plt.close()
+    except Exception as e:
+        print(f"Warning: Could not create scaling plots: {e}")
+
+    print(f"  Debug output saved to: {debug_dir}")
+    print(f"  Fractal dimension D = {D:.4f} (R² = {r_squared:.4f})")
+
+    return float(D), n_l_data
 
 
 # =============================================================================
@@ -739,6 +1380,10 @@ def analyze_body(
     # RSD: Radial Standard Deviation - measures surface bumpiness
     rsd = calculate_radial_std_deviation(body, z1, z2, n_slices=SLICE_COUNT)
 
+    # Fractal Dimension: Box-counting fractal dimension of fracture surface
+    # D = 2.0 for smooth, D > 2.0 for rough/fractal surfaces
+    fractal_dim, _ = compute_fractal_dimension(body, z1, z2)
+
     result = BodyAnalysisResult(
         body_index=body_index,
         volume_total=volume_total,
@@ -756,9 +1401,12 @@ def analyze_body(
         rad=rad,
         rf=rf,
         rsd=rsd,
+        fractal_dim=fractal_dim,
         thickness=thickness,
         distance_between_slices=t_theo,
         max_distance_z=max_distance_z,
+        z_lower=z1,
+        z_upper=z2,
     )
 
     vis_data = {
@@ -894,8 +1542,8 @@ def _create_visualizations(
         return
 
     # Combined 3D plotter
-    tp3D = pv.Plotter(off_screen=off_screen)
-    tpslice = pv.Plotter(off_screen=off_screen)
+    tp3D = pv.Plotter(off_screen=off_screen, window_size=[1200, 1000])
+    tpslice = pv.Plotter(off_screen=off_screen, window_size=[1200, 1000])
 
     for body_index, analysis, vis_data in vis_data_list:
         color = DEFAULT_COLOR_MAP.get(body_index, 'grey')
@@ -939,9 +1587,9 @@ def _create_visualizations(
     tp3D.add_legend()
     tp3D.add_axes()
     tp3D.show_grid()
-    tp3D.add_text(specimen_name, position='upper_left', font_size=20)
     tp3D.camera_position = 'xy'
     tp3D.enable_parallel_projection()
+    tp3D.camera.zoom(0.8)  # Zoom out to prevent axis clipping
 
     if save_plots:
         tp3D.screenshot(str(output_dir / f"{specimen_name}_Body_total.png"))
@@ -961,7 +1609,7 @@ def _create_visualizations(
     tpslice.camera_position = 'xy'
     tpslice.enable_parallel_projection()
     tpslice.show_grid()
-    tpslice.add_text(specimen_name, position='upper_left', font_size=20)
+    tpslice.camera.zoom(0.8)  # Zoom out to prevent axis clipping
 
     if save_plots:
         tpslice.screenshot(str(output_dir / f"{specimen_name}_Total_DifferenceSlices.png"))
@@ -987,38 +1635,36 @@ def _save_body_plots_fast(
     slice2 = vis_data['slice2']
     vector_thickness = vis_data['vector_thickness']
 
-    # Plot 1: Difference of slices (top view)
-    p = pv.Plotter(off_screen=off_screen)
-    p.add_mesh(body.outline(), color="k")
-    p.add_mesh(slice1, color="red")
-    p.add_mesh(slice2, color="blue")
-    p.add_text(f'{specimen_name}_Body{body_index}_Slices', position='upper_left', font_size=15)
-    p.camera_position = 'xy'
-    p.enable_parallel_projection()
-    p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_DifferenceSlices.png"))
-    p.close()
+    # # Plot 1: Difference of slices (top view)
+    # p = pv.Plotter(off_screen=off_screen)
+    # p.add_mesh(body.outline(), color="k")
+    # p.add_mesh(slice1, color="red")
+    # p.add_mesh(slice2, color="blue")
+    # p.camera_position = 'xy'
+    # p.enable_parallel_projection()
+    # p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_DifferenceSlices.png"))
+    # p.close()
 
     # Plot 2: Vector thickness
-    p = pv.Plotter(off_screen=off_screen)
+    p = pv.Plotter(off_screen=off_screen, window_size=[1200, 1000])
     p.add_mesh(body, color='white', opacity=0.5)
-    p.add_mesh(vector_thickness, color='red', line_width=3)
-    p.add_text(f'{specimen_name}_Body{body_index}_t={analysis.thickness:.2f}', position='upper_left', font_size=15)
     p.show_grid()
+    p.camera.zoom(0.8)  # Zoom out to prevent axis clipping
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorThickness.png"))
     p.close()
 
-    # Plot 3: Vector and slice (lateral view)
-    p = pv.Plotter(off_screen=off_screen)
-    p.add_mesh(body, color='white', opacity=0.5)
-    p.add_mesh(vector_thickness, color='red', line_width=3)
-    p.add_mesh(slice1, color="red")
-    p.add_mesh(slice2, color="blue")
-    p.add_text(f'{specimen_name}_Body{body_index}_t(theo)={analysis.distance_between_slices:.2f}', position='upper_left', font_size=15)
-    p.camera_position = 'xz'
-    p.enable_parallel_projection()
-    p.show_grid()
-    p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorandSlice.png"))
-    p.close()
+    # # Plot 3: Vector and slice (lateral view)
+    # p = pv.Plotter(off_screen=off_screen, window_size=[1200, 1000])
+    # p.add_mesh(body, color='white', opacity=0.5)
+    # p.add_mesh(vector_thickness, color='red', line_width=3)
+    # p.add_mesh(slice1, color="red")
+    # p.add_mesh(slice2, color="blue")
+    # p.camera_position = 'xz'
+    # p.enable_parallel_projection()
+    # p.show_grid()
+    # p.camera.zoom(0.8)  # Zoom out to prevent axis clipping
+    # p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorandSlice.png"))
+    # p.close()
 
     # Plot 4: Colored body
     p = pv.Plotter(off_screen=off_screen)
@@ -1110,7 +1756,6 @@ def analyze_folder(
     print(f"Found {len(stl_files)} STL files to analyze")
 
     results = []
-    all_dataframes = []
 
     if parallel and len(stl_files) > 1:
         # Parallel processing (best for data_only mode)
@@ -1141,7 +1786,6 @@ def analyze_folder(
                     result = future.result()
                     if result is not None:
                         results.append(result)
-                        all_dataframes.append(result.to_dataframe())
                 except Exception as e:
                     print(f"Error processing {stl_file}: {e}")
     else:
@@ -1162,7 +1806,6 @@ def analyze_folder(
                     data_only=data_only,
                 )
                 results.append(result)
-                all_dataframes.append(result.to_dataframe())
             except Exception as e:
                 print(f"Error analyzing {stl_file.name}: {e}")
                 continue
@@ -1181,12 +1824,66 @@ def analyze_folder(
                 else:
                     print(f"  {specimen_name}: not found in database")
 
+    # Filter outlier bodies based on thickness deviation
+    if THICKNESS_FILTER_ENABLED:
+        print("\nFiltering outlier bodies...")
+        for result in results:
+            original_count = len(result.body_results)
+            result.body_results = get_filtered_bodies(result)
+            filtered_count = original_count - len(result.body_results)
+            if filtered_count > 0:
+                print(f"  {result.input_file.stem}: removed {filtered_count} outlier(s)")
+
+    # Debug output for D=2 bodies
+    print("\nGenerating debug output for D=2 bodies...")
+    d2_debug_dir = output_dir / f"{input_dir.name}_csv" / "d2_debug"
+    d2_count = 0
+
+    for result in results:
+        # Check if this result has any D=2 bodies
+        d2_bodies = [b for b in result.body_results if b.fractal_dim == 2.0]
+        if not d2_bodies:
+            continue
+
+        # Re-load STL file to get body meshes
+        try:
+            mesh = pv.read(result.input_file)
+            bodies = mesh.split_bodies()
+
+            for body_result in d2_bodies:
+                body_idx = body_result.body_index - 1  # Convert to 0-indexed
+                if body_idx < len(bodies):
+                    body = bodies[body_idx]
+                    specimen_name = result.input_file.stem
+                    body_debug_dir = d2_debug_dir / f"{specimen_name}_body{body_result.body_index:03d}"
+
+                    compute_fractal_dimension_with_debug(
+                        body=body,
+                        z_lower=body_result.z_lower,
+                        z_upper=body_result.z_upper,
+                        debug_dir=body_debug_dir,
+                        body_name="fractal",
+                    )
+                    d2_count += 1
+        except Exception as e:
+            print(f"  Error processing {result.input_file.name}: {e}")
+
+    if d2_count > 0:
+        print(f"  Generated debug for {d2_count} D=2 bodies in {d2_debug_dir}")
+    else:
+        print("  No D=2 bodies found")
+
     # Save combined CSV files (detailed per-body data)
-    if save_combined_excel and all_dataframes:
-        combined_df = pd.concat(all_dataframes, ignore_index=True)
+    if save_combined_excel and results:
+        all_dataframes = [r.to_dataframe() for r in results]
+        all_dataframes = [df for df in all_dataframes if not df.empty]  # Remove empty dataframes
+
         csv_dir = output_dir / f"{input_dir.name}_csv"
         csv_dir.mkdir(parents=True, exist_ok=True)
-        combined_df.to_csv(csv_dir / "combined_results.csv", index=False)
+
+        if all_dataframes:
+            combined_df = pd.concat(all_dataframes, ignore_index=True)
+            combined_df.to_csv(csv_dir / "combined_results.csv", index=False)
 
         # Save the summary table (one row per specimen)
         summary_df = create_specimen_summary_table(results)
@@ -1218,7 +1915,128 @@ def analyze_folder(
 
     total_bodies = sum(len(r.body_results) for r in results)
     print(f'\nAnalysis complete: {len(results)} files, {total_bodies} bodies')
+
+    # Perform ANOVA analysis
+    perform_anova_analysis(results)
+
     return results
+
+
+def perform_anova_analysis(results: list[STLAnalysisResult]) -> None:
+    """Perform one-way ANOVA on fractal dimension grouped by thickness."""
+    from scipy.stats import f_oneway
+
+    # Group fractal dimensions by thickness
+    thickness_groups: dict[str, list[float]] = {}
+
+    for r in results:
+        specimen_name = extract_specimen_name(r.input_file.name)
+        if not specimen_name:
+            continue
+
+        parts = specimen_name.split('.')
+        if parts and parts[0].isdigit():
+            thickness = f"{parts[0]}mm"
+        else:
+            continue
+
+        if thickness not in thickness_groups:
+            thickness_groups[thickness] = []
+
+        # Bodies are already filtered at source
+        for body in r.body_results:
+            thickness_groups[thickness].append(body.fractal_dim)
+
+    if len(thickness_groups) < 2:
+        print("ANOVA requires at least 2 groups")
+        return
+
+    # Print statistics
+    print("\n" + "=" * 60)
+    print("Fractal Dimension Statistics by Thickness")
+    print("=" * 60)
+
+    for thickness in sorted(thickness_groups.keys()):
+        values = thickness_groups[thickness]
+        print(f"{thickness}: D = {np.mean(values):.4f} ± {np.std(values):.4f} (n={len(values)})")
+
+    # ANOVA test
+    groups = [np.array(v) for v in thickness_groups.values()]
+    f_stat, p_value = f_oneway(*groups)
+
+    print("\n" + "-" * 60)
+    print("One-Way ANOVA Results")
+    print("-" * 60)
+    print(f"F-statistic: {f_stat:.4f}")
+    print(f"p-value: {p_value:.6f}")
+    print(f"Result: {'Significant' if p_value < 0.05 else 'No significant'} difference (p {'<' if p_value < 0.05 else '>='} 0.05)")
+
+
+def filter_body_by_thickness(
+    body: BodyAnalysisResult,
+    expected_thickness: Optional[float],
+    threshold: float = THICKNESS_FILTER_THRESHOLD,
+) -> bool:
+    """Check if a body passes the thickness filter.
+
+    Args:
+        body: The body analysis result to check.
+        expected_thickness: Expected thickness (from specimen data or nominal).
+        threshold: Maximum allowed relative deviation (default 30%).
+
+    Returns:
+        True if body passes filter (should be included), False if outlier.
+    """
+    if not THICKNESS_FILTER_ENABLED:
+        return True
+
+    if expected_thickness is None or expected_thickness <= 0:
+        return True  # Can't filter without expected thickness
+
+    deviation = abs(body.thickness - expected_thickness) / expected_thickness
+    return deviation <= threshold
+
+
+def get_filtered_bodies(
+    result: STLAnalysisResult,
+    threshold: float = THICKNESS_FILTER_THRESHOLD,
+) -> list[BodyAnalysisResult]:
+    """Get filtered list of bodies that pass the thickness filter.
+
+    Args:
+        result: The STL analysis result containing bodies.
+        threshold: Maximum allowed relative deviation (default 30%).
+
+    Returns:
+        List of bodies that pass the filter.
+    """
+    if not THICKNESS_FILTER_ENABLED:
+        return result.body_results
+
+    # Get expected thickness from specimen data or extract from name
+    expected_thickness = None
+    if result.specimen_data and result.specimen_data.t_measured:
+        expected_thickness = result.specimen_data.t_measured
+    else:
+        # Try to extract nominal thickness from specimen name (e.g., "8" from "8.100.B.04")
+        base_specimen = extract_specimen_name(result.input_file.name)
+        if base_specimen:
+            parts = base_specimen.split('.')
+            if parts and parts[0].isdigit():
+                expected_thickness = float(parts[0])
+
+    if expected_thickness is None:
+        return result.body_results  # Can't filter without expected thickness
+
+    filtered = [b for b in result.body_results
+                if filter_body_by_thickness(b, expected_thickness, threshold)]
+
+    if len(filtered) < len(result.body_results):
+        removed = len(result.body_results) - len(filtered)
+        print(f"  Filtered {removed} outlier(s) from {result.input_file.stem} "
+              f"(thickness deviation > {threshold*100:.0f}%)")
+
+    return filtered
 
 
 def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFrame:
@@ -1245,10 +2063,8 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
 
     rows = []
     for r in results:
-        # Extract specimen name
-        specimen_name = extract_specimen_name(r.input_file.name)
-        if not specimen_name:
-            specimen_name = r.specimen_name
+        # Use full filename (without extension) as specimen name
+        specimen_name = r.input_file.stem
 
         row = {
             'Specimen': specimen_name,
@@ -1283,6 +2099,7 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
             row['Mean_RAD [mm]'] = np.mean([b.rad for b in r.body_results])
             row['Mean_RF [mm]'] = np.mean([b.rf for b in r.body_results])
             row['Mean_RSD [mm]'] = np.mean([b.rsd for b in r.body_results])
+            row['Mean_Fractal_Dim'] = np.mean([b.fractal_dim for b in r.body_results])
         else:
             row['Mean_Volume [mm³]'] = None
             row['Mean_Area [mm²]'] = None
@@ -1292,8 +2109,9 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
             row['Mean_RAD [mm]'] = None
             row['Mean_RF [mm]'] = None
             row['Mean_RSD [mm]'] = None
+            row['Mean_Fractal_Dim'] = None
 
-        # Add individual body columns (FSR_A, FSR_V, PR, RAD, RF, RSD)
+        # Add individual body columns (FSR_A, FSR_V, PR, RAD, RF, RSD, Fractal_Dim)
         for i in range(max_bodies):
             col_name_a = f'FSR_A_Body_{i+1}'
             col_name_v = f'FSR_V_Body_{i+1}'
@@ -1301,6 +2119,7 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
             col_name_rad = f'RAD_Body_{i+1}'
             col_name_rf = f'RF_Body_{i+1}'
             col_name_rsd = f'RSD_Body_{i+1}'
+            col_name_fd = f'Fractal_Dim_Body_{i+1}'
             if i < len(r.body_results):
                 row[col_name_a] = r.body_results[i].fsr_a
                 row[col_name_v] = r.body_results[i].fsr_v
@@ -1308,6 +2127,7 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
                 row[col_name_rad] = r.body_results[i].rad
                 row[col_name_rf] = r.body_results[i].rf
                 row[col_name_rsd] = r.body_results[i].rsd
+                row[col_name_fd] = r.body_results[i].fractal_dim
             else:
                 row[col_name_a] = None
                 row[col_name_v] = None
@@ -1315,6 +2135,7 @@ def create_specimen_summary_table(results: list[STLAnalysisResult]) -> pd.DataFr
                 row[col_name_rad] = None
                 row[col_name_rf] = None
                 row[col_name_rsd] = None
+                row[col_name_fd] = None
 
         rows.append(row)
 
@@ -1338,10 +2159,8 @@ def create_raw_body_table(results: list[STLAnalysisResult]) -> pd.DataFrame:
 
     rows = []
     for r in results:
-        # Extract specimen name
-        specimen_name = extract_specimen_name(r.input_file.name)
-        if not specimen_name:
-            specimen_name = r.specimen_name
+        # Use full filename (without extension) as specimen name
+        specimen_name = r.input_file.stem
 
         # Get specimen data
         t_measured = r.specimen_data.t_measured if r.specimen_data else None
@@ -1376,6 +2195,7 @@ def create_raw_body_table(results: list[STLAnalysisResult]) -> pd.DataFrame:
                 'RAD [mm]': body.rad,
                 'RF [mm]': body.rf,
                 'RSD [mm]': body.rsd,
+                'Fractal_Dim': body.fractal_dim,
                 'Slice_distance [mm]': body.distance_between_slices,
                 'Max_Z_distance [mm]': body.max_distance_z,
             })
@@ -1406,12 +2226,12 @@ def create_per_thickness_tables(
     thickness_groups: dict[str, list[dict]] = {}
 
     for r in results:
-        specimen_name = extract_specimen_name(r.input_file.name)
-        if not specimen_name:
-            specimen_name = r.specimen_name
+        # Use full filename (without extension) for display
+        full_name = r.input_file.stem
 
-        # Extract nominal thickness from specimen name (e.g., "8" from "8.100.B.04")
-        parts = specimen_name.split('.') if specimen_name else []
+        # Extract thickness from pattern (e.g., "8" from "8.100.B.04")
+        base_specimen = extract_specimen_name(r.input_file.name)
+        parts = base_specimen.split('.') if base_specimen else []
         if parts and parts[0].isdigit():
             thickness_key = f"{parts[0]}mm"
         else:
@@ -1430,7 +2250,7 @@ def create_per_thickness_tables(
         # Add each body as a row
         for body in r.body_results:
             thickness_groups[thickness_key].append({
-                'Specimen': specimen_name,
+                'Specimen': full_name,
                 'Body_ID': body.body_index,
                 't [mm]': t_measured,
                 'sig_h [MPa]': sig_h,
@@ -1453,6 +2273,7 @@ def create_per_thickness_tables(
                 'RAD [mm]': body.rad,
                 'RF [mm]': body.rf,
                 'RSD [mm]': body.rsd,
+                'Fractal_Dim': body.fractal_dim,
                 'Slice_distance [mm]': body.distance_between_slices,
                 'Max_Z_distance [mm]': body.max_distance_z,
             })
@@ -1517,12 +2338,12 @@ def create_per_thickness_position_tables(
     groups: dict[str, list[dict]] = {}
 
     for r in results:
-        specimen_name = extract_specimen_name(r.input_file.name)
-        if not specimen_name:
-            specimen_name = r.specimen_name
+        # Use full filename (without extension) for display
+        full_name = r.input_file.stem
 
-        # Extract thickness from specimen name (e.g., "8" from "8.100.B.04")
-        parts = specimen_name.split('.') if specimen_name else []
+        # Extract thickness from pattern (e.g., "8" from "8.100.B.04")
+        base_specimen = extract_specimen_name(r.input_file.name)
+        parts = base_specimen.split('.') if base_specimen else []
         thickness = parts[0] if parts and parts[0].isdigit() else "unknown"
 
         # Extract position from filename suffix (e.g., "m" from "8.100.B.04_m.stl")
@@ -1545,7 +2366,7 @@ def create_per_thickness_position_tables(
         # Add each body as a row
         for body in r.body_results:
             groups[group_key].append({
-                'Specimen': specimen_name,
+                'Specimen': full_name,
                 'Body_ID': body.body_index,
                 't [mm]': t_measured,
                 'sig_h [MPa]': sig_h,
@@ -1568,6 +2389,7 @@ def create_per_thickness_position_tables(
                 'RAD [mm]': body.rad,
                 'RF [mm]': body.rf,
                 'RSD [mm]': body.rsd,
+                'Fractal_Dim': body.fractal_dim,
                 'Slice_distance [mm]': body.distance_between_slices,
                 'Max_Z_distance [mm]': body.max_distance_z,
             })
@@ -1607,11 +2429,10 @@ def create_per_specimen_csvs(
     specimens_dir.mkdir(parents=True, exist_ok=True)
 
     for r in results:
-        # Extract specimen name
-        specimen_name = extract_specimen_name(r.input_file.name)
-        if not specimen_name:
-            specimen_name = r.specimen_name
+        # Use full filename (without extension) as specimen name
+        specimen_name = r.input_file.stem
 
+        # Bodies are already filtered at source
         if not r.body_results:
             continue
 
@@ -1648,6 +2469,7 @@ def create_per_specimen_csvs(
                 'RAD [mm]': body.rad,
                 'RF [mm]': body.rf,
                 'RSD [mm]': body.rsd,
+                'Fractal_Dim': body.fractal_dim,
                 'Slice_distance [mm]': body.distance_between_slices,
                 'Max_Z_distance [mm]': body.max_distance_z,
             })
@@ -1826,6 +2648,137 @@ def cmd_test_clip_caps() -> None:
         print("  -> Clipped mesh area IS the fracture surface directly.")
 
     print("\n  Current implementation: Using clipped area directly (no subtraction).")
+
+
+@stl_app.command("fractal-debug")
+def cmd_fractal_debug(
+    input_file: Path = typer.Argument(..., help="Path to the STL file to analyze."),
+    output_dir: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory for debug files."),
+    z_offset_lower: float = typer.Option(0.1, "--z-lower", help="Z offset from lower intersection (mm)."),
+    z_offset_upper: float = typer.Option(0.05, "--z-upper", help="Z offset from upper intersection (mm)."),
+    min_volume: float = typer.Option(1.0, "--min-volume", help="Minimum volume threshold (mm³)."),
+    body_index: Optional[int] = typer.Option(None, "--body", "-b", help="Analyze only this body index (1-based). If not specified, analyzes all bodies."),
+) -> None:
+    """Run fractal dimension analysis with comprehensive debug output.
+
+    Creates a 'fractal-debug' folder containing:
+    - mesh_info.txt: Fracture surface mesh statistics
+    - box_counting_data.csv: Raw L, N, log values for each step
+    - results.txt: Fractal dimension D, R² value, interpretation
+    - loglog_plot.png: Log-log plot with regression line
+    - scaling_plots.png: N vs L in linear and log scales
+    - fracture_surface.png: 3D view of the clipped fracture surface
+    - boxes_stepXX_L*.png: 3D visualizations of boxes at different scales
+    """
+    input_file = Path(input_file)
+
+    if output_dir is None:
+        output_dir = input_file.parent / "fractal-debug"
+    else:
+        output_dir = Path.joinpath(Path(output_dir), input_file.stem + "-fractal-debug")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Fractal Dimension Debug Analysis")
+    print(f"=" * 60)
+    print(f"Input file: {input_file}")
+    print(f"Output dir: {output_dir}")
+    print(f"Z offsets: lower={z_offset_lower}, upper={z_offset_upper}")
+    print(f"Min volume: {min_volume}")
+    print()
+
+    # Read mesh and split into bodies
+    mesh = pv.read(str(input_file))
+    bodies = mesh.split_bodies()
+    print(f"Found {len(bodies)} bodies in STL file")
+
+    # Determine which bodies to analyze
+    if body_index is not None:
+        if body_index < 1 or body_index > len(bodies):
+            print(f"Error: Body index {body_index} out of range (1-{len(bodies)})")
+            raise typer.Exit(1)
+        body_indices = [body_index]
+    else:
+        body_indices = list(range(1, len(bodies) + 1))
+
+    results_summary = []
+
+    for idx in body_indices:
+        body = bodies[idx - 1]  # 0-based indexing
+        print(f"\n--- Body {idx} ---")
+
+        # Prepare mesh
+        if not np.all(body.celltypes == 5):
+            body = body.triangulate()
+        body = body.extract_surface().triangulate()
+
+        # Check volume
+        volume = body.volume
+        if volume < min_volume:
+            print(f"  Skipping: volume {volume:.2f} < min_volume {min_volume}")
+            continue
+
+        # Get intersection points for Z bounds
+        centroid = np.mean(body.points, axis=0)
+        points_up, _ = body.ray_trace(centroid, centroid + np.array([0, 0, 1000]))
+        points_down, _ = body.ray_trace(centroid, centroid + np.array([0, 0, -1000]))
+
+        if len(points_up) == 0 or len(points_down) == 0:
+            print(f"  Skipping: Could not find Z intersection points")
+            continue
+
+        intersection_points = np.vstack((points_up, points_down))
+        intersection_points = intersection_points[np.argsort(intersection_points[:, 2])]
+
+        if len(intersection_points) < 2:
+            print(f"  Skipping: Need 2 intersection points, found {len(intersection_points)}")
+            continue
+
+        z_lower = intersection_points[0][2] + z_offset_lower
+        z_upper = intersection_points[1][2] - z_offset_upper
+
+        print(f"  Volume: {volume:.2f} mm³")
+        print(f"  Z bounds: [{z_lower:.4f}, {z_upper:.4f}]")
+
+        # Create body-specific debug directory
+        body_debug_dir = output_dir / f"body_{idx:02d}"
+        body_name = f"body_{idx:02d}"
+
+        # Run debug analysis
+        D, n_l_data = compute_fractal_dimension_with_debug(
+            body=body,
+            z_lower=z_lower,
+            z_upper=z_upper,
+            debug_dir=body_debug_dir,
+            body_name=body_name,
+        )
+
+        results_summary.append({
+            'body_index': idx,
+            'volume': volume,
+            'z_lower': z_lower,
+            'z_upper': z_upper,
+            'fractal_dim': D,
+            'n_data_points': len(n_l_data),
+        })
+
+    # Save summary
+    if results_summary:
+        summary_df = pd.DataFrame(results_summary)
+        summary_df.to_csv(output_dir / "summary.csv", index=False)
+
+        print(f"\n" + "=" * 60)
+        print(f"Summary")
+        print(f"=" * 60)
+        for r in results_summary:
+            print(f"Body {r['body_index']}: D = {r['fractal_dim']:.4f} ({r['n_data_points']} data points)")
+
+        if len(results_summary) > 1:
+            mean_D = np.mean([r['fractal_dim'] for r in results_summary])
+            std_D = np.std([r['fractal_dim'] for r in results_summary])
+            print(f"\nMean D = {mean_D:.4f} ± {std_D:.4f}")
+
+        print(f"\nDebug output saved to: {output_dir}")
 
 
 if __name__ == "__main__":
