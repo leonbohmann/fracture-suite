@@ -884,7 +884,7 @@ def compute_fractal_dimension_with_debug(
             p.add_mesh(z_plane_lower, color='red', opacity=0.3)
             p.add_mesh(z_plane_upper, color='green', opacity=0.3)
             p.camera_position = 'iso'
-            p.add_axes()
+            p.add_axes(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
             p.camera.zoom(0.8)
             p.screenshot(str(debug_dir / f"{body_name}_error_body.png"))
             p.close()
@@ -946,8 +946,13 @@ def compute_fractal_dimension_with_debug(
         p.add_mesh(fracture_mesh, color='lightblue', show_edges=True, edge_color='gray', opacity=0.8)
         p.add_mesh(fracture_mesh.outline(), color='black', line_width=2)
         p.camera_position = 'iso'
-        p.add_axes()
+        p.add_axes(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
         p.screenshot(str(debug_dir / f"{body_name}_fracture_surface.png"))
+        # Tilted view
+        p.camera_position = 'xz'
+        p.camera.elevation = 30
+        p.camera.azimuth = 45
+        p.screenshot(str(debug_dir / f"{body_name}_fracture_surface_tilted.png"))
         p.close()
     except Exception as e:
         print(f"Warning: Could not save fracture surface image: {e}")
@@ -1004,7 +1009,7 @@ def compute_fractal_dimension_with_debug(
                 if box_mesh.n_points > 0:
                     p.add_mesh(box_mesh, style='wireframe', color='red', line_width=1)
                 p.camera_position = 'iso'
-                p.add_axes()
+                p.add_axes(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
                 p.screenshot(str(debug_dir / f"{body_name}_boxes_step{i+1:02d}_L{L:.4f}.png"))
 
                 # 2D cross-section view for small box sizes (last 3 steps)
@@ -1116,7 +1121,7 @@ def compute_fractal_dimension_with_debug(
         ax.set_ylabel('log(N)', fontsize=12)
         ax.legend(loc='upper left', fontsize=10)
         ax.grid(True, alpha=0.3)
-        ax.set_title(f"Fractal Dimension Fit: D={D:.4f}, R²={r_squared:.4f}", fontsize=14)
+        ax.set_title(f"Fractal Dimension Fit: D={D_raw:.4f}, R²={r_squared:.4f}", fontsize=14)
 
         plt.tight_layout()
         plt.savefig(debug_dir / f"{body_name}_loglog_plot.png", dpi=150)
@@ -1585,14 +1590,18 @@ def _create_visualizations(
 
     # Finalize combined 3D plot
     tp3D.add_legend()
-    tp3D.add_axes()
-    tp3D.show_grid()
+    tp3D.add_axes(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
+    tp3D.show_grid(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
     tp3D.camera_position = 'xy'
     tp3D.enable_parallel_projection()
     tp3D.camera.zoom(0.8)  # Zoom out to prevent axis clipping
 
     if save_plots:
         tp3D.screenshot(str(output_dir / f"{specimen_name}_Body_total.png"))
+        # Tilted view - use isometric as base for proper 3D perspective
+        tp3D.camera_position = 'iso'
+        tp3D.camera.zoom(0.8)
+        tp3D.screenshot(str(output_dir / f"{specimen_name}_Body_total_tilted.png"))
 
     if save_html:
         try:
@@ -1608,7 +1617,7 @@ def _create_visualizations(
     # Finalize slice plot
     tpslice.camera_position = 'xy'
     tpslice.enable_parallel_projection()
-    tpslice.show_grid()
+    tpslice.show_grid(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
     tpslice.camera.zoom(0.8)  # Zoom out to prevent axis clipping
 
     if save_plots:
@@ -1648,9 +1657,15 @@ def _save_body_plots_fast(
     # Plot 2: Vector thickness
     p = pv.Plotter(off_screen=off_screen, window_size=[1200, 1000])
     p.add_mesh(body, color='white', opacity=0.5)
-    p.show_grid()
+    p.show_grid(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
     p.camera.zoom(0.8)  # Zoom out to prevent axis clipping
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorThickness.png"))
+    # Tilted view
+    p.camera_position = 'xz'
+    p.camera.elevation = 30
+    p.camera.azimuth = 45
+    p.camera.zoom(0.8)
+    p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorThickness_tilted.png"))
     p.close()
 
     # # Plot 3: Vector and slice (lateral view)
@@ -1667,11 +1682,19 @@ def _save_body_plots_fast(
     # p.close()
 
     # Plot 4: Colored body
-    p = pv.Plotter(off_screen=off_screen)
+    p = pv.Plotter(off_screen=off_screen, window_size=[1200, 1000])
     p.add_mesh(body, color=color, label=f'Body {body_index} (Volume: {analysis.volume_total:.2f})')
     p.add_mesh(slice1)
     p.add_mesh(slice2)
+    p.camera_position = 'iso'
+    p.camera.zoom(0.8)
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_coloured.png"))
+    # Tilted view
+    p.camera_position = 'xz'
+    p.camera.elevation = 30
+    p.camera.azimuth = 45
+    p.camera.zoom(0.8)
+    p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_coloured_tilted.png"))
     p.close()
 
 
@@ -1834,7 +1857,7 @@ def analyze_folder(
             if filtered_count > 0:
                 print(f"  {result.input_file.stem}: removed {filtered_count} outlier(s)")
 
-    # Debug output for D=2 bodies
+    # Debug output for D=2 bodies - single diagnostic image per body
     print("\nGenerating debug output for D=2 bodies...")
     d2_debug_dir = output_dir / f"{input_dir.name}_csv" / "d2_debug"
     d2_count = 0
@@ -1855,21 +1878,139 @@ def analyze_folder(
                 if body_idx < len(bodies):
                     body = bodies[body_idx]
                     specimen_name = result.input_file.stem
-                    body_debug_dir = d2_debug_dir / f"{specimen_name}_body{body_result.body_index:03d}"
 
-                    compute_fractal_dimension_with_debug(
-                        body=body,
-                        z_lower=body_result.z_lower,
-                        z_upper=body_result.z_upper,
-                        debug_dir=body_debug_dir,
-                        body_name="fractal",
-                    )
-                    d2_count += 1
+                    # Create simple diagnostic image
+                    d2_debug_dir.mkdir(parents=True, exist_ok=True)
+                    img_path = d2_debug_dir / f"{specimen_name}_body{body_result.body_index:03d}.png"
+
+                    try:
+                        # Extract fracture surface for analysis
+                        z_lower = body_result.z_lower
+                        z_upper = body_result.z_upper
+                        fracture_mesh = clip_fracture_surface(body, z_lower, z_upper)
+
+                        # Compute diagnostic info
+                        bounds = fracture_mesh.bounds
+                        L_max = max(bounds[1]-bounds[0], bounds[3]-bounds[2], bounds[5]-bounds[4])
+                        edge_stats = _compute_edge_stats(fracture_mesh, L_max)
+                        box_sizes = _generate_box_sizes(L_max, edge_stats.L_min)
+
+                        # Create diagnostic plot
+                        p = pv.Plotter(off_screen=True, window_size=[1200, 900])
+                        p.add_mesh(fracture_mesh, color='lightblue', show_edges=True,
+                                   edge_color='gray', opacity=0.9)
+                        p.add_mesh(fracture_mesh.outline(), color='black', line_width=2)
+
+                        # Add diagnostic text
+                        info_text = (
+                            f"Specimen: {specimen_name}\n"
+                            f"Body: {body_result.body_index}\n"
+                            f"D = 2.0 (clamped)\n"
+                            f"---\n"
+                            f"n_points: {fracture_mesh.n_points}\n"
+                            f"L_max: {L_max:.3f} mm\n"
+                            f"L_min: {edge_stats.L_min:.4f} mm\n"
+                            f"Box steps: {len(box_sizes)}\n"
+                            f"Edge mean: {edge_stats.mean:.4f} mm\n"
+                            f"Edge min: {edge_stats.min:.4f} mm"
+                        )
+                        p.add_text(info_text, position='upper_left', font_size=10)
+
+                        p.camera_position = 'iso'
+                        p.add_axes(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
+                        p.camera.zoom(0.85)
+                        p.screenshot(str(img_path))
+
+                        # Second image: tilted view (top-down angle)
+                        img_path_tilted = d2_debug_dir / f"{specimen_name}_body{body_result.body_index:03d}_tilted.png"
+                        p.camera_position = 'xz'  # Top-down view
+                        p.camera.elevation = 30   # Tilt 30 degrees
+                        p.camera.azimuth = 45     # Rotate 45 degrees
+                        p.camera.zoom(0.85)
+                        p.screenshot(str(img_path_tilted))
+                        p.close()
+
+                        # Write success text file with diagnostic info
+                        txt_path = d2_debug_dir / f"{specimen_name}_body{body_result.body_index:03d}.txt"
+                        with open(txt_path, 'w') as f:
+                            f.write("STATUS: SUCCESS (D=2.0 computed without errors)\n")
+                            f.write("=" * 50 + "\n\n")
+                            f.write(f"Specimen: {specimen_name}\n")
+                            f.write(f"Body: {body_result.body_index}\n")
+                            f.write(f"Fractal Dimension: 2.0 (clamped to [2.0, 3.0])\n\n")
+                            f.write("Diagnostic Info:\n")
+                            f.write(f"  n_points: {fracture_mesh.n_points}\n")
+                            f.write(f"  L_max: {L_max:.4f} mm\n")
+                            f.write(f"  L_min: {edge_stats.L_min:.4f} mm\n")
+                            f.write(f"  L_max/L_min ratio: {L_max/edge_stats.L_min:.2f}\n")
+                            f.write(f"  Box steps: {len(box_sizes)}\n")
+                            f.write(f"  Edge mean: {edge_stats.mean:.4f} mm\n")
+                            f.write(f"  Edge min: {edge_stats.min:.4f} mm\n\n")
+                            if len(box_sizes) < 5:
+                                f.write("LIKELY CAUSE: Too few box steps (<5) for reliable regression.\n")
+                                f.write("  -> Fragment size too close to mesh resolution.\n")
+                            elif fracture_mesh.n_points < 50:
+                                f.write("LIKELY CAUSE: Very few mesh points in fracture surface.\n")
+                                f.write("  -> Fragment may be too small for fractal analysis.\n")
+                            else:
+                                f.write("LIKELY CAUSE: Surface is genuinely smooth (D_raw <= 2.0).\n")
+                                f.write("  -> Fracture surface has low roughness/complexity.\n")
+
+                        d2_count += 1
+
+                    except Exception as e:
+                        # If fracture surface extraction fails, show the body with z-planes
+                        p = pv.Plotter(off_screen=True, window_size=[1200, 900])
+                        p.add_mesh(body, color='lightblue', opacity=0.7)
+                        bounds = body.bounds
+                        z_lower = body_result.z_lower
+                        z_upper = body_result.z_upper
+                        # Add z-plane indicators
+                        plane_size = max(bounds[1]-bounds[0], bounds[3]-bounds[2]) + 2
+                        p.add_mesh(pv.Plane(center=(0, 0, z_lower), direction=(0, 0, 1),
+                                           i_size=plane_size, j_size=plane_size),
+                                   color='red', opacity=0.3, label='z_lower')
+                        p.add_mesh(pv.Plane(center=(0, 0, z_upper), direction=(0, 0, 1),
+                                           i_size=plane_size, j_size=plane_size),
+                                   color='green', opacity=0.3, label='z_upper')
+                        p.add_text(f"{specimen_name} body{body_result.body_index}\nError: {e}",
+                                   position='upper_left', font_size=10)
+                        p.camera_position = 'iso'
+                        p.add_axes(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
+                        p.camera.zoom(0.85)
+                        p.screenshot(str(img_path))
+
+                        # Second image: tilted view
+                        img_path_tilted = d2_debug_dir / f"{specimen_name}_body{body_result.body_index:03d}_tilted.png"
+                        p.camera_position = 'xz'
+                        p.camera.elevation = 30
+                        p.camera.azimuth = 45
+                        p.camera.zoom(0.85)
+                        p.screenshot(str(img_path_tilted))
+                        p.close()
+
+                        # Write error text file
+                        txt_path = d2_debug_dir / f"{specimen_name}_body{body_result.body_index:03d}.txt"
+                        with open(txt_path, 'w') as f:
+                            f.write("STATUS: ERROR\n")
+                            f.write("=" * 50 + "\n\n")
+                            f.write(f"Specimen: {specimen_name}\n")
+                            f.write(f"Body: {body_result.body_index}\n")
+                            f.write(f"z_lower: {body_result.z_lower}\n")
+                            f.write(f"z_upper: {body_result.z_upper}\n\n")
+                            f.write(f"Error: {e}\n\n")
+                            f.write("Body bounds:\n")
+                            f.write(f"  X: [{bounds[0]:.4f}, {bounds[1]:.4f}]\n")
+                            f.write(f"  Y: [{bounds[2]:.4f}, {bounds[3]:.4f}]\n")
+                            f.write(f"  Z: [{bounds[4]:.4f}, {bounds[5]:.4f}]\n")
+
+                        d2_count += 1
+
         except Exception as e:
             print(f"  Error processing {result.input_file.name}: {e}")
 
     if d2_count > 0:
-        print(f"  Generated debug for {d2_count} D=2 bodies in {d2_debug_dir}")
+        print(f"  Generated {d2_count} diagnostic images in {d2_debug_dir}")
     else:
         print("  No D=2 bodies found")
 
