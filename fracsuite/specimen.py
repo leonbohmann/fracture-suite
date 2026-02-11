@@ -395,6 +395,78 @@ def seel_prediction(
     
     State.output(StateOutput(fig, FigureSize.ROW1))
 
+
+@app.command()
+def export_exp_matrix(
+    outpath: str
+):
+    """
+    Export experiment matrix to a LaTeX file.
+
+    Groups specimens by (Thickness, Boundary Condition, Nominal Pre-Stress)
+    and calculates mean and standard deviation of measured pre-stress for each group.
+    """
+    filter = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
+    specimens = Specimen.get_all_by(filter, load=True)
+
+    # group specimens into (Thickness, Boundary Condition, Nominal Pre-Stress)
+    groups: dict[tuple, list[Specimen]] = {}
+    for spec in specimens:
+        key = (spec.thickness, spec.boundary.value, spec.nom_stress)
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(spec)
+
+    groups.pop((4, "Z", 70))
+
+    # calculate statistics for each group
+    group_stats = []
+    for (t, bc, nomstress), specs in groups.items():
+        real_stresses = [-s.sig_h for s in specs]
+        n_specimens = len(specs)
+        mean_stress = np.mean(real_stresses)
+        std_stress = np.std(real_stresses) if n_specimens > 1 else 0.0
+        group_stats.append({
+            "t": t,
+            "bc": bc,
+            "nomstress": nomstress,
+            "n": n_specimens,
+            "realstress_mean": mean_stress,
+            "realstress_std": std_stress
+        })
+
+    # sort by thickness, then boundary, then nominal stress
+    group_stats.sort(key=lambda x: (x["t"], x["bc"], x["nomstress"]))
+
+    # create LaTeX table
+    latex_lines = []
+    latex_lines.append(r"\begin{table}[!htbp]")
+    latex_lines.append(r"    \centering")
+    latex_lines.append(r"    \caption{Experimental series, with $t$ thickness, $BC$ boundary condition, $\sigma_{S,nom}$ nominal surface compressive stress, $n$ amount of specimen, $\bar\sigma_{S,nom}$ measured surface compressive stress }")
+    latex_lines.append(r"    \label{tab:experiments_matrix}")
+    latex_lines.append(r"    \begin{tabular}{c c c c c c}")
+    latex_lines.append(r"        \toprule")
+    latex_lines.append(r"        $t$ [mm] & BC & $\sigma_\mathrm{nom}$ [MPa] & $n$ & $\bar{\sigma}_\mathrm{s}$ [MPa] & $s_{\sigma}$ [MPa] \\")
+    latex_lines.append(r"        \midrule")
+
+    for g in group_stats:
+        latex_lines.append(
+            f"        {g['t']} & {g['bc']} & {g['nomstress']} & {g['n']} & "
+            f"{g['realstress_mean']:.1f} & {g['realstress_std']:.1f} \\\\"
+        )
+
+    latex_lines.append(r"        \bottomrule")
+    latex_lines.append(r"    \end{tabular}")
+    latex_lines.append(r"\end{table}")
+
+    # write to file
+    output_file = os.path.join(outpath, "experiments.tex")
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(latex_lines))
+
+    print(f"[green]Exported experiment matrix to {output_file}[/green]")
+    print(f"[blue]Total groups: {len(group_stats)}, Total specimens: {len(specimens)}[/blue]")
+
 @app.command()
 def export():
     """
@@ -492,7 +564,7 @@ def export():
     # via the close() method.
     workbook.close()
 
-    os.system(f'start {workbook_path}')
+    os.system(f'start "{workbook_path}"')
 
 
 @app.command()
