@@ -223,6 +223,10 @@ class State:
     "Disables all output via State.output."
     kwargs: dict = {}
 
+
+    debug_img_out: str = None
+    
+    
     __progress_started: bool = False
 
     __checkpoint_data: dict = None

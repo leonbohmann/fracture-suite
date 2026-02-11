@@ -1,4 +1,5 @@
 from __future__ import annotations
+from math import dist
 from typing import Any
 
 import cv2
@@ -645,6 +646,7 @@ class Splinter:
         px_per_mm: float = 1.0,
         skip_preprocessing: bool = False,
         prep: PreprocessorConfig = None,
+        interest_region: tuple[int,int,int,int] = None,
     ):
         """
         Analyze an unprocessed image and return a list of splinters.
@@ -668,18 +670,19 @@ class Splinter:
 
         if not skip_preprocessing:
             # here we need a rgb image!
-            thresh = preprocess_image(image, prep)
+            thresh = preprocess_image(image, prep, interest_region=interest_region)
         else:
             image = to_rgb(image)
             thresh = to_gray(image)
 
-        plotImage(thresh, "Step3: WS: Preprocessed Image")
+        plotImage(thresh, "Step3: WS: Preprocessed Image", region=interest_region)
 
         # noise removal
         kernel = np.ones((3,3),np.uint8)
-        opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
+        opening = thresh
+        #opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
 
-        plotImage(opening, "Step4: WS: Opened Image")
+        plotImage(opening, "Step4: WS: Opened Image", region=interest_region)
 
         # sure background: white is splinter, black is crack
         # sure_bg = cv2.dilate(opening,kernel,iterations=1)
@@ -687,11 +690,12 @@ class Splinter:
 
         # Finding sure foreground area
         dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2,0,)
-        # cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
+        dist_transform_scaled = dist_transform.copy()
+        cv2.normalize(dist_transform, dist_transform_scaled, 0, 255.0, cv2.NORM_MINMAX)
         ret, sure_fg = cv2.threshold(dist_transform, 0, 255, 0)
         sure_fg = erodeImg(sure_fg, it=1)
 
-        plotImages([("Step5: WS: Distance Transform", dist_transform),("Step5: WS: Sure Foreground", sure_fg)])
+        plotImages([("Step5: WS: Distance Transform", dist_transform_scaled),("Step5: WS: Sure Foreground", sure_fg)], region=interest_region)
 
         # Finding unknown region
         sure_fg = np.uint8(sure_fg)
@@ -709,7 +713,7 @@ class Splinter:
                 ("Step6: WS: Sure Foreground", sure_fg),
                 # ("WS: Back - Foreground", unknown),
                 ("Step6: WS: Markers", np.abs(markers).astype(np.uint8)),
-            ])
+            ], region=interest_region)
 
         markers = cv2.watershed(np.zeros_like(image),markers)
 

@@ -4,10 +4,12 @@ import os
 import shutil
 from typing import Annotated
 from matplotlib import pyplot as plt
+from fracsuite.core.imageprocessing import preprocess_image
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.scalp import T
 import numpy as np
 
+from fracsuite.splinters import draw_contours
 from spazial import csstraussproc2
 from sqlalchemy import true
 from tqdm import tqdm
@@ -1021,3 +1023,65 @@ def export(
         # copy contents to target folder
         
         shutil.copytree(specimen.path, specimen_folder, dirs_exist_ok=True)        
+        
+@tools_app.command()
+def export_preprocessing_img(
+    specimen_name: Annotated[str, typer.Argument(..., help="Name of specimen to export")],
+    output_dir: Annotated[str, typer.Option("--output", help="Output directory")],
+    interest_region_mm: Annotated[tuple[float, float, float, float], typer.Option("--region", help="Region of interest in mm as x_1,y_1,x_2,y_2")] = (0,0,500,500),
+):
+    """
+    Exports the preprocessed images for the given specimen.
+    """
+    from fracsuite.splinters import create_filter_function
+    from fracsuite.core.specimen import Specimen
+    from fracsuite.core.progress import get_progress
+    from fracsuite.core.coloring import get_color, norm_color, rand_col
+
+    # activate debug output
+    State.debug = True
+    State.debug_img_out = os.path.abspath(output_dir)
+    
+    specimen = Specimen.get(specimen_name, load=True)
+    
+    # convert interest region from mm to pixel
+    px_p_mm = specimen.calculate_px_per_mm()
+    interest_region = (
+        int(interest_region_mm[0] * px_p_mm),
+        int(interest_region_mm[1] * px_p_mm),
+        int(interest_region_mm[2] * px_p_mm),
+        int(interest_region_mm[3] * px_p_mm),
+    )
+    
+    
+    # create the output directory
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # get the preprocessed image
+    original_img = specimen.get_fracture_image()
+    Splinter.analyze_image(original_img, px_p_mm, skip_preprocessing=False, interest_region=interest_region)
+    preprocessed_img = preprocess_image(original_img, prep=specimen.get_prepconf(), interest_region=interest_region)
+    
+    # draw contours in the same interest_region    
+    splinters = specimen.splinters
+    out_img = original_img # base image for contours
+
+    with get_progress(total=len(splinters), title='Drawing contours') as progress:
+        for splinter in splinters:
+            clr = rand_col()
+
+            cv2.drawContours(out_img, [splinter.contour], 0, clr, 2)
+
+            progress.advance()
+
+    # specimen.simplify_contours(1)
+
+    clr = (0,0,255)
+    with get_progress(total=len(splinters), title='Drawing contours') as progress:
+        for splinter in splinters:            
+            cv2.drawContours(out_img, [splinter.contour], 0, clr, 1)
+            progress.advance()
+    
+    cv2.imwrite(os.path.join(output_dir, f"{specimen_name}_contours.png"), out_img[interest_region[1]:interest_region[3], interest_region[0]:interest_region[2]])
+    cv2.imwrite(os.path.join(output_dir, f"{specimen_name}_preprocessed.png"), preprocessed_img[interest_region[1]:interest_region[3], interest_region[0]:interest_region[2]])

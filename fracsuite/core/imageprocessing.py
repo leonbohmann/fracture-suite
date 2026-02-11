@@ -130,8 +130,9 @@ def preprocess_image(
 
     Args:
         image (nd.array): The input image.
-        config (AnalyzerConfig): The configuration to use.
-
+        prep (AnalyzerConfig): The configuration to use.
+        interest_region (tuple[int,int,int,int], optional): A region of interest to plot during preprocessing. Format: (x1,y1,x2,y2). Defaults to None.
+        
     Returns:
         np.array: Preprocessed image that is (m,n) 0-255.
     """

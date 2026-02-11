@@ -87,6 +87,8 @@ def gen(
     use_default_prep: Annotated[bool, typer.Option(help='Use default prep config.')] = False,
 ):
     """Generate the splinter data for a specific specimen."""
+    from fracsuite.core.simplifier import simplify_contours
+    
     if realsize[0] == -1 or realsize[1] == -1:
         realsize = None
 
@@ -145,6 +147,11 @@ def gen(
                 p.max_area = 1e15
                 splinters = Splinter.analyze_label_image(label_img, px_per_mm=px_per_mm, prep=p)
 
+            simplify_contours(splinters, 1)
+            
+            # remove all contours that lie completely within another contour
+            # splinters = [s for s in splinters if not any(s != other and cv2.pointPolygonTest(other.contour, tuple(s.centroid_mm), False) >= 0 for other in splinters)]
+            
             # save splinters to specimen
             output_file = specimen.get_splinter_outfile("splinters_v2.pkl")
             with open(output_file, 'wb') as f:

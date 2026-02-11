@@ -904,7 +904,7 @@ class Specimen(Outputtable):
         """
         from fracsuite.core.simplifier import simplify_contours
         
-        simplify_contours(self, distance_threshold)
+        simplify_contours(self.splinters, distance_threshold)
             
     def find_adjacents(self):
         """

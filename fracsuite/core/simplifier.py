@@ -63,7 +63,7 @@ def process_contour_chunk(chunk_data):
             results.append(None)
     return results
 
-def simplify_contours(self, distance_threshold: float = 1.0) -> None:
+def simplify_contours(splinters: list, distance_threshold: float = 1.0) -> None:
     """
     Highly optimized contour simplification using vectorized operations and parallel processing.
     
@@ -73,13 +73,13 @@ def simplify_contours(self, distance_threshold: float = 1.0) -> None:
     # Step 1: Vectorized point collection
     print("Collecting points...")
     # Pre-calculate total points for better memory allocation
-    total_points = sum(len(item.contour) for item in self.splinters)
+    total_points = sum(len(item.contour) for item in splinters)
     all_points = np.empty((total_points, 2), dtype=np.float32)
     point_to_splinter_map = np.empty(total_points, dtype=np.int32)
     
     # Vectorized point extraction
     idx = 0
-    for splinter_idx, item in enumerate(self.splinters):
+    for splinter_idx, item in enumerate(splinters):
         batch_size = len(item.contour)
         all_points[idx:idx + batch_size] = item.contour[:, 0, :]
         point_to_splinter_map[idx:idx + batch_size] = splinter_idx
@@ -143,7 +143,7 @@ def simplify_contours(self, distance_threshold: float = 1.0) -> None:
     n_cores = 10
     
     # Create optimal chunk size based on number of contours and cores
-    total_contours = len(self.splinters)
+    total_contours = len(splinters)
     chunk_size = max(100, total_contours // (n_cores * 4))  # Ensure chunks aren't too small
     
     # Create chunks of contours
@@ -151,7 +151,7 @@ def simplify_contours(self, distance_threshold: float = 1.0) -> None:
     current_chunk = []
     current_size = 0
     
-    for splinter in self.splinters:
+    for splinter in splinters:
         # Validate input contour before processing
         if validate_contour(splinter.contour) is not None:
             current_chunk.append(splinter.contour)
@@ -167,18 +167,18 @@ def simplify_contours(self, distance_threshold: float = 1.0) -> None:
     # Process chunks in parallel using starmap
     with mp.Pool(n_cores) as pool:
         results = []
-        with tqdm(total=len(self.splinters)) as pbar:
+        with tqdm(total=len(splinters)) as pbar:
             for chunk_results in pool.imap_unordered(process_contour_chunk, chunks):
                 results.extend(chunk_results)
                 pbar.update(len(chunk_results))
     
     # Update splinters with new contours
     valid_count = 0
-    for splinter, new_contour in zip(self.splinters, results):
+    for splinter, new_contour in zip(splinters, results):
         if new_contour is not None:
             validated_contour = validate_contour(new_contour)
             if validated_contour is not None and len(validated_contour) >= 3:
                 splinter.contour = validated_contour
                 valid_count += 1
     
-    print(f"Successfully processed {valid_count}/{len(self.splinters)} contours")
+    print(f"Successfully processed {valid_count}/{len(splinters)} contours")
