@@ -738,9 +738,10 @@ class Specimen(Outputtable):
         Returns:
             float: The mean fracture intensity in 1/mm².
         """
-
+        
         f_intensity = self.simdata.get(Specimen.DAT_LAMBDA, None)
         if force_recalc or f_intensity is None:
+            print(f"Calculating intensity for {self.name}")
             _,_,Z,_ = self.calculate_2d(SplinterProp.INTENSITY, D_mm, 25)
 
             f_intensity = np.nanmean(Z)

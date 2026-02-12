@@ -2,13 +2,14 @@ from collections import defaultdict
 from glob import glob
 import os
 import shutil
-from typing import Annotated
+from typing import Annotated, Any
 from matplotlib import pyplot as plt
 from fracsuite.core.imageprocessing import preprocess_image
+from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.scalp import T
 import numpy as np
-
+from fracsuite.splinters import create_filter_function
 from fracsuite.splinters import draw_contours
 from spazial import csstraussproc2
 from sqlalchemy import true
@@ -966,9 +967,122 @@ def anas1(
             f.write(f"Pre-Stress (measured): {specimen.sig_h:.2f} MPa\n")
             f.write(f"N50: {specimen.calculate_nfifty_in_windows(force_recalc=True):.0f}\n\tThis value was measured in the lower left corner. Window 50x50mm, Center at 400x400mm from the top right.\n")
             f.write(f"Mean Area: {specimen.mean_splinter_area:.2f} mm²\n\tMeasured on the whole plate.\n")
+        
+
+def extract_into_group_stats(groups: dict[Any, list[Specimen]]):
+    # calculate statistics for each group
+    group_stats = []
+    for bc, specs in groups.items():
+        values = [[s.measured_thickness, s.U, s.U_d, s.sig_h, s.sig_h/2, s.calculate_intensity() * 2500, s.calculate_intensity()] for s in specs]
+        
+        intensity_mean = np.mean(values)
+        intensity_dev = np.std(values)
+        intensity_max = np.max(values)
+        intensity_min = np.min(values)
+        
+        group_stats.append((bc, intensity_mean, intensity_dev, intensity_max, intensity_min, values))            
+       
+    return group_stats
+
+def group_to_line(spec_vals):
+    return "\t".join([f"{i:.4f}" for i in spec_vals])
+
+def export_print_ln(f, bc, vals):
+    f.write("\n".join( [f"{bc}\t{group_to_line(i)}" for i in vals] ))
+
+# set of specimen to include in pap3 paper
+PAP3_SET = "(4!8).*.*.*"
+EXPORT_HEADER = "bc\tt\tU\tU_d\tsig_h\tsig_m\tnfifty\tintensity\n"
+
+@tools_app.command()
+def export_by_thickness(
+    outpath: Annotated[str, typer.Argument(help="Output directory")]
+):
+    """
+    
+    """
+    from scipy import stats
+    
+    filter = create_filter_function(PAP3_SET, needs_scalp=True, needs_splinters=True)
+
+    def all_filter(s: Specimen):
+        if s.nom_stress <= 70:
+            return False
+        
+        return filter(s)
+
+    specimens = Specimen.get_all_by(filter, load=True)
+
+    # group specimens into (Thickness, Boundary Condition, Nominal Pre-Stress)
+    groups: dict[str, list[Specimen]] = {}
+    for spec in specimens:
+        # decide on the group key here
+        key = spec.thickness
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(spec)
+
+    group_stats = extract_into_group_stats(groups)
+
+
+    
+    for bc, intensity_mean, intensity_dev, intensity_max, intensity_min, vals in group_stats:        
+        output_file = os.path.join(outpath, f"out-{bc}.csv")        
+        with open(output_file, "w", encoding="utf-8") as f: 
+            f.writelines([EXPORT_HEADER])         
+              
+            export_print_ln(f, bc, vals)
+                
+
+       
             
-            
-            
+@tools_app.command()
+def export_by_supports(
+    outpath: Annotated[str, typer.Argument(help="Output directory")],
+):
+    """
+    Export grouped by support types.
+
+    Each support type gets its own file, containing information on all contained specimen.
+
+    """
+    from scipy import stats
+    
+    filter = create_filter_function(PAP3_SET, needs_scalp=True, needs_splinters=True)
+
+    def all_filter(s: Specimen):
+        if s.nom_stress <= 70:
+            return False
+        if s.nbr > 10:
+            return False
+        
+        return filter(s)
+
+    specimens = Specimen.get_all_by(filter, load=True)
+
+    energy_bins = [0, 90, 120, 150, np.inf]
+
+
+    # group specimens into (Thickness, Boundary Condition, Nominal Pre-Stress)
+    groups: dict[str, list[Specimen]] = {}
+    for spec in specimens:
+        # decide on the group keyhere
+        
+        
+        key = spec.boundary.value
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(spec)
+
+    group_stats = extract_into_group_stats(groups)
+
+
+    for bc, intensity_mean, intensity_dev, intensity_max, intensity_min, vals in group_stats:        
+        output_file = os.path.join(outpath, f"support-{bc}.csv")        
+        with open(output_file, "w", encoding="utf-8") as f: 
+            f.writelines([EXPORT_HEADER])         
+            export_print_ln(f, bc, vals)
+                
 
 @tools_app.command()    
 def export(

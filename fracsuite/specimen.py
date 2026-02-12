@@ -397,17 +397,31 @@ def seel_prediction(
 
 
 @app.command()
+def export_pap3():
+    pass
+
+@app.command()
 def export_exp_matrix(
     outpath: str
 ):
     """
-    Export experiment matrix to a LaTeX file.
+    Export experiment matrix to a LaTeX file. Groups by series: Thickness.PreStress.Support and calculates the mean pre-stress.
 
     Groups specimens by (Thickness, Boundary Condition, Nominal Pre-Stress)
     and calculates mean and standard deviation of measured pre-stress for each group.
     """
     filter = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
-    specimens = Specimen.get_all_by(filter, load=True)
+    def add_filter(s: Specimen):
+        
+        if s.nom_stress <= 70:
+            return False
+        
+        if s.nbr > 10:
+            return False
+        
+        return filter(s)
+    
+    specimens = Specimen.get_all_by(add_filter, load=True)
 
     # group specimens into (Thickness, Boundary Condition, Nominal Pre-Stress)
     groups: dict[tuple, list[Specimen]] = {}
@@ -416,8 +430,6 @@ def export_exp_matrix(
         if key not in groups:
             groups[key] = []
         groups[key].append(spec)
-
-    groups.pop((4, "Z", 70))
 
     # calculate statistics for each group
     group_stats = []
@@ -442,11 +454,11 @@ def export_exp_matrix(
     latex_lines = []
     latex_lines.append(r"\begin{table}[!htbp]")
     latex_lines.append(r"    \centering")
-    latex_lines.append(r"    \caption{Experimental series, with $t$ thickness, $BC$ boundary condition, $\sigma_{S,nom}$ nominal surface compressive stress, $n$ amount of specimen, $\bar\sigma_{S,nom}$ measured surface compressive stress }")
+    latex_lines.append(r"    \caption{Experimental series, with $t$ thickness, $SC$ support condition, $\sigma_{S,nom}$ nominal surface compressive stress, $n$ amount of specimen, $\bar\sigma_{S,nom}$ measured surface compressive stress }")
     latex_lines.append(r"    \label{tab:experiments_matrix}")
     latex_lines.append(r"    \begin{tabular}{c c c c c c}")
     latex_lines.append(r"        \toprule")
-    latex_lines.append(r"        $t$ [mm] & BC & $\sigma_\mathrm{nom}$ [MPa] & $n$ & $\bar{\sigma}_\mathrm{s}$ [MPa] & $s_{\sigma}$ [MPa] \\")
+    latex_lines.append(r"        $t$ [mm] & SC & $\sigma_\mathrm{nom}$ [MPa] & $n$ & $\bar{\sigma}_\mathrm{s}$ [MPa] & $s_{\sigma}$ [MPa] \\")
     latex_lines.append(r"        \midrule")
 
     for g in group_stats:
