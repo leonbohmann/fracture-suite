@@ -973,26 +973,28 @@ def extract_into_group_stats(groups: dict[Any, list[Specimen]]):
     # calculate statistics for each group
     group_stats = []
     for bc, specs in groups.items():
-        values = [[s.measured_thickness, s.U, s.U_d, s.sig_h, s.sig_h/2, s.calculate_intensity() * 2500, s.calculate_intensity()] for s in specs]
+        values = [[s.measured_thickness, s.U, s.U_d, s.sig_h, s.sig_h/2, s.calculate_intensity() * 2500.0, s.calculate_intensity(), s.name] for s in specs]
         
-        intensity_mean = np.mean(values)
-        intensity_dev = np.std(values)
-        intensity_max = np.max(values)
-        intensity_min = np.min(values)
         
-        group_stats.append((bc, intensity_mean, intensity_dev, intensity_max, intensity_min, values))            
+        group_stats.append((bc, values))            
        
     return group_stats
 
+bc_id = {
+    "A": 1,
+    "Z": 2,
+    "B": 3
+}
+
 def group_to_line(spec_vals):
-    return "\t".join([f"{i:.4f}" for i in spec_vals])
+    return "\t".join([(f"{i:.8f}" if not isinstance(i,str) else f"{i}") for i in spec_vals])
 
 def export_print_ln(f, bc, vals):
-    f.write("\n".join( [f"{bc}\t{group_to_line(i)}" for i in vals] ))
+    f.write("\n".join( [f"{bc}\t{bc_id[bc]}\t{group_to_line(i)}" for i in vals] ))
 
 # set of specimen to include in pap3 paper
 PAP3_SET = "(4!8).*.*.*"
-EXPORT_HEADER = "bc\tt\tU\tU_d\tsig_h\tsig_m\tnfifty\tintensity\n"
+EXPORT_HEADER = "bc\tbcid\tt\tU\tU_d\tsig_h\tsig_m\tnfifty\tintensity\tname\n"
 
 @tools_app.command()
 def export_by_thickness(
@@ -1024,9 +1026,7 @@ def export_by_thickness(
 
     group_stats = extract_into_group_stats(groups)
 
-
-    
-    for bc, intensity_mean, intensity_dev, intensity_max, intensity_min, vals in group_stats:        
+    for bc, vals in group_stats:        
         output_file = os.path.join(outpath, f"out-{bc}.csv")        
         with open(output_file, "w", encoding="utf-8") as f: 
             f.writelines([EXPORT_HEADER])         
@@ -1039,15 +1039,17 @@ def export_by_thickness(
 @tools_app.command()
 def export_by_supports(
     outpath: Annotated[str, typer.Argument(help="Output directory")],
+    energy_thresholds: Annotated[tuple[float, float], typer.Option("--energy-thresholds", help="Low/high thresholds for nom_stress to classify into low/med/high")] = (125, 250),
 ):
     """
-    Export grouped by support types.
+    Export grouped by support types and energy levels.
 
-    Each support type gets its own file, containing information on all contained specimen.
+    Each combination of support type and energy level (low/med/high) gets its own file.
+    Energy levels are determined by nom_stress thresholds.
 
     """
     from scipy import stats
-    
+
     filter = create_filter_function(PAP3_SET, needs_scalp=True, needs_splinters=True)
 
     def all_filter(s: Specimen):
@@ -1055,32 +1057,58 @@ def export_by_supports(
             return False
         if s.nbr > 10:
             return False
+
         
+
         return filter(s)
 
-    specimens = Specimen.get_all_by(filter, load=True)
+    specimens = Specimen.get_all_by(all_filter, load=True)
 
-    energy_bins = [0, 90, 120, 150, np.inf]
+    def classify_energy(spec: Specimen) -> str:
+        if spec.U <= energy_thresholds[0]:
+            return "low"
+        elif spec.U <= energy_thresholds[1]:
+            return "med"
+        else:
+            return "high"
 
-
-    # group specimens into (Thickness, Boundary Condition, Nominal Pre-Stress)
-    groups: dict[str, list[Specimen]] = {}
+    # group specimens by (boundary condition, energy level)
+    groups: dict[tuple[str, str], list[Specimen]] = {}
     for spec in specimens:
-        # decide on the group keyhere
-        
-        
-        key = spec.boundary.value
+        bc = spec.boundary.value
+        energy_label = classify_energy(spec)
+        key = (bc, energy_label)
         if key not in groups:
             groups[key] = []
         groups[key].append(spec)
 
+    # group specimens by (boundary condition, energy level)
+    groups_full: dict[tuple[str, str], list[Specimen]] = {}
+    for spec in specimens:
+        bc = spec.boundary.value
+        key = bc
+        if key not in groups_full:
+            groups_full[key] = []
+        groups_full[key].append(spec)
+
+
     group_stats = extract_into_group_stats(groups)
+    group_full_stats = extract_into_group_stats(groups_full)
 
-
-    for bc, intensity_mean, intensity_dev, intensity_max, intensity_min, vals in group_stats:        
-        output_file = os.path.join(outpath, f"support-{bc}.csv")        
-        with open(output_file, "w", encoding="utf-8") as f: 
-            f.writelines([EXPORT_HEADER])         
+    # export support-energy 
+    for key, vals in group_stats:
+        bc, energy_label = key
+        output_file = os.path.join(outpath, f"support-{bc}-{energy_label}.csv")
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.writelines([EXPORT_HEADER])
+            export_print_ln(f, bc, vals)
+            
+    # export support-energy 
+    for key, vals in group_full_stats:
+        bc = key
+        output_file = os.path.join(outpath, f"support-{bc}.csv")
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.writelines([EXPORT_HEADER])
             export_print_ln(f, bc, vals)
                 
 

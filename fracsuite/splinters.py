@@ -738,6 +738,7 @@ def plt_prop_f2(
     n_points: Annotated[int, typer.Option(help='Amount of points to evaluate.')] = 25,
     w_mm: Annotated[int, typer.Option(help='Size of the region to calculate the roughness on.')] = 50,
     smooth: Annotated[bool, typer.Option(help='Smooth the plot.')] = True,
+    cbar_lim: Annotated[Tuple[float,float], typer.Option(help="colorbar limits")] = (np.nan,0)
 ):
 
     specimen = Specimen.get(specimen_name)
@@ -753,7 +754,7 @@ def plt_prop_f2(
         X, Y, Z,
         0,
         FigureSize.ROW2,
-        crange=(np.nanmin(Z), np.nanmax(Z)),
+        crange=(np.nanmin(Z), np.nanmax(Z)) if np.isnan(cbar_lim[0]) else cbar_lim,
         clr_format=".2f",
         smooth=smooth,
         fill_skipped_with_mean=False,

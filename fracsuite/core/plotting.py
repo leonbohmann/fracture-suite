@@ -458,6 +458,7 @@ def plot_kernel_results(
             cbar = fig.colorbar(axim, label=clr_label, ax=axs)
         cbar = fig.colorbar(axim, label=clr_label)
 
+        cbar.set_label(clr_label, rotation=270, labelpad=15)
         renew_ticks_cb(cbar)
 
 
