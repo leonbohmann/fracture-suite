@@ -23,7 +23,7 @@ from fracsuite.core.coloring import rand_col
 from fracsuite.core.model_layers import arrange_regions, get_layer_folder
 from fracsuite.core.plotting import FigureSize, get_fig_width, renew_ticks_ax, renew_ticks_cb, voronoi_to_image
 from fracsuite.core.signal import smooth_hanning
-from fracsuite.core.specimenprops import SpecimenBreakPosition
+from fracsuite.core.specimenprops import SpecimenBoundary, SpecimenBreakPosition
 from fracsuite.core.splinter import Splinter
 from fracsuite.core.stochastics import khat, lhat, lhatc, pois, quadrat_count, rhc_minimum
 from fracsuite.state import State, StateOutput
@@ -1227,3 +1227,161 @@ def export_preprocessing_img(
     
     cv2.imwrite(os.path.join(output_dir, f"{specimen_name}_contours.png"), out_img[interest_region[1]:interest_region[3], interest_region[0]:interest_region[2]])
     cv2.imwrite(os.path.join(output_dir, f"{specimen_name}_preprocessed.png"), preprocessed_img[interest_region[1]:interest_region[3], interest_region[0]:interest_region[2]])
+    
+ 
+@tools_app.command()
+def export_simulations_with_similar(
+    outpath: Annotated[str, typer.Argument(help="Output file path for the CSV")],
+    sig_range: Annotated[float, typer.Option(help="Range (+/-) around the simulation sig_h to include experiment specimens (MPa).")] = 5,
+):
+    """Export simulation specimens paired with matching experiments by stress.
+
+    For each simulation, finds all experiments whose |sig_h| is within sig_range of the
+    simulation's |sig_h|. If sig_range is 0, only the single closest experiment is used.
+    The mean properties across all matching experiments are then averaged.
+
+    Outputs a CSV: sig_h, then all mean per-splinter properties for the experiments,
+    then all mean per-splinter properties for the simulation.
+    """
+    from fracsuite.splinters import is_splinter_included
+
+    sim_names = ["sim_4_103",
+            "sim_4_112",
+            "sim_4_122",
+            "sim_4_143",
+            "sim_4_155",
+            "sim_8_157",
+            "sim_8_192",
+            "sim_8_230",
+            "sim_8_271",
+            "sim_8_316"]
+
+    simulations: list[Specimen] = []
+    for name in sim_names:
+        spec = Specimen.get(name)
+        simulations.append(spec)
+
+    # get all non-simulation specimens with splinters and boundary B
+    all_specimens = Specimen.get_all()
+    exp_specimens = [s for s in all_specimens
+                     if not s.name.startswith("sim")
+                     and s.has_splinters
+                     and s.boundary == SpecimenBoundary.B
+                     and s.nbr > 5]
+
+    # per-splinter properties to compute
+    per_splinter_props = [
+        SplinterProp.AREA,
+        SplinterProp.CIRCUMFENCE,
+        SplinterProp.ORIENTATION,
+        SplinterProp.IMPACT_DEPENDENCY,
+        SplinterProp.ROUNDNESS,
+        SplinterProp.ROUGHNESS,
+        SplinterProp.ASP,
+        SplinterProp.ASP0,
+        SplinterProp.L1,
+        SplinterProp.L2,
+        SplinterProp.L1_WEIGHTED,
+        SplinterProp.ANGLE,
+        SplinterProp.ANGLE0,
+    ]
+
+    def compute_mean_props(spec: Specimen):
+        """Compute mean of all per-splinter properties for a specimen."""
+        pxpmm = spec.calculate_px_per_mm()
+        ipmm = spec.get_impact_position()
+        realsize = spec.settings.get(Specimen.SET_REALSIZE, None) \
+            if spec.name.startswith("sim") else None
+
+        splinters = [s for s in spec.splinters if is_splinter_included(s, realsize)]
+
+        results = {}
+        for prop in per_splinter_props:
+            values = []
+            for s in splinters:
+                try:
+                    values.append(s.get_splinter_data(prop, ip_mm=ipmm, px_p_mm=pxpmm))
+                except Exception:
+                    continue
+            results[prop] = np.nanmean(values) if values else np.nan
+        return results
+
+    def average_props(props_list: list[dict]) -> dict:
+        """Average the property dicts from multiple specimens."""
+        averaged = {}
+        for prop in per_splinter_props:
+            vals = [p[prop] for p in props_list if not np.isnan(p[prop])]
+            averaged[prop] = np.mean(vals) if vals else np.nan
+        return averaged
+
+    # build header
+    exp_cols = [f"exp_{p.value}" for p in per_splinter_props]
+    sim_cols = [f"sim_{p.value}" for p in per_splinter_props]
+    header = "sig_h;" + ";".join(exp_cols) + ";" + ";".join(sim_cols)
+
+    rows = []
+    for sim in tqdm(simulations, desc="Processing simulations"):
+        try:
+            sim_sig = float(np.abs(sim.sig_h))
+
+            # only consider experiments with matching thickness
+            candidates = [e for e in exp_specimens if e.thickness == sim.thickness]
+
+            if sig_range > 0:
+                # find all experiments within the range
+                matching_exps = [e for e in candidates
+                                 if abs(float(np.abs(e.sig_h)) - sim_sig) <= sig_range]
+            else:
+                # fall back to single closest experiment
+                matching_exps = [min(candidates, key=lambda e: abs(float(np.abs(e.sig_h)) - sim_sig))] if candidates else []
+
+            if not matching_exps:
+                print(f"  {sim.name} (sig_h={sim_sig:.2f}) -> no experiments in range +/-{sig_range:.1f} MPa")
+                continue
+
+            exp_names = ", ".join([f"{e.name}({np.abs(e.sig_h):.1f})" for e in matching_exps])
+            print(f"  {sim.name} (sig_h={sim_sig:.2f}) -> {len(matching_exps)} exp(s): {exp_names}")
+
+            sim_props = compute_mean_props(sim)
+            exp_props = average_props([compute_mean_props(e) for e in matching_exps])
+
+            row_values = [f"{sim_sig:.4f}"]
+            for prop in per_splinter_props:
+                row_values.append(f"{exp_props[prop]:.6f}")
+            for prop in per_splinter_props:
+                row_values.append(f"{sim_props[prop]:.6f}")
+
+            rows.append(";".join(row_values))
+        except Exception as e:
+            print(f"Unable to process {sim.name}: {e}")
+
+    os.makedirs(os.path.dirname(os.path.abspath(outpath)), exist_ok=True)
+    outpath = os.path.join(outpath, "exp_vs_sim.csv")
+    with open(outpath, 'w') as f:
+        f.write(header + "\n")
+        for row in rows:
+            f.write(row + "\n")
+
+    print(f"Exported {len(rows)} rows to {outpath}")
+    
+    
+@tools_app.command()
+def draw_line(
+    specimen: str,
+    p1: tuple[float,float],
+    p2: tuple[float,float],
+):
+    specimen: Specimen = Specimen.get(specimen)
+    
+    img0 = specimen.get_fracture_image()
+    px_p_mm = specimen.calculate_px_per_mm()
+    
+    p1px = np.array(p1) * px_p_mm
+    p2px = np.array(p2) * px_p_mm
+    
+    print(p1px)
+    out_img = img0.copy()
+    cv2.line(out_img, p1px.astype(np.int16), p2px.astype(np.int16), [255,0,0], 2)
+    
+    out_path = specimen.get_splinter_outfile("line.png")
+    cv2.imwrite(out_path, out_img)

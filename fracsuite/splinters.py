@@ -4,6 +4,7 @@ Splinter analyzation tools.
 from enum import Enum
 
 from click import pause
+from tqdm import tqdm
 from fracsuite.core.logging import debug, info
 import multiprocessing.shared_memory as sm
 import os
@@ -437,15 +438,25 @@ def draw_contours(
     ls: Annotated[int, typer.Option(help='Line size.')] = 2,
     color: Annotated[str, typer.Option(help='Color of the contours. None means random color for each splinter.')] = None,
     label: Annotated[bool, typer.Option(help='Use a black background instead of the specimens fracture image.')] = False,
+    resize_factor: Annotated[float, typer.Option(help="A factor to increase image size.")] = 1,
+    draw_ids: Annotated[bool, typer.Option(help="Draw fragment IDs at their centroids.")] = False,
+    draw_id: Annotated[int, typer.Option(help="The fragment to draw")] = None,
+    crop: Annotated[tuple[float,float,float,float], typer.Option(help="The area to crop to.")] = None,
+    no_simplify: Annotated[bool, typer.Option(help="Do not simplify contours for second stage of drawing.")] = False
 ):
     specimen = Specimen.get(specimen_name)
     assert specimen.has_splinters, "Specimen has no splinters."
     splinters = specimen.splinters
+    pxpmm = specimen.calculate_px_per_mm()
+    ipmm = specimen.get_impact_position()
 
     if not label:
         out_img = specimen.get_fracture_image()
     else:
         out_img = np.zeros_like(specimen.get_fracture_image(), dtype=np.uint8)
+
+    if resize_factor != 1:
+        out_img = cv2.resize(out_img, None, fx=resize_factor, fy=resize_factor)
 
     with get_progress(total=len(splinters), title='Drawing contours') as progress:
         for splinter in splinters:
@@ -454,19 +465,48 @@ def draw_contours(
             else:
                 clr = norm_color(color, 255)
 
-            cv2.drawContours(out_img, [splinter.contour], 0, clr, ls if not fill else -1)
+            contour = (splinter.contour * resize_factor).astype(np.int32)
+            cv2.drawContours(out_img, [contour], 0, clr, ls if not fill else -1)
 
             progress.advance()
 
-    specimen.simplify_contours(1)
+    if not no_simplify:
+        specimen.simplify_contours(1)
 
     clr = (0,0,255)
     with get_progress(total=len(splinters), title='Drawing contours') as progress:
-        for splinter in splinters:            
-            cv2.drawContours(out_img, [splinter.contour], 0, clr, ls - 1 if not fill else -1)
+        for splinter in splinters:
+            contour = (splinter.contour * resize_factor).astype(np.int32)
+            
+            
+            cv2.drawContours(out_img, [contour], 0, clr, ls - 1 if not fill else -1)
+            
+            if splinter.ID == draw_id:
+                cv2.drawContours(out_img, [contour], 0, [255,0,0], -1)
 
             progress.advance()
 
+    if draw_ids:
+        font_scale = 0.4 * resize_factor
+        thickness = max(1, int(resize_factor))
+        for splinter in splinters:
+            if splinter.has_centroid and (True if draw_id is None else splinter.ID == draw_id):
+                cx = int(splinter.centroid_px[0] * resize_factor)
+                cy = int(splinter.centroid_px[1] * resize_factor)
+                
+                splint = splinter
+                print(f"{splint.ID};{splint.area};{splint.measure_circumfence(px_per_mm=pxpmm)};{len(splint.adjacent_splinter_ids)};{splint.get_splinter_data(SplinterProp.ASP, ip_mm=ipmm)};{splint.get_splinter_data(SplinterProp.ASP0, ip_mm=ipmm)}")
+                
+                cv2.putText(out_img, str(splinter.ID), (cx, cy),
+                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 0), thickness)
+
+
+    if crop is not None:
+        x1 = int(crop[0] * pxpmm * resize_factor)
+        y1 = int(crop[1] * pxpmm * resize_factor)
+        x2 = int(crop[2] * pxpmm * resize_factor)
+        y2 = int(crop[3] * pxpmm * resize_factor)
+        out_img = out_img[y1:y2, x1:x2]
 
     State.output(out_img, 'contours', spec=specimen, to_additional=True)
 
@@ -3805,3 +3845,58 @@ def export_all():
                 continue
             # write to csv
         
+        
+@app.command()
+def is_splinter_included(splinter, realsize, edge_margin=2) -> bool:
+    """Check if a splinter should be included based on edge proximity.
+
+    Args:
+        splinter: The splinter to check.
+        realsize: Real size of the specimen in mm (w, h), or None to include all.
+        edge_margin: Minimum distance from the edge in mm.
+
+    Returns:
+        True if the splinter should be included.
+    """
+    if realsize is None:
+        return True
+    if not splinter.has_centroid:
+        return True
+    
+    if splinter.area < 2:
+        return False
+    
+    return True
+
+    cx, cy = splinter.centroid_mm
+    return (cx >= edge_margin and cy >= edge_margin
+            and cx <= realsize[0] - edge_margin
+            and cy <= realsize[1] - edge_margin)
+
+@app.command()
+def export_all_csv():
+    """Export all splinter images."""
+    specimens = Specimen.get_all()
+
+
+    for spec in tqdm(specimens):
+        try:
+            csv_file = spec.get_splinter_outfile(f"splinters-{spec.name}.csv")
+            pxpmm = spec.calculate_px_per_mm()
+            ipmm = spec.get_impact_position()
+
+            realsize = spec.settings.get(Specimen.SET_REALSIZE, None) \
+                if spec.name.startswith("sim") else None
+
+            with open(csv_file, 'w') as f:
+
+                f.write("Splinter ID;Area;Perimeter;Adjacents;Orientation;Asp;Asp0\n")
+
+                for splint in spec.splinters:
+                    if spec.name.startswith("sim") and not is_splinter_included(splint, realsize):
+                        continue
+
+                    f.write(f"{splint.ID};{splint.area};{splint.measure_circumfence(pxpmm)};{len(splint.adjacent_splinter_ids)};{splint.get_splinter_data(SplinterProp.ASP, ip_mm=ipmm)};{splint.get_splinter_data(SplinterProp.ASP0, ip_mm=ipmm)}\n")
+        except Exception as e:
+            print(f"unable to process {spec.name}: {e}")
+

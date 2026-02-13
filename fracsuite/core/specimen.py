@@ -218,7 +218,7 @@ class Specimen(Outputtable):
         return np.mean([s.area for s in self.splinters]) * self.calculate_px_per_mm()**2
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.__name
 
     @name.setter
@@ -349,11 +349,13 @@ class Specimen(Outputtable):
             self.__U_d = calc_Ud(self.__sigma_h)
         
         elif self.get_setting(Specimen.SET_SIGH, False) is not False: 
-            self.sig_h = self.get_setting(Specimen.SET_SIGH, 0)
+            self.__sig_h = self.get_setting(Specimen.SET_SIGH, 0)
 
         elif log_missing_data:
             print(f"Could not find scalp file for '{self.name}'. Create it using the original scalper project and [green]fracsuite.scalper[/green].")
 
+        self.set_setting("sig_h", self.__sigma_h)
+        
         self.load_acc()
 
         self.loaded = True
