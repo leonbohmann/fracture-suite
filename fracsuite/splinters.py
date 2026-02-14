@@ -508,6 +508,31 @@ def draw_contours(
         y2 = int(crop[3] * pxpmm * resize_factor)
         out_img = out_img[y1:y2, x1:x2]
 
+        # draw schematic overview in top-right corner
+        real_size = specimen.get_real_size()
+        glass_w_mm, glass_h_mm = real_size[0], real_size[1]
+        overview_w = int(out_img.shape[1] * 0.2)
+        overview_h = int(overview_w * glass_h_mm / glass_w_mm)
+        margin = 10
+        ox = out_img.shape[1] - overview_w - margin
+        oy = margin
+
+        # glass rectangle (white outline)
+        cv2.rectangle(out_img, (ox, oy), (ox + overview_w, oy + overview_h), (255, 255, 255), -1)
+        cv2.rectangle(out_img, (ox, oy), (ox + overview_w, oy + overview_h), (0, 0, 0), 1)
+        # crop region rectangle (red outline)
+        scale = overview_w / glass_w_mm
+        cx1 = ox + int(crop[0] * scale)
+        cy1 = oy + int(crop[1] * scale)
+        cx2 = ox + int(crop[2] * scale)
+        cy2 = oy + int(crop[3] * scale)
+        cv2.rectangle(out_img, (cx1, cy1), (cx2, cy2), (0, 0, 255), 2)
+        # impact position
+        ip_x = ox + int(ipmm[0] * scale)
+        ip_y = oy + int(ipmm[1] * scale)
+        ip_s = 6
+        cv2.rectangle(out_img, (ip_x - ip_s, ip_y - ip_s), (ip_x + ip_s, ip_y + ip_s), (255, 255, 0), -1)
+
     State.output(out_img, 'contours', spec=specimen, to_additional=True)
 
 @app.command()

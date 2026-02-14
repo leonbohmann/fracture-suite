@@ -397,8 +397,25 @@ def seel_prediction(
 
 
 @app.command()
-def export_pap3():
-    pass
+def export_pap3(
+    outpath: str
+    
+):
+    filter = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
+    specimens = Specimen.get_all_by(filter, load=True)
+    
+    
+    for t in [4,8,12]:
+        outfile = os.path.join(outpath, f"all-specimen-{t}.csv")
+        
+        specs = [s for s in specimens if s.thickness == t]
+        
+        with open(outfile, 'w') as f:
+            f.write("t;U;U_d;sigs;sigm;n50;circ;area;intensity\n")
+            for spec in specs:
+                f.write(f"{spec.thickness};{spec.U};{spec.U_d};{np.abs(spec.sig_h)};{np.abs(spec.sig_h)/2.0};{spec.calculate_intensity()*2500};{spec.calculate_mean(SplinterProp.CIRCUMFENCE)};{spec.calculate_mean(SplinterProp.AREA)};{spec.calculate_intensity()}\n")
+            
+    
 
 @app.command()
 def export_exp_matrix(

@@ -2,9 +2,10 @@ from collections import defaultdict
 from glob import glob
 import os
 import shutil
-from typing import Annotated, Any
+from typing import Annotated, Any, Callable
 from matplotlib import pyplot as plt
 from fracsuite.core.imageprocessing import preprocess_image
+from fracsuite.core.mechanics import U
 from fracsuite.core.specimen import Specimen
 from fracsuite.core.splinter_props import SplinterProp
 from fracsuite.scalp import T
@@ -1232,7 +1233,7 @@ def export_preprocessing_img(
 @tools_app.command()
 def export_simulations_with_similar(
     outpath: Annotated[str, typer.Argument(help="Output file path for the CSV")],
-    sig_range: Annotated[float, typer.Option(help="Range (+/-) around the simulation sig_h to include experiment specimens (MPa).")] = 5,
+    sig_range: Annotated[float, typer.Option(help="Range (+/-) around the simulation sig_h to include experiment specimens (MPa).")] = 1,
 ):
     """Export simulation specimens paired with matching experiments by stress.
 
@@ -1269,7 +1270,7 @@ def export_simulations_with_similar(
                      and s.boundary == SpecimenBoundary.B
                      and s.nbr > 5]
 
-    # per-splinter properties to compute
+    # per-splinter properties to compute (mean across all splinters)
     per_splinter_props = [
         SplinterProp.AREA,
         SplinterProp.CIRCUMFENCE,
@@ -1284,6 +1285,12 @@ def export_simulations_with_similar(
         SplinterProp.L1_WEIGHTED,
         SplinterProp.ANGLE,
         SplinterProp.ANGLE0,
+    ]
+
+    # per-specimen properties: (name, func(Specimen) -> float)
+    specimen_props: list[tuple[str, Callable]] = [
+        ("intensity", lambda s: s.calculate_intensity()),
+        ("nfifty", lambda s: s.calculate_intensity()*2500),
     ]
 
     def compute_mean_props(spec: Specimen):
@@ -1303,21 +1310,30 @@ def export_simulations_with_similar(
                     values.append(s.get_splinter_data(prop, ip_mm=ipmm, px_p_mm=pxpmm))
                 except Exception:
                     continue
-            results[prop] = np.nanmean(values) if values else np.nan
+            results[prop.value] = np.nanmean(values) if values else np.nan
+
+        for name, func in specimen_props:
+            try:
+                results[name] = float(func(spec))
+            except Exception:
+                results[name] = np.nan
+
         return results
+
+    all_prop_keys = [p.value for p in per_splinter_props] + [name for name, _ in specimen_props]
 
     def average_props(props_list: list[dict]) -> dict:
         """Average the property dicts from multiple specimens."""
         averaged = {}
-        for prop in per_splinter_props:
-            vals = [p[prop] for p in props_list if not np.isnan(p[prop])]
-            averaged[prop] = np.mean(vals) if vals else np.nan
+        for key in all_prop_keys:
+            vals = [p[key] for p in props_list if not np.isnan(p[key])]
+            averaged[key] = np.mean(vals) if vals else np.nan
         return averaged
 
     # build header
-    exp_cols = [f"exp_{p.value}" for p in per_splinter_props]
-    sim_cols = [f"sim_{p.value}" for p in per_splinter_props]
-    header = "sig_h;" + ";".join(exp_cols) + ";" + ";".join(sim_cols)
+    exp_cols = [f"exp_{k}" for k in all_prop_keys]
+    sim_cols = [f"sim_{k}" for k in all_prop_keys]
+    header = "t;sig_h;U;" + ";".join(exp_cols) + ";" + ";".join(sim_cols)
 
     rows = []
     for sim in tqdm(simulations, desc="Processing simulations"):
@@ -1345,11 +1361,11 @@ def export_simulations_with_similar(
             sim_props = compute_mean_props(sim)
             exp_props = average_props([compute_mean_props(e) for e in matching_exps])
 
-            row_values = [f"{sim_sig:.4f}"]
-            for prop in per_splinter_props:
-                row_values.append(f"{exp_props[prop]:.6f}")
-            for prop in per_splinter_props:
-                row_values.append(f"{sim_props[prop]:.6f}")
+            row_values = [f"{sim.thickness:.4f}",f"{sim_sig:.4f}", f"{U(sim_sig, sim.thickness):.4f}"]
+            for key in all_prop_keys:
+                row_values.append(f"{exp_props[key]:.6f}")
+            for key in all_prop_keys:
+                row_values.append(f"{sim_props[key]:.6f}")
 
             rows.append(";".join(row_values))
         except Exception as e:

@@ -1656,7 +1656,7 @@ def _save_body_plots_fast(
 
     # Plot 2: Vector thickness
     p = pv.Plotter(off_screen=off_screen, window_size=[1200, 1000])
-    p.add_mesh(body, color='white', opacity=0.5)
+    p.add_mesh(body, color='white', opacity=1.0)
     p.show_grid(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
     p.camera.zoom(0.8)  # Zoom out to prevent axis clipping
     p.screenshot(str(output_dir / f"{specimen_name}_Body{body_index}_VectorThickness.png"))
