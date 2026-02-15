@@ -546,7 +546,7 @@ def threshold(
         blended_img[np.all(ctrs_img == (0,0,255), axis=-1)] = ctrs_img[np.all(ctrs_img == (0,0,255), axis=-1)]
 
 
-        blended_img = resize_images(blended_img)[0]
+        blended_img = resize_images(img_processed)[0]
         img_pil = Image.fromarray(cv2.cvtColor(blended_img, cv2.COLOR_BGR2RGB))
         img_tk = ImageTk.PhotoImage(image=img_pil)
         label_field.config(image=img_tk)

@@ -535,6 +535,7 @@ def export():
     worksheet.write(start_row, 11, "N50")
     worksheet.write(start_row, 12, "Pred_Seel")
     worksheet.write(start_row, 13, "Pred_Bohmann")
+    worksheet.write(start_row, 14, "U")
 
     def pred_seel(t, sig):
         return 1281 + t * 18.98 + sig * (-37.29) + sig ** 3 * (-0.0009638) + sig ** 2 * (0.3504) + sig * t * (-0.2149)
@@ -583,6 +584,7 @@ def export():
         worksheet.write(row, 12, pred_seel(s.measured_thickness, -s.sig_h))
         # worksheet.write(row, 12, pred_bohmann(s.measured_thickness, s.sig_h))
         worksheet.write(row, 13, n50fit((s.measured_thickness, -s.sig_h), *popt))
+        worksheet.write(row, 14, s.U)
 
         row += 1
         del s

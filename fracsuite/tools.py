@@ -1203,7 +1203,7 @@ def export_preprocessing_img(
     
     # get the preprocessed image
     original_img = specimen.get_fracture_image()
-    Splinter.analyze_image(original_img, px_p_mm, skip_preprocessing=False, interest_region=interest_region)
+    Splinter.analyze_image(original_img, px_p_mm, skip_preprocessing=False, prep=specimen.get_prepconf(), interest_region=interest_region)
     preprocessed_img = preprocess_image(original_img, prep=specimen.get_prepconf(), interest_region=interest_region)
     
     # draw contours in the same interest_region    
