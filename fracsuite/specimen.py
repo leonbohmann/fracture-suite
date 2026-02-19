@@ -7,6 +7,8 @@ import pickle
 import pickletools
 from typing import Annotated
 
+from sympy import false
+
 from fracsuite.core.calculate import is_number
 from fracsuite.core.geometry import delta_hcp
 from fracsuite.core.logging import debug, error, info, warning
@@ -436,6 +438,9 @@ def export_exp_matrix(
         if s.nbr > 10:
             return False
         
+        if s.thickness == 12:
+            return False
+        
         return filter(s)
     
     specimens = Specimen.get_all_by(add_filter, load=True)
@@ -471,11 +476,11 @@ def export_exp_matrix(
     latex_lines = []
     latex_lines.append(r"\begin{table}[!htbp]")
     latex_lines.append(r"    \centering")
-    latex_lines.append(r"    \caption{Experimental series, with $t$ thickness, $SC$ support condition, $\sigma_{S,nom}$ nominal surface compressive stress, $n$ amount of specimen, $\bar\sigma_{S,nom}$ measured surface compressive stress }")
+    latex_lines.append(r"    \caption{Experimental series, with $T$~thickness, $SC$~support~condition, $\sigma_{s,\mathrm{nom}}$~nominal~surface compressive stress, $n$~amount of specimen, $\bar\sigma_{s}$ measured surface compressive stress and $s_{\sigma}$ standard error}")
     latex_lines.append(r"    \label{tab:experiments_matrix}")
     latex_lines.append(r"    \begin{tabular}{c c c c c c}")
     latex_lines.append(r"        \toprule")
-    latex_lines.append(r"        $t$ [mm] & SC & $\sigma_\mathrm{nom}$ [MPa] & $n$ & $\bar{\sigma}_\mathrm{s}$ [MPa] & $s_{\sigma}$ [MPa] \\")
+    latex_lines.append(r"        $T$ [mm] & SC & $\sigma_{s,\mathrm{nom}}$ [MPa] & $n$ & $\bar{\sigma}_s$ [MPa] & $s_{\sigma}$ [MPa] \\")
     latex_lines.append(r"        \midrule")
 
     for g in group_stats:

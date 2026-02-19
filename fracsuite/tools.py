@@ -1212,20 +1212,14 @@ def export_preprocessing_img(
 
     with get_progress(total=len(splinters), title='Drawing contours') as progress:
         for splinter in splinters:
-            clr = rand_col()
+            clr = [0,0,255]
 
-            cv2.drawContours(out_img, [splinter.contour], 0, clr, 2)
+            cv2.drawContours(out_img, [splinter.contour], 0, clr, 1)
 
             progress.advance()
 
     # specimen.simplify_contours(1)
 
-    clr = (0,0,255)
-    with get_progress(total=len(splinters), title='Drawing contours') as progress:
-        for splinter in splinters:            
-            cv2.drawContours(out_img, [splinter.contour], 0, clr, 1)
-            progress.advance()
-    
     cv2.imwrite(os.path.join(output_dir, f"{specimen_name}_contours.png"), out_img[interest_region[1]:interest_region[3], interest_region[0]:interest_region[2]])
     cv2.imwrite(os.path.join(output_dir, f"{specimen_name}_preprocessed.png"), preprocessed_img[interest_region[1]:interest_region[3], interest_region[0]:interest_region[2]])
     
