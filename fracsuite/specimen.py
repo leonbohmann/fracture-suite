@@ -404,20 +404,42 @@ def export_pap3(
     
 ):
     filter = create_filter_function("*.*.*.*", needs_scalp=True, needs_splinters=True)
-    specimens = Specimen.get_all_by(filter, load=True)
+    def filt(s: Specimen):
+        if s.nbr > 10:
+            return False
+        
+        if s.comment is not None and s.comment != "":
+            return False
+        
+        if s.nom_stress <= 70:
+            return False
+        
+        return filter(s)
+    
+    specimens = Specimen.get_all_by(filt, load=True)
     
     
-    for t in [4,8,12]:
+    for t in [4,8,12]:                
         outfile = os.path.join(outpath, f"all-specimen-{t}.csv")
         
         specs = [s for s in specimens if s.thickness == t]
         
         with open(outfile, 'w') as f:
-            f.write("t;U;U_d;sigs;sigm;n50;circ;area;intensity\n")
+            f.write("t;U;U_d;sigs;sigm;n50;circ;area;intensity;log10(int);log10(ud);support\n")
             for spec in specs:
-                f.write(f"{spec.thickness};{spec.U};{spec.U_d};{np.abs(spec.sig_h)};{np.abs(spec.sig_h)/2.0};{spec.calculate_intensity()*2500};{spec.calculate_mean(SplinterProp.CIRCUMFENCE)};{spec.calculate_mean(SplinterProp.AREA)};{spec.calculate_intensity()}\n")
+                f.write(f"{spec.thickness};{spec.U};{spec.U_d};{np.abs(spec.sig_h)};{np.abs(spec.sig_h)/2.0};{spec.calculate_intensity()*2500};{spec.calculate_mean(SplinterProp.CIRCUMFENCE)};{spec.calculate_mean(SplinterProp.AREA)};{spec.calculate_intensity()};{np.log10(spec.calculate_intensity())};{np.log10(spec.U_d)};{spec.boundary.value}\n")
             
-    
+    for t in [4,8,12]:                
+        
+        for b in ["A","B","Z"]:
+            outfile = os.path.join(outpath, f"all-specimen-{t}-{b}.csv")
+            specs = [s for s in specimens if s.thickness == t and s.boundary.value == b]
+        
+            with open(outfile, 'w') as f:
+                f.write("t;U;U_d;sigs;sigm;n50;circ;area;intensity;log10(int);log10(ud);support\n")
+                for spec in specs:
+                    f.write(f"{spec.thickness};{spec.U};{spec.U_d};{np.abs(spec.sig_h)};{np.abs(spec.sig_h)/2.0};{spec.calculate_intensity()*2500};{spec.calculate_mean(SplinterProp.CIRCUMFENCE)};{spec.calculate_mean(SplinterProp.AREA)};{spec.calculate_intensity()};{np.log10(spec.calculate_intensity())};{np.log10(spec.U_d)};{spec.boundary.value}\n")
+            
 
 @app.command()
 def export_exp_matrix(
